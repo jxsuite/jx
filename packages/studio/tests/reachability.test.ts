@@ -292,7 +292,6 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "services/bundle-base.ts": { resetBundleBase: TEST_RESET },
   "services/settings/kernel.ts": { resetSettings: TEST_RESET },
   "services/trusted-types.ts": { resetStudioPolicy: TEST_RESET },
-  "services/ai-writes.ts": { resetAiWrites: TEST_RESET },
   "services/cem-export.ts": {
     exportCemManifest:
       "downloads a CEM 2.1.0 manifest for the open document, and still takes the DELETED flat " +

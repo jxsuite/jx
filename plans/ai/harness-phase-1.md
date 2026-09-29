@@ -22,6 +22,7 @@ prs:
   - jxsuite/jx#379
   - jxsuite/jx#380
   - jxsuite/jx#381
+  - jxsuite/jx#392
 ---
 
 # Jx harness core: the Phase 1 plan
@@ -52,7 +53,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 | J1.6  | One turn per window                                 | —           | merged jxsuite/jx#378 |
 | J1.7  | Honest turn outcomes                                | —           | merged jxsuite/jx#380 |
 | J1.8  | ToolContext                                         | —           | merged jxsuite/jx#381 |
-| J1.9  | Ledger reset and path containment                   | —           | open                  |
+| J1.9  | Ledger reset and path containment                   | —           | merged jxsuite/jx#392 |
 | J1.10 | `./messages`                                        | —           | open                  |
 | J1.11 | `./harness` behind `runAgentLoop`                   | —           | open                  |
 | J1.12 | Pair repair                                         | —           | open                  |
@@ -77,6 +78,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
   - J1.1: `applyDocOpsAsUser` was deferred to J1.16, its first caller, under Studio's reachability rule.
   - J1.7: its live eval needed the eval harness fixes of jxsuite/jx#379.
   - J1.8: `refusal` moved to J1.11, its first caller.
+  - J1.9: containment is the file tools' `normalizeRelPath`, moved to the leaf `services/project-path.ts` (the media `normalizeProjectPath` the J1.9 section names is a different normaliser, and importing across the two tool modules would be a cycle). Close project is `setWorkspaceProject`, the one writer of the project root: leaving a root drops the ledger, adopting one from none keeps it.
   - J1.17: `upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19.
 
 ---

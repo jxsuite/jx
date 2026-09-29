@@ -25,6 +25,7 @@ import {
 import type { JxNodeValue } from "../tabs/transact";
 import type { JsonValue } from "../types";
 import { validateDoc } from "./jx-validate";
+import { invalidPathResult, normalizeRelPath } from "./project-path";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import {
   reportDocumentWrite,
@@ -643,7 +644,12 @@ export function registerAiTools(
             error: "File operations are not available in this environment.",
           };
         }
-        const { path: relPath, content } = args as { path: string; content: object };
+        const { path, content } = args as { path: string; content: object };
+        // Inside the project or not at all (ai.md §4): the platform write is given this path.
+        const relPath = normalizeRelPath(path);
+        if (relPath === null) {
+          return invalidPathResult(path);
+        }
         const dirtyError = dirtyTabError(relPath);
         if (dirtyError) {
           return dirtyError;
@@ -722,7 +728,11 @@ export function registerAiTools(
             error: "File operations are not available in this environment.",
           };
         }
-        const { path: relPath, content } = args as { path: string; content: object };
+        const { path, content } = args as { path: string; content: object };
+        const relPath = normalizeRelPath(path);
+        if (relPath === null) {
+          return invalidPathResult(path);
+        }
         const dirtyError = dirtyTabError(relPath);
         if (dirtyError) {
           return dirtyError;

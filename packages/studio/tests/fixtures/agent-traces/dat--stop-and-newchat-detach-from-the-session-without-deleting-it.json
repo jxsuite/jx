@@ -88,7 +88,7 @@
     }
   ],
   "ledger": {
-    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0"],
+    "events": ["beginTurn(\"turn:2\")", "endTurn(\"msg#2\") filed 0", "resetAiWrites()"],
     "turns": []
   },
   "finalMessages": [],
@@ -111,6 +111,7 @@
   },
   "historyIndex": 1,
   "extra": {
+    "sessionBeforeNewChat": "session#1",
     "activeSession": null,
     "clientOptions": {
       "chatUrl": "/__mock/ai/chat",
@@ -127,7 +128,6 @@
         }
       ]
     },
-    "writtenFiles": [],
-    "sessionBeforeNewChat": "session#1"
+    "writtenFiles": []
   }
 }

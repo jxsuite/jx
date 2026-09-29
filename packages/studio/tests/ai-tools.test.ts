@@ -566,6 +566,80 @@ describe("ai-tools — file creation", () => {
   });
 });
 
+/* The model names the path, and the platform write is given it (ai.md §4). The file tools always
+   refused a path outside the project; these two handed any path straight to `saveFile`. */
+describe("create_page and create_component stay inside the project", () => {
+  const ESCAPES = [
+    "../outside.json",
+    "pages/../../outside.json",
+    "/etc/passwd",
+    String.raw`C:\Windows\x.json`,
+    "~/x.json",
+  ];
+
+  test.each(["create_page", "create_component"])(
+    "%s refuses every path outside the project before validating or writing",
+    async (tool) => {
+      const saved: string[] = [];
+      const validated: unknown[] = [];
+      const tCall = recordingContext();
+      const { tab, registry } = harness(
+        { children: [], tagName: "div" },
+        {
+          saveFile: async (p) => {
+            saved.push(p);
+          },
+          validate: async (doc) => {
+            validated.push(doc);
+            return [];
+          },
+        },
+      );
+      for (const path of ESCAPES) {
+        const error = await execErr(registry, tool, { content: { tagName: "x-y" }, path }, tCall);
+        expect(error).toContain(`Invalid path ${JSON.stringify(path)}`);
+      }
+      expect(saved).toEqual([]);
+      expect(validated).toEqual([]);
+      expect(tCall.ledger.writes).toEqual([]);
+      disposeTab(tab);
+    },
+  );
+
+  test.each(["create_page", "create_component"])(
+    "%s writes, records and reports the normalized path",
+    async (tool) => {
+      const saved: string[] = [];
+      const looked: string[] = [];
+      const tCall = recordingContext();
+      const { tab, registry } = harness(
+        { children: [], tagName: "div" },
+        {
+          findOpenTab: (p) => {
+            looked.push(p);
+            return null;
+          },
+          saveFile: async (p) => {
+            saved.push(p);
+          },
+        },
+      );
+      const res = await registry.execute(
+        tool,
+        { content: { tagName: "x-y" }, path: String.raw`./pages\new.json` },
+        tCall,
+      );
+      expect(res.success).toBe(true);
+      expect(res.summary).toContain('"pages/new.json"');
+      expect(saved).toEqual(["pages/new.json"]);
+      // The unsaved-tab guard looks for the file under the name it will be written as.
+      expect(new Set(looked)).toEqual(new Set(["pages/new.json"]));
+      expect(tCall.ledger.writes.map((w) => w.path)).toEqual(["pages/new.json"]);
+      disposeTab(tab);
+    },
+  );
+});
+
 describe("ai-tools — write reconciliation with open tabs", () => {
   test("create_page refuses while the target file is open with unsaved changes", async () => {
     const openTab = createTab({ document: { children: [], tagName: "div" }, id: "pages/x.json" });

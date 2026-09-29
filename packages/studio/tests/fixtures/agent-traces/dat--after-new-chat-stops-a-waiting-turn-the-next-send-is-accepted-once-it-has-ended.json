@@ -117,6 +117,7 @@
   "ledger": {
     "events": [
       "beginTurn(\"turn:2\")",
+      "resetAiWrites()",
       "endTurn(\"\") filed 0",
       "beginTurn(\"turn:2\")",
       "endTurn(\"msg#4\") filed 0"
