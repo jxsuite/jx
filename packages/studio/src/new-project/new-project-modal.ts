@@ -46,7 +46,8 @@ import { getPlatform } from "../platform";
 import { installUrlOf } from "../platform-errors";
 import { hasAiCredentials } from "../services/ai-models";
 import { setPendingAgentPrompt } from "../services/agent-seed";
-import { initProjectRepo } from "../files/files";
+import { adoptCreatedProject } from "../services/project-adoption";
+import { notify } from "../services/notify";
 import { runImportHandoff } from "../services/import-seed";
 import { createAiCredentialsForm } from "../ui/ai-credentials-form";
 import { createManagedConnect } from "../ui/ai-managed-connect";
@@ -328,14 +329,29 @@ function finish(result: { root: string; config: ProjectConfig } | null) {
 
 /**
  * Every path out of the wizard that produced a project HERE: initialise version control for it,
- * then hand it to the caller. A scaffold is not a repository, and Delete and Rename are one click
- * away.
+ * open it, then hand it to the caller. A scaffold is not a repository and an unopened project is
+ * not a created one, and Delete and Rename are one click away.
  *
- * The Import path does not come through here any more — `import_site` creates the project, so the
- * obligation moved with it into `services/project-adoption.ts`, which both bootstrap tools share.
+ * `adoptCreatedProject` is the same sequence `create_project`/`import_site` run — this is the third
+ * caller `services/project-adoption.ts`'s own doc comment already names. It is what makes
+ * `project.new` from the command palette work at all while a project is open: that entry point
+ * never looks at what this promise resolves with (`newProjectCommands` below fires and forgets), so
+ * adopting has to happen HERE rather than being left to whichever caller opened the wizard.
+ *
+ * The Import path does not come through here — `import_site` creates the project, so it already
+ * runs this same sequence itself.
  */
 async function finishCreated(result: { root: string; config: ProjectConfig }) {
-  await initProjectRepo(result.root);
+  const { adopted, error, openedElsewhere } = await adoptCreatedProject(result.root, {
+    // The wizard runs outside the agent loop — there is never a batch to flush and re-anchor.
+    getTab: () => null,
+  });
+  if (!adopted && !openedElsewhere) {
+    notify.warn("Created the project, but could not open it here.", {
+      ...(error === null ? {} : { detail: error }),
+      source: "New Project",
+    });
+  }
   finish(result);
 }
 
