@@ -1,5 +1,6 @@
 import { computed, reactive, toRaw } from "../reactivity";
 import { commitTabBuffers } from "../services/monaco-buffer";
+import { resetAiWrites } from "../services/ai-writes";
 import { ensureCollab, rekeyCollab } from "../collab/collab-session";
 import { createTab, disposeTab } from "../tabs/tab";
 import { projectState } from "../state";
@@ -696,6 +697,13 @@ function defaultSlot(pane: Pane, tabId: string): number {
  * @param {object | null} [config]
  */
 export function setWorkspaceProject(root: string | null, config: object | null = null) {
+  /* Leaving a project drops the assistant's record of what each turn changed (ai.md §3.2). It
+     names project-relative paths, and its Restore undoes the active tab, so carried into another
+     project it would list files that are not there and undo a document the turn never touched.
+     Adopting a project from none keeps it: a bootstrap conversation follows the project it made. */
+  if (workspace.projectRoot && root !== workspace.projectRoot) {
+    resetAiWrites();
+  }
   workspace.projectRoot = root;
   workspace.projectConfig = config;
 }
