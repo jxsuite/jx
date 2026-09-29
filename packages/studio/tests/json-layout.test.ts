@@ -14,6 +14,7 @@ import { flush, installMockPlatform } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { toPosixPath } from "../scripts/lib/posix-path";
 import { parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import { serializeDocument } from "../src/files/serialize-document";
 import { parseCollabSource, saveFile } from "../src/files/file-ops";
@@ -26,10 +27,18 @@ import type { StudioPlatform } from "../src/types";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 
-/** Every document the formatter keeps: the oracle for byte identity. */
+/**
+ * Every document the formatter keeps: the oracle for byte identity.
+ *
+ * `join(REPO_ROOT, relative)` on Windows produces a fully backslash-separated absolute path —
+ * `join` uses the OS separator regardless of which one `relative` (from `globSync`) arrived with —
+ * so the `.endsWith("/…")` checks below need it normalized back to forward slashes. `readFileSync`
+ * and the `.slice(REPO_ROOT.length + 1)` prefix strip both work on either form, so this is the one
+ * place that needs it.
+ */
 const FORMATTED_DOCUMENTS = ["packages/studio/src/surfaces", "packages/ui/components"]
   .flatMap((dir) => globSync(`${dir}/*.json`, { cwd: REPO_ROOT }))
-  .map((relative) => join(REPO_ROOT, relative))
+  .map((relative) => toPosixPath(join(REPO_ROOT, relative)))
   .toSorted();
 
 /** Derive, serialize, and hand back the text — the round trip a save performs. */

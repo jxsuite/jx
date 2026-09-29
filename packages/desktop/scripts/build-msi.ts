@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { toPosixPath } from "./lib/posix-path";
 import {
   WINDOWS_RUNTIME_FILES,
   describeRuntimeSearch,
@@ -135,7 +136,8 @@ await writeFile(join(distDir, "latest.json"), JSON.stringify(updateMetadata, nul
 
 // --- Step 6: Copy artifacts ---
 const distFiles = new Bun.Glob("*.{msi,json}");
-for await (const file of distFiles.scan(distDir)) {
+for await (const rawFile of distFiles.scan(distDir)) {
+  const file = toPosixPath(rawFile);
   await cp(join(distDir, file), join(artifactsDir, file));
   console.log(`[build-msi] Copied ${file} → artifacts/`);
 }

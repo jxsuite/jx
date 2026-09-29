@@ -15,9 +15,10 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { DEFAULT_MANIFEST, shotsByDocsPage } from "../check-image-lock";
+import { toPosixPath } from "../lib/posix-path";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const DOCS_DIR = join(ROOT, "docs");
@@ -88,7 +89,13 @@ function pageFile(slug: string): string | null {
 }
 
 // Docs pages' `code:` frontmatter
-for (const rel of new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })) {
+for (const rawRel of new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })) {
+  // `Bun.Glob.scanSync` returns paths in the HOST's native separator (backslash on Windows), while
+  // Every `code:`/`spec:` value below and every git-reported path in `changed` is forward-slash —
+  // Written by whoever authored it, always on Linux or macOS. Left unnormalized, `slug` carries
+  // Backslashes past `pageFile()`, and `changed.has(pagePath)` at line ~164 below is a silent,
+  // Permanent false on Windows: every page this loop reaches, not merely the one someone notices.
+  const rel = toPosixPath(rawRel);
   const source = readFileSync(join(DOCS_DIR, rel), "utf8");
   const match = source.match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) {
@@ -181,7 +188,9 @@ console.error(
 );
 let shotsNamed = false;
 for (const { file, pages } of findings) {
-  console.error(`  ${relative(ROOT, join(ROOT, file))}`);
+  // `file` is already repo-relative and forward-slash, straight from git — round-tripping it
+  // Through `join`/`relative` served no purpose and mangled it into a native path on Windows.
+  console.error(`  ${file}`);
   for (const { pagePath, slug, specs } of pages) {
     const specNote = specs.length > 0 ? ` (spec: ${specs.join(", ")})` : "";
     const shots = shotsByPage.get(slug) ?? [];

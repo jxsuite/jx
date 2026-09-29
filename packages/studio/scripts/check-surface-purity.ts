@@ -24,6 +24,7 @@ import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 import { KIT_TAGS } from "@jxsuite/ui";
+import { toPosixPath } from "./lib/posix-path";
 
 export interface SourceFile {
   /** Path relative to the package root, forward slashes. */
@@ -110,7 +111,8 @@ export function report(
       lines: [
         `✗ check-surface-purity: ${findings.length} finding(s)`,
         ...findings.map(
-          (f) => `   ${relative(process.cwd(), resolve(root, f.file))}:${f.line}  ${f.text}`,
+          (f) =>
+            `   ${toPosixPath(relative(process.cwd(), resolve(root, f.file)))}:${f.line}  ${f.text}`,
         ),
       ],
     };

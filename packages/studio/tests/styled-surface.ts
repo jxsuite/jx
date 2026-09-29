@@ -12,6 +12,7 @@
  */
 import { Glob } from "bun";
 import { join } from "node:path";
+import { toPosixPath } from "../scripts/lib/posix-path";
 import {
   ALLOWED_ORPHANS,
   extractDefinedClasses,
@@ -29,7 +30,8 @@ const ROOT = join(import.meta.dir, "..");
  */
 async function definedClasses(): Promise<Set<string>> {
   const out = new Set<string>();
-  for await (const rel of new Glob("styles/*.css").scan(ROOT)) {
+  for await (const rawRel of new Glob("styles/*.css").scan(ROOT)) {
+    const rel = toPosixPath(rawRel);
     for (const name of extractDefinedClasses(await Bun.file(join(ROOT, rel)).text())) {
       out.add(name);
     }

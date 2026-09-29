@@ -26,6 +26,7 @@
 import { Glob } from "bun";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, resolve } from "node:path";
+import { toPosixPath } from "./lib/posix-path";
 import { STUDIO_ASSETS, STUDIO_WORKERS } from "../src/hosting/layout";
 
 const PKG_DIR = resolve(import.meta.dir, "..");
@@ -57,9 +58,7 @@ export function emittedFiles(distDir: string, pkgDir: string): string[] {
     return [];
   }
   return [...new Glob("**/*").scanSync(distDir)]
-    .map((rel) =>
-      posix.join(relative(pkgDir, distDir).replaceAll("\\", "/"), rel.replaceAll("\\", "/")),
-    )
+    .map((rel) => posix.join(toPosixPath(relative(pkgDir, distDir)), toPosixPath(rel)))
     .toSorted();
 }
 
