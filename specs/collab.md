@@ -2,9 +2,9 @@
 
 ## Real-Time Co-Editing for Jx Projects
 
-**Version:** 0.2.5-draft\
+**Version:** 0.2.6-draft\
 **Status:** Partial\
-**Updated:** 2026-08-20\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -121,6 +121,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.6-draft** (2026-09-29) — Census against the code: §1, §2, §3, §3.1 and §4 marked Partial, the §5 marker corrected to say that merge-granularity skew is unguarded, and the whole-spec marker updated to name the shipped modules the stub does not yet specify.
 - **0.2.5-draft** (2026-08-20) — Presence that has ended must stop being published: a client leaving the code view clears its in-buffer text cursor, so peers stop drawing a caret for someone who is no longer there.
 - **0.2.4-draft** (2026-08-16) — §2.1 subprotocol negotiation: jx.collab.v1 offered from the capability probe and echoed on the handshake; §5 wire-envelope skew closed; RFC 7692 non-adoption stated in §2.
 - **0.2.3-draft** (2026-08-15) — Add §6 Standards Alignment; §5 separates wire-envelope skew from document-format skew and is marked Pending.
@@ -132,4 +133,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/collab` Specification v0.2.5-draft — a stub, subject to expansion._
+_Jx `@jxsuite/collab` Specification v0.2.6-draft — a stub, subject to expansion._

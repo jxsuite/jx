@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.2.23\
+**Version:** 0.2.26\
 **Status:** Implemented\
-**Updated:** 2026-08-31\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -342,6 +342,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.26** (2026-09-29) — The Studio route count is no longer stated: the STUDIO_ROUTES table is the count, and the written figure had drifted from 60 to 71.
+- **0.2.25** (2026-09-29) — §4.1 GET /__studio/file/bytes answers a project file undecoded and no-store: the read side of file/upload, for a caller that must not go through UTF-8.
+- **0.2.24** (2026-09-29) — §4.1 the AI proxy runs the shared @jxsuite/ai/gateway for its wire and keeps key provenance, the environment-key fallback, the link-local guard and the model catalogue; §7 lists @jxsuite/ai.
 - **0.2.23** (2026-08-31) — The route-group summary names the extension catalogue the dev server serves (extensions.md §9.2).
 - **0.2.22** (2026-08-29) — A deployment base declared by the project's url is stripped from the request path at the edge, so the dev server answers both the bare and the based spelling.
 - **0.2.21** (2026-08-27) — A rename resets any co-editing room keyed to the old path, so a shutdown flush cannot recreate the moved file.
@@ -379,4 +382,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.2.23_
+_`@jxsuite/server` Specification v0.2.26_

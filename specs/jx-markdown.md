@@ -1,8 +1,8 @@
 # Jx Markdown Specification
 
-**Version:** 0.1.10-draft\
+**Version:** 0.1.11-draft\
 **Status:** Partial\
-**Updated:** 2026-08-31\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -447,6 +447,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.11-draft** (2026-09-29) — Census against the code: §3.1, §6.5, §6.6, §7.3, §9 and §12.8 gain Partial markers. They record where the content-document root, the repeater example and its round trip, the HTML-attribute routing, the placeholder and selection pseudo-elements, reference links and the CommonMark note, and roundtrip serialization differ from the text.
 - **0.1.10-draft** (2026-08-31) — popover-open, open and modal are recognized pseudo-classes; backdrop is a pseudo-element taking two colons.
 - **0.1.9-draft** (2026-08-27) — 12.8: roundtrip serialization is lossless where expressible, not total.
 - **0.1.8-draft** (2026-08-15) — Number the sections so they are addressable, and add §13 Standards Alignment.

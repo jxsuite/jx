@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.8-draft\
+**Version:** 0.8.19-draft\
 **Status:** Partial\
-**Updated:** 2026-09-18\
+**Updated:** 2026-09-29\
 **Applies to:** `packages/studio/`
 
 ---
@@ -964,6 +964,17 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.19-draft** (2026-09-29) — §9.3 is Partial: the name-to-callback renderer registry in store.ts, and the callers that repaint it by name, have not yet retired in favour of effects over reactive state.
+- **0.8.18-draft** (2026-09-29) — §13.3 is marked Partial: a failed project.json write from Settings is announced twice, once by its Problem and again by the section's own live region.
+- **0.8.17-draft** (2026-09-29) — §9.4, §11, §12 and §13 carry their status markers in the canonical blockquote form, so §12 and §13 now read as Partial and §9.4 and §11 as Implemented on every page derived from the specs.
+- **0.8.16-draft** (2026-09-29) — §1 names the shell redesign that preceded the kit instead of an unnamed plan.
+- **0.8.15-draft** (2026-09-29) — Census against the code: the stale Partial markers on §8, §12 and §13 are closed, §11 and the non-drag subsection of §8.2 are corrected from Implemented to Partial, and twenty-five sections gain leading Partial markers where the text diverges from what ships or a part is unbuilt.
+- **0.8.14-draft** (2026-09-29) — §4.6 binds every dock's rows, including the Navigator's; a row's leading icon and its text form one group so the icon is never orphaned.
+- **0.8.13-draft** (2026-09-29) — §10: a form's commit pair is drawn only while there is something to commit.
+- **0.8.12-draft** (2026-09-29) — §8.8: chrome text is not selectable; the root sets user-select none, a modal dialog restates it against the UA :modal rule, and only named content parts opt back in.
+- **0.8.11-draft** (2026-09-29) — §8.8: the boot refusal's diagnostics are selectable, and the criterion is content against interface rather than the absence of a Copy button.
+- **0.8.10-draft** (2026-09-29) — §8.7: a sheet with a section list claims initial focus for the section it opened on, not the platform's first focusable.
+- **0.8.9-draft** (2026-09-29) — §10: a surface names its own refusal failure or section-error, never error, because the kit's fields keep a permanent [part=error] in the same light-DOM tree.
 - **0.8.8-draft** (2026-09-18) — The tab strip and the pane grid's right-edge zone are pragmatic drag targets too; Split Right and Open to the Side are their non-drag equivalents.
 - **0.8.7-draft** (2026-09-14) — §12.4 a surface runs a command through runReported, which files a synchronous refusal and a later rejection alike in Problems under the surface's name, and a crash also reaches the console.
 - **0.8.6-draft** (2026-09-13) — §12.4 the agent's tool IS the command: the projection contract, the four deletion rules and the three review rules; the argument corollary names the schema coercion; §12.2 gains the assistant tool cap.
