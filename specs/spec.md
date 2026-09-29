@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.22-draft\
+**Version:** 0.6.26-draft\
 **Status:** Partial\
-**Updated:** 2026-09-14\
+**Updated:** 2026-09-29\
 **License:** MIT
 
 ---
@@ -2659,6 +2659,10 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.26-draft** (2026-09-29) — §5.7 is marked Partial: the interpreter and the compiled targets use different predicates to decide that a state object is a pure type definition, so the same entry can hold a value in one tier and none in the other.
+- **0.6.25-draft** (2026-09-29) — Census against the code: thirty-seven sections now lead with Partial where the interpreter, a compiled target or the text diverges, the stale Implemented cells of the §11.2 prototype table and the §11.3 timing table now read Partial and name their compiled gap, the §7.4, §8.6, §16.8 and §21.1 markers say what ships, and §21 closes as Implemented.
+- **0.6.24-draft** (2026-09-29) — §8.4 is marked Partial: content spliced in by a computed-children template is evaluated as templates instead of kept literal.
+- **0.6.23-draft** (2026-09-29) — §15.2 is marked Partial: built output renders the children written inside a page-level component instance with an empty scope, so their bindings and bound props are lost.
 - **0.6.22-draft** (2026-09-14) — §16.9 Instantiation Limits: a definition that instantiates its own tag with the same props is refused and a 32-frame chain is the cap, with the same diagnostics on both sides of the build; the interpreter reports a refusal with a jx-error ErrorEvent.
 - **0.6.21-draft** (2026-09-10) — a style declaration may bind a value the host measured, which two surfaces had worked around as impossible.
 - **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
@@ -2745,4 +2749,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.22-draft — subject to revision_
+_Jx Specification v0.6.26-draft — subject to revision_

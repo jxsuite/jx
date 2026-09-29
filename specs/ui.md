@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.51-draft\
+**Version:** 0.1.57-draft\
 **Status:** Partial\
-**Updated:** 2026-09-22\
+**Updated:** 2026-09-29\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -441,6 +441,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.57-draft** (2026-09-29) — Census against the code: §3, §5, §5.3, §9 and §10 are marked Implemented (§9 with the compiled distribution as a Future remainder), the overview markers on §1 and §4 are removed, §2, §5.1, §5.2, §5.4, §5.5, §6 and §7 are re-marked to name what is actually short, and §3.1, §3.2, §3.3 and §4.1 gain Partial markers for where the code and the text disagree.
+- **0.1.56-draft** (2026-09-29) — §4.3/§5.4: only `contain: layout` satisfies the outset hit area rule and jx-tab's close button carries it; a compact jx-action-group is one line (a wrapping row is compact=false), dims a disabled segment's ink rather than its share of the frame, fills a vertical group's stretched hosts, and keeps the system selection pair for an emphasized chosen segment.
+- **0.1.55-draft** (2026-09-29) — §3.2/§5.1/§5.3: the fields' empty error region is inert (box model reset, clipped, pointer-transparent) whatever a consumer's [part=error] rule sets, and consumers name their own banners with names the kit does not use.
+- **0.1.54-draft** (2026-09-29) — §8: css-meta $icons values are manifest names, held to the manifest by Studio's metadata test.
+- **0.1.53-draft** (2026-09-29) — §5.4: a compact jx-action-group draws the segmented control itself (frame, shared borders, accent-edged selected segment, text padding) whatever its members' quiet; a row of quiet tools is compact=false.
+- **0.1.52-draft** (2026-09-29) — §4.3: every outset hit area is layout-contained so it adds nothing to a scrolling ancestor's overflow; a small button, action button or checkbox therefore has no baseline and is centred in a row.
 - **0.1.51-draft** (2026-09-22) — jx-split memoizes the resolved track's identity per element — length still measured per call, walked invalidation on containment/connectivity/axis change — after profiling traced per-boot forced recalcs to the walk.
 - **0.1.50-draft** (2026-09-14) — §5.1 the hint contract covers jx-switch (a jx-tooltip child wired by for to the wrapping label while enabled, the label's title while disabled) and jx-menu-item's requires is the row's title only while disabled; §5.2 records both.
 - **0.1.49-draft** (2026-09-14) — §4.3 size=sm controls accept the pointer over the 24px floor through a ::before hit area inset past the 20px picture, the field-internal buttons carry the same, and §11 records the WCAG 2.5.8 claims and non-claims per element.
@@ -496,4 +502,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.51-draft_
+_Jx UI Kit Specification v0.1.57-draft_
