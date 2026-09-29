@@ -168,6 +168,16 @@ describe("ai-project-tools — write_file", () => {
     expect(writes(state)[0]![1]).toBe("data/notes.txt");
   });
 
+  test("rejects absolute and parent-escaping paths without writing", async () => {
+    const { registry, state } = makeHarness();
+    for (const path of ["/etc/passwd", "../outside.json", "~/.bashrc", String.raw`C:\x.json`]) {
+      const res = await registry.execute("write_file", { content: "{}", path });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("Invalid path");
+    }
+    expect(writes(state)).toHaveLength(0);
+  });
+
   test("blocks Jx documents with schema errors before writing", async () => {
     const { registry, state } = makeHarness(
       {},
