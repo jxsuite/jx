@@ -34,6 +34,9 @@ import {
   mountOverlayLayers,
 } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
+import { setProjectAdopter } from "../src/services/project-adoption";
+import { resetNotifications, toasts } from "../src/services/notify";
+import { workspace } from "../src/workspace/workspace";
 
 const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { initLayers } = await import("../src/ui/layers");
@@ -732,5 +735,63 @@ describe("openNewProjectModal — submit", () => {
 
     npDismiss();
     expect(await promise).toBeNull();
+  });
+});
+
+describe("openNewProjectModal — adoption", () => {
+  /* `finishCreated` is what makes `project.new` from the command palette work at all: that entry
+     point fires the modal and never looks at what it resolves with, so opening the project it just
+     created has to happen inside the wizard's own flow rather than being left to the caller. Each
+     test registers its own adopter, overwriting whatever an earlier test left behind. */
+
+  test("adopts the created project via the registered adopter", async () => {
+    const { state } = installMockPlatform();
+    setProjectAdopter(async (root) => {
+      workspace.projectRoot = root;
+    });
+
+    const promise = openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npType(npName(), "My Site");
+    await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    const result = await promise;
+
+    expect(result).toEqual({
+      config: { name: "My Site" },
+      root: "/home/dev/Sites/my-site",
+    } as never);
+    expect(workspace.projectRoot).toBe("/home/dev/Sites/my-site");
+    expect(state.calls.map((c) => c[0])).toContain("gitInit");
+  });
+
+  test("still resolves, but warns, when the created project could not be opened here", async () => {
+    installMockPlatform();
+    setProjectAdopter(async () => {
+      throw new Error("no such window");
+    });
+    resetNotifications();
+
+    const promise = openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npType(npName(), "Orphaned");
+    await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    const result = await promise;
+
+    // The project was still written — a failed hand-off does not undo the create. Git init
+    // Notifies too (a mock repo inits clean), so the warning is asserted by content, not position.
+    expect(result).not.toBeNull();
+    const warning = toasts.find((t) => t.severity === "warn");
+    expect(warning?.message).toBe("Created the project, but could not open it here.");
+    expect(warning?.detail).toBe("no such window");
   });
 });

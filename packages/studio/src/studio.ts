@@ -686,11 +686,10 @@ initWelcome({
     }
   },
   cloneRepository: () => cloneRepository({ openRecentProject }),
-  openNewProject: async (options) => {
-    const result = await openNewProjectModal(options);
-    if (result) {
-      void openRecentProject(result.root);
-    }
+  // The wizard adopts what it creates itself now (new-project-modal.ts's finishCreated) — there is
+  // Nothing left for the welcome screen to do with the result.
+  openNewProject: (options) => {
+    void openNewProjectModal(options);
   },
   openProject: () => openProject(),
   openRecentProject: (root: string) => openRecentProject(root),

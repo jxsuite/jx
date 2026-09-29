@@ -1273,16 +1273,17 @@ describe("project open delegates", () => {
     expect(statusMessages).toHaveLength(0);
   });
 
-  test("welcome openNewProject opens the created project", async () => {
+  test("welcome openNewProject delegates to the wizard, which adopts its own result", async () => {
+    /* Adoption is now `openNewProjectModal`'s own job (new-project-modal.ts's `finishCreated` →
+       `adoptCreatedProject`) rather than this handler's — covered by new-project-modal.test.ts and
+       project-adoption.test.ts. This module mocks `openNewProjectModal` wholesale, so there is
+       nothing further for studio.ts's welcome handler to observe or do with the result. */
     newProjectResult = { root: "/new/site" };
     try {
-      // OpenNewProject fires openRecentProject without awaiting it; poll for completion.
       await welcomeCtx.openNewProject();
-      await waitFor(() => recentProjectOpened());
     } finally {
       newProjectResult = null;
     }
-    expect(platform.projectRoot).toBe("/new/site");
     expect(statusMessages).toHaveLength(0);
   });
 
