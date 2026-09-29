@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  fenceDefects,
   formatMarkdown,
   isFormattable,
   normalizeMarkdown,
@@ -222,5 +223,37 @@ describe("tableDefects", () => {
 
   test("prose that merely contains a pipe is not judged", () => {
     expect(tableDefects("A sentence with a | in it.\n")).toEqual([]);
+  });
+});
+
+describe("fenceDefects", () => {
+  /* A container fence is only a fence alone on its line. Joined, the two openers and the two closers
+     are paragraphs of literal colons, and the page loses every wrapper they carried while the build
+     stays green. Both joined lines below are the ones jxsuite.com/privacy shipped. */
+  const opener = '::::div{style.padding="4rem"} :::div{style.maxWidth="46rem"}';
+
+  test("names two openers joined on one line", () => {
+    expect(fenceDefects([opener, "", "# Title", "", ":::", "::::"].join("\n"))).toEqual([1]);
+  });
+
+  test("names two closers joined on one line", () => {
+    expect(fenceDefects(["::::div", ":::div", "", "Text", "", "::: ::::"].join("\n"))).toEqual([6]);
+  });
+
+  test("accepts nested fences each on their own line", () => {
+    const source = ['::::div{style.padding="4rem"}', ":::div", "", "Text", "", ":::", "::::"];
+    expect(fenceDefects(source.join("\n"))).toEqual([]);
+  });
+
+  test("accepts a fence whose attribute value holds colons", () => {
+    expect(fenceDefects(':::div{style.content="a::b"}\n:::')).toEqual([]);
+  });
+
+  test("a fence line inside a code block is content", () => {
+    expect(fenceDefects(["```md", opener, "```"].join("\n"))).toEqual([]);
+  });
+
+  test("prose that merely mentions a fence is not judged", () => {
+    expect(fenceDefects("Close it with ::: ::::, one per line.\n")).toEqual([]);
   });
 });

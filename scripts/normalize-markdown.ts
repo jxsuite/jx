@@ -159,6 +159,36 @@ export function tableDefects(source: string): number[] {
   return bad;
 }
 
+/** A line opening with a container fence that carries a second fence after whitespace. */
+const JOINED_FENCES = /^\s*:{3,}.*\s:{3,}/;
+
+/**
+ * Lines that put two container-directive fences on one line.
+ *
+ * A fence is only a fence when it is alone on its line: `::::div{…} :::div{…}` is not two nested
+ * containers but one paragraph of literal text, and so is `::: ::::`. The page renders the colons
+ * as prose and drops every wrapper and style the fences carried, and no gate fails — the build, the
+ * links and the prose rules all find a valid document. jxsuite.com/privacy shipped that way from
+ * its first commit, with no padding and no reading width, which is why this is a rule.
+ *
+ * @param {string} source
+ * @returns {number[]} 1-based line numbers
+ */
+export function fenceDefects(source: string): number[] {
+  const bad: number[] = [];
+  let inFence = false;
+  for (const [i, line] of source.split("\n").entries()) {
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && JOINED_FENCES.test(line)) {
+      bad.push(i + 1);
+    }
+  }
+  return bad;
+}
+
 export interface FormatResult {
   text: string;
   /** 1-based lines carrying a visual-editor escape. */
@@ -218,6 +248,7 @@ async function main(): Promise<void> {
 
   const offenders: { path: string; escaped: number[]; wrapped: number[] }[] = [];
   const malformed: { path: string; rows: number[] }[] = [];
+  const joined: { path: string; lines: number[] }[] = [];
   for (const path of paths) {
     let source: string;
     try {
@@ -228,6 +259,10 @@ async function main(): Promise<void> {
     const rows = tableDefects(source);
     if (rows.length > 0) {
       malformed.push({ path, rows });
+    }
+    const fences = fenceDefects(source);
+    if (fences.length > 0) {
+      joined.push({ lines: fences, path });
     }
     const result = formatMarkdown(source, { wrap });
     if (result.escaped.length === 0 && result.wrapped.length === 0) {
@@ -242,7 +277,10 @@ async function main(): Promise<void> {
   for (const t of malformed) {
     console.log(`malformed table row ${t.path}: line ${where(t.rows)}`);
   }
-  if (offenders.length === 0 && malformed.length === 0) {
+  for (const f of joined) {
+    console.log(`joined directive fences ${f.path}: line ${where(f.lines)}`);
+  }
+  if (offenders.length === 0 && malformed.length === 0 && joined.length === 0) {
     console.log(
       wrap
         ? `markdown: ${paths.length} file(s) are clean and write one line per paragraph.`
@@ -263,6 +301,14 @@ async function main(): Promise<void> {
       `\n${malformed.length} file(s) carry a table row whose cell count differs from its header. ` +
         "A renderer drops the extra cells, and no formatter can guess the intent — fix the row.",
     );
+  }
+  if (joined.length > 0) {
+    console.error(
+      `\n${joined.length} file(s) put two directive fences on one line. A fence must stand alone ` +
+        "on its line, or the page renders the colons as text and drops the container.",
+    );
+  }
+  if (malformed.length > 0 || joined.length > 0) {
     process.exit(1);
   }
   if (check) {
