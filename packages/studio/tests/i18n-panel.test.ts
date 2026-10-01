@@ -632,6 +632,46 @@ describe("the scan", () => {
     expect(keys).toEqual(["pages/only.json"]);
   });
 
+  /* Every page's read is issued before any of them is answered: on a remote backend a sequential
+     loop paid one round trip per page, and reads issued together are what the cloud adapter
+     coalesces into one batch (specs/desktop.md §10.1). What they find is unchanged — the declared
+     slug still folds two files into one row, and a page that cannot be read is still just keyed by
+     its path. */
+  test("reads every page at once, and folds what they declare exactly as before", async () => {
+    const files: Record<string, string> = {
+      "pages/about.json": "{}",
+      "pages/broken.json": "{}",
+      "pages/fr/a-propos.json": '{ "$translationKey": "about" }',
+    };
+    let open = 0;
+    let peak = 0;
+    installMockPlatform(
+      {
+        readFile: async (path: string) => {
+          open += 1;
+          peak = Math.max(peak, open);
+          // Yield, so a reader that awaited each read in turn could never have two open at once.
+          for (let i = 0; i < 3; i += 1) {
+            await Promise.resolve();
+          }
+          open -= 1;
+          if (path === "pages/broken.json") {
+            throw new Error("EACCES");
+          }
+          return files[path] ?? "";
+        },
+      } as Partial<StudioPlatform>,
+      files,
+    );
+    const host = await paintSettled();
+    expect(peak).toBe(3);
+    // About and à-propos are one page; the unreadable one is still a row of its own.
+    expect(parts(host, "key").map((el) => el.textContent?.trim())).toEqual([
+      "pages/about.json",
+      "pages/broken.json",
+    ]);
+  });
+
   test("a directory it could not read makes the grid a partial answer, and says so", async () => {
     installMockPlatform({
       listDirectory: async (dir: string) => {

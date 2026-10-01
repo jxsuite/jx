@@ -281,10 +281,13 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
        *
        * `mapLimit` already documents that it preserves item order; the fix is to USE its result
        * rather than to mutate shared state from inside it. The concurrency is worth keeping — a
-       * collection is a directory of files and reading it eight at a time is why the grid opens
-       * quickly.
+       * collection is a directory of files and reading it many at a time is why the grid opens
+       * quickly. Thirty-two rather than eight because the reads a tick issues together are what
+       * the cloud adapter coalesces into one batch request (specs/desktop.md §10.1): eight wide,
+       * a hundred-entry collection was thirteen sequential round trips; thirty-two wide, the
+       * first batch carries a third of it.
        */
-      const loaded = await mapLimit(files, 8, async (path): Promise<EntryRecord | null> => {
+      const loaded = await mapLimit(files, 32, async (path): Promise<EntryRecord | null> => {
         try {
           const text = await platform.readFile(path);
           const parsed = await parseSourceForPath(path, text);

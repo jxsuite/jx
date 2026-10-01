@@ -41,7 +41,7 @@ Either way, the semantics come from `@jxsuite/protocol`. An in-page adapter shou
 
 ## Partial backends are fine
 
-You don't have to implement everything. Optional protocol routes back optional `StudioPlatform` members; Studio checks for their presence and degrades exactly as each route's `degradation` entry describes: the starter picker empties, the Projects catalogue hides, realtime co-editing falls back to solo file-level saves, and so on. The [protocol route reference](/docs/extending/reference/studio-routes) lists every route with its optionality and degradation.
+You don't have to implement everything. Optional protocol routes back optional `StudioPlatform` members (or, like the batch read, are an adapter's shortcut with a plain fallback); Studio checks for their presence and degrades exactly as each route's `degradation` entry describes: the starter picker empties, the Projects catalogue hides, realtime co-editing falls back to solo file-level saves, and so on. The [protocol route reference](/docs/extending/reference/studio-routes) lists every route with its optionality and degradation.
 
 ## Related
 
