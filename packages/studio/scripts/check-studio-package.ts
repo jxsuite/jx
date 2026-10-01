@@ -5,7 +5,7 @@
  * root `scripts/` so `scripts/ci/affected.ts` classifies it by its owning workspace instead of
  * failing open into the whole matrix.
  *
- * Four rules, each closing something that has gone wrong or that nothing else can see:
+ * Five rules, each closing something that has gone wrong or that nothing else can see:
  *
  * 1. **The stylesheet list is the stylesheets.** `STUDIO_STYLESHEETS` must equal `styles/*.css` on
  *    disk. The document's link tags are generated from that list, so a sheet added to the directory
@@ -24,6 +24,13 @@
  * 4. **The purity rule.** Only `src/hosting/stage.ts` may import `node:`. The other hosting modules
  *    are the contract, and a subscriber in a Worker, a Vite plugin or a Deno host must be able to
  *    read them.
+ * 5. **`files` publishes no source maps.** Every bundle under `dist/` is built with linked maps, and
+ *    they are large — about 24 MB beside the chunks, 21 MB beside the three Monaco workers. A
+ *    `files` entry cannot subtract, so a directory entry under `dist/` ships every map in it. This
+ *    happened: the workers gained maps while `files` still listed `dist/workers` whole, and that
+ *    directory's share of the tarball more than doubled under a green build, because staging and
+ *    the bundle budget both skip `**\/*.map`, so neither gate could see it. Only npm consumers
+ *    paid.
  *
  * Run in the CI `checks` job. Every rule is a pure function over an injected listing, so
  * `tests/check-studio-package.test.ts` can drive them with fixtures under `bun test`, which never
@@ -85,6 +92,38 @@ export function filesCovers(patterns: readonly string[], path: string): boolean 
        also holds about 24 MB of source maps, and a `files` entry cannot subtract. */
     return p.startsWith(`${path}/`);
   });
+}
+
+/**
+ * `files` entries that would publish a source map from `dist/` (rule 5).
+ *
+ * Decided from the pattern alone, because this check never builds: a directory entry or a glob is
+ * probed with a hypothetical `<dir>/probe.js.map`, and an entry naming one file publishes a map
+ * only if it names one. Only `dist/` is examined — it is the one tree the bundler writes maps into,
+ * and `src` or `styles` listed whole are the source, not a build.
+ */
+export function publishedMaps(patterns: readonly string[]): Problem[] {
+  return patterns
+    .filter((pattern) => {
+      const p = pattern.replace(/^\.?\//, "").replace(/\/$/, "");
+      if (p.endsWith(".map")) {
+        return true;
+      }
+      if (p !== "dist" && !p.startsWith("dist/")) {
+        return false;
+      }
+      const glob = p.includes("*");
+      const last = p.slice(p.lastIndexOf("/") + 1);
+      if (!glob && last.includes(".")) {
+        return false;
+      }
+      const dir = glob ? p.slice(0, p.lastIndexOf("/")) : p;
+      return filesCovers([pattern], `${dir}/probe.js.map`);
+    })
+    .map((pattern) => ({
+      detail: `"${pattern}" publishes the source maps beside it — list the .js files instead, as dist/chunks/*.js does, because a files entry cannot subtract`,
+      rule: "maps",
+    }));
 }
 
 /** Source with comments removed, so prose that quotes an import is not read as one. */
@@ -184,6 +223,7 @@ export function analyze(root = PKG_DIR): Problem[] {
   return [
     ...stylesheetDrift(sheets),
     ...publishGaps((pkg.files ?? []) as string[], escapingImports(sources)),
+    ...publishedMaps((pkg.files ?? []) as string[]),
     ...backendDependencies(pkg),
     ...backendImports(sources),
     ...nodeImports(sources),
@@ -195,7 +235,8 @@ export function report(problems: readonly Problem[]): string[] {
   if (problems.length === 0) {
     return [
       `✓ check-studio-package: ${STUDIO_STYLESHEETS.length} stylesheet(s) declared and present, ` +
-        `${STUDIO_ASSETS.length} manifest entr(ies) publishable, no backend dependency, ` +
+        `${STUDIO_ASSETS.length} manifest entr(ies) publishable, no source map published, ` +
+        `no backend dependency, ` +
         `node: confined to the stager.`,
     ];
   }

@@ -10,6 +10,7 @@ describe("report", () => {
   test("a clean tree says what it checked, not just that it passed", () => {
     const lines = report([]).join("\n");
     expect(lines).toContain("stylesheet(s) declared and present");
+    expect(lines).toContain("no source map published");
     expect(lines).toContain("no backend dependency");
   });
 

@@ -9,6 +9,7 @@
  */
 
 import { resolve } from "node:path";
+import type { BuildConfig } from "bun";
 
 /* The 0.56 export-map paths (`"./*" → ./esm/vs/*.js`), not the deep `esm/vs/...` ones. The output
    FILENAMES are unchanged — `editor.worker.js` / `json.worker.js` / `ts.worker.js` — because three
@@ -33,16 +34,28 @@ export const WORKER_OUTDIR = resolve(import.meta.dir, "..", "dist", "workers");
  * them under `editor/` and `language/json/`, which the flat `dist/workers/<name>.worker.js` lookup
  * in monaco-setup.ts does not expect.
  *
+ * The workers are built with linked source maps, like the entries, so a minified release worker is
+ * as debuggable as a minified chunk. The maps are about 21 MB, most of it the TS worker's, and they
+ * reach no host: staging and the bundle budget skip them by the same `**\/*.map` rule that already
+ * covers `dist/chunks`, and package.json publishes `dist/workers/*.js` rather than the directory,
+ * because a `files` entry cannot subtract. That last rule is the one npm sees, and nothing else
+ * would notice its absence — check-studio-package.ts (rule 5) holds `files` to it.
+ *
+ * @param release What the release build adds — `studioReleaseOptions` from build-config.ts, i.e.
+ *   minification. The dev server calls this with nothing, so its workers stay readable on the same
+ *   rule as its watcher's bundles; `scripts/build.ts` passes the release options.
  * @returns {Promise<void>} Resolves once all three workers are written
  */
-export async function buildMonacoWorkers(): Promise<void> {
+export async function buildMonacoWorkers(release: Partial<BuildConfig> = {}): Promise<void> {
   for (const spec of WORKERS) {
     const entry = Bun.resolveSync(spec, import.meta.dir);
     const result = await Bun.build({
+      ...release,
       entrypoints: [entry],
-      outdir: WORKER_OUTDIR,
-      target: "browser",
       naming: "[name].[ext]",
+      outdir: WORKER_OUTDIR,
+      sourcemap: "linked",
+      target: "browser",
     });
     if (!result.success) {
       for (const log of result.logs) {
