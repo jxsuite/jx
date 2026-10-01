@@ -33,7 +33,7 @@
     "@vue/reactivity": "3.5.43"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260927.1",
+    "@cloudflare/workers-types": "^5.20260928.1",
     "@happy-dom/global-registrator": "^20.14.5"
   }
 }

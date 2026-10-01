@@ -41,7 +41,7 @@
     "@jxsuite/connector": "workspace:^",
     "@jxsuite/server": "workspace:^",
     "@jxsuite/ui": "workspace:^",
-    "electrobun": "2.0.1",
+    "electrobun": "2.0.2",
     "rcedit": "^5.0.2"
   }
 }
