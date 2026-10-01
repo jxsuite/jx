@@ -1,10 +1,9 @@
 /**
- * Studio Backend Protocol — the canonical route table. The dev server
- * (@jxsuite/server) is the reference implementation; every other backend
- * (desktop RPC bridge, cloud platforms) serves the same shapes, either at
- * these literal paths or through an equivalent transport. Optional routes
- * back optional StudioPlatform members — Studio degrades without them, as
- * described by each entry's `degradation`.
+ * Studio Backend Protocol — the canonical route table. The dev server (@jxsuite/server) is the
+ * reference implementation; every other backend (desktop RPC bridge, cloud platforms) serves the
+ * same shapes, either at these literal paths or through an equivalent transport. Optional routes
+ * back optional StudioPlatform members — Studio degrades without them, as described by each entry's
+ * `degradation`.
  *
  * @license MIT
  */
@@ -107,8 +106,8 @@ export const STUDIO_ROUTES = {
   files: route(
     "GET",
     "/__studio/files",
-    "List a directory (DirEntry[]) in stable path order; with ?glob=<pattern>, search matching " +
-      "files project-wide",
+    "List a directory (DirEntry[]) in stable path order; an entry may carry an opaque content " +
+      "`version` the backend vouches for; with ?glob=<pattern>, search matching files project-wide",
   ),
   fileRead: route("GET", "/__studio/file", "Read a file's text content"),
   fileWrite: route("PUT", "/__studio/file", "Write a file's text content"),

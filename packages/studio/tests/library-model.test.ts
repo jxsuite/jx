@@ -27,6 +27,7 @@ import {
   scanLibrary,
   uploadDirForCategory,
 } from "../src/browse/library-model";
+import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
 import type { LibraryFile } from "../src/browse/library-model";
 import type { DirEntry } from "../src/types";
 
@@ -140,6 +141,18 @@ describe("scanLibrary", () => {
       modified: "2024-03-04T10:00:00.000Z",
       size: 120,
     });
+  });
+
+  /* The Library walks every media directory, so it is where most content versions are learned —
+     the thumbnails it draws next are the first URLs that can use them. */
+  test("notes the content versions its listings carry", async () => {
+    resetAssetVersions();
+    const tree: Record<string, DirEntry[]> = {
+      public: [file("hero.png", "public/hero.png", { version: "abc" })],
+    };
+    await scanLibrary(["public"], { listDirectory: listDirectory(tree) });
+    expect(versionOf("public/hero.png")).toBe("abc");
+    resetAssetVersions();
   });
 
   test("REPORTS a directory it could not read instead of contributing nothing", async () => {

@@ -36,6 +36,7 @@ import {
 import { shell } from "../src/shell";
 import type { DirEntry, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
+import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
 import { deriveJsonLayout } from "@jxsuite/schema/json-layout";
 import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-state";
 
@@ -140,6 +141,26 @@ describe("loadDirectory", () => {
         .dirs.get("pages")
         ?.map((e) => e.path),
     ).toEqual(["pages/about.json", "pages/index.json"]);
+  });
+
+  /* A listing is where Studio learns which files' bytes the backend vouches for, and an entry with
+     no version is the backend withdrawing one — so the tree's own listing feeds both. */
+  test("notes the versions its listing carries, and withdraws the ones it omits", async () => {
+    resetAssetVersions();
+    installFsPlatform(
+      {},
+      {
+        listDirectory: async () => [
+          { name: "hero.png", path: "public/hero.png", type: "file", version: "abc" },
+          { name: "draft.png", path: "public/draft.png", type: "file" },
+        ],
+      },
+    );
+    siteState();
+    await loadDirectory("public");
+    expect(versionOf("public/hero.png")).toBe("abc");
+    expect(versionOf("public/draft.png")).toBeUndefined();
+    resetAssetVersions();
   });
 
   test("stores an empty list when listing fails", async () => {

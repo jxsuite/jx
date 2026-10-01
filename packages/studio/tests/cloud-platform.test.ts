@@ -1045,7 +1045,7 @@ describe("session events (WebSocket)", () => {
    * The stream is deltas, and the DO replays none of them to a socket that comes back — so the
    * adapter must say when its stream has a gap, and when a change arrived without one.
    */
-  test("every open after the first reports a reconnect resync", () => {
+  test("the first open reports an open resync, every later one a reconnect", () => {
     const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
     (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
     instances.length = 0;
@@ -1057,8 +1057,9 @@ describe("session events (WebSocket)", () => {
       });
       const first = instances[0] as unknown as MockWebSocket;
       first.emit("open", {});
-      // The first open is the subscription starting, not a gap: nothing was missed yet.
-      expect(reasons).toEqual([]);
+      /* The first open is the stream going live. Nothing it carried was missed, but listings made
+         before it (versions included) may predate a change broadcast before this socket joined. */
+      expect(reasons).toEqual(["open"]);
 
       first.emit("close", {});
       expect(instances).toHaveLength(1);
@@ -1069,7 +1070,7 @@ describe("session events (WebSocket)", () => {
       expect(instances).toHaveLength(2);
       const second = instances[1] as unknown as MockWebSocket;
       second.emit("open", {});
-      expect(reasons).toEqual(["reconnect"]);
+      expect(reasons).toEqual(["open", "reconnect"]);
 
       unsubscribe?.();
       expect(second.closed).toBe(true);
@@ -1077,6 +1078,33 @@ describe("session events (WebSocket)", () => {
       second.emit("close", {});
       window.dispatchEvent(new Event("online"));
       expect(instances).toHaveLength(2);
+    } finally {
+      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+    }
+  });
+
+  /*
+   * A first connect that fails (a gateway deploy) leaves the HTTP listings working and the stream
+   * dark for a whole backoff. The open that finally succeeds is still the stream's first — and is
+   * exactly the one whose gap matters most, so it must still be reported.
+   */
+  test("an open after a failed first connect still reports the open resync", () => {
+    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
+    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    instances.length = 0;
+    try {
+      const p = createCloudPlatform(PROJECT);
+      const reasons: string[] = [];
+      const unsubscribe = p.subscribeFileEvents?.(() => {}, {
+        onResync: (reason) => reasons.push(reason),
+      });
+      const failed = instances[0] as unknown as MockWebSocket;
+      failed.emit("close", {});
+      window.dispatchEvent(new Event("online"));
+      expect(instances).toHaveLength(2);
+      (instances[1] as unknown as MockWebSocket).emit("open", {});
+      expect(reasons).toEqual(["open"]);
+      unsubscribe?.();
     } finally {
       (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
     }
@@ -1099,7 +1127,7 @@ describe("session events (WebSocket)", () => {
         data: JSON.stringify({ event: "committed", kind: "git", sha: "abc123" }),
       });
       socket.emit("message", { data: JSON.stringify({ event: "pushed", kind: "git" }) });
-      expect(reasons).toEqual(["commit"]);
+      expect(reasons).toEqual(["open", "commit"]);
       // A commit carries no per-file events, so the file handler hears nothing about it.
       expect(batches).toHaveLength(0);
       unsubscribe?.();

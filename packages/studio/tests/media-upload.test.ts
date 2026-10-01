@@ -22,6 +22,12 @@ import {
   uploadDirFor,
 } from "../src/files/media-upload";
 import { closeAllTabs } from "../src/workspace/workspace";
+import {
+  beginListing,
+  noteListing,
+  resetAssetVersions,
+  versionOf,
+} from "../src/files/asset-versions";
 
 beforeEach(() => {
   resetStudioState();
@@ -203,6 +209,33 @@ describe("uploadAssets", () => {
 
     expect(assets.map((a) => a.path)).toEqual(["public/hero.png"]);
     expect(state.calls).toContainEqual(["uploadFile", "public/hero.png", expect.anything()]);
+  });
+
+  /* A store may report a path that already existed (one that de-duplicates by content, say). Its
+     version named the bytes before the upload, so it goes. */
+  test("forgets the content version of the path the backend reports writing", async () => {
+    resetAssetVersions();
+    noteListing(
+      [{ name: "shared.png", path: "public/shared.png", type: "file", version: "old" }],
+      beginListing(),
+    );
+    installMockPlatform({ uploadFile: () => Promise.resolve({ path: "public/shared.png" }) });
+    await uploadAssets([testFile("hero.png")]);
+    expect(versionOf("public/shared.png")).toBeUndefined();
+    resetAssetVersions();
+  });
+
+  test("the destination listing it reads for taken names notes their versions", async () => {
+    resetAssetVersions();
+    installMockPlatform({
+      listDirectory: () =>
+        Promise.resolve([
+          { name: "logo.svg", path: "public/logo.svg", type: "file" as const, version: "b10b" },
+        ]),
+    });
+    await uploadAssets([testFile("hero.png")]);
+    expect(versionOf("public/logo.svg")).toBe("b10b");
+    resetAssetVersions();
   });
 
   test("one failed upload does not abandon the rest of the batch", async () => {

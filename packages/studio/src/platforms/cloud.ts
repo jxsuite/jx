@@ -622,8 +622,11 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
      *
      * Two things the event stream cannot say on its own are reported through `onResync`. A socket
      * that came back missed every batch sent while it was gone, and the DO does not replay them —
-     * so every open after the first is a `"reconnect"`. And a commit lands with a `committed`
-     * notice and no per-file events, so it is a `"commit"`.
+     * so every open after the first is a `"reconnect"`. The first open is an `"open"`: the
+     * session's listings carry content versions, the boot's first listings race the handshake, and
+     * a change broadcast before this socket joined (a first connect that fails during a gateway
+     * deploy can stretch that to a whole backoff) reached nobody. And a commit lands with a
+     * `committed` notice and no per-file events, so it is a `"commit"`.
      */
     subscribeFileEvents(
       handler: (events: FsEvent[]) => void,
@@ -656,9 +659,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         });
         ws.addEventListener("open", () => {
           scheduler.opened();
-          if (everOpened) {
-            options?.onResync?.("reconnect");
-          }
+          options?.onResync?.(everOpened ? "reconnect" : "open");
           everOpened = true;
         });
         ws.addEventListener("close", () => {

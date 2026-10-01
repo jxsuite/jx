@@ -18,6 +18,7 @@ import { contentMountFor, resolveAssetRef } from "./asset-resolve";
 import { documentBase, loopbackAssetSrc } from "./canvas-origin";
 import { getPlatform, hasPlatform } from "../platform";
 import { projectState } from "../store";
+import { assetVersionsSnapshot } from "../files/asset-versions";
 import { activeTab } from "../workspace/workspace";
 import type { AssetContext } from "./asset-resolve";
 import type { ContentSectionEntry } from "../types";
@@ -94,7 +95,8 @@ export function previewAssetSrc(value: string): string {
     return value;
   }
   const ctx = assetContextFor(activeTab.value?.documentPath, hostAssetDeclarations());
-  return loopbackAssetSrc(resolveAssetRef(value, ctx) ?? value);
+  const versioned = ctx && { ...ctx, versions: assetVersionsSnapshot() };
+  return loopbackAssetSrc(resolveAssetRef(value, versioned) ?? value);
 }
 
 /**

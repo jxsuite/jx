@@ -1,8 +1,7 @@
 /**
- * Studio Backend Protocol — wire types. Every shape a Studio backend serves
- * (or a `StudioPlatform` adapter consumes) lives here so client adapters and
- * server implementations (the dev server, the desktop RPC bridge, cloud
- * platforms) share one contract. Environment-agnostic: no DOM, no node —
+ * Studio Backend Protocol — wire types. Every shape a Studio backend serves (or a `StudioPlatform`
+ * adapter consumes) lives here so client adapters and server implementations (the dev server, the
+ * desktop RPC bridge, cloud platforms) share one contract. Environment-agnostic: no DOM, no node —
  * importable in browsers, Bun, and Cloudflare Workers alike.
  *
  * @license MIT
@@ -42,6 +41,13 @@ export interface DirEntry {
   type: "file" | "directory";
   size?: number;
   modified?: string;
+  /**
+   * An opaque version of the file's bytes: two equal versions mean identical bytes. ABSENT whenever
+   * the backend cannot vouch for the bytes — an uncommitted, dirty or just-uploaded file, and every
+   * directory. A client may append it to the file's URL (`?v=<version>`) so a host that recognizes
+   * it can answer with an immutable cache lifetime; a backend with no such notion never sets it.
+   */
+  version?: string;
 }
 
 /** A filesystem change pushed from the backend (project-relative, forward-slashed path). */

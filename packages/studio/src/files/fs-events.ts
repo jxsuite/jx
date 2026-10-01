@@ -8,19 +8,26 @@
  * triggers a single re-render through the existing left-panel render path (no imperative DOM).
  *
  * It also answers the transport's `onResync`, which is the platform admitting that its event stream
- * has a gap (a reconnect) or never carried the change (a commit). Events are deltas; a gap in
- * deltas cannot be patched by more deltas, so a resync re-reads what this window has cached.
+ * has a gap (a reconnect, or the stream's first open after listings were made) or never carried the
+ * change (a commit). Events are deltas; a gap in deltas cannot be patched by more deltas, so a
+ * resync re-reads what this window has cached.
  */
 
 import { getPlatform } from "../platform";
 import { reloadIgnoreCache, touchesGitignore } from "./gitignore";
 import { invalidateUsages } from "../services/references";
+import { forgetAllVersions, forgetVersions, notedListing } from "./asset-versions";
 import { isCollabPath } from "../collab/collab-state";
 import { projectState } from "../store";
 import { workspace } from "../workspace/workspace";
 import type { DirEntry, FsEvent, FsResyncReason, StudioPlatform } from "../types";
 
 const RECENT_MS = 1500;
+/**
+ * How wide each resync reason's pass is: a coalesced burst runs the widest one it saw. A reconnect
+ * re-derives everything; an open forgets the content versions and re-lists; a commit re-lists.
+ */
+const RESYNC_RANK: Record<FsResyncReason, number> = { commit: 0, open: 1, reconnect: 2 };
 /**
  * How long a resync request waits for company. A flapping network reconnects several times in a
  * second, and a commit notice can arrive on the heels of a reconnect; each resync re-lists every
@@ -33,8 +40,15 @@ const recentLocal = new Map<string, number>();
 
 const norm = (p: string) => p.replaceAll("\\", "/");
 
-/** Mark paths the user just mutated locally so the watcher's echo of them is ignored briefly. */
+/**
+ * Mark paths the user just mutated locally so the watcher's echo of them is ignored briefly.
+ *
+ * Their content versions are forgotten too, each path as a file AND as a directory (a rename or a
+ * delete may name either): the bytes are about to change, and a version that outlived them would
+ * let an immutable cache serve the old ones.
+ */
 export function markLocalMutation(...paths: string[]): void {
+  forgetVersions(paths, paths);
   const expiry = Date.now() + RECENT_MS;
   for (const p of paths) {
     if (p) {
@@ -126,6 +140,25 @@ export function applyFsEvents(
     }
   }
   return changedDirs;
+}
+
+/**
+ * Forget the content versions every event in a batch could have invalidated: the file an `add`,
+ * `change` or `unlink` names, and everything under a removed directory.
+ */
+export function forgetEventVersions(events: readonly FsEvent[]): void {
+  const paths: string[] = [];
+  const dirs: string[] = [];
+  for (const event of events) {
+    if (event.type === "unlinkDir") {
+      dirs.push(event.path);
+    } else if (event.type !== "addDir") {
+      paths.push(event.path);
+    }
+  }
+  if (paths.length > 0 || dirs.length > 0) {
+    forgetVersions(paths, dirs);
+  }
 }
 
 /** Whether a cached listing still holds exactly the entries a snapshot of it took. */
@@ -310,7 +343,10 @@ export function startFsSync(ctx: FsSyncContext): () => void {
    * A reconnect lost an unknown set of events, so it re-derives everything the events would have
    * kept current: the caches keyed on which files exist (dropped, exactly as one event drops them),
    * the `.gitignore` rules, every cached listing, and the open documents. A commit lost nothing —
-   * the DO simply sends no per-file events for one — so it re-reads the listings alone.
+   * the DO simply sends no per-file events for one — so it re-reads the listings alone. An open is
+   * the stream going live after the first listings were already made; it re-reads them too, since
+   * a change broadcast before the socket joined reached nobody. (Each gap's content versions were
+   * already forgotten when it was reported — see `requestResync`.)
    */
   const resync = async () => {
     resyncTimer = null;
@@ -320,7 +356,11 @@ export function startFsSync(ctx: FsSyncContext): () => void {
     if (!state || !reason) {
       return;
     }
-    const relist = relistLoadedDirs(state.dirs, (dir) => platform.listDirectory(dir));
+    /* Noted, so a commit — which makes dirty files clean — hands their versions back, and a gap's
+       re-list vouches again for the tree's share of what it forgot. */
+    const relist = relistLoadedDirs(state.dirs, (dir) =>
+      notedListing(() => platform.listDirectory(dir)),
+    );
     if (reason === "reconnect") {
       invalidateUsages();
       ctx.invalidateDerivedCaches?.();
@@ -339,8 +379,20 @@ export function startFsSync(ctx: FsSyncContext): () => void {
   };
 
   const requestResync = (reason: FsResyncReason) => {
-    // A reconnect's pass includes a commit's, so the wider reason wins a coalesced burst.
-    resyncReason = resyncReason === "reconnect" ? "reconnect" : reason;
+    /* A gap in the stream — a reconnect, or the first open — forgets EVERY content version, at once
+       rather than after the debounce: the events that would have forgotten single paths are gone,
+       and many versions were learned outside the tree (the Library walk, the media picker, media
+       metadata), where no re-list of the loaded directories reaches. A version Studio can no longer
+       vouch for may be answered from an immutable cache with the old bytes, so it cannot wait. The
+       floor this raises also discards any listing still in flight across the gap. The re-list
+       below, and every later listing, vouch afresh. A commit loses no events, so it keeps them. */
+    if (reason !== "commit") {
+      forgetAllVersions();
+    }
+    // A wider pass includes a narrower one's, so the widest reason wins a coalesced burst.
+    if (!resyncReason || RESYNC_RANK[reason] > RESYNC_RANK[resyncReason]) {
+      resyncReason = reason;
+    }
     if (resyncTimer) {
       clearTimeout(resyncTimer);
     }
@@ -362,6 +414,9 @@ export function startFsSync(ctx: FsSyncContext): () => void {
       // Gone.
       invalidateUsages();
       ctx.invalidateDerivedCaches?.();
+      // Content versions are derived state of the same kind, and Studio's own writes change bytes:
+      // A version kept past its echo would let an immutable cache answer with the old file.
+      forgetEventVersions(events);
       /* A `.gitignore` governs the whole tree beneath it, so it is handled HERE rather than in the
          batch below: the echo filter drops the events Studio caused, and an author who just edited
          their own `.gitignore` in Studio is precisely the one waiting to see the tree change. It also
