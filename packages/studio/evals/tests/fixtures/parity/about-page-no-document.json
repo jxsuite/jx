@@ -1,0 +1,130 @@
+{
+  "scenario": "about-page-no-document",
+  "task": "about-page-no-document",
+  "what": "no document open: list_files, read_file, then write_file creates the page",
+  "modelRequests": [
+    "user",
+    "user assistant tool",
+    "user assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool"
+  ],
+  "rounds": 4,
+  "toolCallCount": 3,
+  "toolCalls": [
+    {
+      "id": "abt-1",
+      "name": "list_files",
+      "args": {}
+    },
+    {
+      "id": "abt-2",
+      "name": "read_file",
+      "args": {
+        "path": "pages/index.json"
+      }
+    },
+    {
+      "id": "abt-3",
+      "name": "write_file",
+      "args": {
+        "path": "pages/about.json",
+        "content": "{\"title\":\"About Acme Studio\",\"tagName\":\"main\",\"children\":[{\"tagName\":\"h1\",\"textContent\":\"About Acme Studio\"},{\"tagName\":\"p\",\"textContent\":\"A two-person studio building calm, fast sites.\"}]}"
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "title": "About Acme Studio",
+    "tagName": "main",
+    "children": [
+      {
+        "tagName": "h1",
+        "textContent": "About Acme Studio"
+      },
+      {
+        "tagName": "p",
+        "textContent": "A two-person studio building calm, fast sites."
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Add an About page at pages/about.json. Give it the same structure as the home page: a heading reading \"About Acme Studio\" and one short paragraph about the studio."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["list_files"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "abt-1",
+      "result": {
+        "success": true,
+        "data": {
+          "entries": [
+            {
+              "path": "project.json",
+              "type": "file"
+            },
+            {
+              "path": "pages",
+              "type": "directory"
+            },
+            {
+              "path": "pages/index.json",
+              "type": "file"
+            }
+          ],
+          "truncated": false
+        },
+        "summary": "Listed 3 entries under \".\"."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["read_file"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "abt-2",
+      "result": {
+        "success": true,
+        "data": {
+          "content": "{\n  \"title\": \"Acme Studio\",\n  \"tagName\": \"main\",\n  \"children\": [\n    {\n      \"tagName\": \"h1\",\n      \"textContent\": \"Acme Studio\"\n    },\n    {\n      \"tagName\": \"p\",\n      \"textContent\": \"We design calm, fast websites for small teams.\"\n    }\n  ]\n}\n",
+          "truncated": false
+        }
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["write_file"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "abt-3",
+      "result": {
+        "success": true,
+        "summary": "Wrote \"pages/about.json\" (saved to disk; not undoable with Cmd+Z)."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Added pages/about.json with the same structure as the home page."
+    }
+  ]
+}

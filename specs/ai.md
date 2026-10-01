@@ -82,7 +82,17 @@ The gateway owns the **wire**:
 
 The **policy** stays with the host, and the gateway never second-guesses it. Whose key a request may use (the key provenance rule that keeps a server's environment key off a caller-supplied base URL), which base URLs are safe to reach (the link-local and metadata guard of §4), how requests are admitted, and what the model catalogue lists are the host's `resolveUpstream`, `admit` and models handler. `@jxsuite/server` keeps all four as its own functions (`@jxsuite/server` §4).
 
-The gateway is Worker-safe (§1): its only runtime imports outside itself are `@jxsuite/protocol`'s two problem modules, and the fetch it calls the upstream with is looked up per request unless the host supplies one.
+The gateway is Worker-safe (§1): its only runtime imports outside itself are `@jxsuite/protocol`'s two problem modules and `../cache-hints.ts` (the shared prompt-cache hint table of §2.5, which needs only `crypto.subtle` and `URL`), and the fetch it calls the upstream with is looked up per request unless the host supplies one.
+
+### 2.5 Prompt caching
+
+> **Status: Implemented.** `packages/ai/src/cache-hints.ts` (re-exported by `@jxsuite/ai`, `./streaming-client` and `./gateway`), applied by `createOpenAIStreamingClient` and `createChatHandler`; the session header in `createProxyStreamingClient` and `packages/studio/src/services/document-assistant.ts`; hashing in `packages/server/src/ai-api.ts`. Tests: `packages/ai/tests/cache-hints.test.ts`, `streaming-client.test.ts`, `gateway-chat.test.ts`, `packages/server/tests/ai-api.test.ts`.
+
+A provider's prompt cache serves the longest prefix a request shares with one it has already seen, and only on the machine that saw it. Every round of an agent turn resends the system prompt, the tool schemas and the whole history, so the assistant is built to share a long prefix between rounds and to tell the providers that route by prefix which requests belong together.
+
+**The client names the conversation; the backend names the cache.** `createProxyStreamingClient` sends the conversation's id, when it has one, as the `X-Jx-Ai-Session` request header (`AI_SESSION_HEADER`); Studio passes the persisted session's id. The raw id is for the client's own backend only and **MUST NOT** be forwarded to a provider. A backend that honours it checks it with `isAiSessionId` (1 to 128 characters of `[A-Za-z0-9_.:-]`), derives `affinityKey(scope, id)`, the first 32 hex characters of SHA-256 over `jx-ai-affinity/v1:<scope>:<id>`, and forwards only that, as the upstream's `sessionAffinity` (§2.4). `scope` is the backend's own namespace (`local` for `@jxsuite/server`), so two backends that see the same id never share a key. An absent or malformed header means no hint, never a refusal: the hint is an optimisation, and the request is valid without it.
+
+**Each hint goes only where it is understood.** `upstreamCacheHints(baseUrl, affinity)` classifies the upstream by host. `api.openai.com` receives `prompt_cache_key` in the request body. Workers AI (an `api.cloudflare.com` URL with `/ai/` in its path) and AI Gateway (`gateway.ai.cloudflare.com`) receive the `x-session-affinity` header. Every other host receives nothing: an OpenAI-compatible server may reject an unknown body field, an unknown header on a browser's cross-origin request costs a preflight the endpoint may not answer, and an arbitrary endpoint a key was pointed at has no use for a stable identifier. The gateway and `createOpenAIStreamingClient` (which takes the key as `sessionAffinity`) apply the same function, so the rule has one definition.
 
 ## 3. Tool Surface
 

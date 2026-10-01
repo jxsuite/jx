@@ -1,25 +1,34 @@
 /**
  * Ai-api.js — AI proxy endpoints for Jx Studio
  *
- * Handles /__studio/ai/chat (SSE streaming proxy to OpenAI) and /__studio/ai/models.
- * The server acts as a thin proxy: validates the request shape, forwards to OpenAI,
- * normalizes the SSE stream into StreamEvent-compatible format, and pipes back.
+ * Handles /__studio/ai/chat (SSE streaming proxy to OpenAI) and /__studio/ai/models. The server
+ * acts as a thin proxy: validates the request shape, forwards to OpenAI, normalizes the SSE stream
+ * into StreamEvent-compatible format, and pipes back.
  *
  * The wire half of that (reading the body, the upstream request, the stream normalizer, the SSE
  * framing, the problem responses) is `@jxsuite/ai/gateway`, which every backend serving these
  * routes can share. What stays here is this server's POLICY, which no other host shares:
  *
  * API key flow:
- *   1. Request header X-Api-Key or Authorization: Bearer <key>
- *   2. Fallback: OPENAI_API_KEY env var — attached ONLY to the env/default base URL, never to a
- *      caller-supplied X-Api-Base-URL (prevents exfiltrating the server key to a chosen endpoint)
- *   3. If neither → 401 with error message
+ *
+ * 1. Request header X-Api-Key or Authorization: Bearer <key>
+ * 2. Fallback: OPENAI_API_KEY env var — attached ONLY to the env/default base URL, never to a
+ *    caller-supplied X-Api-Base-URL (prevents exfiltrating the server key to a chosen endpoint)
+ * 3. If neither → 401 with error message
  *
  * Base URL flow:
- *   1. Request header X-Api-Base-URL — allowed only alongside a header API key
- *   2. Fallback: OPENAI_BASE_URL env var
- *   3. Default: https://api.openai.com/v1
- *   A base URL resolving to a cloud metadata / link-local host is refused (SSRF defense).
+ *
+ * 1. Request header X-Api-Base-URL — allowed only alongside a header API key
+ * 2. Fallback: OPENAI_BASE_URL env var
+ * 3. Default: https://api.openai.com/v1
+ *
+ * A base URL resolving to a cloud metadata / link-local host is refused (SSRF defense).
+ *
+ * Prompt-cache affinity: a request carrying a valid X-Jx-Ai-Session header (the client's
+ * conversation id) is forwarded with `sessionAffinity` set to a hash of it, scoped to this server
+ * ("local"). The gateway sends that hash only to an upstream that routes on it (OpenAI, Workers
+ * AI); the raw id never leaves this process. An absent or malformed header just means no hint: the
+ * request is still served.
  *
  * The model catalogue for /models is this server's too: its defaults, and how it reads the
  * upstream's own listing.
@@ -27,8 +36,11 @@
  * @license MIT
  */
 import {
+  AI_SESSION_HEADER,
+  affinityKey,
   createChatHandler,
   extractUpstreamErrorMessage,
+  isAiSessionId,
   modelsResponse,
   problemResponse,
 } from "@jxsuite/ai/gateway";
@@ -42,6 +54,12 @@ const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 /** The model a chat request that names none is forwarded with. */
 const DEFAULT_MODEL = "gpt-4o";
+
+/**
+ * This server's namespace for affinity keys. Every dev/desktop server shares it: their keys never
+ * meet a hosted backend's, because that one hashes under its own scope.
+ */
+const AFFINITY_SCOPE = "local";
 
 /** A model entry from the upstream `/models` listing. */
 interface ModelEntry {
@@ -151,9 +169,10 @@ function refuse(status: number, message: string): GatewayRefusal {
 
 /**
  * This server's upstream for a request, or its refusal: the key-provenance and SSRF rules above,
- * applied per request (the environment is read each time, so a key set later is honoured).
+ * applied per request (the environment is read each time, so a key set later is honoured). A valid
+ * session header adds the hashed affinity key; an invalid one is ignored rather than refused.
  */
-function resolveUpstream(req: Request): Upstream | GatewayRefusal {
+async function resolveUpstream(req: Request): Promise<Upstream | GatewayRefusal> {
   const { apiKey, baseUrl, reject } = getConfig(req);
   if (reject) {
     return refuse(reject.status, reject.message);
@@ -164,7 +183,18 @@ function resolveUpstream(req: Request): Upstream | GatewayRefusal {
       "No API key configured. Set OPENAI_API_KEY env var or send X-Api-Key header.",
     );
   }
-  return { apiKey, baseUrl, defaultModel: DEFAULT_MODEL, family: "openai-compat", managed: false };
+  const upstream: Upstream = {
+    apiKey,
+    baseUrl,
+    defaultModel: DEFAULT_MODEL,
+    family: "openai-compat",
+    managed: false,
+  };
+  const sessionId = req.headers.get(AI_SESSION_HEADER);
+  if (isAiSessionId(sessionId)) {
+    return { ...upstream, sessionAffinity: await affinityKey(AFFINITY_SCOPE, sessionId) };
+  }
+  return upstream;
 }
 
 // ─── /__studio/ai/chat — SSE streaming proxy ───────────────────────────────

@@ -2,9 +2,9 @@
 /**
  * Document-assistant.js — Stack B (canonical) document AI assistant session
  *
- * Wires the @jxsuite/ai infrastructure (chat-state, proxy streaming client, tool registry) to
- * the active Jx document via `transactDoc()`-backed tools, and drives the error-correction
- * agent loop. See specs/ai.md §3.
+ * Wires the @jxsuite/ai infrastructure (chat-state, proxy streaming client, tool registry) to the
+ * active Jx document via `transactDoc()`-backed tools, and drives the error-correction agent loop.
+ * See specs/ai.md §3.
  *
  * @license MIT
  */
@@ -337,6 +337,9 @@ export function createDocumentAssistant() {
         apiKey: getOpenAiKey() || undefined,
         // Optional OpenAI-compatible endpoint override; empty uses the proxy default.
         baseUrl: getBaseUrl() || undefined,
+        /* The persisted conversation, so the backend can keep its rounds on one warm prompt cache.
+           Sent to the backend only, which hashes it before any provider sees it (specs/ai.md §2.5). */
+        sessionId: sessionId ?? undefined,
       });
 
       if (sessionFacts.sessionId !== sessionId) {

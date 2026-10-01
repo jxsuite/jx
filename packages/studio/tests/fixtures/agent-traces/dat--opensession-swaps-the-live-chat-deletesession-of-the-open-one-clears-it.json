@@ -173,7 +173,8 @@
     "activeSession": "session#2",
     "clientOptions": {
       "chatUrl": "/__mock/ai/chat",
-      "model": "gpt-4o"
+      "model": "gpt-4o",
+      "sessionId": "session#2"
     },
     "platformCalls": ["aiChatUrl()", "aiChatUrl()"],
     "projectRoot": null,

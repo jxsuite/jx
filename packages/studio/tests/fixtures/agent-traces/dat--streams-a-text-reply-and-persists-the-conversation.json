@@ -124,7 +124,8 @@
       "chatUrl": "/__mock/ai/chat",
       "model": "gpt-4o",
       "apiKey": "sk-secret",
-      "baseUrl": "http://localhost:11434/v1"
+      "baseUrl": "http://localhost:11434/v1",
+      "sessionId": "session#1"
     },
     "platformCalls": ["aiChatUrl()"],
     "projectRoot": null,

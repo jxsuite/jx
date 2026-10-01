@@ -2,7 +2,7 @@
  * Scoreboard.js — aggregate eval results, persist artifacts, and diff against the previous run.
  *
  * Writes per-run: results.json (machine-readable), one transcript file per trial (you must be able
- * to *read* failures — Anthropic), and report.md (human summary + regression diff). Returns the
+ * to _read_ failures — Anthropic), and report.md (human summary + regression diff). Returns the
  * computed summary so the CLI can set a non-zero exit code on regression (CI gate).
  *
  * @license MIT
@@ -23,6 +23,13 @@ interface TrialResult {
   loopError: string | null;
   finalDoc: object;
   transcript: object[];
+  /** The provider's summed counts (`TrialUsage`). Optional: a result written before it had none. */
+  usage?: {
+    requests: number;
+    inputTokens: number;
+    cachedInputTokens: number;
+    outputTokens: number;
+  };
 }
 
 /** Mirror of the `runTask` return shape (a per-task result). */
@@ -36,6 +43,24 @@ interface TaskResult {
   trials: TrialResult[];
 }
 
+/**
+ * The run's token totals across every trial, and the share of input the prompt cache served.
+ * `cacheRatio` is null when no provider reported an input count, because 0/0 is "unknown", not 0%.
+ */
+function usageTotals(taskResults: TaskResult[]) {
+  const totals = { requests: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+  for (const trial of taskResults.flatMap((t) => t.trials)) {
+    totals.requests += trial.usage?.requests ?? 0;
+    totals.inputTokens += trial.usage?.inputTokens ?? 0;
+    totals.cachedInputTokens += trial.usage?.cachedInputTokens ?? 0;
+    totals.outputTokens += trial.usage?.outputTokens ?? 0;
+  }
+  return {
+    ...totals,
+    cacheRatio: totals.inputTokens > 0 ? totals.cachedInputTokens / totals.inputTokens : null,
+  };
+}
+
 function summarize(taskResults: TaskResult[]) {
   const n = taskResults.length || 1;
   return {
@@ -43,6 +68,7 @@ function summarize(taskResults: TaskResult[]) {
     passAtK: taskResults.filter((t) => t.passAtK).length,
     passHatK: taskResults.filter((t) => t.passHatK).length,
     meanPassRate: taskResults.reduce((s, t) => s + t.passRate, 0) / n,
+    usage: usageTotals(taskResults),
   };
 }
 
@@ -78,6 +104,7 @@ export function writeRun(
         `# ${task.id} — trial ${i + 1}/${task.k}  (${trial.pass ? "PASS" : "FAIL"})`,
         ``,
         `rounds=${trial.rounds} toolCalls=${trial.toolCalls} loopError=${trial.loopError ?? "none"}`,
+        `inputTokens=${trial.usage?.inputTokens ?? 0} cachedInputTokens=${trial.usage?.cachedInputTokens ?? 0} outputTokens=${trial.usage?.outputTokens ?? 0}`,
         ``,
         `## render critic: ${trial.render.pass ? "pass" : "FAIL"}`,
         ...trial.render.errors.map((e) => `- ${e}`),
@@ -148,6 +175,7 @@ function stripTrialsForJson(task: TaskResult) {
       rounds: t.rounds,
       toolCalls: t.toolCalls,
       loopError: t.loopError,
+      ...(t.usage ? { usage: t.usage } : {}),
       renderErrors: t.render.errors,
       schemaErrors: t.schema.errors,
     })),
@@ -168,6 +196,13 @@ function renderReport({
   prevByTask: Record<string, TaskResult>;
 }): string {
   const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
+  const { usage } = summary;
+  /* The cost side of the scoreboard. The cache ratio is what a prompt-layout change moves: the
+     static prefix is most of every request, so a run that stops hitting the cache shows here first. */
+  const tokens =
+    `**Tokens:** ${usage.inputTokens} in · ${usage.cachedInputTokens} cached ` +
+    `(${usage.cacheRatio === null ? "n/a" : pct(usage.cacheRatio)} cache hit) · ` +
+    `${usage.outputTokens} out over ${usage.requests} reporting request(s)`;
   const rows = taskResults.map((t) => {
     const before = prevByTask[t.id];
     const delta = before == null ? "—" : signDelta(t.passRate - before.passRate);
@@ -179,6 +214,8 @@ function renderReport({
     `**Mean pass-rate:** ${pct(summary.meanPassRate)} · ` +
       `**pass@k:** ${summary.passAtK}/${summary.tasks} · ` +
       `**pass^k:** ${summary.passHatK}/${summary.tasks}`,
+    ``,
+    tokens,
     ``,
     regressed.length > 0
       ? `> ⚠️ **Regressions vs previous run:** ${regressed.join(", ")}`
