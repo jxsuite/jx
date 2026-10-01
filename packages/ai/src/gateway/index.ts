@@ -17,10 +17,17 @@
  * @docs extending/embedding/backend-protocol
  */
 
+export {
+  AI_SESSION_HEADER,
+  affinityKey,
+  isAiSessionId,
+  upstreamCacheHints,
+} from "../cache-hints.ts";
 export { createChatHandler } from "./chat.ts";
 export { modelsResponse } from "./models.ts";
 export { normalizeOpenAIStream } from "./normalize.ts";
 export { problemResponse } from "./problem.ts";
 export { encodeSse } from "./sse.ts";
 export { extractUpstreamErrorMessage } from "./upstream-error.ts";
+export type { UpstreamCacheHints } from "../cache-hints.ts";
 export type { ChatAdmission, ChatGatewayOptions, GatewayRefusal, Upstream } from "./types.ts";

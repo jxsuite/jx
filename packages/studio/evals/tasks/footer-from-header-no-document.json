@@ -1,0 +1,17 @@
+{
+  "id": "footer-from-header-no-document",
+  "prompt": "Create a site footer component at components/site-footer.json, styled like the existing header component, with a copyright line \"© Acme Studio\" and the same Work and Contact links.",
+  "tags": ["no-document", "read_file", "write_file"],
+  "intent": [
+    "reads components/site-header.json before writing",
+    "writes components/site-footer.json whose tagName is a hyphenated custom element",
+    "a copyright line with textContent \"© Acme Studio\"",
+    "Work (/work) and Contact (/contact) links"
+  ],
+  "files": {
+    "project.json": "{\n  \"name\": \"Acme Studio\",\n  \"defaults\": {\n    \"lang\": \"en\"\n  }\n}\n",
+    "pages/index.json": "{\n  \"title\": \"Acme Studio\",\n  \"tagName\": \"main\",\n  \"children\": [\n    {\n      \"tagName\": \"h1\",\n      \"textContent\": \"Acme Studio\"\n    },\n    {\n      \"tagName\": \"p\",\n      \"textContent\": \"We design calm, fast websites for small teams.\"\n    }\n  ]\n}\n",
+    "components/site-header.json": "{\n  \"tagName\": \"site-header\",\n  \"style\": {\n    \"display\": \"flex\",\n    \"justifyContent\": \"space-between\",\n    \"padding\": \"1rem 2rem\"\n  },\n  \"children\": [\n    {\n      \"tagName\": \"a\",\n      \"attributes\": {\n        \"href\": \"/\"\n      },\n      \"textContent\": \"Acme Studio\"\n    },\n    {\n      \"tagName\": \"nav\",\n      \"children\": [\n        {\n          \"tagName\": \"a\",\n          \"attributes\": {\n            \"href\": \"/work\"\n          },\n          \"textContent\": \"Work\"\n        },\n        {\n          \"tagName\": \"a\",\n          \"attributes\": {\n            \"href\": \"/contact\"\n          },\n          \"textContent\": \"Contact\"\n        }\n      ]\n    }\n  ]\n}\n"
+  },
+  "output": "components/site-footer.json"
+}

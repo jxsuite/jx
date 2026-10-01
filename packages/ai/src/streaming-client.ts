@@ -1,19 +1,30 @@
 /**
  * Streaming-client.js — Provider-agnostic streaming LLM client abstraction
  *
- * Defines the StreamingClient interface, the StreamEvent union every implementation yields,
- * and concrete implementations for OpenAI and Anthropic. Designed upfront so switching
- * providers is a new implementation, not a refactor.
+ * Defines the StreamingClient interface, the StreamEvent union every implementation yields, and
+ * concrete implementations for OpenAI and Anthropic. Designed upfront so switching providers is a
+ * new implementation, not a refactor.
  *
  * The union and its eight members are exported because they are the contract a third-party Studio
  * backend implements for the `ai/chat` route, not an internal detail — see the docs page below.
  *
- * @license MIT
  * @module @jxsuite/ai/streaming-client
+ * @license MIT
  * @docs extending/embedding/backend-protocol
  */
 
 import type { ProblemDetails } from "@jxsuite/protocol";
+import { AI_SESSION_HEADER, upstreamCacheHints } from "./cache-hints.ts";
+
+/* Re-exported so `./streaming-client`, the subpath a backend already imports, carries the cache
+   hints too: a Worker backend hashing the session header needs nothing else from this package. */
+export {
+  AI_SESSION_HEADER,
+  affinityKey,
+  isAiSessionId,
+  upstreamCacheHints,
+} from "./cache-hints.ts";
+export type { UpstreamCacheHints } from "./cache-hints.ts";
 
 export type StreamEvent =
   | StreamDeltaEvent
@@ -129,6 +140,8 @@ interface OpenAIChatRequestBody {
   tools?: object[];
   tool_choice?: string;
   parallel_tool_calls?: boolean;
+  /** OpenAI's prompt-cache routing key, sent only to OpenAI itself (see `cache-hints.ts`). */
+  prompt_cache_key?: string;
 }
 
 /** A tool-call fragment inside an OpenAI streaming `delta`. */
@@ -305,6 +318,9 @@ export const STREAM_EVENT_TYPES = {
  * @param {number} [opts.temperature] - Sampling temperature, forwarded only when defined. Omit for
  *   reasoning models (GPT-5.x, o-series) that reject a custom temperature; set 0 for
  *   near-deterministic eval runs.
+ * @param {string} [opts.sessionAffinity] - A stable key for the conversation, forwarded as the
+ *   prompt-cache hint the provider understands (`prompt_cache_key` to OpenAI, `x-session-affinity`
+ *   to Workers AI) and to no other host. See `upstreamCacheHints`.
  * @returns {StreamingClient}
  */
 export interface OpenAIStreamingClientOptions {
@@ -312,6 +328,7 @@ export interface OpenAIStreamingClientOptions {
   apiKey: string;
   model?: string;
   temperature?: number | undefined;
+  sessionAffinity?: string | undefined;
 }
 
 export function createOpenAIStreamingClient({
@@ -319,7 +336,11 @@ export function createOpenAIStreamingClient({
   apiKey,
   model = "gpt-4o",
   temperature,
+  sessionAffinity,
 }: OpenAIStreamingClientOptions): StreamingClient {
+  // Fixed for the client's life, so it is classified once rather than per request.
+  const hints = upstreamCacheHints(baseUrl, sessionAffinity);
+
   /**
    * @param {object[]} messages
    * @param {object[]} tools
@@ -353,6 +374,7 @@ export function createOpenAIStreamingClient({
       body.tool_choice = "auto";
       body.parallel_tool_calls = true;
     }
+    Object.assign(body, hints.body);
 
     let response;
     try {
@@ -361,6 +383,7 @@ export function createOpenAIStreamingClient({
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
+          ...hints.headers,
         },
         body: JSON.stringify(body),
         signal,
@@ -595,6 +618,9 @@ export function createAnthropicStreamingClient(
  * @param {string} [opts.model] - Default model if not specified per-request
  * @param {string} [opts.apiKey] - Optional client-supplied key, sent as the `X-Api-Key` header
  * @param {string} [opts.baseUrl] - Optional OpenAI-compatible base URL, sent as `X-Api-Base-URL`
+ * @param {string} [opts.sessionId] - The conversation's id, sent as the `X-Jx-Ai-Session` header so
+ *   the backend can derive a prompt-cache affinity key from it. The raw id goes to the backend
+ *   only; a provider sees a hash of it, scoped to that backend (`affinityKey`).
  * @returns {StreamingClient}
  */
 export interface ProxyStreamingClientOptions {
@@ -602,6 +628,7 @@ export interface ProxyStreamingClientOptions {
   model?: string;
   apiKey?: string | undefined;
   baseUrl?: string | undefined;
+  sessionId?: string | undefined;
 }
 
 export function createProxyStreamingClient({
@@ -609,6 +636,7 @@ export function createProxyStreamingClient({
   model = "gpt-4o",
   apiKey,
   baseUrl,
+  sessionId,
 }: ProxyStreamingClientOptions): StreamingClient {
   /** The URL, once the first stream has asked for it. */
   let resolvedUrl: Promise<string> | null = null;
@@ -635,6 +663,12 @@ export function createProxyStreamingClient({
     // Optional OpenAI-compatible endpoint override (local LLM, OpenRouter, Azure, …).
     if (baseUrl) {
       headers["X-Api-Base-URL"] = baseUrl;
+    }
+    /* The conversation, so consecutive rounds can be routed to a warm prompt cache. Same-origin on
+       every platform, so the extra header costs no preflight; a backend that ignores it loses only
+       the cache hit. */
+    if (sessionId) {
+      headers[AI_SESSION_HEADER] = sessionId;
     }
 
     resolvedUrl ??= Promise.resolve(typeof chatUrl === "function" ? chatUrl() : chatUrl);

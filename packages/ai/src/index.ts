@@ -1,8 +1,8 @@
 /**
  * Index.js — AI infrastructure for Jx Suite (`@jxsuite/ai`)
  *
- * Re-exports the core modules: streaming client abstraction, tool registry, and
- * reactive chat state management. Provider-agnostic; no Studio or Jx dependencies.
+ * Re-exports the core modules: streaming client abstraction, tool registry, and reactive chat state
+ * management. Provider-agnostic; no Studio or Jx dependencies.
  *
  * @license MIT
  */
@@ -21,6 +21,15 @@ export {
   createAnthropicStreamingClient,
   createProxyStreamingClient,
 } from "./streaming-client.js";
+
+export {
+  AI_SESSION_HEADER,
+  affinityKey,
+  isAiSessionId,
+  upstreamCacheHints,
+} from "./cache-hints.js";
+
+export type { UpstreamCacheHints } from "./cache-hints.js";
 
 export type {
   AnthropicStreamingClientOptions,

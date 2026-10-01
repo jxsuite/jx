@@ -480,6 +480,48 @@ describe("createChatHandler: the upstream request", () => {
     expect(String(calls[0]?.init.body)).toBe(JSON.stringify(forwarded));
   });
 
+  /* The host derives the affinity; the gateway only puts it where the upstream's host reads it, and
+     nowhere for a host that reads neither. */
+  it.each<[string, string, Record<string, string>, string | undefined]>([
+    ["OpenAI gets prompt_cache_key", "https://api.openai.com/v1", {}, "aff"],
+    [
+      "Workers AI gets x-session-affinity",
+      "https://api.cloudflare.com/client/v4/accounts/acc/ai/v1",
+      { "x-session-affinity": "aff" },
+      undefined,
+    ],
+    [
+      "AI Gateway gets x-session-affinity",
+      "https://gateway.ai.cloudflare.com/v1/acc/gw/workers-ai/v1",
+      { "x-session-affinity": "aff" },
+      undefined,
+    ],
+    ["any other host gets neither", "https://llm.example/v1", {}, undefined],
+  ])("sessionAffinity: %s", async (_label, baseUrl, extraHeaders, cacheKey) => {
+    const { calls, impl } = fakeFetch();
+    const upstream: Upstream = { ...UPSTREAM, baseUrl, sessionAffinity: "aff" };
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => upstream });
+    await drain(handler(chatRequest({ messages: [] }), context()));
+    expect(calls[0]?.init.headers).toEqual({
+      Authorization: "Bearer sk-test",
+      "Content-Type": "application/json",
+      ...extraHeaders,
+    });
+    expect(calls[0]?.body.prompt_cache_key).toBe(cacheKey);
+  });
+
+  it("an upstream with no sessionAffinity sends no hint, even to OpenAI", async () => {
+    const { calls, impl } = fakeFetch();
+    const upstream: Upstream = { ...UPSTREAM, baseUrl: "https://api.openai.com/v1" };
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => upstream });
+    await drain(handler(chatRequest({ messages: [] }), context()));
+    expect("prompt_cache_key" in (calls[0]?.body ?? {})).toBe(false);
+    expect(Object.keys(calls[0]?.init.headers ?? {}).toSorted()).toEqual([
+      "Authorization",
+      "Content-Type",
+    ]);
+  });
+
   it("uses the global fetch, looked up per request, when no fetch is given", async () => {
     const handler = createChatHandler<Context>({ resolveUpstream: () => UPSTREAM });
     const first = fakeFetch();
@@ -598,12 +640,16 @@ describe("createChatHandler: a client that stops reading", () => {
 describe("@jxsuite/ai/gateway", () => {
   it("exports the gateway's runtime surface and nothing else", () => {
     expect(Object.keys(gateway).toSorted()).toEqual([
+      "AI_SESSION_HEADER",
+      "affinityKey",
       "createChatHandler",
       "encodeSse",
       "extractUpstreamErrorMessage",
+      "isAiSessionId",
       "modelsResponse",
       "normalizeOpenAIStream",
       "problemResponse",
+      "upstreamCacheHints",
     ]);
   });
 

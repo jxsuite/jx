@@ -10,6 +10,7 @@
 
 import { describe, it, expect, afterEach } from "bun:test";
 import {
+  AI_SESSION_HEADER,
   createOpenAIStreamingClient,
   createAnthropicStreamingClient,
   createProxyStreamingClient,
@@ -564,6 +565,52 @@ describe("createOpenAIStreamingClient", () => {
   });
 });
 
+describe("createOpenAIStreamingClient: prompt-cache hints", () => {
+  const DONE = sseBody(["[DONE]"]);
+
+  /** The headers and parsed body of the one request a client with `sessionAffinity` sends. */
+  async function sent(baseUrl: string, sessionAffinity?: string) {
+    const { calls } = mockFetch(() => streamingResponse(DONE, { status: 200 }));
+    const client = createOpenAIStreamingClient({ apiKey: "k", baseUrl, sessionAffinity });
+    await collect(client.streamChat([], [], "", new AbortController().signal));
+    const { init } = calls[0]!;
+    return {
+      body: JSON.parse(init.body as string) as Record<string, unknown>,
+      headers: init.headers as Record<string, string>,
+    };
+  }
+
+  it("puts the affinity in prompt_cache_key for OpenAI, after the fixed headers", async () => {
+    const { body, headers } = await sent("https://api.openai.com/v1", "aff-1");
+    expect(body.prompt_cache_key).toBe("aff-1");
+    expect(headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer k" });
+  });
+
+  it("puts the affinity in x-session-affinity for Workers AI, and leaves the body alone", async () => {
+    const { body, headers } = await sent(
+      "https://api.cloudflare.com/client/v4/accounts/acc/ai/v1",
+      "aff-2",
+    );
+    expect(headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer k",
+      "x-session-affinity": "aff-2",
+    });
+    expect("prompt_cache_key" in body).toBe(false);
+  });
+
+  it("sends neither to any other host, nor without an affinity", async () => {
+    for (const [baseUrl, affinity] of [
+      ["https://openrouter.ai/api/v1", "aff-3"],
+      ["https://api.openai.com/v1", undefined],
+    ] as const) {
+      const { body, headers } = await sent(baseUrl, affinity);
+      expect(Object.keys(headers).toSorted()).toEqual(["Authorization", "Content-Type"]);
+      expect("prompt_cache_key" in body).toBe(false);
+    }
+  });
+});
+
 describe("usageEventFromOpenAI", () => {
   it("returns null when there is no prompt count to report", () => {
     expect(usageEventFromOpenAI(null)).toBeNull();
@@ -738,6 +785,34 @@ describe("createProxyStreamingClient", () => {
     expect(headers["X-Api-Base-URL"]).toBe("https://local/v1");
     const sent = JSON.parse(calls[0]!.init.body as string) as { model: string };
     expect(sent.model).toBe("gpt-5");
+  });
+
+  /* The raw id goes to the client's own backend, which hashes it before any provider sees it, so the
+     proxy client sends it as a header and never as a body member a backend might forward as-is. */
+  it("sends X-Jx-Ai-Session only when a sessionId is set", async () => {
+    const { calls } = mockFetch(() =>
+      streamingResponse(sseBody([JSON.stringify({ type: "done", stopReason: "stop" })]), {
+        status: 200,
+      }),
+    );
+    const withSession = createProxyStreamingClient({
+      chatUrl: "https://proxy/chat",
+      sessionId: "s_1_abc",
+    });
+    await collect(withSession.streamChat([], [], "", new AbortController().signal));
+    const without = createProxyStreamingClient({ chatUrl: "https://proxy/chat", sessionId: "" });
+    await collect(without.streamChat([], [], "", new AbortController().signal));
+
+    const first = calls[0]!.init.headers as Record<string, string>;
+    expect(first[AI_SESSION_HEADER]).toBe("s_1_abc");
+    expect(Object.keys(JSON.parse(calls[0]!.init.body as string) as object).toSorted()).toEqual([
+      "messages",
+      "model",
+      "systemPrompt",
+      "tools",
+    ]);
+    const second = calls[1]!.init.headers as Record<string, string>;
+    expect(AI_SESSION_HEADER in second).toBe(false);
   });
 
   it("stops and forwards an upstream error event", async () => {

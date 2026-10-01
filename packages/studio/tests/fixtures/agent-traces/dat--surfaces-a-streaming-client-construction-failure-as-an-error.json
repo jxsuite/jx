@@ -41,7 +41,8 @@
   "extra": {
     "activeSession": "session#1",
     "clientOptions": {
-      "model": "gpt-4o"
+      "model": "gpt-4o",
+      "sessionId": "session#1"
     },
     "platformCalls": [],
     "projectRoot": null,

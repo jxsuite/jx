@@ -1,0 +1,32 @@
+{
+  "scenario": "about-page-no-document--nothing-written",
+  "task": "about-page-no-document",
+  "what": "no document open and the model only describes the page: the output was never written",
+  "modelRequests": ["user"],
+  "rounds": 1,
+  "toolCallCount": 0,
+  "toolCalls": [],
+  "loopError": null,
+  "grades": {
+    "pass": false,
+    "render": {
+      "errors": ["pages/about.json was not written"],
+      "pass": false
+    },
+    "schema": {
+      "errors": ["pages/about.json was not written"],
+      "pass": false
+    }
+  },
+  "finalDoc": {},
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Add an About page at pages/about.json. Give it the same structure as the home page: a heading reading \"About Acme Studio\" and one short paragraph about the studio."
+    },
+    {
+      "role": "assistant",
+      "content": "You could add an about page with a heading and a paragraph."
+    }
+  ]
+}

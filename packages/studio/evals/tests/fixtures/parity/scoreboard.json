@@ -15,15 +15,26 @@
     {
       "task": "style-card",
       "trials": ["style-card", "style-card"]
+    },
+    {
+      "task": "about-page-no-document",
+      "trials": ["about-page-no-document", "about-page-no-document--nothing-written"]
     }
   ],
   "results": {
     "stamp": "20260101-000000",
     "summary": {
-      "tasks": 4,
-      "passAtK": 4,
+      "tasks": 5,
+      "passAtK": 5,
       "passHatK": 3,
-      "meanPassRate": 0.875
+      "meanPassRate": 0.8,
+      "usage": {
+        "requests": 4,
+        "inputTokens": 12600,
+        "cachedInputTokens": 6400,
+        "outputTokens": 200,
+        "cacheRatio": 0.5079365079365079
+      }
     },
     "regressed": [],
     "tasks": [
@@ -40,6 +51,12 @@
             "rounds": 4,
             "toolCalls": 3,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
             "renderErrors": [],
             "schemaErrors": []
           },
@@ -48,6 +65,12 @@
             "rounds": 1,
             "toolCalls": 1,
             "loopError": "Upstream provider returned 503",
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
             "renderErrors": [],
             "schemaErrors": []
           }
@@ -66,6 +89,12 @@
             "rounds": 3,
             "toolCalls": 3,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
             "renderErrors": [],
             "schemaErrors": []
           },
@@ -74,6 +103,12 @@
             "rounds": 3,
             "toolCalls": 3,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
             "renderErrors": [],
             "schemaErrors": []
           }
@@ -92,6 +127,12 @@
             "rounds": 2,
             "toolCalls": 1,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
             "renderErrors": [],
             "schemaErrors": []
           },
@@ -100,6 +141,12 @@
             "rounds": 3,
             "toolCalls": 2,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
             "renderErrors": [
               "Render threw: fruit is not defined\n  → Fix: a template binding (${...}) references state that doesn't exist. Declare it in \"state\" or correct the expression."
             ],
@@ -120,6 +167,12 @@
             "rounds": 2,
             "toolCalls": 3,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 900,
+              "inputTokens": 1200,
+              "outputTokens": 80,
+              "requests": 1
+            },
             "renderErrors": [],
             "schemaErrors": []
           },
@@ -128,8 +181,52 @@
             "rounds": 2,
             "toolCalls": 3,
             "loopError": null,
+            "usage": {
+              "cachedInputTokens": 900,
+              "inputTokens": 1200,
+              "outputTokens": 80,
+              "requests": 1
+            },
             "renderErrors": [],
             "schemaErrors": []
+          }
+        ]
+      },
+      {
+        "id": "about-page-no-document",
+        "tags": ["no-document", "list_files", "write_file"],
+        "k": 2,
+        "passAtK": true,
+        "passHatK": false,
+        "passRate": 0.5,
+        "trials": [
+          {
+            "pass": true,
+            "rounds": 4,
+            "toolCalls": 3,
+            "loopError": null,
+            "usage": {
+              "cachedInputTokens": 4600,
+              "inputTokens": 10200,
+              "outputTokens": 40,
+              "requests": 2
+            },
+            "renderErrors": [],
+            "schemaErrors": []
+          },
+          {
+            "pass": false,
+            "rounds": 1,
+            "toolCalls": 0,
+            "loopError": null,
+            "usage": {
+              "cachedInputTokens": 0,
+              "inputTokens": 0,
+              "outputTokens": 0,
+              "requests": 0
+            },
+            "renderErrors": ["pages/about.json was not written"],
+            "schemaErrors": ["pages/about.json was not written"]
           }
         ]
       }
@@ -138,7 +235,9 @@
   "report": [
     "# AI assistant eval — 20260101-000000",
     "",
-    "**Mean pass-rate:** 88% · **pass@k:** 4/4 · **pass^k:** 3/4",
+    "**Mean pass-rate:** 80% · **pass@k:** 5/5 · **pass^k:** 3/5",
+    "",
+    "**Tokens:** 12600 in · 6400 cached (51% cache hit) · 200 out over 4 reporting request(s)",
     "",
     "> ✅ No regressions vs previous run.",
     "",
@@ -148,14 +247,38 @@
     "| counter-button | ✅ | ✅ | 100% | — | intent, state, binding |",
     "| list-from-state | ✅ | ❌ | 50% | — | intent, map, binding |",
     "| style-card | ✅ | ✅ | 100% | — | intent, set_property, preserve |",
+    "| about-page-no-document | ✅ | ❌ | 50% | — | no-document, list_files, write_file |",
     "",
     "Transcripts: `transcripts/<task>-<trial>.md`."
   ],
   "transcripts": {
+    "about-page-no-document-1.md": [
+      "# about-page-no-document — trial 1/2  (PASS)",
+      "",
+      "rounds=4 toolCalls=3 loopError=none",
+      "inputTokens=10200 cachedInputTokens=4600 outputTokens=40",
+      "",
+      "## render critic: pass",
+      "",
+      "## schema grader: pass"
+    ],
+    "about-page-no-document-2.md": [
+      "# about-page-no-document — trial 2/2  (FAIL)",
+      "",
+      "rounds=1 toolCalls=0 loopError=none",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
+      "",
+      "## render critic: FAIL",
+      "- pages/about.json was not written",
+      "",
+      "## schema grader: FAIL",
+      "- pages/about.json was not written"
+    ],
     "add-nav-to-header-1.md": [
       "# add-nav-to-header — trial 1/2  (PASS)",
       "",
       "rounds=4 toolCalls=3 loopError=none",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
       "",
       "## render critic: pass",
       "",
@@ -165,6 +288,7 @@
       "# add-nav-to-header — trial 2/2  (PASS)",
       "",
       "rounds=1 toolCalls=1 loopError=Upstream provider returned 503",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
       "",
       "## render critic: pass",
       "",
@@ -174,6 +298,7 @@
       "# counter-button — trial 1/2  (PASS)",
       "",
       "rounds=3 toolCalls=3 loopError=none",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
       "",
       "## render critic: pass",
       "",
@@ -183,6 +308,7 @@
       "# counter-button — trial 2/2  (PASS)",
       "",
       "rounds=3 toolCalls=3 loopError=none",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
       "",
       "## render critic: pass",
       "",
@@ -192,6 +318,7 @@
       "# list-from-state — trial 1/2  (PASS)",
       "",
       "rounds=2 toolCalls=1 loopError=none",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
       "",
       "## render critic: pass",
       "",
@@ -201,6 +328,7 @@
       "# list-from-state — trial 2/2  (FAIL)",
       "",
       "rounds=3 toolCalls=2 loopError=none",
+      "inputTokens=0 cachedInputTokens=0 outputTokens=0",
       "",
       "## render critic: FAIL",
       "- Render threw: fruit is not defined",
@@ -213,6 +341,7 @@
       "# style-card — trial 1/2  (PASS)",
       "",
       "rounds=2 toolCalls=3 loopError=none",
+      "inputTokens=1200 cachedInputTokens=900 outputTokens=80",
       "",
       "## render critic: pass",
       "",
@@ -222,6 +351,7 @@
       "# style-card — trial 2/2  (PASS)",
       "",
       "rounds=2 toolCalls=3 loopError=none",
+      "inputTokens=1200 cachedInputTokens=900 outputTokens=80",
       "",
       "## render critic: pass",
       "",
@@ -234,6 +364,8 @@
       "# AI assistant eval — 20260101-010000",
       "",
       "**Mean pass-rate:** 0% · **pass@k:** 0/1 · **pass^k:** 0/1",
+      "",
+      "**Tokens:** 0 in · 0 cached (n/a cache hit) · 0 out over 0 reporting request(s)",
       "",
       "> ⚠️ **Regressions vs previous run:** list-from-state",
       "",

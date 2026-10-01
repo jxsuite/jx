@@ -47,6 +47,8 @@ Each task in `evals/tasks/*.json` is one isolated, unambiguous specification:
 
 `initialDoc` is the document the assistant starts from. Every trial gets a fresh tab, so nothing leaks between runs. `intent` records the human success criteria: it is what you read transcripts against today, and the hook for a future LLM-as-judge grader. Keep the suite stable. Tasks are the benchmark, and a benchmark that moves with the code cannot measure it.
 
+A task can also start with **no document open**, which is how the assistant works when a project is open and nothing is on the canvas. Such a task has no `initialDoc`; instead `files` is the project (each project-relative path mapped to its text, served from memory) and `output` names the file the trial is graded on. The model gets the same project-mode prompt and the same gated file tools (`list_files`, `read_file`, `write_file` and the rest) the assistant would offer, and a trial that never writes `output` fails. `about-page-no-document` and `footer-from-header-no-document` are the two in the suite.
+
 ## Running it
 
 ```bash
@@ -63,9 +65,11 @@ If no trial gets a reply from the model at all (a bad key, an endpoint that is d
 
 Each run writes a timestamped directory under `evals/runs/`, which is gitignored:
 
-- `report.md` is the human summary: mean pass-rate, pass@k and pass^k counts, and a per-task table with `Δrate` against the previous run.
+- `report.md` is the human summary: mean pass-rate, pass@k and pass^k counts, the run's token totals with the share of input served from the provider's prompt cache, and a per-task table with `Δrate` against the previous run.
 - `results.json` holds the same numbers, machine-readable, minus the transcripts.
 - `transcripts/<task>-<trial>.md` is one file per trial: the round and tool-call counts, both graders' verdicts, the final document, and the full message transcript.
+
+The token figures are the provider's own: each trial sums the `usage` frames its requests streamed. The client is created with a prompt-cache key of `eval-<task>-<trial>`, so a trial's rounds are routed to the same machine and can reuse what the earlier rounds cached. The key is a routing hint, not an isolation boundary: providers keep one prefix cache per machine, every trial sends the same reference material, and a different key can still land on a machine that has it. So the ratio can include hits from an earlier trial, and, because the key is the same in every run, from a run started within the provider's cache lifetime (minutes, up to about an hour). The cache ratio is still the number to watch after a system-prompt change: the prompt's reference material is most of every request, so a change that puts something dynamic ahead of it shows up as a lower ratio before it moves any pass rate. Compare runs that started from a cold cache, or both from a warm one, so cross-run warmth does not stand in for a layout change. A provider that reports no counts leaves the ratio at `n/a`.
 
 **Read the transcripts.** A grader you have not watched is a grader you cannot trust, and the failure that matters is usually visible in the third assistant turn rather than in the summary row.
 
@@ -104,9 +108,9 @@ Never tune the tasks to make a scaffolding change look good. If a task is genuin
 
 ## Out of scope
 
-The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, per-task token accounting (the stream carries a `usage` frame now, but the scoreboard does not aggregate it yet), or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
+The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
 
-It also cannot score a **project-level** tool call yet. Every golden task is document-shaped: an `initialDoc` plus the intent a grader reads off the resulting tree. A behavior like "asked for a blog, so it turned on the content extension" has no document to compare, and needs a task kind carrying a project fixture and a check over `project.json`. Until that exists, project-tier tools are covered by unit tests over the tool surface and the prompt, not by an eval.
+A no-document task is graded on one Jx file it writes, so it still cannot score a **project-level** change. A behavior like "asked for a blog, so it turned on the content extension" runs a command tool the runner does not register and leaves nothing for the render critic to mount; it needs a check over `project.json`. Until that exists, those tools are covered by unit tests over the tool surface and the prompt, not by an eval.
 
 ## Related
 
