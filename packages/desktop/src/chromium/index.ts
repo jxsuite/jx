@@ -515,6 +515,29 @@ export function seedChromiumPreferences(userDataDir: string): void {
   writeFileSync(prefsFile, JSON.stringify(prefs), "utf8");
 }
 
+/**
+ * Flags that depend on where the launcher is running rather than on what it is showing.
+ *
+ * - A Wayland session gets the Ozone Wayland backend instead of XWayland.
+ * - Under snap confinement (`$SNAP` is set by snapd) Chromium's own sandbox cannot start: it needs
+ *   `browser-support`'s `allow-sandbox`, which the Snap Store grants only to trusted publishers
+ *   after manual review. The snap's confinement is the boundary instead, and the page it loads is
+ *   this launcher's own loopback studio (specs/desktop.md §9.6). The other two flags are the ones
+ *   Canonical's own chromium launcher passes to the same binary: the snap has no
+ *   `password-manager-service` plug, so the keyring must not be probed, and the gnome runtime it
+ *   links against is GTK 3.
+ */
+export function chromiumPlatformArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  const args: string[] = [];
+  if (env.WAYLAND_DISPLAY) {
+    args.push("--ozone-platform=wayland", "--enable-features=UseOzonePlatform");
+  }
+  if (env.SNAP) {
+    args.push("--no-sandbox", "--password-store=basic", "--gtk-version=3");
+  }
+  return args;
+}
+
 console.log(`[chromium] Launching: ${chromiumBin}`);
 
 const userDataDir = profileDir;
@@ -529,11 +552,8 @@ const chromiumArgs = [
   "--no-default-browser-check",
   "--window-size=1400,900",
   `--user-data-dir=${userDataDir}`,
+  ...chromiumPlatformArgs(),
 ];
-
-if (process.env.WAYLAND_DISPLAY) {
-  chromiumArgs.push("--ozone-platform=wayland", "--enable-features=UseOzonePlatform");
-}
 
 const chrome = spawn(chromiumBin, chromiumArgs, {
   detached: false,

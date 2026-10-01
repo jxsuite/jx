@@ -18,8 +18,16 @@ import pkg from "../../package.json" with { type: "json" };
  * running `bun run desktop:chromium` from the repo does not. Nothing else in the process knows
  * whether it was packaged, and guessing from the path would break the first time someone packages
  * it a second way.
+ *
+ * The snap is that second way: the same launcher and Nix-built app tree (specs/desktop.md §9.6),
+ * with `JX_STUDIO_ASSETS` set by `snapcraft.yaml`. snapd sets `$SNAP` in every confined process,
+ * and the store is what replaces it, so it reports `snap` rather than the `system` a Nix profile
+ * would.
  */
 export function releaseChannel(): string {
+  if (process.env.SNAP) {
+    return "snap";
+  }
   return process.env.JX_STUDIO_ASSETS ? "system" : "development";
 }
 

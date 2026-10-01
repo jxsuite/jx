@@ -1,0 +1,5 @@
+#!/bin/sh
+# The snap's command: the same Chromium app-mode launcher the Nix package runs, with Canonical's
+# Chromium build and the official Bun binary from this snap (snapcraft.yaml has the why). Display,
+# GTK and GPU setup happen before this, in the gnome extension's command chain.
+exec "$SNAP/bin/bun" run "$SNAP/lib/jx-studio/packages/desktop/src/chromium/index.ts" "$@"

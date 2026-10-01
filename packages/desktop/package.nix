@@ -137,6 +137,31 @@ let
 
   registryPort = "48732";
 
+  # Optional imports the launcher's graph names but never needs installed: dbus-ts is Linux-portal
+  # glue resolved at runtime, and the Prettier plugins are probed by oxfmt only for languages a
+  # project actually formats. This is electrobun.config.ts's `build.bun.external` list, and
+  # tests/nix-bundle-completeness.test.ts holds the two equal.
+  resolveExternals = [
+    "dbus-ts"
+    "@prettier/plugin-oxc"
+    "@prettier/plugin-hermes"
+    "@prettier/plugin-pug"
+    "prettier-plugin-astro"
+    "prettier-plugin-svelte"
+    "prettier-plugin-marko"
+    "@zackad/prettier-plugin-twig"
+    "@shopify/prettier-plugin-liquid"
+  ];
+
+  # Browser-only libraries the studio build has already bundled into `assets/studio`. They are
+  # real dependencies of @jxsuite/studio, because that package publishes its sources to npm, so the
+  # production install keeps them; the launcher never loads them (installCheckPhase proves it), and
+  # together they are ~130 MB of the closure.
+  bundledIntoStudio = [
+    "monaco-editor"
+    "tabulator-tables"
+  ];
+
   # The build sysroot is not the typecheck sysroot, and for one release the difference between them
   # was decided by the FETCHER rather than by the tree.
   #
@@ -201,9 +226,6 @@ stdenv.mkDerivation {
       --linker=hoisted \
       --ignore-scripts
 
-    kill $shimPid 2>/dev/null || true
-    trap - EXIT
-
     # studio's build bundles monaco-editor's web workers via the literal path
     # ./node_modules/monaco-editor. The hoisted linker keeps monaco at the repo
     # root (no per-package node_modules), so expose it where the script looks.
@@ -214,7 +236,23 @@ stdenv.mkDerivation {
     bun run build
     bun run --cwd packages/desktop scripts/pre-build-rpc.ts
 
-    rm -rf packages/studio/node_modules
+    # The tree above is the WORKSPACE's: every member's dependencies plus the root's dev tooling
+    # (ttsc, release-please, oxlint, typescript, ts-migrate, …), which is what the app used to ship
+    # — a ~950 MB store path that every `nix run`, Cachix push and snap carried. What the app runs
+    # needs only @jxsuite/desktop's production graph, so it is installed again from the same
+    # lockfile, against the same registry shim, with nothing else in it. The build outputs are
+    # files under packages/, untouched by this.
+    find . -maxdepth 3 -name node_modules -type d -prune -exec rm -rf {} +
+    bun install \
+      --registry "http://localhost:${registryPort}" \
+      --frozen-lockfile \
+      --linker=hoisted \
+      --ignore-scripts \
+      --production \
+      --filter '@jxsuite/desktop'
+
+    kill $shimPid 2>/dev/null || true
+    trap - EXIT
 
     runHook postBuild
   '';
@@ -246,6 +284,9 @@ stdenv.mkDerivation {
     # this line deletes, it does not warn.
     find $out/lib/jx-studio/node_modules -xtype l -delete
 
+    ${lib.concatMapStringsSep "\n    " (p: "rm -rf $out/lib/jx-studio/node_modules/${p}") bundledIntoStudio}
+    rm -rf $out/lib/jx-studio/packages/*/tests $out/lib/jx-studio/extensions/*/tests
+
     makeWrapper ${bun}/bin/bun $out/bin/jx-studio \
       --add-flags "run $out/lib/jx-studio/packages/desktop/src/chromium/index.ts" \
       --set CHROMIUM_BIN "${chromium}/bin/chromium" \
@@ -262,6 +303,21 @@ stdenv.mkDerivation {
     install -Dm644 branding/jx_flattened.svg $out/share/icons/hicolor/scalable/apps/jx-studio.svg
 
     runHook postInstall
+  '';
+
+  # The installed tree is a production install with two libraries pruned by hand, so prove the
+  # launcher still resolves against it: Bun's bundler walks every static import from the entry and
+  # fails on the first one with nothing on disk to answer it. That is how an undeclared runtime
+  # dependency surfaces (@jxsuite/server imported oxfmt without declaring it, and only the root's
+  # dev tooling ever provided it) and how a too-eager prune would, here rather than on a user's machine.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    bun build $out/lib/jx-studio/packages/desktop/src/chromium/index.ts \
+      --target=bun \
+      ${lib.concatMapStringsSep " " (e: "--external ${e}") resolveExternals} \
+      --outfile "$TMPDIR/resolve-check.js"
+    runHook postInstallCheck
   '';
 
   meta = {
