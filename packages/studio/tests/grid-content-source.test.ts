@@ -162,6 +162,31 @@ describe("load", () => {
     expect(seen).toContain("content/posts/hello.md");
   });
 
+  /* Thirty-two reads in flight, not eight: the reads one tick issues are what the cloud adapter
+     coalesces into one batch request (specs/desktop.md §10.1), so the width IS the batch size. */
+  test("reads up to thirty-two entries at once, and no more", async () => {
+    const seed: Record<string, string> = {};
+    for (let i = 0; i < 40; i += 1) {
+      seed[`content/posts/p${String(i).padStart(2, "0")}.md`] = HELLO_MD;
+    }
+    let open = 0;
+    let peak = 0;
+    setup(seed, {
+      readFile: async () => {
+        open += 1;
+        peak = Math.max(peak, open);
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
+        open -= 1;
+        return HELLO_MD;
+      },
+    } as unknown as Partial<StudioPlatform>);
+    const { total } = await createCollectionSource("posts").rows();
+    expect(total).toBe(42);
+    expect(peak).toBe(32);
+  });
+
   test("an unknown collection surfaces as a load error", async () => {
     setup();
     const source = createCollectionSource("ghosts");

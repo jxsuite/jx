@@ -45,7 +45,9 @@ import type {
   StudioPlatform,
 } from "../types";
 import { problemDetail, problemSlug } from "@jxsuite/protocol";
-import type { UploadResult } from "@jxsuite/protocol";
+import type { ReadFilesRequest, ReadFilesResult, UploadResult } from "@jxsuite/protocol";
+import { createReadBatcher } from "./read-batcher";
+import type { BatchAnswer } from "./read-batcher";
 
 export interface CloudProject {
   owner: string;
@@ -95,6 +97,22 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * True when a 403 is the "write access required" refusal a read-only session gets — whether the
+ * backend still sends the legacy `{code: "read_only"}` body or a problem document whose type slug
+ * says the same. Any other 403 (an expired grant, a revoked share) is not that verdict.
+ */
+async function isReadOnlyRefusal(res: Response): Promise<boolean> {
+  let body: (ErrorBody & { type?: unknown }) | null;
+  try {
+    body = (await res.json()) as (ErrorBody & { type?: unknown }) | null;
+  } catch {
+    return false;
+  }
+  const code = problemSlug(body?.type) ?? body?.code;
+  return code === "read_only" || code === "read-only";
 }
 
 async function okJson<T>(res: Response, fallback: string): Promise<T> {
@@ -388,14 +406,76 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     return okJson<ProjectInfoWire>(await api("/project-info"), "Failed to load project");
   }
 
+  /** One file the old way: `GET /file`. What a single read, and the batch fallback, goes through. */
+  async function readOne(path: string): Promise<string> {
+    const data = await okJson<{ content: string }>(
+      await api(`/file?path=${encodeURIComponent(path)}`),
+      `Failed to read file: ${path}`,
+    );
+    return data.content;
+  }
+
+  /**
+   * Every text read in this session goes through here, so the reads issued in one tick become one
+   * `POST /files/read` (specs/desktop.md §10.1). The batch call stays a LITERAL `postJson` in this
+   * file rather than moving into the batcher: the platform's conformance test finds the routes this
+   * adapter calls by scanning cloud.ts for literal `api()`/`postJson()` paths, and a path built
+   * elsewhere would be a route that test cannot see.
+   *
+   * 404/405 is an older platform without the route, so batching stops for the session. So is a 403
+   * `read_only`: the route is a declared READ, and an older platform's gateway refuses every
+   * non-allowlisted POST from a read-only collaborator before any route lookup, so that refusal is
+   * how "no such route" reaches a viewer — and it can never succeed on that backend. Any other
+   * failure re-serves just that chunk singly. A 200 that is not a JSON object is not this route
+   * answering (a fallback page, a proxy, a stray `null`), which is the same verdict as a 404.
+   */
+  const reader = createReadBatcher({
+    async fetchBatch(paths: string[]): Promise<BatchAnswer> {
+      const res = await postJson("/files/read", { paths } satisfies ReadFilesRequest);
+      if (res.status === 404 || res.status === 405) {
+        return "unsupported";
+      }
+      if (res.status === 403 && (await isReadOnlyRefusal(res))) {
+        return "unsupported";
+      }
+      if (!res.ok) {
+        return "retry-singly";
+      }
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        return "unsupported";
+      }
+      if (!body || typeof body !== "object" || !Array.isArray((body as ReadFilesResult).files)) {
+        return "unsupported";
+      }
+      return body as ReadFilesResult;
+    },
+    fetchOne: readOne,
+  });
+
+  /**
+   * The manifest read every package member starts from, shared while it is IN FLIGHT and forgotten
+   * the moment it settles. The package panel asks for the list, the catalogue and the dependency
+   * check together; one request answers all three. Nothing is kept afterwards, because the next
+   * call may follow a write this session just made.
+   */
+  let packageJsonRead: Promise<string> | null = null;
+
   async function readPackageJson(): Promise<Record<string, unknown>> {
-    const res = await api(`/file?path=${encodeURIComponent("package.json")}`);
-    if (!res.ok) {
+    let text: string;
+    try {
+      packageJsonRead ??= reader.read("package.json").finally(() => {
+        packageJsonRead = null;
+      });
+      text = await packageJsonRead;
+    } catch {
       return {};
     }
-    const data = (await res.json()) as { content: string };
+    // Parsed per caller: the members mutate what they get, and must not mutate each other's copy.
     try {
-      return JSON.parse(data.content) as Record<string, unknown>;
+      return JSON.parse(text) as Record<string, unknown>;
     } catch {
       return {};
     }
@@ -488,12 +568,10 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       );
     },
 
+    /* Coalesced: reads issued together go out as one batch, and a lone read as the plain GET it
+       always was. Callers cannot tell, which is the point (specs/desktop.md §3.1). */
     async readFile(path: string) {
-      const data = await okJson<{ content: string }>(
-        await api(`/file?path=${encodeURIComponent(path)}`),
-        `Failed to read file: ${path}`,
-      );
-      return data.content;
+      return reader.read(path);
     },
 
     /* Raw bytes. The session origin serves this route, so no CORS question arises — the shell and
@@ -597,10 +675,14 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         const { createWsCollabConnection } = await import("@jxsuite/collab/client");
         const scheme = location.protocol === "https:" ? "wss" : "ws";
         return createWsCollabConnection({
-          hydratePath: async (path) => {
-            // The DO has no GitHub token on a WS message; a plain read hydrates + caches the row.
-            await api(`/file?path=${encodeURIComponent(path)}`);
-          },
+          /* The DO has no GitHub token on a WS message; a read hydrates + caches the row, and the
+             batch route keeps that side effect. Only the side effect matters, so the outcome is
+             dropped: a failed read leaves the room to refuse the reopen, which is its own answer. */
+          hydratePath: async (path) =>
+            reader.read(path).then(
+              () => {},
+              () => {},
+            ),
           protocols: offer,
           url: `${scheme}://${location.host}${base}/collab`,
         });

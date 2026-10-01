@@ -151,6 +151,41 @@ describe("collab hydratePath seam", () => {
     await collabOpts!.hydratePath("pages/x.md");
     expect(calls.some((c) => c.url === `${BASE}/file?path=pages%2Fx.md`)).toBeTrue();
   });
+
+  /* Hydration is wanted for its server-side effect alone. A read that fails — a 404, a binary file,
+     the network — must not reject: the wire client would treat that as the room refusing, and the
+     reopen that follows a resolved hydrate is what reports a real refusal. */
+  test("hydratePath swallows a failed read, whether the backend refused or the network did", async () => {
+    mockFetch({ "/file?path=": { body: { error: "No such file" }, status: 404 } });
+    collabOpts = null;
+    const p = createCloudPlatform(PROJECT);
+    await p.collab!("pages/a.md");
+    expect(await collabOpts!.hydratePath("pages/gone.md")).toBeUndefined();
+
+    globalThis.fetch = (() =>
+      Promise.reject(new TypeError("Failed to fetch"))) as unknown as typeof fetch;
+    expect(await collabOpts!.hydratePath("pages/gone.md")).toBeUndefined();
+  });
+
+  test("hydrations issued together ride one batch read, which keeps the hydrating side effect", async () => {
+    const calls = mockFetch({
+      "/files/read": {
+        body: {
+          files: [
+            ["a.md", { content: "A" }],
+            ["b.md", { content: "B" }],
+          ],
+          omitted: [],
+        },
+      },
+    });
+    collabOpts = null;
+    const p = createCloudPlatform(PROJECT);
+    await p.collab!("pages/a.md");
+    const before = calls.length;
+    await Promise.all([collabOpts!.hydratePath("a.md"), collabOpts!.hydratePath("b.md")]);
+    expect(calls.slice(before).map((c) => c.url)).toEqual([`${BASE}/files/read`]);
+  });
 });
 
 describe("session-event reconnect", () => {

@@ -1,8 +1,7 @@
 /**
- * Studio Backend Protocol — wire types. Every shape a Studio backend serves
- * (or a `StudioPlatform` adapter consumes) lives here so client adapters and
- * server implementations (the dev server, the desktop RPC bridge, cloud
- * platforms) share one contract. Environment-agnostic: no DOM, no node —
+ * Studio Backend Protocol — wire types. Every shape a Studio backend serves (or a `StudioPlatform`
+ * adapter consumes) lives here so client adapters and server implementations (the dev server, the
+ * desktop RPC bridge, cloud platforms) share one contract. Environment-agnostic: no DOM, no node —
  * importable in browsers, Bun, and Cloudflare Workers alike.
  *
  * @license MIT
@@ -85,6 +84,45 @@ export interface UploadResult {
   path: string;
   /** Stored size in bytes, when the backend reports one. */
   size?: number;
+}
+
+/**
+ * The most paths one `filesRead` request may name. A backend answers at most this many and lists
+ * the rest under {@link ReadFilesResult.omitted}, so a client that sends more is not refused — it is
+ * answered in part, and asks again.
+ *
+ * The one runtime value in this file: a client sizes its batches to it, so it has to exist at
+ * runtime rather than only in a summary string.
+ */
+export const READ_FILES_MAX_PATHS = 200;
+
+/** Body of `POST /__studio/files/read` (`filesRead`): the project-relative paths to read. */
+export interface ReadFilesRequest {
+  paths: string[];
+}
+
+/**
+ * One path's answer inside a {@link ReadFilesResult}: its text, or why it has none.
+ *
+ * Per path rather than per request, because one unreadable file in a batch of two hundred is not a
+ * failed batch. `status` borrows the HTTP code the single-file read would have answered (404
+ * missing or deleted, 415 binary, 413 too large, 502 upstream), so a client can treat both routes'
+ * failures alike.
+ */
+export type ReadFilesOutcome =
+  | { content: string }
+  | { error: { status: number; code?: string; message: string } };
+
+/**
+ * Answer of `POST /__studio/files/read`. `files` pairs each answered path with its outcome;
+ * `omitted` lists the requested paths this response did not get to (a path or byte budget ran out).
+ * Omission is never an error and never a 400: the client asks for those paths again. A backend
+ * always answers the FIRST requested path, which is what guarantees that asking again makes
+ * progress.
+ */
+export interface ReadFilesResult {
+  files: [path: string, outcome: ReadFilesOutcome][];
+  omitted: string[];
 }
 
 /**
