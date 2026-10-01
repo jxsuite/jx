@@ -1,0 +1,135 @@
+{
+  "scenario": "footer-from-header-no-document",
+  "task": "footer-from-header-no-document",
+  "what": "no document open: reads the header, a schema-invalid write is refused, the retry lands",
+  "modelRequests": [
+    "user",
+    "user assistant tool",
+    "user assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool"
+  ],
+  "rounds": 4,
+  "toolCallCount": 3,
+  "toolCalls": [
+    {
+      "id": "ftr-1",
+      "name": "read_file",
+      "args": {
+        "path": "components/site-header.json"
+      }
+    },
+    {
+      "id": "ftr-2",
+      "name": "write_file",
+      "args": {
+        "path": "components/site-footer.json",
+        "content": "{\"tagName\":\"site-footer\",\"style\":\"padding: 1rem 2rem\"}"
+      }
+    },
+    {
+      "id": "ftr-3",
+      "name": "write_file",
+      "args": {
+        "path": "components/site-footer.json",
+        "content": "{\"tagName\":\"site-footer\",\"style\":{\"display\":\"flex\",\"justifyContent\":\"space-between\",\"padding\":\"1rem 2rem\"},\"children\":[{\"tagName\":\"small\",\"textContent\":\"© Acme Studio\"},{\"tagName\":\"nav\",\"children\":[{\"tagName\":\"a\",\"attributes\":{\"href\":\"/work\"},\"textContent\":\"Work\"},{\"tagName\":\"a\",\"attributes\":{\"href\":\"/contact\"},\"textContent\":\"Contact\"}]}]}"
+      }
+    }
+  ],
+  "loopError": null,
+  "grades": {
+    "pass": true,
+    "render": {
+      "pass": true,
+      "errors": []
+    },
+    "schema": {
+      "pass": true,
+      "errors": []
+    }
+  },
+  "finalDoc": {
+    "tagName": "site-footer",
+    "style": {
+      "display": "flex",
+      "justifyContent": "space-between",
+      "padding": "1rem 2rem"
+    },
+    "children": [
+      {
+        "tagName": "small",
+        "textContent": "© Acme Studio"
+      },
+      {
+        "tagName": "nav",
+        "children": [
+          {
+            "tagName": "a",
+            "attributes": {
+              "href": "/work"
+            },
+            "textContent": "Work"
+          },
+          {
+            "tagName": "a",
+            "attributes": {
+              "href": "/contact"
+            },
+            "textContent": "Contact"
+          }
+        ]
+      }
+    ]
+  },
+  "transcript": [
+    {
+      "role": "user",
+      "content": "Create a site footer component at components/site-footer.json, styled like the existing header component, with a copyright line \"© Acme Studio\" and the same Work and Contact links."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["read_file"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "ftr-1",
+      "result": {
+        "success": true,
+        "data": {
+          "content": "{\n  \"tagName\": \"site-header\",\n  \"style\": {\n    \"display\": \"flex\",\n    \"justifyContent\": \"space-between\",\n    \"padding\": \"1rem 2rem\"\n  },\n  \"children\": [\n    {\n      \"tagName\": \"a\",\n      \"attributes\": {\n        \"href\": \"/\"\n      },\n      \"textContent\": \"Acme Studio\"\n    },\n    {\n      \"tagName\": \"nav\",\n      \"children\": [\n        {\n          \"tagName\": \"a\",\n          \"attributes\": {\n            \"href\": \"/work\"\n          },\n          \"textContent\": \"Work\"\n        },\n        {\n          \"tagName\": \"a\",\n          \"attributes\": {\n            \"href\": \"/contact\"\n          },\n          \"textContent\": \"Contact\"\n        }\n      ]\n    }\n  ]\n}\n",
+          "truncated": false
+        }
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["write_file"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "ftr-2",
+      "result": {
+        "success": false,
+        "error": "Document has schema errors — nothing was written. Fix these and retry:\n- /style: must be object\n  → Fix: The value must be an object/array (use {} or []), not a string or number."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "toolCalls": ["write_file"]
+    },
+    {
+      "role": "tool",
+      "toolCallId": "ftr-3",
+      "result": {
+        "success": true,
+        "summary": "Wrote \"components/site-footer.json\" (saved to disk; not undoable with Cmd+Z)."
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Created components/site-footer.json, styled like the header."
+    }
+  ]
+}

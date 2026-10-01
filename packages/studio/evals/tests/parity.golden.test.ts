@@ -215,10 +215,82 @@ const SCENARIOS: Scenario[] = [
         ...call("sty-1", "set_style", { path: [], property: "backgroundColor", value: "#ffffff" }),
         ...call("sty-2", "set_style", { path: [], property: "padding", value: "16px" }),
         ...call("sty-3", "set_style", { path: [], property: "borderRadius", value: "8px" }),
-        { type: "usage", inputTokens: 1200, outputTokens: 80 },
+        { type: "usage", inputTokens: 1200, cachedInputTokens: 900, outputTokens: 80 },
         { type: "done", stopReason: "tool_calls" },
       ],
       textRound("Styled the card; the heading is unchanged."),
+    ],
+  },
+  {
+    id: "about-page-no-document",
+    task: "about-page-no-document",
+    what: "no document open: list_files, read_file, then write_file creates the page",
+    rounds: [
+      [
+        ...call("abt-1", "list_files", {}),
+        { type: "usage", inputTokens: 5000, cachedInputTokens: 0, outputTokens: 20 },
+        { type: "done", stopReason: "tool_calls" },
+      ],
+      [
+        ...call("abt-2", "read_file", { path: "pages/index.json" }),
+        { type: "usage", inputTokens: 5200, cachedInputTokens: 4600, outputTokens: 20 },
+        { type: "done", stopReason: "tool_calls" },
+      ],
+      toolRound(
+        call("abt-3", "write_file", {
+          path: "pages/about.json",
+          content: JSON.stringify({
+            title: "About Acme Studio",
+            tagName: "main",
+            children: [
+              { tagName: "h1", textContent: "About Acme Studio" },
+              { tagName: "p", textContent: "A two-person studio building calm, fast sites." },
+            ],
+          }),
+        }),
+      ),
+      textRound("Added pages/about.json with the same structure as the home page."),
+    ],
+  },
+  {
+    id: "about-page-no-document--nothing-written",
+    task: "about-page-no-document",
+    what: "no document open and the model only describes the page: the output was never written",
+    rounds: [textRound("You could add an about page with a heading and a paragraph.")],
+  },
+  {
+    id: "footer-from-header-no-document",
+    task: "footer-from-header-no-document",
+    what: "no document open: reads the header, a schema-invalid write is refused, the retry lands",
+    rounds: [
+      toolRound(call("ftr-1", "read_file", { path: "components/site-header.json" })),
+      toolRound(
+        call("ftr-2", "write_file", {
+          path: "components/site-footer.json",
+          // A CSS string where the schema wants an object: refused, and nothing is written.
+          content: JSON.stringify({ tagName: "site-footer", style: "padding: 1rem 2rem" }),
+        }),
+      ),
+      toolRound(
+        call("ftr-3", "write_file", {
+          path: "components/site-footer.json",
+          content: JSON.stringify({
+            tagName: "site-footer",
+            style: { display: "flex", justifyContent: "space-between", padding: "1rem 2rem" },
+            children: [
+              { tagName: "small", textContent: "© Acme Studio" },
+              {
+                tagName: "nav",
+                children: [
+                  { tagName: "a", attributes: { href: "/work" }, textContent: "Work" },
+                  { tagName: "a", attributes: { href: "/contact" }, textContent: "Contact" },
+                ],
+              },
+            ],
+          }),
+        }),
+      ),
+      textRound("Created components/site-footer.json, styled like the header."),
     ],
   },
   {
@@ -546,6 +618,10 @@ const SCOREBOARD_PLAN: { task: string; trials: string[] }[] = [
   { task: "counter-button", trials: ["counter-button", "counter-button"] },
   { task: "list-from-state", trials: ["list-from-state", "list-from-state--graders-fail"] },
   { task: "style-card", trials: ["style-card", "style-card"] },
+  {
+    task: "about-page-no-document",
+    trials: ["about-page-no-document", "about-page-no-document--nothing-written"],
+  },
 ];
 
 describe("eval parity goldens", () => {

@@ -1067,3 +1067,64 @@ describe("POST /__studio/ai/chat — mid-stream pump failures", () => {
     );
   });
 });
+
+// ─── Prompt-cache affinity ────────────────────────────────────────────────────
+
+describe("POST /__studio/ai/chat — the session header becomes a hashed affinity key", () => {
+  /** Send one chat with `headers`, capturing the upstream request this server makes. */
+  async function upstreamRequestFor(headers: Record<string, string>) {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((url: string, init: RequestInit) => {
+      calls.push({ init, url });
+      return Promise.resolve(new Response("data: [DONE]\n\n"));
+    }) as unknown as typeof fetch;
+    try {
+      const req = mockReq("/__studio/ai/chat", {
+        body: { messages: [{ content: "hi", role: "user" }] },
+        headers: { "X-Api-Key": "sk-user", ...headers },
+        method: "POST",
+      });
+      const res = await handleAiApi(req, new URL("http://localhost/__studio/ai/chat"));
+      await res!.text();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    const [call] = calls;
+    return {
+      body: JSON.parse(String(call!.init.body)) as Record<string, unknown>,
+      headers: call!.init.headers as Record<string, string>,
+      raw: `${String(call!.init.body)}${JSON.stringify(call!.init.headers)}`,
+    };
+  }
+
+  /** The key this server derives: SHA-256 over its own scope and the id, first 32 hex characters. */
+  const expectedKey = (id: string) =>
+    new Bun.CryptoHasher("sha256")
+      .update(`jx-ai-affinity/v1:local:${id}`)
+      .digest("hex")
+      .slice(0, 32);
+
+  it("forwards OpenAI the hash as prompt_cache_key, and never the raw id", async () => {
+    const sent = await upstreamRequestFor({ "X-Jx-Ai-Session": "s_1727_abc" });
+    expect(sent.body.prompt_cache_key).toBe(expectedKey("s_1727_abc"));
+    expect(sent.raw).not.toContain("s_1727_abc");
+  });
+
+  it("forwards Workers AI the same hash as x-session-affinity", async () => {
+    const sent = await upstreamRequestFor({
+      "X-Api-Base-URL": "https://api.cloudflare.com/client/v4/accounts/acc/ai/v1",
+      "X-Jx-Ai-Session": "s_1727_abc",
+    });
+    expect(sent.headers["x-session-affinity"]).toBe(expectedKey("s_1727_abc"));
+    expect("prompt_cache_key" in sent.body).toBe(false);
+  });
+
+  it("ignores an absent or malformed header and still serves the request", async () => {
+    for (const headers of [{}, { "X-Jx-Ai-Session": "not a valid id!" }]) {
+      const sent = await upstreamRequestFor(headers);
+      expect("prompt_cache_key" in sent.body).toBe(false);
+      expect(Object.keys(sent.headers).toSorted()).toEqual(["Authorization", "Content-Type"]);
+    }
+  });
+});
