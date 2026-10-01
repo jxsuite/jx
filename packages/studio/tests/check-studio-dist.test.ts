@@ -18,6 +18,8 @@ import {
   cssUrls,
   danglingUrls,
   emittedFiles,
+  MANIFEST,
+  preloadFindings,
   UNREACHABLE_CSS,
   unaccounted,
   unreachableStylesheets,
@@ -61,6 +63,9 @@ function completeBuild(extra: Record<string, string> = {}): Record<string, strin
   for (const name of ["grid-view", "javascript", "jsonMode", "monaco-setup", "tsMode"]) {
     files[`dist/chunks/${name}-abc123.css`] = "/* monaco */";
   }
+  /* The release build always writes the manifest with the editor entry's static closure, so a
+     "complete" build carries one that names a chunk it really emitted. */
+  files[MANIFEST] = JSON.stringify({ preload: ["dist/chunks/studio-a.js"] });
   return { ...files, ...extra };
 }
 
@@ -199,6 +204,63 @@ describe("analyze", () => {
     }
     const found = analyze(tree(files));
     expect(found.filter((f) => f.rule === "stale-allowlist")).toHaveLength(UNREACHABLE_CSS.length);
+  });
+});
+
+describe("preloadFindings", () => {
+  const findingsFor = (preload: unknown, extra: Record<string, string> = {}) => {
+    const files = completeBuild({ [MANIFEST]: JSON.stringify({ preload }), ...extra });
+    const root = tree(files);
+    return preloadFindings(root, emittedFiles(join(root, "dist"), root));
+  };
+
+  test("a list naming emitted chunks is clean", () => {
+    expect(findingsFor(["dist/chunks/studio-a.js"])).toEqual([]);
+  });
+
+  /* Each entry becomes a <link rel="modulepreload"> in every host that opts in, so a name the build
+     did not emit is a 404 on every cold start. */
+  test("a preloaded chunk the build did not emit is a finding, by name", () => {
+    const [f, ...rest] = findingsFor(["dist/chunks/studio-a.js", "dist/chunks/gone-12345678.js"]);
+    expect(rest).toEqual([]);
+    expect(f!.rule).toBe("preload");
+    expect(f!.detail).toContain("dist/chunks/gone-12345678.js");
+    expect(f!.detail).toContain("did not emit");
+  });
+
+  /* Only the editor entry's static CHUNK imports belong in the list — an entry, a stylesheet or a
+     worker there is a different mistake from a stale name, and is reported as one. */
+  test("an emitted file that is not a split chunk is a finding", () => {
+    const found = findingsFor([
+      "dist/studio.js",
+      "dist/chunks/jsonMode-abc123.css",
+      "dist/workers/json.worker.js",
+    ]);
+    expect(found).toHaveLength(3);
+    expect(found.every((f) => f.detail.includes("not a split chunk"))).toBe(true);
+  });
+
+  /* The gate runs after a release build, which always writes the field — so an empty or missing
+     list is the optimisation silently switched off, not "nothing to check". */
+  test("an empty or missing list is a finding after a release build", () => {
+    expect(findingsFor([])[0]!.detail).toContain("no preload list");
+    const noField = tree(completeBuild({ [MANIFEST]: JSON.stringify({ shell: "index.html" }) }));
+    const [missing] = preloadFindings(noField, emittedFiles(join(noField, "dist"), noField));
+    expect(missing!.detail).toContain("no preload list");
+    expect(findingsFor("dist/chunks/studio-a.js")[0]!.detail).toContain("no preload list");
+  });
+
+  test("an absent manifest is a finding", () => {
+    const files = completeBuild();
+    delete files[MANIFEST];
+    const root = tree(files);
+    const [f] = preloadFindings(root, emittedFiles(join(root, "dist"), root));
+    expect(f!.detail).toContain(`${MANIFEST} is absent`);
+  });
+
+  test("analyze reports it alongside the other rules", () => {
+    const files = completeBuild({ [MANIFEST]: JSON.stringify({ preload: ["dist/chunks/x.js"] }) });
+    expect(analyze(tree(files)).map((f) => f.rule)).toEqual(["preload"]);
   });
 });
 

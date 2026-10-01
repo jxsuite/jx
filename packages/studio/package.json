@@ -18,7 +18,7 @@
     "dist/manifest.json",
     "dist/chunks/*.js",
     "dist/chunks/*.css",
-    "dist/workers",
+    "dist/workers/*.js",
     "index.html",
     "canvas.html",
     "favicon.ico",
