@@ -22,7 +22,7 @@
  * directory the installPhase copies.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync, readlinkSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 const REPO = resolve(import.meta.dir, "../../..");
@@ -80,5 +80,52 @@ describe("the Nix bundle ships what the desktop app depends on", () => {
       }
     }
     expect(orphans).toEqual([]);
+  });
+});
+
+/**
+ * The bundle is a production install of @jxsuite/desktop's graph, not the workspace's, so anything
+ * the app reaches without importing it has to be DECLARED to be installed at all.
+ */
+describe("the runtime install is the desktop app's production graph", () => {
+  const nix = readFileSync(resolve(REPO, "packages/desktop/package.nix"), "utf8");
+
+  test("the shipped node_modules comes from a production install filtered to the desktop app", () => {
+    expect(nix).toMatch(/--production \\\s+--filter '@jxsuite\/desktop'/);
+  });
+
+  test("every first-party extension is a runtime dependency, so its schemas resolve from the app", () => {
+    /* The schema loader resolves a first-party `@jxsuite/*` schema from the HOST and never from
+       the project (packages/compiler/src/site/schema-command.ts, `hostResolve`), so a project that
+       declares an extension needs the app to carry it — and nothing imports an extension
+       statically, so only the declaration puts it in the production install. */
+    const extensions = readdirSync(resolve(REPO, "extensions"), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map(
+        (entry) =>
+          (
+            JSON.parse(
+              readFileSync(resolve(REPO, "extensions", entry.name, "package.json"), "utf8"),
+            ) as { name: string }
+          ).name,
+      );
+    expect(extensions.length).toBeGreaterThan(3);
+    const declared = new Set(declaredJxDeps());
+    expect(extensions.filter((name) => !declared.has(name))).toEqual([]);
+  });
+
+  test("the install check's externals are exactly the ones Electrobun's bundle treats as external", () => {
+    const listed = (block: string | undefined) =>
+      [...(block ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]!).toSorted();
+    const nixList = listed(/resolveExternals = \[([^\]]*)\]/.exec(nix)?.[1]);
+    const config = readFileSync(resolve(REPO, "packages/desktop/electrobun.config.ts"), "utf8");
+    const configList = listed(/external: \[([^\]]*)\]/.exec(config)?.[1]);
+    expect(nixList.length).toBeGreaterThan(0);
+    expect(nixList).toEqual(configList);
+  });
+
+  test("the install check resolves the launcher against the installed tree", () => {
+    expect(nix).toContain("doInstallCheck = true;");
+    expect(nix).toContain("bun build $out/lib/jx-studio/packages/desktop/src/chromium/index.ts");
   });
 });

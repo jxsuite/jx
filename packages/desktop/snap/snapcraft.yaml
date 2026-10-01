@@ -1,0 +1,107 @@
+# Jx Studio for the Snap Store (specs/desktop.md §9.6).
+#
+# Three ingredients, each from the source that does it best:
+#
+# - The app tree is the Nix package's `lib/jx-studio` (`nix build .#default`), staged into
+#   `snap-stage/` by build-snap.yml before this runs. It is hermetic, carries only the desktop app's
+#   production dependencies, and its install check has already resolved the launcher against it.
+#   Nothing in it needs /nix/store at runtime: it is JavaScript, assets and npm's prebuilt natives.
+# - Chromium is Canonical's own build, copied from the official `chromium` snap at build time. It is
+#   compiled against the same Ubuntu userspace as the gnome extension's GTK and the gpu-2404 Mesa,
+#   which is what gives this snap hardware acceleration and host-matched graphics drivers. nixpkgs
+#   Chromium looks for drivers where NixOS installs them, so inside a snap it rendered in software.
+# - Bun is the official release binary. Nix's Bun is patched to load its glibc from /nix/store.
+#
+# The Electrobun CEF bundle is not used: its Linux wrapper embeds CEF by X11 window id and cannot
+# run as a native Wayland client.
+name: jx-studio
+title: Jx Studio
+summary: Visual editor for Jx components, pages and sites
+description: |
+  Jx Studio is the visual editor for Jx projects: design components, pages and layouts on a live
+  canvas, edit their JSON source side by side, and preview the site as you build it.
+license: MIT
+website: https://jxsuite.com
+contact: https://github.com/jxsuite/jx/issues
+issues: https://github.com/jxsuite/jx/issues
+source-code: https://github.com/jxsuite/jx
+icon: icon.png
+adopt-info: app
+base: core24
+confinement: strict
+grade: stable
+
+platforms:
+  amd64:
+  arm64:
+
+apps:
+  jx-studio:
+    command: bin/jx-studio
+    desktop: lib/jx-studio/packages/desktop/jx-studio.desktop
+    extensions: [gnome]
+    plugs:
+      # Chromium's shared-memory and IPC conventions. allow-sandbox is not requested (the store
+      # grants it only to trusted publishers), so the launcher passes --no-sandbox under $SNAP.
+      - browser-support
+      - home
+      - network
+      # The studio is served to its own window from a loopback HTTP + WebSocket server.
+      - network-bind
+      - removable-media
+    environment:
+      CHROMIUM_BIN: $SNAP/usr/lib/chromium-browser/chrome
+      JX_STUDIO_ASSETS: $SNAP/lib/jx-studio/packages/desktop/assets/studio
+      # The libraries the chromium snap stages beside its binary (NSS, libsecret, Kerberos, …),
+      # which the gnome runtime does not carry. Same path the chromium snap itself adds.
+      LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR
+      GTK_USE_PORTAL: "1"
+
+parts:
+  app:
+    plugin: dump
+    source: snap-stage
+    # sharp ships musl builds beside the glibc ones and picks the glibc build at runtime; the musl
+    # ones would need a libc this base does not have.
+    prime:
+      - -lib/jx-studio/node_modules/@img/*linuxmusl*
+    override-build: |
+      craftctl default
+      craftctl set version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' \
+        "$CRAFT_PART_SRC/lib/jx-studio/packages/desktop/package.json")"
+
+  launcher:
+    plugin: nil
+    source: snap/local
+    # `install -m` rather than `dump`: the mode bit does not survive every checkout.
+    override-build: install -Dm755 "$CRAFT_PART_SRC/jx-studio" "$CRAFT_PART_INSTALL/bin/jx-studio"
+
+  chromium:
+    plugin: nil
+    build-snaps: [chromium/latest/stable]
+    override-build: |
+      from=/snap/chromium/current/usr/lib
+      to="$CRAFT_PART_INSTALL/usr/lib"
+      mkdir -p "$to"
+      cp -a "$from/chromium-browser" "$to/"
+      cp -a "$from/$CRAFT_ARCH_TRIPLET_BUILD_FOR" "$to/"
+      # A test driver, not part of the browser.
+      rm -f "$to/chromium-browser/chromedriver"
+      # Setuid in the chromium snap, and the store refuses a setuid file. It is the helper of the
+      # sandbox this snap does not start (--no-sandbox, chromiumPlatformArgs).
+      rm -f "$to/chromium-browser/chrome-sandbox"
+
+  bun:
+    plugin: nil
+    build-packages: [curl, unzip]
+    override-build: |
+      version=1.4.2
+      case "$CRAFT_ARCH_BUILD_FOR" in
+        amd64) asset=bun-linux-x64; sum=36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913 ;;
+        arm64) asset=bun-linux-aarch64; sum=54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7 ;;
+        *) echo "no Bun build for $CRAFT_ARCH_BUILD_FOR" >&2; exit 1 ;;
+      esac
+      curl -fsSL -o bun.zip "https://github.com/oven-sh/bun/releases/download/bun-v$version/$asset.zip"
+      echo "$sum  bun.zip" | sha256sum -c -
+      unzip -q bun.zip
+      install -Dm755 "$asset/bun" "$CRAFT_PART_INSTALL/bin/bun"
