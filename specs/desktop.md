@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.5.4-draft\
+**Version:** 0.5.6-draft\
 **Status:** Partial\
-**Updated:** 2026-09-29\
+**Updated:** 2026-10-01\
 **License:** MIT
 
 ---
@@ -1144,6 +1144,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.5.6-draft** (2026-10-01) — §3.1 an optional protocol route may be an adapter-internal optimisation with no interface member, filesRead the first; §10.1 the cloud adapter coalesces the reads issued in one tick into POST /files/read, chunked at 200 paths with four in flight, re-asking omitted paths and falling back to one GET per path on an older platform (a 404, a 405, a 403 read_only refusal of a viewer, or a 200 that is not a ReadFilesResult object).
+- **0.5.5-draft** (2026-10-01) — Snap Store package for Ubuntu: the Nix-built app tree with Canonical's Chromium build and the gnome runtime's hardware-accelerated graphics stack, in a strict snap (§9.6); the Nix package now ships only the desktop app's production dependencies, with every first-party extension declared and an install check that resolves the launcher (§9.3).
 - **0.5.4-draft** (2026-09-29) — Project creation adopts what it creates itself — opening a new window when a different project is already showing, leaving it untouched.
 - **0.5.3-draft** (2026-09-29) — Census against the code: §3.1, §3.3, §5.3, §6.1 to §6.5, §7.4 and §9.3 marked with what ships, §3.6 re-marked Partial because the webview is handed the GitHub token, §10 re-marked Implemented over its open §10.2, the header corrected to Partial, and the implementation roadmap retired onto its feature sections.
 - **0.5.2-draft** (2026-09-29) — The nested style rules the generated class carries are spec.md §9.2, not this spec's §9.2.
@@ -1209,4 +1211,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.5.4-draft_
+_Jx Studio Desktop Architecture Specification v0.5.6-draft_
