@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioDocHeader",
-  "$description": "The Document Header card (`docs/studio/editing/frontmatter.md`) — the artefact's own header, drawn IN the stage, docked above Edit's page, once per pane. A bar naming the collection and the page's route, a column of rows, the door to Search appearance and a disclosure listing the raw head tags. ONE row vocabulary: Title, the Layout picker and every schema-driven frontmatter field are the same `row`, discriminated by `kind`, because they differ in what they COMMIT rather than in what they look like — and what they commit is `panels/frontmatter-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a content collection is, which document it is drawing, or that a page has a route: the flow hands over rows whose every field is already a string and this draws them.",
+  "$description": "The Document Header card (`docs/studio/editing/frontmatter.md`) — the artefact's own header, drawn IN the stage, docked above Edit's page, once per pane. A bar naming the collection and the page's route that folds the card down to itself, a column of rows, the door to Search appearance and a disclosure listing the raw head tags. ONE row vocabulary: Title, the Layout picker and every schema-driven frontmatter field are the same `row`, discriminated by `kind`, because they differ in what they COMMIT rather than in what they look like — and what they commit is `panels/frontmatter-panel.ts`'s decision, reached by the row's `key`. Nothing here knows what a content collection is, which document it is drawing, or that a page has a route: the flow hands over rows whose every field is already a string and this draws them.",
   "tagName": "section",
   "attributes": {
     "part": "card",
@@ -12,15 +12,28 @@
     "$description": "The twelve `.doc-header*` rules from `styles/canvas.css` plus the row vocabulary the card used to borrow from `styles/inspector.css` (`.style-row`, `.style-row-label`, `.set-dot`) and `styles/overlays.css` (`.media-picker`, `.media-picker-thumb`). The borrowed ones are TRANSCRIBED rather than shared: the card is a document now and a class it does not emit cannot style it, and the three lit panels that still draw a `.style-row` go on owning those rules until they convert. Every `--spectrum-font-size-*` reference is re-pointed at the kit's scale — a document mounted in a pane's stage is outside `<sp-theme>`, so each of them would silently have taken its hard-coded fallback and stopped following the theme. And the card has ONE shape, because it has one place: Edit docks it above the page's scroller as a band across the pane, so it is a band rather than a box. It keeps only the bottom edge that separates it from the page, because a box's border and radius would draw a card edge across a full-width strip. It used to have two placements, arriving as a `data-placement` the card keyed on, and the band look was the Design one; the attribute was read before the runtime had written it, so the band never drew.",
     "display": "flex",
     "flexDirection": "column",
-    "padding": "8px 12px 10px",
+    "padding": "6px 12px 8px",
     "background": "var(--bg-panel)",
     "borderBottom": "1px solid var(--border)",
     "fontFamily": "var(--jx-font-sans)",
+    "& > [part=\"disclosure\"] > [part=\"details\"] > [part=\"summary\"]": {
+      "$description": "The kit's disclosure, re-dressed as the card's bar. The summary IS the bar now — the caret, then the collection and the route, slotted into the summary's `heading` slot — so folding the card is a click anywhere on the line that names it, and the reader keeps that line when the rows are gone: it is what says the card is there to open again. Pulled out by its own inline padding so the caret's column lines up with the card's edge rather than indenting the bar, and no taller than its text, because the band's whole complaint was height.",
+      "minHeight": "0",
+      "padding": "2px 4px",
+      "margin": "0 -4px"
+    },
+    "& > [part=\"disclosure\"] > [part=\"details\"] > [part=\"summary\"] > [part=\"label\"]": {
+      "$description": "The kit prints its `label` in the summary as well as naming the summary with it. Here the bar's own text — the collection and the route — is what a reader sees, so the label is the accessible name only: `Document fields`, which is what the control discloses.",
+      "display": "none"
+    },
+    "& > [part=\"disclosure\"] > [part=\"details\"] > [part=\"body\"]": {
+      "padding": "4px 0 0"
+    },
     "& [part=\"bar\"]": {
       "display": "flex",
       "alignItems": "baseline",
       "gap": "8px",
-      "paddingBottom": "6px"
+      "minWidth": "0"
     },
     "& [part=\"collection\"]": {
       "$description": "Which collection this document belongs to, or the word Document when it belongs to none. A label rather than a heading: the card has an `aria-label` of its own and the collection name is a fact about the document, not a section title.",
@@ -145,316 +158,163 @@
   },
   "children": [
     {
-      "tagName": "header",
+      "tagName": "jx-accordion-item",
       "attributes": {
-        "part": "bar"
+        "part": "disclosure"
+      },
+      "$props": {
+        "label": "Document fields",
+        "open": {
+          "$ref": "#/state/expanded"
+        }
+      },
+      "ontoggle": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/setExpanded"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail"
+              }
+            ]
+          }
+        ]
       },
       "children": [
         {
           "tagName": "span",
           "attributes": {
-            "part": "collection"
+            "part": "bar",
+            "slot": "heading"
           },
-          "textContent": "${state.collection}"
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "collection"
+              },
+              "textContent": "${state.collection}"
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "route-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasRoute"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "code",
+                  "attributes": {
+                    "part": "route",
+                    "title": "This page's route"
+                  },
+                  "textContent": "${state.route}"
+                }
+              }
+            }
+          ]
         },
         {
           "tagName": "div",
           "attributes": {
-            "part": "route-slot",
-            "role": "none"
+            "part": "fields"
           },
-          "style": {
-            "display": "contents"
-          },
-          "$switch": {
-            "$ref": "#/state/hasRoute"
-          },
-          "cases": {
-            "true": {
-              "tagName": "code",
-              "attributes": {
-                "part": "route",
-                "title": "This page's route"
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/rows"
               },
-              "textContent": "${state.route}"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "tagName": "div",
-      "attributes": {
-        "part": "fields"
-      },
-      "children": [
-        {
-          "$prototype": "Array",
-          "items": {
-            "$ref": "#/state/rows"
-          },
-          "key": {
-            "$ref": "$map/item/key"
-          },
-          "map": {
-            "tagName": "div",
-            "attributes": {
-              "part": "row",
-              "data-prop": "${$map.item.prop}"
-            },
-            "children": [
-              {
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
                 "tagName": "div",
                 "attributes": {
-                  "part": "row-label"
+                  "part": "row",
+                  "data-prop": "${$map.item.prop}"
                 },
                 "children": [
                   {
                     "tagName": "div",
                     "attributes": {
-                      "part": "chip-slot",
-                      "role": "none"
-                    },
-                    "style": {
-                      "display": "contents"
-                    },
-                    "$switch": {
-                      "$ref": "$map/item/isSet"
-                    },
-                    "cases": {
-                      "true": {
-                        "tagName": "button",
-                        "attributes": {
-                          "part": "chip",
-                          "type": "button",
-                          "title": "${$map.item.clearLabel}",
-                          "aria-label": "${$map.item.clearLabel}"
-                        },
-                        "onclick": {
-                          "$prototype": "Function",
-                          "body": [
-                            {
-                              "operator": "call",
-                              "target": {
-                                "$ref": "#/state/clear"
-                              },
-                              "value": [
-                                {
-                                  "$ref": "$map/item/key"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      }
-                    }
-                  },
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "row-name",
-                      "aria-hidden": "true"
-                    },
-                    "textContent": "${$map.item.label}"
-                  }
-                ]
-              },
-              {
-                "tagName": "div",
-                "attributes": {
-                  "part": "widget-slot",
-                  "role": "none"
-                },
-                "style": {
-                  "display": "contents"
-                },
-                "$switch": {
-                  "$ref": "$map/item/kind"
-                },
-                "cases": {
-                  "text": {
-                    "tagName": "jx-textfield",
-                    "attributes": {
-                      "part": "widget"
-                    },
-                    "$props": {
-                      "size": "sm",
-                      "label": "${$map.item.label}",
-                      "placeholder": {
-                        "$ref": "$map/item/placeholder"
-                      },
-                      "value": {
-                        "$ref": "$map/item/value"
-                      }
-                    },
-                    "oninput": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/editText"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/key"
-                            },
-                            {
-                              "$ref": "event#/target/value"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    "onchange": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/commitText"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/key"
-                            },
-                            {
-                              "$ref": "event#/target/value"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  },
-                  "number": {
-                    "tagName": "jx-number-field",
-                    "attributes": {
-                      "part": "widget"
-                    },
-                    "$props": {
-                      "size": "sm",
-                      "label": "${$map.item.label}",
-                      "value": {
-                        "$ref": "$map/item/value"
-                      }
-                    },
-                    "onchange": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/setNumber"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/key"
-                            },
-                            {
-                              "$ref": "event#/target/value"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  },
-                  "boolean": {
-                    "tagName": "jx-checkbox",
-                    "attributes": {
-                      "part": "widget"
-                    },
-                    "$props": {
-                      "size": "sm",
-                      "label": "${$map.item.label}",
-                      "checked": {
-                        "$ref": "$map/item/checked"
-                      }
-                    },
-                    "onchange": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/setBoolean"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/key"
-                            },
-                            {
-                              "$ref": "event#/target/checked"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  },
-                  "select": {
-                    "tagName": "jx-select",
-                    "attributes": {
-                      "part": "widget"
-                    },
-                    "$props": {
-                      "size": "sm",
-                      "label": "${$map.item.label}",
-                      "options": {
-                        "$ref": "$map/item/options"
-                      },
-                      "value": {
-                        "$ref": "$map/item/value"
-                      }
-                    },
-                    "onchange": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/setChoice"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/item/key"
-                            },
-                            {
-                              "$ref": "event#/target/value"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  },
-                  "media": {
-                    "tagName": "div",
-                    "attributes": {
-                      "part": "media"
+                      "part": "row-label"
                     },
                     "children": [
                       {
                         "tagName": "div",
                         "attributes": {
-                          "part": "thumb-slot",
+                          "part": "chip-slot",
                           "role": "none"
                         },
                         "style": {
                           "display": "contents"
                         },
                         "$switch": {
-                          "$ref": "$map/item/hasThumb"
+                          "$ref": "$map/item/isSet"
                         },
                         "cases": {
                           "true": {
-                            "tagName": "img",
+                            "tagName": "button",
                             "attributes": {
-                              "part": "thumb",
-                              "src": "${$map.item.thumb}",
-                              "alt": ""
+                              "part": "chip",
+                              "type": "button",
+                              "title": "${$map.item.clearLabel}",
+                              "aria-label": "${$map.item.clearLabel}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/clear"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
                             }
                           }
                         }
                       },
                       {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "row-name",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "${$map.item.label}"
+                      }
+                    ]
+                  },
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "widget-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/kind"
+                    },
+                    "cases": {
+                      "text": {
                         "tagName": "jx-textfield",
                         "attributes": {
                           "part": "widget"
@@ -462,7 +322,9 @@
                         "$props": {
                           "size": "sm",
                           "label": "${$map.item.label}",
-                          "placeholder": "/image.jpg",
+                          "placeholder": {
+                            "$ref": "$map/item/placeholder"
+                          },
                           "value": {
                             "$ref": "$map/item/value"
                           }
@@ -506,225 +368,407 @@
                           ]
                         }
                       },
-                      {
-                        "tagName": "jx-action-button",
+                      "number": {
+                        "tagName": "jx-number-field",
                         "attributes": {
-                          "part": "upload"
+                          "part": "widget"
                         },
                         "$props": {
                           "size": "sm",
-                          "quiet": true,
-                          "icon": "upload-simple",
-                          "label": "Upload media",
-                          "hint": "Upload media"
+                          "label": "${$map.item.label}",
+                          "value": {
+                            "$ref": "$map/item/value"
+                          }
                         },
-                        "onclick": {
+                        "onchange": {
                           "$prototype": "Function",
                           "body": [
                             {
                               "operator": "call",
                               "target": {
-                                "$ref": "#/state/upload"
-                              },
-                              "value": [
-                                {
-                                  "$ref": "$map/item/key"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      },
-                      {
-                        "tagName": "jx-action-button",
-                        "attributes": {
-                          "part": "browse"
-                        },
-                        "$props": {
-                          "size": "sm",
-                          "quiet": true,
-                          "icon": "image",
-                          "label": "Browse media",
-                          "hint": "Browse media"
-                        },
-                        "onclick": {
-                          "$prototype": "Function",
-                          "body": [
-                            {
-                              "operator": "call",
-                              "target": {
-                                "$ref": "#/state/browse"
+                                "$ref": "#/state/setNumber"
                               },
                               "value": [
                                 {
                                   "$ref": "$map/item/key"
                                 },
                                 {
-                                  "$ref": "event#/currentTarget"
+                                  "$ref": "event#/target/value"
                                 }
                               ]
                             }
                           ]
                         }
+                      },
+                      "boolean": {
+                        "tagName": "jx-checkbox",
+                        "attributes": {
+                          "part": "widget"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "label": "${$map.item.label}",
+                          "checked": {
+                            "$ref": "$map/item/checked"
+                          }
+                        },
+                        "onchange": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/setBoolean"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                },
+                                {
+                                  "$ref": "event#/target/checked"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "select": {
+                        "tagName": "jx-select",
+                        "attributes": {
+                          "part": "widget"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "label": "${$map.item.label}",
+                          "options": {
+                            "$ref": "$map/item/options"
+                          },
+                          "value": {
+                            "$ref": "$map/item/value"
+                          }
+                        },
+                        "onchange": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/setChoice"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                },
+                                {
+                                  "$ref": "event#/target/value"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "media": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "media"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "thumb-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/hasThumb"
+                            },
+                            "cases": {
+                              "true": {
+                                "tagName": "img",
+                                "attributes": {
+                                  "part": "thumb",
+                                  "src": "${$map.item.thumb}",
+                                  "alt": ""
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "jx-textfield",
+                            "attributes": {
+                              "part": "widget"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "label": "${$map.item.label}",
+                              "placeholder": "/image.jpg",
+                              "value": {
+                                "$ref": "$map/item/value"
+                              }
+                            },
+                            "oninput": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/editText"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "onchange": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/commitText"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "upload"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "quiet": true,
+                              "icon": "upload-simple",
+                              "label": "Upload media",
+                              "hint": "Upload media"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/upload"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "browse"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "quiet": true,
+                              "icon": "image",
+                              "label": "Browse media",
+                              "hint": "Browse media"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/browse"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/currentTarget"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       }
-                    ]
-                  }
-                }
-              },
-              {
-                "tagName": "div",
-                "attributes": {
-                  "part": "note-slot",
-                  "role": "none"
-                },
-                "style": {
-                  "display": "contents"
-                },
-                "$switch": {
-                  "$ref": "$map/item/hasNote"
-                },
-                "cases": {
-                  "true": {
-                    "tagName": "p",
+                    }
+                  },
+                  {
+                    "tagName": "div",
                     "attributes": {
-                      "part": "note"
+                      "part": "note-slot",
+                      "role": "none"
                     },
-                    "textContent": "${$map.item.note}"
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/hasNote"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "p",
+                        "attributes": {
+                          "part": "note"
+                        },
+                        "textContent": "${$map.item.note}"
+                      }
+                    }
                   }
-                }
+                ]
               }
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "tagName": "div",
-      "attributes": {
-        "part": "seo"
-      },
-      "children": [
+            }
+          ]
+        },
         {
-          "tagName": "jx-action-button",
+          "tagName": "div",
           "attributes": {
-            "part": "seo-button"
+            "part": "seo"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "seo-button"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "icon": "magnifying-glass",
+                "label": "Search appearance"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openSeo"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Search appearance…"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "jx-accordion-item",
+          "attributes": {
+            "part": "raw"
           },
           "$props": {
-            "size": "sm",
-            "quiet": true,
-            "icon": "magnifying-glass",
-            "label": "Search appearance"
+            "label": "Raw head tags",
+            "open": {
+              "$ref": "#/state/rawOpen"
+            }
           },
-          "onclick": {
+          "ontoggle": {
             "$prototype": "Function",
             "body": [
               {
                 "operator": "call",
                 "target": {
-                  "$ref": "#/state/openSeo"
+                  "$ref": "#/state/setRawOpen"
                 },
-                "value": []
+                "value": [
+                  {
+                    "$ref": "event#/detail"
+                  }
+                ]
               }
             ]
           },
           "children": [
             {
-              "tagName": "span",
-              "textContent": "Search appearance…"
+              "tagName": "div",
+              "attributes": {
+                "part": "raw-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/rawState"
+              },
+              "cases": {
+                "empty": {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "raw-empty"
+                  },
+                  "textContent": "No custom head tags on this document."
+                },
+                "list": {
+                  "tagName": "ul",
+                  "attributes": {
+                    "part": "raw-list"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/rawEntries"
+                      },
+                      "key": {
+                        "$ref": "$map/item/key"
+                      },
+                      "map": {
+                        "tagName": "li",
+                        "attributes": {
+                          "part": "raw-item"
+                        },
+                        "children": [
+                          {
+                            "tagName": "code",
+                            "attributes": {
+                              "part": "raw-key"
+                            },
+                            "textContent": "${$map.item.label}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "raw-value",
+                              "title": "${$map.item.value}"
+                            },
+                            "textContent": "${$map.item.value}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
             }
           ]
-        }
-      ]
-    },
-    {
-      "tagName": "jx-accordion-item",
-      "attributes": {
-        "part": "raw"
-      },
-      "$props": {
-        "label": "Raw head tags",
-        "open": {
-          "$ref": "#/state/rawOpen"
-        }
-      },
-      "ontoggle": {
-        "$prototype": "Function",
-        "body": [
-          {
-            "operator": "call",
-            "target": {
-              "$ref": "#/state/setRawOpen"
-            },
-            "value": [
-              {
-                "$ref": "event#/detail"
-              }
-            ]
-          }
-        ]
-      },
-      "children": [
-        {
-          "tagName": "div",
-          "attributes": {
-            "part": "raw-slot",
-            "role": "none"
-          },
-          "style": {
-            "display": "contents"
-          },
-          "$switch": {
-            "$ref": "#/state/rawState"
-          },
-          "cases": {
-            "empty": {
-              "tagName": "p",
-              "attributes": {
-                "part": "raw-empty"
-              },
-              "textContent": "No custom head tags on this document."
-            },
-            "list": {
-              "tagName": "ul",
-              "attributes": {
-                "part": "raw-list"
-              },
-              "children": [
-                {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/rawEntries"
-                  },
-                  "key": {
-                    "$ref": "$map/item/key"
-                  },
-                  "map": {
-                    "tagName": "li",
-                    "attributes": {
-                      "part": "raw-item"
-                    },
-                    "children": [
-                      {
-                        "tagName": "code",
-                        "attributes": {
-                          "part": "raw-key"
-                        },
-                        "textContent": "${$map.item.label}"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "raw-value",
-                          "title": "${$map.item.value}"
-                        },
-                        "textContent": "${$map.item.value}"
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          }
         }
       ]
     }
