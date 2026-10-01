@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0](https://github.com/jxsuite/jx/compare/protocol-v2.4.0...protocol-v2.5.0) (2026-10-01)
+
+
+### Features
+
+* **studio:** coalesce the cloud adapter's file reads into one batch request ([22f421d](https://github.com/jxsuite/jx/commit/22f421dfc7ca7e066aa77d0a08342ce35ea1c637))
+* **studio:** coalesce the cloud adapter's file reads into one batch request ([9645ac9](https://github.com/jxsuite/jx/commit/9645ac9b808c03e95fe48f82321b6ee90188fad8))
+
 ## [2.4.0](https://github.com/jxsuite/jx/compare/protocol-v2.3.1...protocol-v2.4.0) (2026-09-29)
 
 
