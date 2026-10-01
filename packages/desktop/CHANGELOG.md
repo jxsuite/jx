@@ -1,5 +1,30 @@
 # Changelog
 
+## [5.3.0](https://github.com/jxsuite/jx/compare/desktop-v5.2.0...desktop-v5.3.0) (2026-10-01)
+
+
+### Features
+
+* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([7ee2b37](https://github.com/jxsuite/jx/commit/7ee2b375d967aa021bc5cef782b00538b2b52d0d))
+* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([fb3a11c](https://github.com/jxsuite/jx/commit/fb3a11cab29e22ab298cdc659b595625fb7cd947))
+
+
+### Bug Fixes
+
+* **desktop:** the Store MSIX launched nothing - patched launcher called an undefined __require ([b1f99a4](https://github.com/jxsuite/jx/commit/b1f99a4d2665d249c4285ff40126daf0a1e70170))
+* **desktop:** the Store MSIX launched nothing - patched launcher called an undefined __require ([02beabe](https://github.com/jxsuite/jx/commit/02beabe61b0a4d8c4c390606cc01a1ec140fb616))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.5.0
+    * @jxsuite/server bumped to 4.4.0
+    * @jxsuite/studio bumped to 5.5.0
+  * devDependencies
+    * @jxsuite/server bumped to 4.4.0
+
 ## [5.2.0](https://github.com/jxsuite/jx/compare/desktop-v5.1.3...desktop-v5.2.0) (2026-09-29)
 
 

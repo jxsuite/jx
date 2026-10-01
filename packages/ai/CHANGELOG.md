@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.39.0](https://github.com/jxsuite/jx/compare/ai-v0.38.0...ai-v0.39.0) (2026-10-01)
+
+
+### Features
+
+* **ai:** prompt-cache hints, keyed per chat session ([b226e7e](https://github.com/jxsuite/jx/commit/b226e7e6fc28e6bd172fe1745dc1fac854c06c8d))
+* **ai:** prompt-cache hints, keyed per chat session ([767bcc2](https://github.com/jxsuite/jx/commit/767bcc29193bb956fd9210b84977c3e92d936acc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.5.0
+
 ## [0.38.0](https://github.com/jxsuite/jx/compare/ai-v0.37.2...ai-v0.38.0) (2026-09-29)
 
 
