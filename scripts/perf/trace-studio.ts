@@ -73,6 +73,82 @@ export function compareMetric(
   return { cell: `${oldValue} → ${freshValue} (${pct > 0 ? "+" : ""}${pct}%)`, regressed };
 }
 
+/**
+ * Move the tracer's own idle-probe cost out of `breakdown.scripting` and into `harnessMs`.
+ *
+ * `mapped` is `mapSources()`'s output for this analysis. Every frame that maps to
+ * `src/services/idle.ts` is the harness's `probe.idle()` rAF poll, which runs inside the page being
+ * measured but is not work a user's interaction causes. After this, `breakdown.scripting` is app
+ * scripting, the only scripting number the baseline records or the gate judges.
+ */
+export function attributeHarness(r: Analysis, mapped: { file: string; totalMs: number }[]): void {
+  r.harnessMs = Number(
+    mapped
+      .filter((f) => f.file.includes("/services/idle.ts"))
+      .map((f) => f.totalMs)
+      .reduce((a, b) => a + b, 0)
+      .toFixed(1),
+  );
+  r.breakdown.scripting = Number(Math.max(0, r.breakdown.scripting - r.harnessMs).toFixed(1));
+}
+
+/**
+ * One scenario's row in `baseline.json`. `scriptingMs` is app scripting; `harnessMs` is what
+ * {@link attributeHarness} took out of it, kept for a reader and never gated on.
+ */
+export interface BaselineScenario {
+  name: string;
+  wallMs: number;
+  scriptingMs: number;
+  harnessMs: number;
+  styleRecalcMs: number;
+  styleRecalcCount: number;
+  layoutMs: number;
+  gcMs: number;
+}
+
+/** The row `--write-baseline` records for an analysis {@link attributeHarness} has already seen. */
+export function baselineScenario(r: Analysis): BaselineScenario {
+  return {
+    name: r.scenario,
+    wallMs: r.wallMs,
+    scriptingMs: r.breakdown.scripting,
+    harnessMs: r.harnessMs,
+    styleRecalcMs: r.styleRecalc.time,
+    styleRecalcCount: r.styleRecalc.count,
+    layoutMs: r.layout.time,
+    gcMs: r.gcMs,
+  };
+}
+
+/**
+ * One scenario's `--compare` row: its printed cells, and whether any metric regressed.
+ *
+ * Scripting is app scripting on both sides, the unit {@link baselineScenario} records and
+ * `REPORT.md` promises. This used to add `harnessMs` back to the fresh side, which made the probe's
+ * own wait a gated metric: on a busy runner one rAF poll can bill 70ms to a rep, so `palette-files`
+ * read 8.8 → 72.8ms of scripting when its app scripting was 2.5ms, and failed a run whose code had
+ * passed four minutes earlier (#403).
+ */
+export function compareScenario(
+  base: Pick<BaselineScenario, "wallMs" | "scriptingMs" | "styleRecalcMs" | "layoutMs">,
+  now: Analysis,
+): { cells: string[]; regressed: boolean } {
+  let regressed = false;
+  const cells: string[] = [];
+  for (const [oldValue, freshValue] of [
+    [base.wallMs, now.wallMs],
+    [base.scriptingMs, now.breakdown.scripting],
+    [base.styleRecalcMs, now.styleRecalc.time],
+    [base.layoutMs, now.layout.time],
+  ] as [number, number][]) {
+    const metric = compareMetric(oldValue, freshValue);
+    regressed ||= metric.regressed;
+    cells.push(metric.cell);
+  }
+  return { cells, regressed };
+}
+
 class Cdp {
   private nextId = 1;
   private ws: WebSocket;
@@ -524,6 +600,9 @@ async function main() {
       JSON.stringify({ generatedAt: new Date().toISOString(), url, reps, results }, null, 2),
     );
     for (const r of results) {
+      // Attributed before printing, so the `scripting` this block shows is the one the gate judges.
+      const mapped = await mapSources(r.bundled);
+      attributeHarness(r, mapped);
       console.log(`\n== ${r.scenario} (wall ${r.wallMs}ms, busy ${r.busyMs}ms) ==`);
       console.log(
         JSON.stringify(
@@ -545,15 +624,6 @@ async function main() {
           console.log(`  ${f.label} (self ${f.selfMs}ms, total ${f.totalMs}ms)`);
         }
       }
-      const mapped = await mapSources(r.bundled);
-      r.harnessMs = Number(
-        mapped
-          .filter((f) => f.file.includes("/services/idle.ts"))
-          .map((f) => f.totalMs)
-          .reduce((a, b) => a + b, 0)
-          .toFixed(1),
-      );
-      r.breakdown.scripting = Number(Math.max(0, r.breakdown.scripting - r.harnessMs).toFixed(1));
       console.log(
         `harness idle-probe cost attributed: ${r.harnessMs}ms (subtracted from scripting)`,
       );
@@ -578,16 +648,7 @@ async function main() {
               ).pathname;
       const baseline = {
         updatedAt: new Date().toISOString(),
-        scenarios: results.map((r) => ({
-          name: r.scenario,
-          wallMs: r.wallMs,
-          scriptingMs: r.breakdown.scripting + r.harnessMs,
-          harnessMs: r.harnessMs,
-          styleRecalcMs: r.styleRecalc.time,
-          styleRecalcCount: r.styleRecalc.count,
-          layoutMs: r.layout.time,
-          gcMs: r.gcMs,
-        })),
+        scenarios: results.map((r) => baselineScenario(r)),
       };
       await Bun.write(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
       console.log(`Wrote ${baselinePath}`);
@@ -596,13 +657,7 @@ async function main() {
     const comparePath = flag("compare", "");
     if (comparePath) {
       const baseline = JSON.parse(await Bun.file(comparePath).text()) as {
-        scenarios: {
-          name: string;
-          wallMs: number;
-          scriptingMs: number;
-          styleRecalcMs: number;
-          layoutMs: number;
-        }[];
+        scenarios: BaselineScenario[];
       };
       let regression = false;
       console.log(`\n== compare vs ${comparePath} ==`);
@@ -612,19 +667,9 @@ async function main() {
         if (!now) {
           continue;
         }
-        const busyNow = now.breakdown.scripting + now.harnessMs;
-        const cells: string[] = [];
-        for (const [oldValue, freshValue] of [
-          [base.wallMs, now.wallMs],
-          [base.scriptingMs, busyNow],
-          [base.styleRecalcMs, now.styleRecalc.time],
-          [base.layoutMs, now.layout.time],
-        ] as [number, number][]) {
-          const { cell, regressed } = compareMetric(oldValue, freshValue);
-          if (regressed) {
-            regression = true;
-          }
-          cells.push(cell);
+        const { cells, regressed } = compareScenario(base, now);
+        if (regressed) {
+          regression = true;
         }
         console.log(`${now.scenario} | ${cells.join(" | ")}`);
       }
