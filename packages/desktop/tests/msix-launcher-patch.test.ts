@@ -80,7 +80,7 @@ describe("patchLauncherMain", () => {
     );
   });
 
-  test.each(REQUIRED_IMPORTS)("throws when the launcher does not import %s", (name) => {
+  test.each([...REQUIRED_IMPORTS])("throws when the launcher does not import %s", (name) => {
     const stripped = IMPORTS.replace(new RegExp(`\\b${name},?\\s?`), "");
     expect(() => patchLauncherMain(launcher(stripped))).toThrow(name);
   });
@@ -99,12 +99,40 @@ describe("the patched launcher, executed", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  test("copies the app entrypoint to the temp directory and returns the copy", async () => {
-    const file = join(root, "launcher.mjs");
-    writeFileSync(file, patchLauncherMain(launcher()));
-    const { entry } = (await import(file)) as { entry: (dir: string) => string };
+  /**
+   * Evaluates a launcher source as a function body with exactly the names the real launcher imports
+   * in scope. No temp module is written, so Bun's coverage has no stray source file to count, and a
+   * name the source uses but was never given (`__require`) throws ReferenceError as it did in
+   * 5.2.0.
+   */
+  const entryOf = (source: string): ((dir: string) => string) => {
+    const body = source
+      .split("\n")
+      .filter((line) => !line.startsWith("import "))
+      .join("\n")
+      .replace("export function", "function");
+    return new Function(
+      "join",
+      "readFileSync",
+      "tmpdir",
+      "writeFileSync",
+      `${body}\nreturn entry;`,
+    )(join, readFileSync, tmpdir, writeFileSync) as (dir: string) => string;
+  };
 
-    const copy = entry(join(root, "app"));
+  test("the 5.2.0 patch, calling __require, throws before the app can start", () => {
+    const broken = launcher().replace(
+      FLAT_FILES_ORIGINAL,
+      FLAT_FILES_PATCHED.replace(
+        "readFileSync(__flatEntry",
+        '__require("fs").readFileSync(__flatEntry',
+      ),
+    );
+    expect(() => entryOf(broken)(join(root, "app"))).toThrow(ReferenceError);
+  });
+
+  test("copies the app entrypoint to the temp directory and returns the copy", () => {
+    const copy = entryOf(patchLauncherMain(launcher()))(join(root, "app"));
 
     // The Worker must start from the temp copy: reading WindowsApps directly is the EPERM.
     expect(copy.startsWith(tmpdir())).toBe(true);
@@ -113,10 +141,7 @@ describe("the patched launcher, executed", () => {
     rmSync(copy, { force: true });
   });
 
-  test("the unpatched launcher would have read WindowsApps directly (the case being fixed)", async () => {
-    const file = join(root, "unpatched.mjs");
-    writeFileSync(file, launcher());
-    const { entry } = (await import(file)) as { entry: (dir: string) => string };
-    expect(entry(join(root, "app"))).toBe(join(root, "app", "bun", "index.js"));
+  test("the unpatched launcher would have read WindowsApps directly (the case being fixed)", () => {
+    expect(entryOf(launcher())(join(root, "app"))).toBe(join(root, "app", "bun", "index.js"));
   });
 });
