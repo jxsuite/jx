@@ -90,6 +90,25 @@ const canvas = await canvasDocument({ base });
 Serve the editor document for **every** path the editor lives at. If your editor URL contains the project (`/edit/:owner/:repo`), the document is served from a deep path, and any document-relative reference in it would resolve into the wrong directory. Generating it with an absolute `base` is what makes that a non-issue.
 :::
 
+### Preloading the startup chunks
+
+If you serve Studio over the network, pass `preload` to cut the editor's startup round trips:
+
+```ts
+import { studioShellHtml } from "@jxsuite/studio/hosting/document";
+import { studioPreload } from "@jxsuite/studio/hosting";
+
+const editor = studioShellHtml({
+  base,
+  boot: ["/my-platform-init.js"],
+  preload: await studioPreload(),
+});
+```
+
+The editor entry imports a few dozen split chunks, and those import more. A browser only finds each layer after parsing the one above it, so without hints the startup graph downloads one layer per round trip. The release build records the whole static import graph as `preload` in `dist/manifest.json`, `studioPreload()` reads it back, and `studioShellHtml` emits one `<link rel="modulepreload">` per chunk so they download alongside the entry. On-demand code such as the code editor is never in the list, so it stays off the startup path.
+
+It is opt-in. Without `preload` the document is exactly what it was before. `studioPreload()` returns an empty list for a package that was never built, or one built before the field existed. The chunk names are content hashes, so read the list from the same installed package whose files you serve. Only a release build (`bun run build`) writes the list. If you link a source checkout, the repo dev server removes it when it starts, because its watcher rebuilds the editor with different chunk names, so a checkout running `bun run dev` gives no hints. Entries whose files are missing are dropped. A host that serves the files from local disk, like the desktop app, has no round trips to save and can leave it out.
+
 ## Where your adapter plugs in
 
 `boot` is the seam. The modules you name load, in order, **before** the Studio entry:

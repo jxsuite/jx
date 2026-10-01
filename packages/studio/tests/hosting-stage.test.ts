@@ -15,6 +15,7 @@ import {
   canvasDocument,
   missingStudioAssets,
   stageStudioAssets,
+  studioPreload,
   writeAssetManifest,
 } from "../src/hosting/stage";
 import {
@@ -24,8 +25,10 @@ import {
   filesCovers,
   nodeImports,
   publishGaps,
+  publishedMaps,
   stylesheetDrift,
 } from "../scripts/check-studio-package";
+import { forgetReleasePreload } from "../scripts/build-config";
 
 const temps: string[] = [];
 afterAll(() => {
@@ -196,6 +199,109 @@ describe("the documents, read from a package root", () => {
     expect(written.assets.map((a) => a.path)).toEqual(STUDIO_ASSETS.map((a) => a.path));
     expect(written.assets.every((a) => a.why.length > 0)).toBe(true);
   });
+
+  /* "This build computed no closure" and "this build's entry has none" are different statements,
+     so a caller that passes nothing gets no field rather than an empty one. */
+  test("writeAssetManifest writes no preload field unless one is passed", async () => {
+    const root = dest();
+    await writeAssetManifest(root);
+    const written = JSON.parse(readFileSync(join(root, "dist", "manifest.json"), "utf8")) as object;
+    expect("preload" in written).toBe(false);
+  });
+
+  test("writeAssetManifest records the build's preload list verbatim", async () => {
+    const root = dest();
+    const preload = ["dist/chunks/a-11111111.js", "dist/chunks/b-22222222.js"];
+    await writeAssetManifest(root, { preload });
+    const written = JSON.parse(readFileSync(join(root, "dist", "manifest.json"), "utf8")) as {
+      preload: string[];
+      shell: string;
+    };
+    expect(written.preload).toEqual(preload);
+    // The rest of the manifest is untouched by the extra.
+    expect(written.shell).toBe("index.html");
+  });
+});
+
+describe("studioPreload", () => {
+  /* The round trip a host performs: the build writes the list, the host reads it back and hands it
+     to studioShellHtml({ preload }). */
+  test("reads back what writeAssetManifest wrote", async () => {
+    const root = studioTree({ "dist/chunks/a-11111111.js": "// a" });
+    await writeAssetManifest(root, { preload: ["dist/chunks/a-11111111.js"] });
+    expect(await studioPreload(root)).toEqual(["dist/chunks/a-11111111.js"]);
+  });
+
+  /* A hint for a chunk that is not there is a 404 on every cold start; fewer hints is the better
+     failure. The order of the survivors is the manifest's. */
+  test("drops entries that are not on disk under the root", async () => {
+    const root = studioTree({
+      "dist/chunks/a-11111111.js": "// a",
+      "dist/chunks/c-33333333.js": "",
+    });
+    await writeAssetManifest(root, {
+      preload: [
+        "dist/chunks/a-11111111.js",
+        "dist/chunks/b-22222222.js",
+        "dist/chunks/c-33333333.js",
+      ],
+    });
+    expect(await studioPreload(root)).toEqual([
+      "dist/chunks/a-11111111.js",
+      "dist/chunks/c-33333333.js",
+    ]);
+  });
+
+  /* The case the existence filter cannot see: `bun run build`, then `bun run dev`. The watcher
+     rebuilds studio.js over the release chunks without deleting them, so every stale name still
+     exists. The dev server drops the field before its first build, and the checkout reads as
+     "no hints" — not as a list of chunks the running entry never imports. */
+  test("is empty for a checkout the dev server has started on after a release build", async () => {
+    const root = studioTree({ "dist/chunks/release-11111111.js": "// release" });
+    await writeAssetManifest(root, { preload: ["dist/chunks/release-11111111.js"] });
+    expect(await studioPreload(root)).toEqual(["dist/chunks/release-11111111.js"]);
+    await forgetReleasePreload(root);
+    expect(existsSync(join(root, "dist/chunks/release-11111111.js"))).toBe(true);
+    expect(await studioPreload(root)).toEqual([]);
+  });
+
+  /* A source checkout that was never built: no hints, which is what every host had before. */
+  test("is empty when there is no manifest at all", async () => {
+    expect(await studioPreload(dest())).toEqual([]);
+  });
+
+  /* A manifest from a build that predates the field. */
+  test("is empty when the manifest has no preload field", async () => {
+    const root = dest();
+    await writeAssetManifest(root);
+    expect(await studioPreload(root)).toEqual([]);
+  });
+
+  test("ignores a field that is not a list of strings rather than hinting garbage", async () => {
+    const root = dest();
+    mkdirSync(join(root, "dist"), { recursive: true });
+    writeFileSync(join(root, "dist", "manifest.json"), JSON.stringify({ preload: "dist/x.js" }));
+    expect(await studioPreload(root)).toEqual([]);
+    mkdirSync(join(root, "dist", "chunks"), { recursive: true });
+    writeFileSync(join(root, "dist", "chunks", "a-11111111.js"), "// a");
+    writeFileSync(
+      join(root, "dist", "manifest.json"),
+      JSON.stringify({ preload: ["dist/chunks/a-11111111.js", 7, null] }),
+    );
+    expect(await studioPreload(root)).toEqual(["dist/chunks/a-11111111.js"]);
+  });
+
+  /* A damaged install is not an old one, and should say so rather than boot without hints. */
+  test("throws on a manifest that is not JSON", async () => {
+    const root = dest();
+    mkdirSync(join(root, "dist"), { recursive: true });
+    writeFileSync(join(root, "dist", "manifest.json"), "{ not json");
+    await expect(studioPreload(root)).rejects.toThrow();
+  });
+
+  test("defaults to the package's own root", async () => {
+    expect(Array.isArray(await studioPreload())).toBe(true);
+  });
 });
 
 describe("check-studio-package rules", () => {
@@ -240,6 +346,39 @@ describe("check-studio-package rules", () => {
     const gaps = publishGaps(["src"], ["data/webdata.json"]);
     expect(gaps.some((p) => p.detail.includes("data/webdata.json"))).toBe(true);
     expect(gaps.some((p) => p.detail.includes("dist/codicon.ttf"))).toBe(true);
+  });
+
+  /* The workers gained linked maps while `files` still listed `dist/workers` whole, and 21 MB of
+     maps reached the tarball: staging and the bundle budget both skip `**\/*.map`, so this rule is
+     the only place it is visible. */
+  test("a files entry that would publish a dist/ source map is a finding", () => {
+    for (const pattern of ["dist/workers", "dist/workers/", "dist", "dist/chunks/*", "dist/**"]) {
+      expect(publishedMaps([pattern]), pattern).toHaveLength(1);
+    }
+    expect(publishedMaps(["dist/studio.js.map"])).toHaveLength(1);
+    expect(publishedMaps(["dist/workers"])[0]?.rule).toBe("maps");
+  });
+
+  test("files entries that name .js, .css or a single file publish no map", () => {
+    expect(
+      publishedMaps([
+        "dist/workers/*.js",
+        "dist/chunks/*.js",
+        "dist/chunks/*.css",
+        "dist/studio.js",
+        "dist/manifest.json",
+        "dist/codicon.ttf",
+      ]),
+    ).toEqual([]);
+    // Source trees listed whole are the source, not a build, and hold no maps.
+    expect(publishedMaps(["src", "styles", "fonts", "data"])).toEqual([]);
+  });
+
+  /* A narrowed entry still publishes the manifest directory it reaches inside. */
+  test("dist/workers/*.js still covers the dist/workers manifest entry", () => {
+    expect(filesCovers(["dist/workers/*.js"], "dist/workers")).toBe(true);
+    expect(filesCovers(["dist/workers/*.js"], "dist/workers/json.worker.js")).toBe(true);
+    expect(filesCovers(["dist/workers/*.js"], "dist/workers/json.worker.js.map")).toBe(false);
   });
 
   /* Neither of these is expressible in check-dep-rules.ts, which forbids only core-to-extension

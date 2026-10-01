@@ -163,15 +163,80 @@ export async function canvasDocument(options: ReadDocumentOptions = {}): Promise
   return canvasShellHtml(html, options.base);
 }
 
+/** What the build knows that the source does not, written beside {@link STUDIO_ASSETS}. */
+export interface AssetManifestExtra {
+  /**
+   * The editor entry's static import closure, as package-relative paths
+   * (`"dist/chunks/studio-abcd1234.js"`). See {@link studioPreload}.
+   */
+  readonly preload?: readonly string[] | undefined;
+}
+
+/** The manifest's file, under a package root. */
+function manifestPath(root: string): string {
+  return join(root, "dist", "manifest.json");
+}
+
 /**
  * Write `dist/manifest.json` — {@link STUDIO_ASSETS} as data, for a host that cannot import
- * TypeScript. Called by the build; gated against the manifest by check-studio-dist.ts.
+ * TypeScript, plus whatever the build measured. Called by the build; gated against the emitted tree
+ * by check-studio-dist.ts.
+ *
+ * `preload` lives HERE, and not in `./layout`, because it names content-hashed chunks: it is a fact
+ * about one build's output, true of the `dist/` it was written beside and of no other. A field that
+ * is not passed is not written, rather than written empty — "this build computed nothing" and "this
+ * build's entry has no static imports" are different statements.
  */
-export async function writeAssetManifest(root: string = STUDIO_PACKAGE_DIR): Promise<void> {
-  const out = join(root, "dist", "manifest.json");
+export async function writeAssetManifest(
+  root: string = STUDIO_PACKAGE_DIR,
+  extra: AssetManifestExtra = {},
+): Promise<void> {
+  const out = manifestPath(root);
   await mkdir(dirname(out), { recursive: true });
-  await writeFile(
-    out,
-    `${JSON.stringify({ assets: STUDIO_ASSETS, shell: STUDIO_SHELL }, null, 2)}\n`,
+  const manifest = {
+    assets: STUDIO_ASSETS,
+    ...(extra.preload === undefined ? {} : { preload: extra.preload }),
+    shell: STUDIO_SHELL,
+  };
+  await writeFile(out, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+/**
+ * The modules to hint as `<link rel="modulepreload">`, read from an installed package's
+ * `dist/manifest.json` — hand the result to `studioShellHtml({ preload })`.
+ *
+ * The editor entry statically imports a few dozen split chunks, and those import more; a browser
+ * finds each layer only after parsing the one above it. The release build records the whole static
+ * closure, so a host that serves the shell can name it up front and the chunks download in parallel
+ * with the entry. Dynamic imports are never in it — Monaco and the other on-demand payloads stay
+ * off the startup path (studio.md §11.1).
+ *
+ * Opt-in, and empty rather than failing when there is nothing to read: a source checkout that has
+ * never been built has no manifest, and a manifest from a build that predates the field has no
+ * `preload`. Both mean "no hints", which is exactly what a host got before this existed. A manifest
+ * that exists but is not JSON still throws, because that is a damaged install, not an old one.
+ *
+ * An entry that is not on disk under `root` is dropped: a hint for a missing chunk is a 404 on
+ * every cold start, and fewer hints is the better failure. That catches a `dist/` cleaned after the
+ * release build, NOT one the repo dev watcher rebuilt over it — there the release chunks are still
+ * on disk, just no longer imported, which is why the dev server drops the field itself before its
+ * first build (`forgetReleasePreload` in scripts/build-config.ts). A checkout the watcher has run
+ * on therefore reads as "no hints", the same as one never built.
+ *
+ * @param root Package root to read from — an installed copy, or a `--link` checkout.
+ * @returns Package-relative module paths, in the order the manifest lists them.
+ */
+export async function studioPreload(root: string = STUDIO_PACKAGE_DIR): Promise<string[]> {
+  const path = manifestPath(root);
+  if (!existsSync(path)) {
+    return [];
+  }
+  const manifest = JSON.parse(await readFile(path, "utf8")) as { preload?: unknown };
+  const { preload } = manifest;
+  if (!Array.isArray(preload)) {
+    return [];
+  }
+  return preload.filter(
+    (p): p is string => typeof p === "string" && existsSync(join(root, ...p.split("/"))),
   );
 }

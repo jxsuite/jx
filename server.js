@@ -8,12 +8,21 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createDevServer } from "@jxsuite/server";
 import { buildMonacoWorkers } from "./packages/studio/scripts/build-workers.ts";
-import { STUDIO_ENTRYPOINTS, studioBundleOptions } from "./packages/studio/scripts/build-config.ts";
+import {
+  STUDIO_ENTRYPOINTS,
+  forgetReleasePreload,
+  studioBundleOptions,
+} from "./packages/studio/scripts/build-config.ts";
 
 // The dev server rebuilds studio.js on change but not Monaco's workers, which monaco-setup.ts
 // Loads from packages/studio/dist/workers. Build them once at startup so a fresh checkout gets
 // JSON schema validation in the code view without a prior `bun run build`.
 await buildMonacoWorkers();
+
+// A previous `bun run build` left its modulepreload list in dist/manifest.json, naming release
+// Chunks the watcher's own studio.js is about to stop importing. Drop it before the first rebuild,
+// So a host reading this checkout through studioPreload() gets no hints rather than stale ones.
+await forgetReleasePreload();
 
 /**
  * One build entry PER studio entrypoint, each carrying the shared bundler contract.

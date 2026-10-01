@@ -6,7 +6,7 @@
  * `dist/codicon.ttf` go missing for months: the build emitted a file, the shipped CSS referenced
  * it, and nothing compared the two.
  *
- * Four rules:
+ * Five rules:
  *
  * 1. **Every required manifest entry exists.** The floor.
  * 2. **Every emitted file under `dist/` is accounted for** — matched by a manifest entry or by the
@@ -19,6 +19,11 @@
  *    surfaces something nobody had named: the chunk stylesheets are referenced by nothing at all.
  *    Carried on a ratcheting allow-list so the finding is recorded without blocking on deleting
  *    it.
+ * 5. **The manifest's `preload` list is real.** Every entry exists under `dist/` and is a split chunk,
+ *    and after a release build the list is not empty. A host turns each entry into a `<link
+ *    rel="modulepreload">`, so a stale name is a 404 on every cold start and an empty list is the
+ *    optimisation silently switched off — both with a working editor and nothing in the console,
+ *    which is the shape every rule in this file exists to catch.
  *
  * Run in the gated `studio-dist` CI job, after the build.
  */
@@ -28,6 +33,9 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, resolve } from "node:path";
 import { toPosixPath } from "./lib/posix-path";
 import { STUDIO_ASSETS, STUDIO_WORKERS } from "../src/hosting/layout";
+
+/** Where the build writes the manifest, relative to the package root. */
+export const MANIFEST = "dist/manifest.json";
 
 const PKG_DIR = resolve(import.meta.dir, "..");
 
@@ -128,6 +136,50 @@ export function unreachableStylesheets(
     }));
 }
 
+/**
+ * Rule 5: the manifest's `preload` list against the emitted tree.
+ *
+ * The gate runs after a release build, and the release build always writes the field, so an absent
+ * manifest or an absent/empty field is a finding rather than "nothing to check". The chunk test is
+ * the manifest's own `chunk` entry rather than a hard-coded `dist/chunks/`: a preload hint for an
+ * entry or a stylesheet would be a different kind of mistake, and the gate should say so.
+ */
+export function preloadFindings(pkgDir: string, emitted: readonly string[]): Finding[] {
+  const path = join(pkgDir, MANIFEST);
+  if (!existsSync(path)) {
+    return [{ detail: `${MANIFEST} is absent — the release build writes it`, rule: "preload" }];
+  }
+  const { preload } = JSON.parse(readFileSync(path, "utf8")) as { preload?: unknown };
+  if (!Array.isArray(preload) || preload.length === 0) {
+    return [
+      {
+        detail:
+          `${MANIFEST} has no preload list after a release build — the editor entry's static ` +
+          `import closure was not recorded, so a host opting into modulepreload hints gets none`,
+        rule: "preload",
+      },
+    ];
+  }
+  const chunkDirs = STUDIO_ASSETS.filter((a) => a.kind === "chunk").map((a) => `${a.path}/`);
+  const present = new Set(emitted);
+  const findings: Finding[] = [];
+  for (const entry of preload as unknown[]) {
+    const name = String(entry);
+    if (!present.has(name)) {
+      findings.push({
+        detail: `${MANIFEST} preloads ${name}, which the build did not emit — every host that hints it 404s on cold start`,
+        rule: "preload",
+      });
+    } else if (!name.endsWith(".js") || !chunkDirs.some((dir) => name.startsWith(dir))) {
+      findings.push({
+        detail: `${MANIFEST} preloads ${name}, which is not a split chunk — only the editor entry's static chunk imports belong there`,
+        rule: "preload",
+      });
+    }
+  }
+  return findings;
+}
+
 export function analyze(pkgDir = PKG_DIR): Finding[] {
   const distDir = join(pkgDir, "dist");
   const emitted = emittedFiles(distDir, pkgDir);
@@ -157,6 +209,7 @@ export function analyze(pkgDir = PKG_DIR): Finding[] {
     ...unaccounted(emitted),
     ...danglingUrls(pkgDir, css),
     ...unreachableStylesheets(pkgDir, css, js),
+    ...preloadFindings(pkgDir, emitted),
     ...staleAllowed,
   ];
 }
@@ -168,8 +221,8 @@ export function report(findings: readonly Finding[], pkgDir = PKG_DIR): string[]
     const bytes = dist.reduce((n, p) => n + statSync(join(pkgDir, p)).size, 0);
     return [
       `✓ check-studio-dist: ${dist.length} emitted file(s), ${(bytes / 1e6).toFixed(1)} MB, all ` +
-        `accounted for; every css url() resolves; ${UNREACHABLE_CSS.length} unreachable stylesheet ` +
-        `pattern(s) on the backlog.`,
+        `accounted for; every css url() resolves; every preloaded chunk exists; ` +
+        `${UNREACHABLE_CSS.length} unreachable stylesheet pattern(s) on the backlog.`,
     ];
   }
   return [

@@ -61,6 +61,20 @@ export interface DocumentOptions {
    * wants that fallback declares no boot module.
    */
   readonly boot?: readonly string[] | undefined;
+  /**
+   * Package-relative module paths to hint as `<link rel="modulepreload">` — the editor entry's
+   * static import closure, which `studioPreload()` (`./hosting`) reads from the installed build's
+   * `dist/manifest.json`. Each is rebased through {@link assetUrl} like every other reference.
+   *
+   * OPT-IN, and absent by default for two reasons. The chunk names are content hashes, true of one
+   * build only, so a document that bakes them in is wrong the moment a different build is served
+   * under it — the committed `packages/studio/index.html` is generated with no options and served
+   * by the dev watcher, whose chunks are never the release build's. And the hints buy back network
+   * round trips: a host serving the tree from local disk (the desktop app) has none to buy back, so
+   * it does not opt in. A host serving over the network, where each layer of the chunk graph a
+   * browser discovers by parsing costs a round trip, does.
+   */
+  readonly preload?: readonly string[] | undefined;
   /** Document title. Defaults to "Jx Studio". */
   readonly title?: string | undefined;
 }
@@ -85,6 +99,13 @@ export function studioShellHtml(options: DocumentOptions = {}): string {
   const links = [STUDIO_BUNDLE_CSS, ...STUDIO_STYLESHEETS]
     .map((path) => `    <link rel="stylesheet" href="${url(path)}" />`)
     .join("\n");
+  /* After the stylesheets, so a hint never competes with a render-blocking sheet for the head's
+     first fetches, and before any script, so every hinted module is already in flight when the
+     entry's own imports ask for it. No hints means no line at all — the no-options document is the
+     committed index.html, and CI diffs that byte for byte. */
+  const preload = (options.preload ?? [])
+    .map((path) => `\n    <link rel="modulepreload" href="${url(path)}" />`)
+    .join("");
   const boot = (options.boot ?? []).map((mod) => `    ${scriptTag(mod)}`).join("\n");
   /* Only when there IS a boot module: `packages/studio/index.html` is generated with none and CI
      diffs it byte for byte, and the dev server it is served by is the one host that should fall
@@ -100,7 +121,7 @@ export function studioShellHtml(options: DocumentOptions = {}): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 ${bootMeta}    <title>${options.title ?? "Jx Studio"}</title>
     <link rel="icon" href="${url(STUDIO_FAVICON)}" />
-${links}
+${links}${preload}
   </head>
   <body>
 ${boot ? `${boot}\n` : ""}    ${scriptTag(url(STUDIO_ENTRY))}

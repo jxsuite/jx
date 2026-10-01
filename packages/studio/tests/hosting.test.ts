@@ -12,6 +12,8 @@
  * not needing one.
  */
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   assetUrl,
   PUBLISHED_EXTRAS,
@@ -213,6 +215,62 @@ describe("studioShellHtml", () => {
 
   test("IN_PLACE is the package's own shape", () => {
     expect(studioShellHtml({ base: IN_PLACE })).toBe(studioShellHtml());
+  });
+});
+
+describe("studioShellHtml preload", () => {
+  const PRELOAD = ["dist/chunks/studio-aaaaaaaa.js", "dist/chunks/studio-bbbbbbbb.js"];
+  const hint = (href: string) => `<link rel="modulepreload" href="${href}" />`;
+
+  /* The opt-in is the contract. The committed index.html is generated with no options, served by the
+     dev watcher (whose chunk hashes are never the release build's), and byte-diffed by CI — so the
+     no-options document must not move by a byte. Compared against the committed file itself, not
+     against a second call, so this fails in the same pull request that would fail that diff. */
+  test("no options, and an empty list, produce the committed index.html byte for byte", () => {
+    const committed = readFileSync(join(import.meta.dir, "..", "index.html"), "utf8");
+    expect(studioShellHtml()).toBe(committed);
+    expect(studioShellHtml({ preload: [] })).toBe(committed);
+    expect(committed).not.toContain("modulepreload");
+  });
+
+  test("emits one modulepreload hint per entry, in the order given", () => {
+    const html = studioShellHtml({ preload: PRELOAD });
+    expect(html.match(/rel="modulepreload"/g)).toHaveLength(2);
+    expect(html.indexOf(hint(`./${PRELOAD[0]}`))).toBeLessThan(
+      html.indexOf(hint(`./${PRELOAD[1]}`)),
+    );
+  });
+
+  /* After the last render-blocking stylesheet so a hint never competes with one, and in the head
+     before any script so every hinted module is in flight when the entry asks for it. */
+  test("the hints follow the stylesheets and precede every script, inside the head", () => {
+    const html = studioShellHtml({ boot: ["/edit-init.js"], preload: PRELOAD });
+    const head = html.split("</head>")[0]!;
+    const first = head.indexOf("modulepreload");
+    expect(first).toBeGreaterThan(head.lastIndexOf('rel="stylesheet"'));
+    expect(first).toBeGreaterThan(-1);
+    expect(html.indexOf("<script")).toBeGreaterThan(head.lastIndexOf("modulepreload"));
+  });
+
+  test("each hint is rebased like every other reference, at every layout", () => {
+    expect(studioShellHtml({ base: NESTED, preload: PRELOAD })).toContain(
+      hint("/studio-assets/dist/chunks/studio-aaaaaaaa.js"),
+    );
+    // Flat strips the one dist/ segment, exactly as the entry's own `./chunks/` imports expect.
+    expect(studioShellHtml({ base: FLAT, preload: PRELOAD })).toContain(
+      hint("/chunks/studio-aaaaaaaa.js"),
+    );
+  });
+
+  /* The cloud's call shape. The boot meta, the attribute-free head and the boot ordering are all
+     independent of the hints. */
+  test("composes with boot without disturbing it", () => {
+    const html = studioShellHtml({ base: FLAT, boot: ["/edit-init.js"], preload: PRELOAD });
+    expect(html).toContain("\n  <head>\n");
+    expect(html).toContain('<meta name="jx-boot" content="launcher" />');
+    expect(html.indexOf("/edit-init.js")).toBeLessThan(html.indexOf("/studio.js"));
+    const withoutHints = studioShellHtml({ base: FLAT, boot: ["/edit-init.js"] });
+    expect(html.replaceAll(/\n {4}<link rel="modulepreload"[^\n]*/g, "")).toBe(withoutHints);
   });
 });
 
