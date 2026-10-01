@@ -1,8 +1,9 @@
 /**
  * The browser half of the wire envelope: one WebSocket per project, multiplexing every open
- * document. `createWsCollabConnection` owns the socket (exponential-backoff reconnect, re-open of
- * live docs on reconnect), the shared project-level Awareness, and per-doc sync state;
- * `openDoc(path)` hands out {@link CollabHandle}s for `StudioPlatform.collab`.
+ * document. `createWsCollabConnection` owns the socket (jittered-backoff reconnect with wake
+ * triggers, `reconnect.ts`; re-open of live docs on reconnect), the shared project-level Awareness,
+ * and per-doc sync state; `openDoc(path)` hands out {@link CollabHandle}s for
+ * `StudioPlatform.collab`.
  */
 
 import * as Y from "yjs";
@@ -16,6 +17,7 @@ import {
 } from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import { decodeFrame, encodeFrame } from "./envelope.ts";
+import { createReconnectScheduler } from "./reconnect.ts";
 import type { CollabFrame, ControlMessage } from "./envelope.ts";
 import type { CollabHandle, CollabIdentity, CollabStatus } from "./provider.ts";
 
@@ -52,8 +54,13 @@ export interface WsCollabConnectionOptions {
   hydratePath?: (path: string) => Promise<void>;
   /** Give up on an openDoc after this long (falls back to solo editing). */
   openTimeoutMs?: number;
-  /** Initial reconnect backoff (doubles to 30s). */
+  /** Initial reconnect backoff window (`ReconnectPolicy.baseMs`: doubles to 30s, equal jitter). */
   reconnectDelayMs?: number;
+  /**
+   * Jitter source for the reconnect backoff (`ReconnectPolicy.random`). Tests pin it so a retry's
+   * delay is exact; production leaves it to `Math.random`.
+   */
+  reconnectRandom?: () => number;
 }
 
 export interface WsCollabConnection {
@@ -99,8 +106,6 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
   let identity: CollabIdentity | null = null;
   let status: CollabStatus = "connecting";
   let destroyed = false;
-  let retryMs = options.reconnectDelayMs ?? 1000;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   const setStatus = (next: CollabStatus) => {
     if (status === next) {
@@ -262,10 +267,9 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
     entry.doc.destroy();
   };
 
+  /* No `destroyed` guard here: the only callers are the first connect below and the scheduler, and
+     `destroy()` disposes the scheduler, whose timer re-checks that before it calls back. */
   const connect = () => {
-    if (destroyed) {
-      return;
-    }
     setStatus("connecting");
     /* Re-offered on every reconnect: a socket that comes back after the server was restarted must
        negotiate again, and the offer is a property of this client's envelope, not of one socket. */
@@ -280,7 +284,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
        the injectable WsLike test surface minimal). */
     // oxlint-disable-next-line unicorn/prefer-add-event-listener
     ws.onopen = () => {
-      retryMs = options.reconnectDelayMs ?? 1000;
+      reconnect.opened();
       setStatus("connected");
       // Re-open every live doc and re-publish our awareness state.
       for (const path of docs.keys()) {
@@ -335,14 +339,17 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
       for (const entry of docs.values()) {
         entry.opened = false;
       }
-      retryTimer = setTimeout(connect, retryMs);
-      retryMs = Math.min(retryMs * 2, 30_000);
+      reconnect.scheduleRetry();
     };
     // oxlint-disable-next-line unicorn/prefer-add-event-listener
     ws.onerror = () => {
       // The close handler follows and owns retry.
     };
   };
+  const reconnect = createReconnectScheduler(connect, {
+    ...(options.reconnectDelayMs === undefined ? {} : { baseMs: options.reconnectDelayMs }),
+    ...(options.reconnectRandom === undefined ? {} : { random: options.reconnectRandom }),
+  });
   connect();
 
   return {
@@ -351,9 +358,7 @@ export function createWsCollabConnection(options: WsCollabConnectionOptions): Ws
         return;
       }
       destroyed = true;
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-      }
+      reconnect.dispose();
       removeAwarenessStates(awareness, [awareness.clientID], "destroy");
       awareness.destroy();
       awarenessDoc.destroy();
