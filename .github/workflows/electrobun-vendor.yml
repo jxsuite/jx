@@ -1,0 +1,244 @@
+# The Electrobun vendor lane: the second writer of a version that has two.
+#
+# `electrobun` is pinned in packages/desktop/package.json, and the SDK's TypeScript sources that
+# `packages/desktop` typechecks and builds its webview bundle against are a git submodule,
+# `vendor/electrobun`, whose gitlink names a commit. Same release, two files. Dependabot knows about
+# the first and cannot write the second, so every `electrobun` bump arrives with the pin moved and
+# the gitlink behind it, and `scripts/check-electrobun-vendor.ts --init` goes red in both `changes`
+# and `checks` — `changes` first, which skips the entire test matrix. The follow-up was one command
+# (`bun run electrobun:sync`) and one commit, by a human, on a branch nobody was otherwise watching.
+#
+# So this lane runs the command and makes the commit, exactly as schemas.yml does for committed
+# schemas. It is that lane's sibling in everything but what it regenerates, and its header applies
+# here: a push made with `GITHUB_TOKEN` moves the PR head, every workflow is queued on the new
+# commit, and the repository's Actions policy holds all of them in `action_required` because the
+# head is the bot's (issue #307). The step after the push approves them, through the same script.
+#
+# THE GATE STAYS STRICT, and that is the point of doing it as a separate lane. test.yml still runs
+# `--init`, which deliberately does not move the gitlink — moving it inside the gate is exactly how
+# a bump would stop looking like a mismatch. So the head the bump arrived on stays red and names the
+# problem, this lane fixes it, and the pushed head re-runs green. A pull request this lane cannot
+# push to (a fork's: the token is read-only by design) keeps the red X, which is the whole answer
+# there. scripts/electrobun-vendor-lane.test.ts holds test.yml to never running `--fix`.
+#
+# TERMINATION IS A FIXED POINT, not a guard. After the move the gitlink names the pinned tag, so the
+# run the push triggers (and the held run this lane approves) finds nothing to move and pushes
+# nothing. There is deliberately no `github.actor` refusal — approve-held-runs.ts requires each
+# pushing lane to terminate by one of the two mechanisms, and this is the schemas one.
+#
+# WHAT DIFFERS FROM schemas.yml, each for a reason:
+#
+#   1. NO TRUNK LEG. There is no merge race to repair on `main`: the pin and the gitlink are two
+#      lines in one pull request, so a pull request that moves one and not the other is red on its
+#      own head. Nothing here opens a pull request.
+#   2. FORKS ARE SKIPPED RATHER THAN GIVEN AN ARTIFACT. The fix is a one-line gitlink, not 500 KB
+#      of generated JSON a maintainer could not reproduce; `bun run electrobun:sync` is the patch.
+#   3. THE PUSH LOSES RACES AND SURVIVES THEM. On a grouped Dependabot bump this lane and
+#      schemas.yml both start from the same head, and this one finishes first. A plain push by
+#      the slower of two lanes is a rejected non-fast-forward, so the push fetches the branch,
+#      puts its tip under the work tree, applies the gitlink again and tries once more (the two
+#      lanes touch disjoint paths, so there is never anything to merge). schemas.yml has no such
+#      loop: when it loses it fails, and the run its winner's push queues regenerates from the new
+#      head, so it converges, but its first run is red. That is a defect there, not something to
+#      copy here.
+#
+# KNOWN LIMITATION, shared with schemas.yml and written up in release-bun-nix.yml: whether a
+# `GITHUB_TOKEN` carrying `actions: write` may approve runs on this repository is a policy nothing
+# in the tree can assert. The approve step therefore cannot fail the job; a refusal is written to
+# NOTE_FILE as the one-line crank per run and appended to the comment below.
+#
+# `contents: write` must be permitted for the Actions token (Settings → Actions → General →
+# Workflow permissions). Without it the push 403s, which fails the job, which is correct: the red
+# X on the pull request is then the same one it started with.
+
+name: Electrobun vendor
+
+on:
+  pull_request:
+
+# `contents: write` pushes the moved gitlink; `pull-requests: write` posts the one comment;
+# `actions: write` is for ONE endpoint, `POST /actions/runs/{id}/approve`, for the reason
+# schemas.yml and screenshots.yml carry it. Declaring `permissions:` at all is also what lifts the
+# read-only default a Dependabot-triggered run gets, which is the case this lane exists for.
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+# BOT OR HUMAN is part of the group for the approval step's sake, exactly as in schemas.yml: the
+# approved run on the bot's head has `github.actor == 'github-actions[bot]'`, and with
+# `cancel-in-progress` it must not land in the group of the run that is approving it. The prefix is
+# this lane's own, because concurrency groups are repository-wide and schemas.yml's would cancel it.
+concurrency:
+  group: electrobun-vendor-${{ github.event.pull_request.number }}-${{ github.actor == 'github-actions[bot]' && 'bot' || 'human' }}
+  cancel-in-progress: true
+
+jobs:
+  move:
+    # Same-repository pull requests only. A fork's token cannot push, and `jxsuite/jx` pins the
+    # lane to this repository so a fork's copy of the workflow is inert.
+    if: >-
+      github.repository == 'jxsuite/jx' &&
+      github.event.pull_request.head.repo.fork != true
+    runs-on: ubuntu-latest
+    # A liveness bound, not a performance budget: the work is a shallow submodule clone and one
+    # tag fetch. Anything approaching this means the network hung, and a hung job must report.
+    timeout-minutes: 10
+    steps:
+      # The head SHA, not the branch name, for the reason schemas.yml gives: it resolves for every
+      # pull request. The push below names a fully qualified refspec, which works from a detached
+      # HEAD.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
+
+      # Bun itself, not the workspace: the script is plain `Bun.spawnSync` over `git`, and
+      # skipping `bun install` keeps the no-op case (the common one) to seconds.
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      # `--fix` moves the submodule to the tag the `electrobun` pin names, applies the sparse
+      # patterns and writes the generated stub. It exits non-zero when it cannot — an unreadable or
+      # ranged pin, or a tag upstream never pushed — and that is a red X rather than something to
+      # commit. The gitlink is compared before and after rather than reading `git status`, because
+      # a sparse submodule can report itself modified for reasons that are not a moved commit.
+      - name: Move vendor/electrobun to the pinned tag
+        id: sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="$(git rev-parse HEAD:vendor/electrobun)"
+          bun scripts/check-electrobun-vendor.ts --fix
+          after="$(git -C vendor/electrobun rev-parse HEAD)"
+          version="$(jq -r '.devDependencies.electrobun' packages/desktop/package.json)"
+          {
+            echo "version=${version}"
+            echo "from=${before}"
+            echo "to=${after}"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$before" = "$after" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "vendor/electrobun already names ${after} (v${version}); nothing to move."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "vendor/electrobun: ${before} -> ${after} (v${version})"
+          fi
+
+      - name: Push the moved gitlink
+        id: push
+        if: steps.sync.outputs.changed == 'true'
+        shell: bash
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          VERSION: ${{ steps.sync.outputs.version }}
+          # The repository's husky hooks would otherwise run INSIDE this commit — nano-staged,
+          # oxfmt and the site-claims check, in the runner, against a one-line gitlink change. They
+          # are a local authoring aid and one failing would abort a push CI has already accepted.
+          HUSKY: "0"
+        run: |
+          set -euo pipefail
+          git config user.name "jx-electrobun[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          commit_gitlink() {
+            # Only the gitlink. `git add -A` here would be one commit away from committing the
+            # sparse checkout's generated stub or whatever else a runner left lying around.
+            git add -- vendor/electrobun
+            # `chore(desktop)`, deliberately: release-please bumps no version for a `chore`, and
+            # the pin this follows was already moved by whoever opened the pull request. No `<tag>`
+            # in the subject — a raw angle bracket there deletes a package from its own release
+            # (CLAUDE.md; scripts/check-changelog-safety.ts blocks it anyway).
+            git commit -m "chore(desktop): move vendor/electrobun to v${VERSION}" \
+              -m "Written by .github/workflows/electrobun-vendor.yml. The pin in packages/desktop/package.json names v${VERSION} and the vendored SDK sources must be the same release; run \`bun run electrobun:sync\` to reproduce."
+          }
+          commit_gitlink
+          # A lost race is expected, not exceptional (header, item 3). When the push is rejected,
+          # fetch the branch as it is now, put its tip under the work tree and apply the gitlink
+          # AGAIN — not `git rebase`, which has to carry a submodule whose checked-out commit
+          # disagrees with the index through a checkout of the new tip, and has no reason to when
+          # the whole change is "point this path at the commit the submodule is already on".
+          # FETCH_HEAD rather than a remote-tracking name: this checkout is detached and fetched a
+          # single commit, so there is no `origin/…` to name. `reset --hard` does not recurse into
+          # submodules here, so the submodule stays on the pinned tag.
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:refs/heads/${BRANCH}"; then
+              echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "push rejected (attempt ${attempt}); re-applying onto the branch as it is now"
+            sleep $((attempt - 1))
+            git fetch origin "refs/heads/${BRANCH}"
+            git reset --hard FETCH_HEAD
+            # Whoever won the race may have moved the pin itself (Dependabot rebasing onto a newer
+            # release). The gitlink this run computed is then the wrong one, and the push that
+            # moved the pin has queued a run of this lane that will compute the right one.
+            pin="$(jq -r '.devDependencies.electrobun' packages/desktop/package.json)"
+            if [ "$pin" != "$VERSION" ]; then
+              echo "The branch now pins v${pin}, not v${VERSION}; the run its push queued owns that."
+              exit 0
+            fi
+            git add -- vendor/electrobun
+            if git diff --cached --quiet; then
+              echo "The branch already names the pinned release; nothing left to push."
+              exit 0
+            fi
+            commit_gitlink
+          done
+          echo "::error::Could not push to ${BRANCH} after 5 attempts."
+          exit 1
+
+      # ── Un-hold what the push queued ──────────────────────────────────────
+      # The same step schemas.yml runs, for the same reason (issue #307); that lane's header and
+      # approve-held-runs.ts carry the safety argument for approving every held run on the head.
+      # This lane terminates on a fixed point, so approving its own held run is safe. It cannot
+      # fail the job: a refusal is printed as the one-line human crank per run and written to
+      # NOTE_FILE, which the comment step appends.
+      - name: Approve the runs the push queued
+        id: approve
+        if: steps.push.outputs.sha != ''
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          NOTE_FILE: /tmp/electrobun-vendor-approval.md
+        run: bun scripts/ci/approve-held-runs.ts
+
+      - name: Comment on the pull request
+        if: steps.push.outputs.sha != ''
+        uses: actions/github-script@v9
+        env:
+          # Same path as the approval step's; the wiring test in scripts/ci pins the two together.
+          NOTE_FILE: /tmp/electrobun-vendor-approval.md
+          VERSION: ${{ steps.sync.outputs.version }}
+          FROM: ${{ steps.sync.outputs.from }}
+          TO: ${{ steps.sync.outputs.to }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const marker = '<!-- jx-electrobun-vendor -->';
+            const { VERSION, FROM, TO, NOTE_FILE } = process.env;
+            let body = marker + '\n**`vendor/electrobun` moved to `v' + VERSION + '`.**\n\n' +
+              'The `electrobun` pin in `packages/desktop/package.json` names `v' + VERSION + '`, ' +
+              'but the vendored SDK sources the desktop package typechecks against were still on ' +
+              'the previous release (`' + FROM.slice(0, 8) + '` → `' + TO.slice(0, 8) + '`). ' +
+              'Pushed to this branch by `.github/workflows/electrobun-vendor.yml`; ' +
+              '`bun run electrobun:sync` produces the same commit locally.\n';
+            // Written only when the approval step could not release a held run: the crank the
+            // human has to turn, with the run ids, so BLOCKED comes with its own instructions.
+            if (NOTE_FILE && fs.existsSync(NOTE_FILE)) {
+              body += fs.readFileSync(NOTE_FILE, 'utf8');
+            }
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.startsWith(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
