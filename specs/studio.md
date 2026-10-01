@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.13.10-draft\
+**Version:** 0.13.14-draft\
 **Status:** Partial\
-**Updated:** 2026-09-29\
+**Updated:** 2026-10-01\
 **License:** MIT
 
 ---
@@ -1915,6 +1915,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.13.14-draft** (2026-10-01) — §11.1: the release build's entry passes define process.env.NODE_ENV as production, dropping the development build of @vue/reactivity from both entries.
+- **0.13.13-draft** (2026-10-01) — §11.1 and §11.2: the release build records the editor entry's static import closure as preload in dist/manifest.json, studioPreload() reads it back, and studioShellHtml({ preload }) emits opt-in modulepreload hints; the no-options document is unchanged. The dev server rewrites the manifest without preload at startup, so a watcher-rebuilt checkout yields no stale hints, and studioPreload drops entries that are not on disk.
+- **0.13.12-draft** (2026-10-01) — §11.1: release bundles and the Monaco workers are minified with linked source maps; the dev watcher is not, and a survey of the unminified bundle, not the keepNames flag Bun 1.4.2 ignores, is what makes renaming safe. The worker maps, like the chunks', stay out of the npm tarball: package.json publishes dist/workers/*.js, and check-studio-package.ts fails a files entry that would publish a dist/ source map.
+- **0.13.11-draft** (2026-10-01) — §4.2: the Document Header card folds to its bar; folded or open is per document, and the reader's last choice persists as the default for every document opened after it.
 - **0.13.10-draft** (2026-09-29) — Citations of the deleted Studio redesign plan now name the section that holds each rule: Contexts is §17.1, idempotence is §13.5, the shot contract is scripts/screenshots/README.md, and the Bottom dock is §16.3; cross-spec citations name their spec.
 - **0.13.9-draft** (2026-09-29) — §11.2 carries its status marker in the canonical form, so the section reads as Implemented to every page derived from the specs.
 - **0.13.8-draft** (2026-09-29) — §9.1.1 cites the findReferences PAL member in desktop.md §3.1 alone, no longer a deleted plan document.
@@ -2066,4 +2070,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.13.10-draft_
+_`@jxsuite/studio` Specification v0.13.14-draft_
