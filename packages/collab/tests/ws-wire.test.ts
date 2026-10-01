@@ -538,6 +538,7 @@ describe("lifecycle", () => {
     const connection = createWsCollabConnection({
       openTimeoutMs: 1000,
       reconnectDelayMs: 1,
+      reconnectRandom: () => 1,
       url: "ws://loopback",
       webSocketImpl: socketImplFor(
         fx.host,
@@ -593,6 +594,7 @@ describe("lifecycle", () => {
     const connection = createWsCollabConnection({
       openTimeoutMs: 1000,
       reconnectDelayMs: 1,
+      reconnectRandom: () => 1,
       url: "ws://loopback",
       webSocketImpl: socketImplFor(
         fx.host,
@@ -605,13 +607,13 @@ describe("lifecycle", () => {
     const socketCount = fx.sockets.length;
     // A transport that fires close twice for one socket (not spec-conformant, but WsLike's
     // Contract does not forbid it) must not leak a reconnect past destroy(): the first close
-    // Schedules a retry timer, the second overwrites the tracked reference without clearing it.
+    // Schedules a retry timer, and a second one must neither arm another nor lose track of it.
     fx.sockets[0]!.onclose?.();
     fx.sockets[0]!.onclose?.();
     connection.destroy();
     await settle(30);
-    // The orphaned first timer would have fired connect() again, minting a new socket, had the
-    // Post-destroy guard not caught it.
+    // An orphaned first timer would have fired connect() again, minting a new socket: the
+    // Scheduler arms one retry at a time, and destroy() disposes it.
     expect(fx.sockets.length).toBe(socketCount);
   });
 });

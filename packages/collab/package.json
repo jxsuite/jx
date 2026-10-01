@@ -24,6 +24,7 @@
     "./awareness-types": "./src/awareness-types.ts",
     "./provider": "./src/provider.ts",
     "./client": "./src/ws-client.ts",
+    "./reconnect": "./src/reconnect.ts",
     "./room": "./src/ws-room.ts"
   },
   "publishConfig": {
