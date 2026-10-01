@@ -23,8 +23,10 @@
  * anyway, because a growing list is the signal that the assumption stopped holding.
  *
  * The version has two writers — the `electrobun` devDependency pin and this submodule's gitlink —
- * so the gate is what keeps them together. A Dependabot bump moves the pin alone, goes red here,
- * and `bun run electrobun:sync` is the one-command follow-up.
+ * so the gate is what keeps them together. A Dependabot bump moves the pin alone and goes red here;
+ * `.github/workflows/electrobun-vendor.yml` runs `bun run electrobun:sync` on the pull request and
+ * commits the moved gitlink, so the red head is followed by a green one. Locally, `electrobun:sync`
+ * is the same one-command fix.
  *
  *     bun scripts/check-electrobun-vendor.ts                # the gate
  *     bun scripts/check-electrobun-vendor.ts --init         # check out/sparsify/stub, then gate
