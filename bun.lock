@@ -185,11 +185,15 @@
       "name": "@jxsuite/desktop",
       "version": "5.2.0",
       "dependencies": {
+        "@jxsuite/auth": "workspace:^",
         "@jxsuite/compiler": "workspace:^",
+        "@jxsuite/connector": "workspace:^",
         "@jxsuite/create": "workspace:^",
+        "@jxsuite/feed": "workspace:^",
         "@jxsuite/parser": "workspace:^",
         "@jxsuite/protocol": "workspace:^",
         "@jxsuite/schema": "workspace:^",
+        "@jxsuite/search": "workspace:^",
         "@jxsuite/server": "workspace:^",
         "@jxsuite/starters": "workspace:^",
         "@jxsuite/studio": "workspace:^",
@@ -199,7 +203,6 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.5",
-        "@jxsuite/connector": "workspace:^",
         "@jxsuite/server": "workspace:^",
         "@jxsuite/ui": "workspace:^",
         "electrobun": "2.0.2",
@@ -305,6 +308,7 @@
         "@jxsuite/starters": "workspace:^",
         "chokidar": "^5.0.0",
         "kysely": "^0.29.6",
+        "oxfmt": "^0.70.0",
         "zod": "^4.6.5",
       },
       "devDependencies": {
