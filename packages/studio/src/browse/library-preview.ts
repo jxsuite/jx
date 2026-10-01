@@ -26,6 +26,7 @@ import {
   setSkipServerFunctions,
 } from "@jxsuite/runtime";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
+import { assetVersionsSnapshot } from "../files/asset-versions";
 import { componentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { loadFormats, formatForPath } from "../format/format-host";
@@ -121,7 +122,7 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
   try {
     const content = await getPlatform().readFile(filePath);
     setSkipServerFunctions(true);
-    const assets = assetContextFor(filePath, hostAssetDeclarations());
+    const context = assetContextFor(filePath, hostAssetDeclarations());
     await loadFormats();
     let document_: JxDocument;
     if (formatForPath(filePath)) {
@@ -134,7 +135,10 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
     /* This render lands in the PARENT document, so an `<img src="/hero.jpg">` inside it resolves
        against `index.html` — which is the shell, not the site. Same hook the canvas installs, same
        context, restored afterwards because the next preview is a different document and a stale
-       `documentDir` would resolve its relative refs against the wrong entry. */
+       `documentDir` would resolve its relative refs against the wrong entry. The version map is
+       read as the render starts, after the reads above: the Library is the many-images screen,
+       and a versioned src is what lets its cards repaint from the browser cache. */
+    const assets = context && { ...context, versions: assetVersionsSnapshot() };
     setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
     try {
       const element = renderNode(document_, scope);

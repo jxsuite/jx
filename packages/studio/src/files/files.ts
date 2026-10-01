@@ -47,6 +47,7 @@ import { ensureDependenciesInstalled } from "../packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "../packages/jxsuite-update";
 import { autoSyncProjectOnOpen } from "../packages/pull-package-sync";
 import { markLocalMutation } from "./fs-events";
+import { notedListing, resetAssetVersions } from "./asset-versions";
 import { ensureIgnoreLayers, isIgnoredEntry, resetIgnoreCache } from "./gitignore";
 import { SETTINGS } from "../services/settings/definitions";
 import { readStoredSetting, setSetting } from "../services/settings/kernel";
@@ -125,7 +126,8 @@ export async function loadDirectory(dirPath: string) {
        ignore rules synchronously while it builds rows, and a repaint that beat the rules would draw
        a `node_modules` and then take it away again. Concurrent, because neither needs the other. */
     const [entries] = await Promise.all([
-      platform.listDirectory(dirPath),
+      // Noted: a listing is where Studio learns which files' bytes the backend vouches for.
+      notedListing(() => platform.listDirectory(dirPath)),
       ensureIgnoreLayers(dirPath),
     ]);
     projectState.dirs.set(dirPath, entries);
@@ -163,6 +165,7 @@ export async function loadProject() {
     void loadFormats();
     refreshExtensionUi(platform);
     resetIgnoreCache();
+    resetAssetVersions();
 
     setProjectState({
       dirs: new Map(),
@@ -243,6 +246,7 @@ export async function openProject({
     void loadFormats();
     refreshExtensionUi(platform);
     resetIgnoreCache();
+    resetAssetVersions();
 
     setProjectState({
       .../** @type {ProjectState} */ projectState,

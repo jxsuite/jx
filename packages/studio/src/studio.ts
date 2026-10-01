@@ -129,6 +129,7 @@ import {
   reloadTabsIfChanged,
 } from "./files/files";
 import { resetIgnoreCache } from "./files/gitignore";
+import { resetAssetVersions } from "./files/asset-versions";
 import { startFsSync } from "./files/fs-events";
 import { invalidateParamValues } from "./page-params";
 import {
@@ -1026,6 +1027,7 @@ if (_projectParam) {
           }
 
           resetIgnoreCache();
+          resetAssetVersions();
           setProjectState({
             dirs: new Map(),
             expanded: new Set(),
@@ -1359,6 +1361,7 @@ async function openRecentProject(root: string) {
 
     closeAllTabs();
     resetIgnoreCache();
+    resetAssetVersions();
 
     setProjectState({
       ...projectState,

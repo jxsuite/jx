@@ -20,6 +20,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { getPlatform, hasPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { activeTab } from "../workspace/workspace";
+import { forgetVersions, notedListing } from "./asset-versions";
 
 // ─── File classification ─────────────────────────────────────────────────────
 
@@ -245,7 +246,8 @@ export async function uploadAssets(
 
   let taken: Set<string>;
   try {
-    const existing = await platform.listDirectory(dir);
+    // The upload directory is a media directory, so its listing vouches for versions as well.
+    const existing = await notedListing(() => platform.listDirectory(dir));
     taken = new Set(existing.map((entry) => entry.name));
   } catch {
     taken = new Set(); // Directory doesn't exist yet — the backend mkdir -p's on write.
@@ -273,6 +275,8 @@ export async function uploadAssets(
          hash, appends a collision suffix, or normalizes a name writes somewhere else, and the
          reference that goes into the document has to name what is really there. */
       const { path } = await platform.uploadFile(requested, file);
+      // New bytes at `path`: whatever version a listing held for it no longer names them.
+      forgetVersions([path]);
       uploaded.push({ kind: mediaKind(file), name, path, ref: assetRef(path) });
     } catch (error) {
       notify.error(`Could not upload ${file.name}.`, {

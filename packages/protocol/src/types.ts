@@ -41,6 +41,13 @@ export interface DirEntry {
   type: "file" | "directory";
   size?: number;
   modified?: string;
+  /**
+   * An opaque version of the file's bytes: two equal versions mean identical bytes. ABSENT whenever
+   * the backend cannot vouch for the bytes — an uncommitted, dirty or just-uploaded file, and every
+   * directory. A client may append it to the file's URL (`?v=<version>`) so a host that recognizes
+   * it can answer with an immutable cache lifetime; a backend with no such notion never sets it.
+   */
+  version?: string;
 }
 
 /** A filesystem change pushed from the backend (project-relative, forward-slashed path). */

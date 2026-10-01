@@ -209,7 +209,7 @@ export interface SitePreviewResult extends SiteBuildResult {
  * `StudioPlatform.subscribeFileEvents`). Studio-side only: no wire message carries this union, so
  * `FsEvent` itself is unchanged.
  */
-export type FsResyncReason = "reconnect" | "commit";
+export type FsResyncReason = "reconnect" | "commit" | "open";
 
 export interface StudioPlatform {
   id: string;
@@ -372,8 +372,12 @@ export interface StudioPlatform {
    * `options.onResync` is how a transport admits that the event stream alone may not describe the
    * tree any more. `"reconnect"`: the stream dropped and came back, so every event in between was
    * lost and Studio must re-read what it has cached. `"commit"`: the backend committed without
-   * emitting per-file events, so the listings are re-read but open documents are not. A platform
-   * whose stream cannot lose events (an in-process watcher) never calls it.
+   * emitting per-file events, so the listings are re-read but open documents are not. `"open"`: the
+   * stream's FIRST open — events sent before it reached nobody, and listings made before it (the
+   * project's first ones, raced against the handshake) may already be stale; a transport whose
+   * listings carry `DirEntry.version` reports it, so content versions noted before the stream was
+   * live are dropped and the loaded listings re-read. A platform whose stream cannot lose events
+   * (an in-process watcher) never calls it.
    */
   subscribeFileEvents?: (
     handler: (events: FsEvent[]) => void,

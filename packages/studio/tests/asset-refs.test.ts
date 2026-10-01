@@ -23,6 +23,8 @@ import {
   previewAssetSrc,
   resolveAssetRef,
 } from "../src/canvas/asset-refs";
+import { withVersion } from "../src/canvas/asset-resolve";
+import { beginListing, noteListing, resetAssetVersions } from "../src/files/asset-versions";
 import { BUILD_LANES } from "@jxsuite/schema/asset-paths";
 import type { AssetContext } from "../src/canvas/asset-refs";
 
@@ -173,9 +175,117 @@ describe("previewAssetSrc", () => {
     expect(previewAssetSrc("")).toBe("");
   });
 
+  test("a repo-space value carries the version a listing vouched for", async () => {
+    const { installMockPlatform } = await import("./harness");
+    const { happyDOM } = globalThis as unknown as { happyDOM?: { setURL: (u: string) => void } };
+    happyDOM?.setURL("https://studio.example.com/");
+    installMockPlatform({
+      assetSpace: "repo",
+      canvasUrl: "https://studio.example.com/canvas.html",
+      documentBaseUrl: "https://studio.example.com/p/o/r/main/raw/",
+    } as never);
+    resetWorkspaceWithTab(undefined, { documentPath: "content/posts/hello.md" });
+    resetAssetVersions();
+    noteListing(
+      [
+        {
+          name: "hero.png",
+          path: "content/posts/images/hero.png",
+          type: "file",
+          version: "abc123",
+        },
+      ],
+      beginListing(),
+    );
+    try {
+      expect(previewAssetSrc("./images/hero.png")).toBe(
+        "https://studio.example.com/p/o/r/main/raw/content/posts/images/hero.png?v=abc123",
+      );
+    } finally {
+      resetAssetVersions();
+      // Back to a host that declares nothing, which is what every other case here assumes.
+      installMockPlatform();
+    }
+  });
+
   test("passes through with no tab open", () => {
     resetStudioState({ projectConfig: { content: POSTS, name: "Demo" } });
     expect(previewAssetSrc("./images/hero.png")).toBe("./images/hero.png");
+  });
+});
+
+describe("withVersion", () => {
+  test("no version leaves the URL exactly as given", () => {
+    const versions: Record<string, string> = {};
+    expect(withVersion("https://h/raw/a.png?x=1#f", versions["a.png"])).toBe(
+      "https://h/raw/a.png?x=1#f",
+    );
+    expect(withVersion("https://h/raw/a.png", "")).toBe("https://h/raw/a.png");
+  });
+
+  test("adds a query where there was none", () => {
+    expect(withVersion("https://h/raw/a.png", "abc")).toBe("https://h/raw/a.png?v=abc");
+  });
+
+  test("merges into an existing query", () => {
+    expect(withVersion("https://h/raw/a.png?w=100&h=50", "abc")).toBe(
+      "https://h/raw/a.png?w=100&h=50&v=abc",
+    );
+  });
+
+  test("goes before the fragment, with or without a query", () => {
+    expect(withVersion("https://h/raw/a.pdf#page=3", "abc")).toBe(
+      "https://h/raw/a.pdf?v=abc#page=3",
+    );
+    expect(withVersion("https://h/raw/a.pdf?x=1#page=3", "abc")).toBe(
+      "https://h/raw/a.pdf?x=1&v=abc#page=3",
+    );
+    // A `?` inside the fragment is the fragment's, not a query.
+    expect(withVersion("https://h/raw/a.svg#icon?x", "abc")).toBe(
+      "https://h/raw/a.svg?v=abc#icon?x",
+    );
+  });
+
+  test("replaces a v the URL already carried, and tidies an empty query", () => {
+    expect(withVersion("https://h/raw/a.png?v=2&w=1", "abc")).toBe("https://h/raw/a.png?w=1&v=abc");
+    expect(withVersion("https://h/raw/a.png?v&w=1", "abc")).toBe("https://h/raw/a.png?w=1&v=abc");
+    expect(withVersion("https://h/raw/a.png?", "abc")).toBe("https://h/raw/a.png?v=abc");
+    // `vv=` is a different parameter.
+    expect(withVersion("https://h/raw/a.png?vv=1", "abc")).toBe("https://h/raw/a.png?vv=1&v=abc");
+  });
+
+  /* The host reads `v` through `URLSearchParams`, which decodes keys and returns the FIRST match,
+     so an authored key that DECODES to `v` would win over Studio's. */
+  test("replaces a percent-encoded v too, the way the host decodes it", () => {
+    const url = withVersion("https://h/raw/a.png?%76=bad&w=1&%2576=kept", "good");
+    expect(url).toBe("https://h/raw/a.png?w=1&%2576=kept&v=good");
+    expect(new URL(url).searchParams.get("v")).toBe("good");
+    // A malformed escape is no `v`, and survives untouched.
+    expect(withVersion("https://h/raw/a.png?%7=1", "abc")).toBe("https://h/raw/a.png?%7=1&v=abc");
+  });
+
+  /* Unversioned URLs keep working exactly as before versions existed — an authored cache-buster
+     included. A host answers a `v` immutably only when it is the file's CURRENT version, so an
+     authored one naming anything else gets the ordinary revalidating response. */
+  test("with no version, the URL comes back exactly, an authored v included", () => {
+    const oldBlob = "c".repeat(40);
+    const none = ({} as Record<string, string>)["a.png"];
+    expect(withVersion(`https://h/raw/a.png?v=${oldBlob}`, none)).toBe(
+      `https://h/raw/a.png?v=${oldBlob}`,
+    );
+    expect(withVersion("https://h/raw/a.png?w=1&%76=2#f", none)).toBe(
+      "https://h/raw/a.png?w=1&%76=2#f",
+    );
+    expect(withVersion("https://h/raw/a.png?w=1&&x#f", none)).toBe("https://h/raw/a.png?w=1&&x#f");
+  });
+
+  test("a version that is not a non-empty string is no version", () => {
+    expect(withVersion("https://h/raw/a.png", (() => {}) as never)).toBe("https://h/raw/a.png");
+    expect(withVersion("https://h/raw/a.png", {} as never)).toBe("https://h/raw/a.png");
+  });
+
+  test("encodes the opaque version", () => {
+    expect(withVersion("/raw/a.png", "a b&c")).toBe("/raw/a.png?v=a%20b%26c");
   });
 });
 
@@ -265,6 +375,10 @@ describe("resolveAssetRef", () => {
     });
 
     test("the query and hash survive, and the path is encoded", () => {
+      expect(resolveAssetRef("./images/my photo.png?w=2", repo("content/posts"))).toBe(
+        "https://studio.example.com/p/o/r/main/raw/content/posts/images/my%20photo.png?w=2",
+      );
+      // An authored `v` included: an unversioned file resolves exactly as it always did.
       expect(resolveAssetRef("./images/my photo.png?v=2", repo("content/posts"))).toBe(
         "https://studio.example.com/p/o/r/main/raw/content/posts/images/my%20photo.png?v=2",
       );
@@ -283,6 +397,61 @@ describe("resolveAssetRef", () => {
       ]) {
         expect(resolveAssetRef(value, repo("content/posts"))).toBeNull();
       }
+    });
+
+    /* The version map is the backend vouching for a file's bytes; a host may then cache the
+       versioned URL immutably. Only a path IN the map is versioned — everything else resolves
+       exactly as it did before versions existed, which is what keeps unversioned URLs working. */
+    test("a versioned file resolves to its URL with ?v=, keeping the authored suffix", () => {
+      const versioned: AssetContext = {
+        ...repo("content/posts"),
+        versions: {
+          "content/posts/doc.pdf": "d0c",
+          "content/posts/images/hero.png": "abc123",
+          "public/hero.jpg": "f00",
+        },
+      };
+      expect(resolveAssetRef("./images/hero.png", versioned)).toBe(
+        "https://studio.example.com/p/o/r/main/raw/content/posts/images/hero.png?v=abc123",
+      );
+      expect(resolveAssetRef("/hero.jpg", versioned)).toBe(
+        "https://studio.example.com/p/o/r/main/raw/public/hero.jpg?v=f00",
+      );
+      expect(resolveAssetRef("./doc.pdf#page=3", versioned)).toBe(
+        "https://studio.example.com/p/o/r/main/raw/content/posts/doc.pdf?v=d0c#page=3",
+      );
+      // Not in the map: unversioned, exactly as before.
+      expect(resolveAssetRef("./images/other.png", versioned)).toBe(
+        "https://studio.example.com/p/o/r/main/raw/content/posts/images/other.png",
+      );
+    });
+
+    /* The map is a plain object (a structured clone of one in the frame), so a path that happens to
+       be an `Object.prototype` member name must not read the prototype's member as its version. */
+    test("only the map's OWN keys are versions", () => {
+      const root = { ...repo(""), versions: Object.freeze({ "a.png": "abc" }) };
+      const base = "https://studio.example.com/p/o/r/main/raw/";
+      expect(resolveAssetRef("constructor", root)).toBe(`${base}constructor`);
+      expect(resolveAssetRef("./toString", root)).toBe(`${base}toString`);
+      expect(resolveAssetRef("__proto__", root)).toBe(`${base}__proto__`);
+      expect(resolveAssetRef("pages/../valueOf", root)).toBe(`${base}valueOf`);
+      expect(
+        resolveAssetRef("constructor", { ...root, versions: structuredClone(root.versions) }),
+      ).toBe(`${base}constructor`);
+      // An inherited STRING is still not this map's to vouch for.
+      const inherited = { ...root, versions: Object.create({ "b.png": "inherited" }) as never };
+      expect(resolveAssetRef("b.png", inherited)).toBe(`${base}b.png`);
+      // And a non-string own value is no version either.
+      const odd = { ...root, versions: { "c.png": 7 } as never };
+      expect(resolveAssetRef("c.png", odd)).toBe(`${base}c.png`);
+    });
+
+    test("a version replaces an authored v; an unversioned file keeps it", () => {
+      const versioned = { ...repo("content/posts"), versions: { "content/posts/a.png": "abc" } };
+      const base = "https://studio.example.com/p/o/r/main/raw/content/posts/";
+      expect(resolveAssetRef("./a.png?%76=bad", versioned)).toBe(`${base}a.png?v=abc`);
+      expect(resolveAssetRef("./a.png?v=2&w=1", versioned)).toBe(`${base}a.png?w=1&v=abc`);
+      expect(resolveAssetRef("./b.png?v=2&w=1", versioned)).toBe(`${base}b.png?v=2&w=1`);
     });
 
     /* A host that declares repo space and no base has said its site URLs are wrong without saying

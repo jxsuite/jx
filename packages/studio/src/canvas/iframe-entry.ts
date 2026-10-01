@@ -53,8 +53,11 @@ import {
   reapplyStyle,
   redefineElement,
   resetDocumentStyles,
+  setCanvasAssetResolver,
   setResolveToken,
 } from "@jxsuite/runtime";
+import { resolveAssetRef } from "./asset-resolve";
+import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { IframeChannel } from "./iframe-channel";
 import type {
@@ -120,6 +123,25 @@ export function isExternalFileDrag(e: DragEvent): boolean {
  * file-specific branch.
  */
 const FILE_DRAG_SRC: DragSrcKind = { type: "block" };
+
+/**
+ * The project's media versions, as the host last posted them (`assetVersions`). Module-level: one
+ * frame per realm, and the map describes the PROJECT, not any one render. Folded into every
+ * render's asset context by {@link versionedAssets}; empty until the host sends one, which resolves
+ * every reference unversioned — the behaviour from before versions existed.
+ */
+let assetVersions: Readonly<Record<string, string>> = {};
+/**
+ * The asset context of the newest render accepted, WITHOUT versions — kept so a later
+ * `assetVersions` can rebuild the resolver around the new map. Null when that render resolves
+ * nothing.
+ */
+let liveAssets: AssetContext | null = null;
+
+/** A render's asset context with the current versions folded in, or null for no resolution. */
+function versionedAssets(assets: AssetContext | null): AssetContext | null {
+  return assets ? { ...assets, versions: assetVersions } : null;
+}
 
 /**
  * Describe the node under a file drag for the parent: its path, rect, and resolved tag. The tag
@@ -240,6 +262,9 @@ export function startCanvasIframe(opts: {
   container: HTMLElement;
 }): () => void {
   const { channel, container } = opts;
+  // A frame starts knowing no versions; the host posts the map before the first render.
+  assetVersions = {};
+  liveAssets = null;
   let handle: RenderHandle | null = null;
   // Disposer for the live render's dataScope re-post effect (see the render handler); stopped
   // Alongside the handle so a superseded render's refs can't keep posting.
@@ -869,6 +894,17 @@ export function startCanvasIframe(opts: {
       stopAutoScroll();
       return;
     }
+    if (msg.kind === "assetVersions") {
+      /* Replaced wholesale, like the keymap. The resolver the last render installed closed over the
+         old map, and a patch draws through that resolver — so it is rebuilt around the new one
+         here, not left for the next render. */
+      assetVersions = msg.versions;
+      const assets = versionedAssets(liveAssets);
+      if (assets) {
+        setCanvasAssetResolver((value) => resolveAssetRef(value, assets));
+      }
+      return;
+    }
     if (msg.kind === "keymap") {
       // Replaced wholesale, never merged: the host sends the whole live table, so a chord the
       // Author unbound disappears here rather than lingering as a key the canvas still swallows.
@@ -946,6 +982,7 @@ export function startCanvasIframe(opts: {
       stopEditing();
     }
     latestGen = msg.gen;
+    liveAssets = msg.assets ?? null;
     // Adopt the document's caret vocabulary BEFORE rendering: which tags hold a caret depends on
     // The format class, and a `.md` page and a native `.json` component do not agree. Absent means
     // A document with no format, where the studio's own element metadata answers on its own.
@@ -966,7 +1003,7 @@ export function startCanvasIframe(opts: {
            element per render. */
         resetDocumentStyles(container.ownerDocument);
         handle = await renderResolvedDocument({
-          assets: msg.assets ?? null,
+          assets: versionedAssets(msg.assets ?? null),
           container,
           doc: msg.doc as JxDocument,
           docBase: msg.docBase,

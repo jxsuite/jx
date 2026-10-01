@@ -49,6 +49,7 @@ import { DIALOG_COMMANDS, isDialog, POPOVER_COMMANDS } from "@jxsuite/schema/dia
 import { isPopover } from "@jxsuite/schema/overlays";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
+import { assetVersionsEpoch, assetVersionsSnapshot } from "../files/asset-versions";
 import type {
   ApplyFormatIntent,
   CanvasMode,
@@ -90,6 +91,12 @@ interface HostState {
   canvasUrl: string;
   ready: boolean;
   pending: ParentToIframe | null;
+  /**
+   * The asset-version snapshot this frame last received (`assetVersions`), or null when it has
+   * received none since it last said `ready`. Compared by identity — the snapshot is memoized and
+   * changes identity only when a media version moves.
+   */
+  postedVersions: Readonly<Record<string, string>> | null;
   overlay: OverlayLayer;
   /** Primary selected path (mirrors `session.selection`'s last entry), for hover de-dupe. */
   selectionPath: (string | number)[] | null;
@@ -1304,6 +1311,8 @@ export function postPatchToHosts(forwardOps: WireDocOp[], tabId: string | null):
       // Only the host that originated this edit already has the DOM the patch describes. A
       // Split-view panel on the same document did NOT type it and must render normally.
       const echoPaths = echoOrigin?.host === host ? echoOrigin.paths : undefined;
+      // A patch draws nodes too, so it must not resolve media against an older map.
+      syncAssetVersions(host);
       host.channel.post(
         echoPaths
           ? { echoPaths, forwardOps, gen, kind: "patch" }
@@ -1494,6 +1503,74 @@ function ensureSelectionWatch(): void {
     });
   });
   selectionWatch = { stop: () => scope.stop() };
+}
+
+/**
+ * Post a ready frame the current asset-version snapshot if it holds an older one.
+ *
+ * Called before every render and patch the host sends, on `ready`, and whenever the versions move —
+ * so a frame can never draw a node against a map older than the one Studio holds, and a version
+ * that was forgotten (the bytes changed) never reaches a resolver after the forget. A frame that
+ * has received nothing and would receive an empty map is sent nothing: the frame starts empty, and
+ * a host that never versions anything (desktop, `jx dev`) should not pay a message per frame for
+ * it.
+ */
+function syncAssetVersions(host: HostState): void {
+  if (!host.ready) {
+    return;
+  }
+  const versions = assetVersionsSnapshot();
+  if (versions === host.postedVersions) {
+    return;
+  }
+  if (host.postedVersions === null && Object.keys(versions).length === 0) {
+    host.postedVersions = versions;
+    return;
+  }
+  host.postedVersions = versions;
+  host.channel.post({ kind: "assetVersions", versions });
+}
+
+let assetVersionsWatchStarted = false;
+let assetVersionsFlushQueued = false;
+
+/**
+ * Lazily start one watcher that reposts the asset versions to every ready frame when they move.
+ *
+ * Coalesced to a microtask: a Library walk notes one listing per directory, and each would
+ * otherwise post the whole map. Coalescing cannot let a render see an older map, because every
+ * render and patch syncs its own host first.
+ */
+function ensureAssetVersionsWatch(): void {
+  if (assetVersionsWatchStarted) {
+    return;
+  }
+  assetVersionsWatchStarted = true;
+  const scope = effectScope(true);
+  scope.run(() => {
+    effect(() => {
+      void assetVersionsEpoch.value;
+      if (assetVersionsFlushQueued) {
+        return;
+      }
+      assetVersionsFlushQueued = true;
+      queueMicrotask(() => {
+        assetVersionsFlushQueued = false;
+        publishAssetVersions();
+      });
+    });
+  });
+}
+
+/** Bring every ready, connected frame up to the current asset versions. */
+export function publishAssetVersions(): void {
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    syncAssetVersions(host);
+  }
 }
 
 /** Lazily start one reactive watcher that re-measures remote peers' selections in every host. */
@@ -1841,6 +1918,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     overlay,
     panReqId: -1,
     pending: null,
+    postedVersions: null,
     idle: null,
     pendingEnterEdit: null,
     pendingMeasures: new Map(),
@@ -1875,6 +1953,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
   liveHosts.add(state);
   ensureSelectionWatch();
   ensurePresenceWatch();
+  ensureAssetVersionsWatch();
   return state;
 }
 
@@ -1988,6 +2067,11 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       if (table) {
         state.channel.post({ chords: table.chords, kind: "keymap", mac: table.mac });
       }
+      /* Then the asset versions, also ahead of the render: the frame resolves media while it
+         renders, and a FIFO channel makes "posted first" mean "known first". A frame that said
+         `ready` again has rebooted and lost what it was sent before. */
+      state.postedVersions = null;
+      syncAssetVersions(state);
       if (state.pending) {
         state.channel.post(state.pending);
         state.pending = null;
@@ -3088,6 +3172,7 @@ export async function mountIframeCanvas(
 function deliverRender(state: HostState, message: ParentToIframe): void {
   canvasPerf.hostRenderPosts += 1;
   if (state.ready) {
+    syncAssetVersions(state);
     state.channel.post(message);
   } else {
     state.pending = message;
