@@ -18,9 +18,9 @@
  * which is the discriminator — a run that is `queued` or `in_progress` was never held, and one that
  * is `completed` with any other conclusion has already run.
  *
- * EVERY held run on the head, not only `Test`. The runs worth worrying about are the two lanes that
- * push, and each terminates on its own head by a DIFFERENT mechanism — both must hold for this
- * script to be safe, and a third pushing lane must bring one of them before this step may approve
+ * EVERY held run on the head, not only `Test`. The runs worth worrying about are the lanes that
+ * push, and each terminates on its own head by one of two DIFFERENT mechanisms — an actor refusal
+ * or a fixed point — and a new pushing lane must bring one of them before this step may approve
  * it:
  *
  * - `screenshots.yml` DECLINES its own head: a job-level `if:` on `github.actor`, which stays
@@ -29,6 +29,10 @@
  * - `schemas.yml` has NO actor refusal, on purpose (its header, item 3): it terminates on a FIXED
  *   POINT. The generators are deterministic, so the approved run regenerates the same bytes from
  *   the same tree and pushes nothing.
+ * - `electrobun-vendor.yml` terminates on a fixed point as well: once its commit has moved the
+ *   `vendor/electrobun` gitlink to the pinned tag, the run its own push triggers has nothing to
+ *   move and pushes nothing. It has no actor refusal either, and its concurrency group is the
+ *   bot-versus-human one, for the reason `schemas.yml`'s is.
  * - `release-specs.yml` terminates on a fixed point too: it mints the spec release fragments under
  *   `specs/changes/` and pushes only when there was one, so the run its own push triggers finds the
  *   directory empty and pushes nothing. It differs from `schemas.yml` in one thing this script must

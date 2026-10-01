@@ -22,7 +22,7 @@ The Electrobun SDK is not on npm either: the `electrobun` package resolves every
 
 **Typechecking reads it from somewhere a clone actually has.** `vendor/electrobun` is a git submodule pinned to the exact release the `electrobun` devDependency names, and this package's `tsconfig.json` maps `electrobun/*` straight into its sources. The root `bun install` checks it out; after a clone without submodules, `bun run electrobun:sync` at the repo root does the same. Then `bun run typecheck` passes offline, with no Hutch involved.
 
-Both sysroots are the same release rather than two sources of truth, and `bun run electrobun:verify` is what keeps them that way. **Bumping Electrobun therefore takes two moves**: Dependabot bumps the version pin in `package.json`, the submodule does not follow, and the gate goes red until `bun run electrobun:sync` moves it to the matching tag. Commit the moved gitlink alongside the pin.
+Both sysroots are the same release rather than two sources of truth, and `bun run electrobun:verify` is what keeps them that way. **Bumping Electrobun therefore takes two moves**: Dependabot bumps the version pin in `package.json`, the submodule does not follow, and the gate goes red until the gitlink moves to the matching tag. CI makes that second move for you by pushing a commit to the pull request; if you bump the pin by hand, run `bun run electrobun:sync` and commit the moved gitlink alongside it.
 
 ## Development
 
