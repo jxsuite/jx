@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.4.0](https://github.com/jxsuite/jx/compare/server-v4.3.0...server-v4.4.0) (2026-10-01)
+
+
+### Features
+
+* **ai:** prompt-cache hints, keyed per chat session ([b226e7e](https://github.com/jxsuite/jx/commit/b226e7e6fc28e6bd172fe1745dc1fac854c06c8d))
+* **ai:** prompt-cache hints, keyed per chat session ([767bcc2](https://github.com/jxsuite/jx/commit/767bcc29193bb956fd9210b84977c3e92d936acc))
+* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([7ee2b37](https://github.com/jxsuite/jx/commit/7ee2b375d967aa021bc5cef782b00538b2b52d0d))
+
+
+### Bug Fixes
+
+* **server:** declare oxfmt, which the code services import ([84d4a48](https://github.com/jxsuite/jx/commit/84d4a483b1823da1b2471b0dcc8b82d36dda6124))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.0
+    * @jxsuite/protocol bumped to 2.5.0
+
 ## [4.3.0](https://github.com/jxsuite/jx/compare/server-v4.2.2...server-v4.3.0) (2026-09-29)
 
 
