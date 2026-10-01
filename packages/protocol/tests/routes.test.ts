@@ -6,9 +6,11 @@ import { describe, expect, test } from "bun:test";
 import {
   coreRouteNames,
   optionalRouteNames,
+  READ_FILES_MAX_PATHS,
   STUDIO_PROTOCOL_VERSION,
   STUDIO_ROUTES,
 } from "../src/index";
+import type { ReadFilesResult } from "../src/index";
 
 const entries = Object.entries(STUDIO_ROUTES);
 
@@ -173,6 +175,36 @@ describe("STUDIO_ROUTES", () => {
     expect(STUDIO_ROUTES.fileBytes.path).not.toBe(STUDIO_ROUTES.fileRead.path);
     expect(STUDIO_ROUTES.fileBytes.optional).toBe(true);
     expect(STUDIO_ROUTES.fileBytes.summary).toContain("undecoded");
+  });
+
+  /* The batch read is optional with NO platform member behind it: an adapter coalesces readFile
+     into it, so its degradation is the fallback every caller already has, one fileRead per path. */
+  test("the batch read is an optional POST beside the listing route, sized by its limit", () => {
+    expect(STUDIO_ROUTES.filesRead.path).toBe("/__studio/files/read");
+    expect(STUDIO_ROUTES.filesRead.method).toBe("POST");
+    expect(STUDIO_ROUTES.filesRead.optional).toBe(true);
+    expect(optionalRouteNames()).toContain("filesRead");
+    expect(STUDIO_ROUTES.filesRead.degradation).toContain("one fileRead per path");
+    // A distinct route from the single read and the directory listing it sits under.
+    expect(STUDIO_ROUTES.filesRead.path).not.toBe(STUDIO_ROUTES.fileRead.path);
+    expect(STUDIO_ROUTES.filesRead.path.startsWith(STUDIO_ROUTES.files.path)).toBe(true);
+    // The summary names the limit by its exported name AND its value, so the two cannot drift.
+    expect(READ_FILES_MAX_PATHS).toBe(200);
+    expect(STUDIO_ROUTES.filesRead.summary).toContain("READ_FILES_MAX_PATHS");
+    expect(STUDIO_ROUTES.filesRead.summary).toContain(`(${READ_FILES_MAX_PATHS})`);
+    expect(STUDIO_ROUTES.filesRead.summary).toContain("omitted");
+  });
+
+  test("a batch answer carries a per-path outcome and the paths it omitted", () => {
+    const answer: ReadFilesResult = {
+      files: [
+        ["a.json", { content: "{}" }],
+        ["b.png", { error: { code: "binary", message: "binary file", status: 415 } }],
+      ],
+      omitted: ["c.json"],
+    };
+    expect(answer.files.map(([path]) => path)).toEqual(["a.json", "b.png"]);
+    expect(answer.omitted).toEqual(["c.json"]);
   });
 
   test("file routes share one path across GET/PUT/DELETE", () => {
