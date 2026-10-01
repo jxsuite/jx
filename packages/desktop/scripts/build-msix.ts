@@ -14,6 +14,7 @@ import {
   electrobunVersion,
   resolveWindowsRuntime,
 } from "./electrobun-runtime.ts";
+import { patchLauncherMain } from "./msix-launcher-patch.ts";
 
 if (process.platform !== "win32") {
   console.log("[build-msix] Skipping MSIX build (not Windows)");
@@ -85,30 +86,12 @@ if (existsSync(cefSrcDir)) {
 // We patch the flat-files branch to copy the app entrypoint to %TEMP% before
 // Spawning the Worker, then compile the patched main.js into bun.exe.
 const mainJsPath = join(buildDir, "Resources", "main.js");
-let mainJsSrc = await readFile(mainJsPath, "utf8");
-
-const flatFilesOriginal = `} else {
-    console.log(\`[LAUNCHER] Loading app code from flat files\`);
-    appEntrypointPath = join(appFolderPath, "bun", "index.js");
-  }`;
-
-const flatFilesPatched = `} else {
-    console.log(\`[LAUNCHER] Loading app code from flat files\`);
-    const __flatEntry = join(appFolderPath, "bun", "index.js");
-    const __appData = __require("fs").readFileSync(__flatEntry, "utf8");
-    const __tmpName = \`electrobun-\${Date.now()}-\${Math.random().toString(36).substring(7)}.js\`;
-    appEntrypointPath = join(tmpdir(), __tmpName);
-    writeFileSync(appEntrypointPath, __appData);
-    console.log(\`[LAUNCHER] Copied app entrypoint to: \${appEntrypointPath}\`);
-  }`;
-
-if (mainJsSrc.includes("Loading app code from flat files")) {
-  mainJsSrc = mainJsSrc.replace(flatFilesOriginal, flatFilesPatched);
-  await writeFile(mainJsPath, mainJsSrc, "utf8");
-  console.log("[build-msix] Patched main.js (flat-files → temp copy for MSIX Worker EPERM fix)");
-} else {
-  console.log("[build-msix] Warning: Could not find flat-files pattern in main.js, skipping patch");
-}
+// A launcher the patch cannot be applied to throws here and fails the build. The header of
+// The patch module explains why: warning and shipping the unpatched launcher is how an MSIX that
+// Cannot start reached the Store.
+const mainJsSrc = await readFile(mainJsPath, "utf8");
+await writeFile(mainJsPath, patchLauncherMain(mainJsSrc), "utf8");
+console.log("[build-msix] Patched main.js (flat-files → temp copy for MSIX Worker EPERM fix)");
 
 const compiledExe = join(binDir, "bun.exe");
 await $`bun build ${mainJsPath} --compile --outfile ${compiledExe}`;
