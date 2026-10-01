@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"bootstrap with a document open\")",
     "toMessagesArray()",
-    "setTokenCount(5523)",
+    "setTokenCount(5530)",
     "setContextWarning(false)",
-    "setTokenCount(5523)",
+    "setTokenCount(5530)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"c1\", \"create_project\")",
@@ -32,9 +32,8 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "168ec6a4495e",
+        "hash": "3f815a6821c0",
         "headings": [
-          "## Asking the user",
           "## Jx Document Format",
           "### Element Properties",
           "### Void Elements (cannot have children)",
@@ -68,12 +67,14 @@
           "### Navigation between pages",
           "### Page metadata",
           "### Multi-page workflow",
-          "## Current Document",
           "## Error Recovery",
           "### Common validation errors and their fixes:",
-          "### If you keep getting errors:"
+          "### If you keep getting errors:",
+          "## Current Mode",
+          "## Current Document",
+          "## Asking the user"
         ],
-        "length": 22042
+        "length": 22069
       },
       "tools": [
         "ask_user",
@@ -203,7 +204,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5523,
+    "tokenCount": 5530,
     "usage": null
   },
   "finalDocument": {
