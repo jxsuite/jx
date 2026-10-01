@@ -10,7 +10,14 @@
 import { $ } from "bun";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { STUDIO_DIR, STUDIO_ENTRYPOINTS, studioBundleOptions } from "./build-config.ts";
+import {
+  STUDIO_DIR,
+  STUDIO_ENTRYPOINTS,
+  studioBundleOptions,
+  studioReleaseDefine,
+  studioReleaseOptions,
+} from "./build-config.ts";
+import { staticImportClosure } from "./lib/preload.ts";
 import pkg from "../package.json" with { type: "json" };
 
 const outdir = join(STUDIO_DIR, "dist");
@@ -36,17 +43,27 @@ const define = {
   __JX_VERSION__: JSON.stringify(version),
   __JX_BUILD_DATE__: JSON.stringify(buildDate),
   __JX_GIT_COMMIT__: JSON.stringify(gitCommit),
+  ...studioReleaseDefine,
 };
 
 // One pass per entrypoint: a single multi-entry build roots its output at the entrypoints' common
 // Ancestor (src/), which would nest the iframe bundle under dist/canvas/ and break canvas.html's flat
 // `./dist/iframe-entry.js` import. The bundler contract itself is shared with the dev-server watcher
 // Via build-config.ts, so the two paths cannot drift.
+//
+// The editor pass also asks for its metafile, because that is the only place the chunk graph is
+// Written down: the static import closure of dist/studio.js becomes the manifest's `preload` list,
+// Which a host opts into as `<link rel="modulepreload">` hints (studio.md 11.2). The canvas entry
+// Is loaded by canvas.html inside the iframe, never by the shell document, so it contributes none.
+let preload: string[] = [];
 for (const entry of STUDIO_ENTRYPOINTS) {
+  const editor = entry === "./src/studio.ts";
   const result = await Bun.build({
     ...studioBundleOptions,
+    ...studioReleaseOptions,
     define,
     entrypoints: [entry],
+    metafile: editor,
     outdir: "dist",
   });
   if (!result.success) {
@@ -55,11 +72,18 @@ for (const entry of STUDIO_ENTRYPOINTS) {
     }
     process.exit(1);
   }
+  if (editor) {
+    if (!result.metafile) {
+      console.error("Bun.build returned no metafile for the editor pass; cannot compute preload.");
+      process.exit(1);
+    }
+    preload = staticImportClosure(result.metafile, "studio.js", "dist/");
+  }
 }
 
 // Bundle Monaco's web workers into dist/workers.
 const { buildMonacoWorkers } = await import("./build-workers.ts");
-await buildMonacoWorkers();
+await buildMonacoWorkers(studioReleaseOptions);
 
 /*
  * The two package-root documents, and the manifest.
@@ -80,4 +104,4 @@ await buildMonacoWorkers();
 const { studioShellHtml } = await import("../src/hosting/document.ts");
 const { writeAssetManifest } = await import("../src/hosting/stage.ts");
 await Bun.write(join(STUDIO_DIR, "index.html"), studioShellHtml());
-await writeAssetManifest(STUDIO_DIR);
+await writeAssetManifest(STUDIO_DIR, { preload });
