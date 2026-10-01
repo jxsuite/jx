@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.5.0](https://github.com/jxsuite/jx/compare/studio-v5.4.0...studio-v5.5.0) (2026-10-01)
+
+
+### Features
+
+* **ai:** prompt-cache hints, keyed per chat session ([b226e7e](https://github.com/jxsuite/jx/commit/b226e7e6fc28e6bd172fe1745dc1fac854c06c8d))
+* **ai:** prompt-cache hints, keyed per chat session ([767bcc2](https://github.com/jxsuite/jx/commit/767bcc29193bb956fd9210b84977c3e92d936acc))
+* **studio:** coalesce the cloud adapter's file reads into one batch request ([22f421d](https://github.com/jxsuite/jx/commit/22f421dfc7ca7e066aa77d0a08342ce35ea1c637))
+* **studio:** coalesce the cloud adapter's file reads into one batch request ([9645ac9](https://github.com/jxsuite/jx/commit/9645ac9b808c03e95fe48f82321b6ee90188fad8))
+* **studio:** collapsable document panel ([fc476cb](https://github.com/jxsuite/jx/commit/fc476cb978bfcf24d1cdb072376b3ff550214792))
+* **studio:** collapsable document panel ([91328fb](https://github.com/jxsuite/jx/commit/91328fb608534acf00738226c3ac7b686253dca4))
+* **studio:** minified release bundles and modulepreload hints for the editor's boot chunks ([cd37985](https://github.com/jxsuite/jx/commit/cd3798540c78da21c4b165f9127920df32707943))
+* **studio:** minified release bundles and modulepreload hints for the editor's boot chunks ([487e776](https://github.com/jxsuite/jx/commit/487e776934e304645fba6d02f3b922aab8ec8258))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.0
+    * @jxsuite/protocol bumped to 2.5.0
+
 ## [5.4.0](https://github.com/jxsuite/jx/compare/studio-v5.3.0...studio-v5.4.0) (2026-09-29)
 
 
