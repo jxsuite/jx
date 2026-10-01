@@ -1,0 +1,77 @@
+# Uploads the desktop snaps to the Snap Store, the Ubuntu twin of store-publish.yml: build-snap.yml
+# already attached `jx-studio_<version>_<arch>.snap` to the GitHub release, and this hands them to
+# `scripts/snap-publish.ts`, which owns every decision after that (CLAUDE.md, "Snap Store
+# Publishing"): no-op until SNAPCRAFT_STORE_CREDENTIALS exists, a re-run of an uploaded release is
+# success, a manual-review hold is success, and an expiring login is a warning before it is an
+# outage.
+#
+# Called from release-please.yml at the desktop release tag; `workflow_dispatch` retries or backfills
+# a release, or sends one to a channel other than stable.
+name: Publish to Snap Store
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Desktop release tag to fetch the snaps from (e.g. desktop-v5.3.0).
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Desktop release tag to fetch the snaps from (e.g. desktop-v5.3.0).
+        required: true
+        type: string
+      channel:
+        description: Channel to release the upload to.
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - candidate
+          - beta
+          - edge
+
+permissions:
+  contents: read
+
+jobs:
+  snap-publish:
+    name: Upload to the Snap Store
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      # The script spawns `snapcraft` and needs no dependency of its own.
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: false
+
+      - name: Download the snaps from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release download "${{ inputs.tag_name }}" --pattern '*.snap' --dir snap-download
+
+      - name: Upload to the Snap Store
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          CHANNEL: ${{ inputs.channel || 'stable' }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          snaps=(snap-download/*.snap)
+          if [ "${#snaps[@]}" -eq 0 ]; then
+            echo "::error::No .snap asset found on release ${{ inputs.tag_name }}"
+            exit 1
+          fi
+          # Installed only when there is something to authenticate with, so an unconfigured
+          # repository spends no time on it before the script's own soft no-op.
+          if [ -n "${SNAPCRAFT_STORE_CREDENTIALS:-}" ]; then
+            sudo snap install snapcraft --classic
+          fi
+          bun run snap:publish --release="$CHANNEL" "${snaps[@]}"

@@ -24,11 +24,15 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@jxsuite/auth": "workspace:^",
     "@jxsuite/compiler": "workspace:^",
+    "@jxsuite/connector": "workspace:^",
     "@jxsuite/create": "workspace:^",
+    "@jxsuite/feed": "workspace:^",
     "@jxsuite/parser": "workspace:^",
     "@jxsuite/protocol": "workspace:^",
     "@jxsuite/schema": "workspace:^",
+    "@jxsuite/search": "workspace:^",
     "@jxsuite/server": "workspace:^",
     "@jxsuite/starters": "workspace:^",
     "@jxsuite/studio": "workspace:^",
@@ -38,7 +42,6 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
-    "@jxsuite/connector": "workspace:^",
     "@jxsuite/server": "workspace:^",
     "@jxsuite/ui": "workspace:^",
     "electrobun": "2.0.1",

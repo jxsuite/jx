@@ -436,6 +436,30 @@ describe("chromium launcher startup", () => {
 
 // ─── Chromium profile Preferences seeding ───────────────────────────────────
 
+describe("chromiumPlatformArgs", () => {
+  test("adds nothing outside Wayland and outside a snap", () => {
+    expect(chromiumIndex.chromiumPlatformArgs({})).toEqual([]);
+  });
+
+  test("selects the Ozone Wayland backend in a Wayland session", () => {
+    expect(chromiumIndex.chromiumPlatformArgs({ WAYLAND_DISPLAY: "wayland-0" })).toEqual([
+      "--ozone-platform=wayland",
+      "--enable-features=UseOzonePlatform",
+    ]);
+  });
+
+  test("passes the snap's Chromium flags only under snap confinement", () => {
+    expect(chromiumIndex.chromiumPlatformArgs({ SNAP: "/snap/jx-studio/x1" })).toEqual([
+      "--no-sandbox",
+      "--password-store=basic",
+      "--gtk-version=3",
+    ]);
+    expect(chromiumIndex.chromiumPlatformArgs({ WAYLAND_DISPLAY: "w" })).not.toContain(
+      "--no-sandbox",
+    );
+  });
+});
+
 describe("seedChromiumPreferences", () => {
   test("merges into an existing Preferences file without clobbering unrelated keys", () => {
     const dir = join(FIXTURES, "_prefs_merge");

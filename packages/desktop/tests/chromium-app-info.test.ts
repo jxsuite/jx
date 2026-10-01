@@ -11,10 +11,12 @@ import pkg from "../package.json" with { type: "json" };
 
 const assets = process.env.JX_STUDIO_ASSETS;
 const commit = process.env.JX_STUDIO_COMMIT;
+const snap = process.env.SNAP;
 
 afterEach(() => {
   restore("JX_STUDIO_ASSETS", assets);
   restore("JX_STUDIO_COMMIT", commit);
+  restore("SNAP", snap);
 });
 
 function restore(key: string, value: string | undefined) {
@@ -27,11 +29,20 @@ function restore(key: string, value: string | undefined) {
 
 describe("releaseChannel", () => {
   test("a packaged build reports `system` — its updates are the packager's job", () => {
+    delete process.env.SNAP;
     process.env.JX_STUDIO_ASSETS = "/nix/store/abc-jx-studio/assets/studio";
     expect(releaseChannel()).toBe("system");
   });
 
+  test("the same build inside a snap reports `snap` — the Snap Store replaces it", () => {
+    process.env.JX_STUDIO_ASSETS =
+      "/snap/jx-studio/12/lib/jx-studio/packages/desktop/assets/studio";
+    process.env.SNAP = "/snap/jx-studio/12";
+    expect(releaseChannel()).toBe("snap");
+  });
+
   test("a repo checkout reports `development`", () => {
+    delete process.env.SNAP;
     delete process.env.JX_STUDIO_ASSETS;
     expect(releaseChannel()).toBe("development");
   });
@@ -39,6 +50,7 @@ describe("releaseChannel", () => {
 
 describe("appInfo", () => {
   test("carries the package version and the channel", () => {
+    delete process.env.SNAP;
     process.env.JX_STUDIO_ASSETS = "/nix/store/abc/assets";
     expect(appInfo()).toMatchObject({
       channel: "system",
