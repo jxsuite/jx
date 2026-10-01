@@ -1,0 +1,78 @@
+# Submits the desktop MSIX to the Microsoft Store, so a desktop release stops ending at "a human
+# opens Partner Center and clicks through five pages by hand" — which is exactly how desktop-v5.2.0
+# shipped: `build-msix.yml` already attaches `JxStudio_<version>_x64.msix` to the GitHub release,
+# and until this workflow existed nothing did anything with it.
+#
+# The actual API calls live in `scripts/store-submit.ts` (CLAUDE.md's "Microsoft Store Publishing"
+# section has the full design and the manual Azure AD setup this workflow depends on). This
+# workflow is deliberately thin: fetch the asset the desktop bundlers already produced, hand it to
+# the script, let the script decide everything else — including refusing to touch a submission
+# that's already pending, and no-opping cleanly if the four STORE_* secrets aren't configured yet.
+#
+# Called from release-please.yml at the desktop release tag; `workflow_dispatch` exists to retry or
+# backfill a specific release the same way publish.yml's manual entry point does.
+name: Publish to Microsoft Store
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Desktop release tag to fetch the MSIX from (e.g. desktop-v5.2.0).
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Desktop release tag to fetch the MSIX from (e.g. desktop-v5.2.0).
+        required: true
+        type: string
+      force_replace_pending:
+        description: >-
+          Delete an already-pending Partner Center submission before creating a new one. Only for
+          recovering a stuck submission from a previous failed run — never the default, because it
+          would just as happily delete one a human is mid-edit on. Leave false unless you checked.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  store-publish:
+    name: Submit to Microsoft Store
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      # No dependency to install: the script reads four env vars, shells out to `gh`/`zip`, and
+      # talks to `manage.devcenter.microsoft.com` with the platform `fetch`. Matches
+      # verify-release-integrity's reasoning in release-please.yml for the same flag.
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: false
+
+      - name: Download the MSIX from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release download "${{ inputs.tag_name }}" --pattern '*.msix' --dir msix-download
+
+      - name: Submit to the Microsoft Store
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+          STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+          FORCE_REPLACE_PENDING: ${{ inputs.force_replace_pending || 'false' }}
+        run: |
+          set -euo pipefail
+          msix="$(find msix-download -name '*.msix' | head -n1)"
+          if [ -z "$msix" ]; then
+            echo "::error::No .msix asset found on release ${{ inputs.tag_name }}"
+            exit 1
+          fi
+          bun run store:submit "$msix"
