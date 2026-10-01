@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"hi\")",
     "toMessagesArray()",
-    "setTokenCount(5516)",
+    "setTokenCount(5523)",
     "setContextWarning(false)",
-    "setTokenCount(5516)",
+    "setTokenCount(5523)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendDelta(\"Hello there\")",
@@ -24,9 +24,8 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "168ec6a4495e",
+        "hash": "3f815a6821c0",
         "headings": [
-          "## Asking the user",
           "## Jx Document Format",
           "### Element Properties",
           "### Void Elements (cannot have children)",
@@ -60,12 +59,14 @@
           "### Navigation between pages",
           "### Page metadata",
           "### Multi-page workflow",
-          "## Current Document",
           "## Error Recovery",
           "### Common validation errors and their fixes:",
-          "### If you keep getting errors:"
+          "### If you keep getting errors:",
+          "## Current Mode",
+          "## Current Document",
+          "## Asking the user"
         ],
-        "length": 22042
+        "length": 22069
       },
       "tools": [
         "ask_user",
@@ -105,7 +106,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5516,
+    "tokenCount": 5523,
     "usage": null
   },
   "finalDocument": {

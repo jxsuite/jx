@@ -8,7 +8,11 @@
  */
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
-import { buildSystemPrompt } from "../src/services/ai-system-prompt";
+import {
+  AI_TOOL_TIERS as HAND_TOOLS,
+  SYSTEM_PROMPT_STATIC_PREFIX,
+  buildSystemPrompt,
+} from "../src/services/ai-system-prompt";
 import type { ComponentEntry } from "../src/files/components";
 import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 
@@ -476,5 +480,127 @@ describe("the importSite capability gate", () => {
     expect(noImport).not.toContain("import_site(");
     // And the asking guidance is in every prompt, since ask_user always is.
     expect(noImport).toContain("Asking the user");
+  });
+});
+
+/*
+ * The layout is for providers' prompt caches, which match on a prefix of the request. So the part
+ * that never changes comes first and is the SAME BYTES in every state, and everything a state
+ * decides follows it. Asserted over every combination of the builder's state inputs, because one
+ * flag that leaks a line above the boundary is enough to make every request a cache miss.
+ */
+describe("ai-system-prompt — a stable prefix for the prompt cache", () => {
+  const SEPARATOR = "\n\n---\n\n";
+  const CLOSING_START = "You have a limited number of tool-call rounds per message.";
+  const CLOSING_END = "Be concise. Don't explain what Jx is unless asked. Just build.";
+
+  /** Every marker that only a state can put in the prompt, and the closing that must stay last. */
+  const DYNAMIC_MARKERS = [
+    "## Current Mode",
+    "## Current Document",
+    "## Project Context",
+    "## Project Files",
+    "Tools available right now",
+    "No project is open yet",
+    "no document is on the canvas",
+    "You have tools that read and modify the live Jx document",
+    "Extensions available.",
+    "Extensions enabled:",
+    "## Asking the user",
+    CLOSING_START,
+    ...HAND_TOOLS.map((t) => `- ${t.blurb}`),
+  ];
+
+  const FLAGS = [
+    "hasProject",
+    "hasDocument",
+    "treeEditable",
+    "canImport",
+    "commandTools",
+    "fileInventory",
+    "extensionCatalog",
+  ] as const;
+
+  /** The builder's options for one combination, each flag set to the value that changes most. */
+  function optionsFor(on: ReadonlySet<(typeof FLAGS)[number]>) {
+    return {
+      canImport: on.has("canImport"),
+      commandTools: on.has("commandTools") ? ["delete_node(paths) — Delete elements."] : [],
+      hasProject: on.has("hasProject"),
+      treeEditable: on.has("treeEditable"),
+      ...(on.has("hasProject")
+        ? {
+            projectConfig: { extensions: ["@jxsuite/parser"], name: "Site" } as ProjectConfig,
+            projectRoot: "/site",
+          }
+        : {}),
+      ...(on.has("hasDocument")
+        ? { document: { $id: "Page", children: [], tagName: "x-a" } as unknown as JxMutableNode }
+        : {}),
+      ...(on.has("fileInventory") ? { fileInventory: ["pages/index.json"] } : {}),
+      ...(on.has("extensionCatalog")
+        ? { extensionCatalog: [{ name: "@jxsuite/parser", sections: ["content"] }] }
+        : {}),
+    };
+  }
+
+  const combinations = Array.from(
+    { length: 2 ** FLAGS.length },
+    (_, mask) => new Set(FLAGS.filter((_flag, bit) => Math.floor(mask / 2 ** bit) % 2 === 1)),
+  );
+
+  test("the prefix carries none of the state's markers, and ends on a section boundary", () => {
+    for (const marker of DYNAMIC_MARKERS) {
+      expect([marker, SYSTEM_PROMPT_STATIC_PREFIX.includes(marker)]).toEqual([marker, false]);
+    }
+    expect(SYSTEM_PROMPT_STATIC_PREFIX.startsWith("You are an expert Jx builder assistant")).toBe(
+      true,
+    );
+    expect(SYSTEM_PROMPT_STATIC_PREFIX.endsWith(SEPARATOR)).toBe(true);
+    // The static sections, in order: role, the reference sections, then error recovery.
+    const headings = SYSTEM_PROMPT_STATIC_PREFIX.split(SEPARATOR)
+      .slice(1, -1)
+      .map((section) => section.split("\n")[0]);
+    expect(headings).toEqual([
+      "## Jx Document Format",
+      "## State Shape Decision Tree",
+      "## Real-World Jx Patterns (from jxsuite.com production site)",
+      "## Design Principles (premium component output)",
+      "## Control Flow & Reactivity (signals, lists, conditionals)",
+      "## Multi-Page Site Building",
+      "## Error Recovery",
+    ]);
+  });
+
+  test("every combination of the state flags starts with the prefix and ends with the closing", () => {
+    expect(combinations).toHaveLength(128);
+    for (const on of combinations) {
+      const label = [...on].join("+") || "(none)";
+      const prompt = buildSystemPrompt(optionsFor(on));
+      expect([label, prompt.startsWith(SYSTEM_PROMPT_STATIC_PREFIX)]).toEqual([label, true]);
+      // The mode opens the dynamic part, and nothing dynamic precedes it.
+      const rest = prompt.slice(SYSTEM_PROMPT_STATIC_PREFIX.length);
+      expect([label, rest.startsWith("## Current Mode\n\n")]).toEqual([label, true]);
+      // The closing is the last section, whole.
+      const last = prompt.split(SEPARATOR).at(-1) ?? "";
+      expect([label, last.startsWith(CLOSING_START), last.endsWith(CLOSING_END)]).toEqual([
+        label,
+        true,
+        true,
+      ]);
+    }
+  });
+
+  test("the dynamic sections keep their order: mode, document, project, files, closing", () => {
+    const prompt = buildSystemPrompt(optionsFor(new Set(FLAGS)));
+    const order = [
+      "## Current Mode",
+      "## Current Document",
+      "## Project Context",
+      "## Project Files",
+      CLOSING_START,
+    ].map((marker) => prompt.indexOf(marker));
+    expect(order.every((at) => at >= SYSTEM_PROMPT_STATIC_PREFIX.length)).toBe(true);
+    expect(order).toEqual(order.toSorted((a, b) => a - b));
   });
 });
