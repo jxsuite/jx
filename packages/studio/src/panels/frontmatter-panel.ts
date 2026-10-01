@@ -141,6 +141,40 @@ let _scope: { stop: () => void; run: <T>(fn: () => T) => T | undefined } | null 
 const _rawOpen = new Set<string>();
 
 /**
+ * Whether each document's card is open, keyed by tab id, and fixed when the card is first drawn for
+ * that document.
+ *
+ * The card is a band across the top of the pane, and on a short pane it can take half the page, so
+ * the reader can fold it down to its bar. What they did LAST is the default for the next editor
+ * they open ({@link DOC_HEADER_EXPANDED_KEY}), but it is not a broadcast: an editor already open
+ * keeps the state it was drawn in, because a card that folded away under a document the reader was
+ * not looking at would be a change nobody asked for.
+ */
+const _expanded = new Map<string, boolean>();
+
+/** The reader's last open-or-close of any card. Absent means open — the card's first-run state. */
+export const DOC_HEADER_EXPANDED_KEY = "jx-studio-doc-header-expanded";
+
+/** The persisted default, tolerating absent, corrupt and unavailable storage. */
+function readExpandedDefault(): boolean {
+  try {
+    return localStorage.getItem(DOC_HEADER_EXPANDED_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+/** Whether `tabId`'s card is open, seeding it from the persisted default the first time it is asked. */
+function isExpanded(tabId: string): boolean {
+  let open = _expanded.get(tabId);
+  if (open === undefined) {
+    open = readExpandedDefault();
+    _expanded.set(tabId, open);
+  }
+  return open;
+}
+
+/**
  * The element the stage has made available for the card, or `null` while no stage hosts it.
  *
  * Called from a lit `ref` in `canvas/canvas-render.ts`, so the host's lifetime is the stage's: the
@@ -225,6 +259,7 @@ export function unmount() {
   }
   _hosts.clear();
   _rawOpen.clear();
+  _expanded.clear();
 }
 
 /** Take one pane's card down: cancel its waiting edits and dispose the document it mounted. */
@@ -365,6 +400,7 @@ function viewFor(tab: Tab, paneId: string, card: HeaderCard): DocHeaderView {
   const raw = rawEntries(headDoc.$head ?? []);
   return {
     collection: collection ? collection.name : "Document",
+    expanded: isExpanded(tab.id),
     hasRoute: route !== null,
     rawEntries: raw,
     rawOpen: _rawOpen.has(tab.id),
@@ -593,6 +629,24 @@ function makeActions(card: HeaderCard): DocHeaderActions {
     },
     setBoolean: (key, checked) => now(key, checked),
     setChoice: (key, value) => now(key, value),
+    setExpanded: (open) => {
+      // Per DOCUMENT, like the Raw head tags disclosure, and also the default for the next one:
+      // The reader's last open-or-close is the state every editor opened after it starts in.
+      const tab = tabOfPane(card.paneId);
+      // The platform also fires `toggle` when the card is DRAWN open, so a toggle that agrees with
+      // The state already held is the card's own projection coming back, not the reader. Taking it
+      // As a choice would let merely looking at an older, open document reset the default.
+      if (!tab || _expanded.get(tab.id) === open) {
+        return;
+      }
+      _expanded.set(tab.id, open);
+      try {
+        localStorage.setItem(DOC_HEADER_EXPANDED_KEY, String(open));
+      } catch {
+        // Storage full or unavailable — this card still folds, the next one just opens.
+      }
+      settle(card);
+    },
     setNumber: (key, value) => now(key, value),
     setRawOpen: (open) => {
       // Per DOCUMENT rather than per pane: the same file open in two stages discloses the same
@@ -606,6 +660,7 @@ function makeActions(card: HeaderCard): DocHeaderActions {
       } else {
         _rawOpen.delete(tab.id);
       }
+      settle(card);
     },
     upload: (key) => {
       flush(key);
@@ -616,6 +671,18 @@ function makeActions(card: HeaderCard): DocHeaderActions {
       });
     },
   };
+}
+
+/**
+ * Bring a card's scope up to what the reader just did to one of its disclosures.
+ *
+ * A disclosure's `open` is two-way: the platform moves the element, and the scope that fed it still
+ * holds the value it was drawn with. Left there, the next document whose state EQUALS that stale
+ * value would project no change, the binding would not run, and the disclosure would stay as the
+ * previous document left it.
+ */
+function settle(card: HeaderCard): void {
+  paint(card.paneId, card);
 }
 
 /**

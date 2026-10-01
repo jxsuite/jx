@@ -95,8 +95,14 @@ void mock.module("../src/grid/sources/content-source", () => ({
   },
 }));
 
-const { attachDocumentHeaderHost, hasDocumentHeader, mount, render, unmount } =
-  await import("../src/panels/frontmatter-panel");
+const {
+  DOC_HEADER_EXPANDED_KEY,
+  attachDocumentHeaderHost,
+  hasDocumentHeader,
+  mount,
+  render,
+  unmount,
+} = await import("../src/panels/frontmatter-panel");
 
 /**
  * The node the card paints into, remembered by whoever handed it over — which in this file is the
@@ -664,9 +670,7 @@ describe("route and disclosures", () => {
     const disclosures = [...host().querySelectorAll('[part="raw"]')];
     expect(disclosures.length).toBe(1);
     expect(part("raw")!.querySelector('[part="label"]')?.textContent?.trim()).toBe("Raw head tags");
-    for (const d of host().querySelectorAll("details")) {
-      expect((d as HTMLDetailsElement).open).toBe(false);
-    }
+    expect(part("raw")!.querySelector<HTMLDetailsElement>("details")!.open).toBe(false);
   });
 
   test("the card offers the door to Search appearance, and it runs the command", async () => {
@@ -711,6 +715,136 @@ describe("route and disclosures", () => {
     await flush(8);
     const items = [...host().querySelectorAll('[part="raw-key"]')];
     expect(items.map((i) => i.textContent)).toEqual(['<meta name="author">']);
+  });
+});
+
+describe("folding the card", () => {
+  /** The card's own disclosure — the one whose summary is the bar. */
+  const fold = () => part("disclosure")!.querySelector("details") as HTMLDetailsElement;
+
+  /**
+   * Open or close the card the way a reader does: the platform moves `open`, then fires a toggle
+   * that does NOT bubble — the kit re-announces it from the host with the state as its `detail`.
+   */
+  function toggleCard(open: boolean): void {
+    fold().open = open;
+    fold().dispatchEvent(new Event("toggle"));
+  }
+
+  beforeEach(() => {
+    localStorage.removeItem(DOC_HEADER_EXPANDED_KEY);
+  });
+
+  afterEach(() => {
+    localStorage.removeItem(DOC_HEADER_EXPANDED_KEY);
+  });
+
+  test("the bar is the summary: open by default, named for what it discloses", async () => {
+    setupContentTab({ title: "Home" }, { documentPath: "pages/index.md", isSite: true });
+    await mountAndFlush();
+    expect(fold().open).toBe(true);
+    const summary = fold().querySelector('[part="summary"]')!;
+    expect(summary.getAttribute("aria-label")).toBe("Document fields");
+    // The collection and the route stay on the line the reader clicks, so a folded card still
+    // Says what it is.
+    expect(summary.contains(part("collection"))).toBe(true);
+    expect(summary.contains(part("route"))).toBe(true);
+    expect(summary.contains(part("fields"))).toBe(false);
+  });
+
+  test("folding is remembered per document and becomes the default for the next one", async () => {
+    setupContentTab({ title: "Hello" }, { id: "fm-a" });
+    await mountAndFlush();
+    toggleCard(false);
+    render();
+    await flush(8);
+    expect(fold().open).toBe(false);
+    expect(localStorage.getItem(DOC_HEADER_EXPANDED_KEY)).toBe("false");
+
+    // A document opened after the fold starts folded.
+    openTab({
+      document: { children: [], tagName: "div", title: "B" },
+      documentPath: "posts/b.json",
+      id: "fm-b",
+    });
+    render();
+    await flush(8);
+    expect(activeTab.value?.id).toBe("fm-b");
+    expect(fold().open).toBe(false);
+
+    // Opening it there is the new default, and the first document keeps the state it was left in.
+    toggleCard(true);
+    expect(localStorage.getItem(DOC_HEADER_EXPANDED_KEY)).toBe("true");
+    activateTab("fm-a");
+    render();
+    await flush(8);
+    expect(activeTab.value?.id).toBe("fm-a");
+    expect(fold().open).toBe(false);
+  });
+
+  test("a document drawn open does not reset a fold chosen elsewhere", async () => {
+    // The platform fires `toggle` when a disclosure is drawn open as well as when it is clicked, so
+    // Switching back to an older, open document must not count as the reader opening it.
+    setupContentTab({ title: "Hello" }, { id: "fm-a" });
+    await mountAndFlush();
+    openTab({
+      document: { children: [], tagName: "div", title: "B" },
+      documentPath: "posts/b.json",
+      id: "fm-b",
+    });
+    render();
+    await flush(8);
+    toggleCard(false);
+    expect(localStorage.getItem(DOC_HEADER_EXPANDED_KEY)).toBe("false");
+
+    activateTab("fm-a");
+    render();
+    await flush(8);
+    expect(fold().open).toBe(true);
+    fold().dispatchEvent(new Event("toggle"));
+    expect(localStorage.getItem(DOC_HEADER_EXPANDED_KEY)).toBe("false");
+  });
+
+  test("a stored fold survives a remount", async () => {
+    localStorage.setItem(DOC_HEADER_EXPANDED_KEY, "false");
+    setupContentTab({ title: "Hello" });
+    await mountAndFlush();
+    expect(fold().open).toBe(false);
+  });
+
+  test("unavailable storage opens the card and still lets it fold", async () => {
+    const real = globalThis.localStorage;
+    const refusing = {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      removeItem: () => {},
+      setItem: () => {
+        throw new Error("denied");
+      },
+    };
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: refusing });
+    try {
+      setupContentTab({ title: "Hello" });
+      await mountAndFlush();
+      expect(fold().open).toBe(true);
+      toggleCard(false);
+      render();
+      await flush(8);
+      expect(fold().open).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, "localStorage", { configurable: true, value: real });
+    }
+  });
+
+  test("a toggle from a pane with no document is ignored", async () => {
+    setupContentTab({ title: "Hello" });
+    await mountAndFlush();
+    const details = fold();
+    closeAllTabs();
+    details.open = false;
+    details.dispatchEvent(new Event("toggle"));
+    expect(localStorage.getItem(DOC_HEADER_EXPANDED_KEY)).toBeNull();
   });
 });
 
@@ -1045,17 +1179,37 @@ describe("the other commit path and the disclosure state", () => {
   test("a disclosure remembers that it was opened, per tab", async () => {
     setupContentTab({ title: "Hello" }, { id: "fm-a" });
     await mountAndFlush();
-    const details = () => host().querySelector("details") as HTMLDetailsElement;
+    const details = () => part("raw")!.querySelector("details") as HTMLDetailsElement;
+    // The platform's toggle does not bubble; the kit re-announces it from the host.
     details().open = true;
-    details().dispatchEvent(new Event("toggle", { bubbles: true }));
+    details().dispatchEvent(new Event("toggle"));
     render();
     await flush(8);
     expect(details().open).toBe(true);
 
     details().open = false;
-    details().dispatchEvent(new Event("toggle", { bubbles: true }));
+    details().dispatchEvent(new Event("toggle"));
     render();
     await flush(8);
+    expect(details().open).toBe(false);
+  });
+
+  test("a disclosure opened on one document does not stay open on the next", async () => {
+    // The scope still held `false` from when the card was drawn, so a document whose state was
+    // Also `false` projected no change and inherited the open disclosure.
+    setupContentTab({ title: "Hello" }, { id: "fm-a" });
+    await mountAndFlush();
+    const details = () => part("raw")!.querySelector("details") as HTMLDetailsElement;
+    details().open = true;
+    details().dispatchEvent(new Event("toggle"));
+    openTab({
+      document: { children: [], tagName: "div", title: "B" },
+      documentPath: "posts/b.json",
+      id: "fm-b",
+    });
+    render();
+    await flush(8);
+    expect(activeTab.value?.id).toBe("fm-b");
     expect(details().open).toBe(false);
   });
 

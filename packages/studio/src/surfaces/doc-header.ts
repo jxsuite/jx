@@ -107,6 +107,11 @@ export interface DocHeaderView {
   rawEntries: DocHeaderRawEntry[];
   /** Whether the disclosure is open. Per document, and the flow remembers it. */
   rawOpen: boolean;
+  /**
+   * Whether the card shows its rows, or only its bar. Per document; a new document starts in
+   * whichever state the reader last chose.
+   */
+  expanded: boolean;
 }
 
 /**
@@ -134,6 +139,8 @@ export interface DocHeaderActions {
   openSeo: () => void;
   /** Remember that the Raw head tags disclosure was opened or closed. */
   setRawOpen: (open: boolean) => void;
+  /** Remember that the card was folded to its bar or opened again. */
+  setExpanded: (open: boolean) => void;
 }
 
 export interface DocHeaderSurface {
@@ -158,6 +165,7 @@ function project(scope: DocHeaderScope, view: DocHeaderView): void {
   scope.rawState = view.rawState;
   scope.rawEntries = view.rawEntries;
   scope.rawOpen = view.rawOpen;
+  scope.expanded = view.expanded;
 }
 
 /**
@@ -179,6 +187,7 @@ export function mountDocHeaderSurface(
   const scope = reactive<DocHeaderScope>({
     ...actions,
     collection: "Document",
+    expanded: true,
     hasRoute: false,
     rawEntries: [],
     rawOpen: false,
