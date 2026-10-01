@@ -5650,6 +5650,34 @@
             }
           ]
         },
+        "ontoolactivated": {
+          "description": "Event handler for the \"toolactivated\" event.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RefObject"
+            },
+            {
+              "$ref": "#/$defs/ExpressionEntry"
+            },
+            {
+              "$ref": "#/$defs/FunctionDef"
+            }
+          ]
+        },
+        "ontoolcancel": {
+          "description": "Event handler for the \"toolcancel\" event.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RefObject"
+            },
+            {
+              "$ref": "#/$defs/ExpressionEntry"
+            },
+            {
+              "$ref": "#/$defs/FunctionDef"
+            }
+          ]
+        },
         "ontoolchange": {
           "description": "Event handler for the \"toolchange\" event.",
           "oneOf": [
