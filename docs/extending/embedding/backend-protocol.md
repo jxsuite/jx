@@ -31,7 +31,10 @@ Each entry in `STUDIO_ROUTES` carries its method, path, a one-line contract summ
 export interface StudioRoute {
   path: string;
   method: StudioRouteMethod;
-  /** True when a backend may omit the route (its PAL member is optional). */
+  /**
+   * True when a backend may omit the route: its PAL member is optional, or it has no member and an
+   * adapter falls back to another route.
+   */
   optional: boolean;
   /** One-line contract summary. */
   summary: string;
@@ -44,7 +47,11 @@ The full table is generated into the [protocol route reference](/docs/extending/
 
 ## Core vs optional
 
-Optional routes back optional `StudioPlatform` members. Omitting one is not an error. Studio degrades exactly as the entry's `degradation` describes: the starter picker empties, the Projects catalogue hides, the Publish panel explains git-push publishing instead, and so on. `coreRouteNames()` and `optionalRouteNames()` split the table programmatically, so a conformance test for a new backend can iterate `STUDIO_ROUTES` and assert that every core route answers.
+Optional routes back optional `StudioPlatform` members. Omitting one is not an error. Studio degrades exactly as the entry's `degradation` describes: the starter picker empties, the Projects catalogue hides, the Publish panel explains git-push publishing instead, and so on.
+
+A few optional routes back no member at all. They let an adapter serve the members it already has more cheaply, and their `degradation` names the route they stand in for. `filesRead` (`POST /__studio/files/read`) is the first: the cloud adapter folds the `readFile` calls issued in one tick into one batch request, and against a backend without the route it reads one file per request, exactly as before. Answer it only if your reads cross a network. The answer may be partial: list the paths you did not get to under `omitted` (never a 400), always answer the first path, and give each answered path its own content or error.
+
+`coreRouteNames()` and `optionalRouteNames()` split the table programmatically, so a conformance test for a new backend can iterate `STUDIO_ROUTES` and assert that every core route answers.
 
 The core set is what a minimal backend must serve: project session and probing (`activate`, `project`, `project-info`, `resolve-site`, `create-project`), the filesystem CRUD family, component discovery, package listing, the git suite, and the AI proxy pair (`ai/chat`, `ai/models`). Everything else is optional: collab, starters, the data surface, secrets, Cloudflare publishing.
 

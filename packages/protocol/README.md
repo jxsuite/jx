@@ -17,7 +17,7 @@ A backend is free to change the transport and path prefix; the **sub-path, metho
 
 ## Core vs optional
 
-Optional routes back optional `StudioPlatform` members. Omitting one is not an error. Studio degrades exactly as each entry's `degradation` describes (the starter picker empties, the Projects catalogue hides, the Publish panel explains git-push publishing, and so on). `coreRouteNames()` / `optionalRouteNames()` split the table programmatically; a conformance test for a new backend can iterate `STUDIO_ROUTES` and assert every core route is served.
+Optional routes back optional `StudioPlatform` members, or, like `filesRead`, back no member and let an adapter serve one it already has more cheaply (their `degradation` names the route they stand in for). Omitting one is not an error. Studio degrades exactly as each entry's `degradation` describes (the starter picker empties, the Projects catalogue hides, the Publish panel explains git-push publishing, and so on). `coreRouteNames()` / `optionalRouteNames()` split the table programmatically; a conformance test for a new backend can iterate `STUDIO_ROUTES` and assert every core route is served.
 
 Highlights an implementer should know:
 

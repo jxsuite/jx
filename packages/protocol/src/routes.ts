@@ -1,10 +1,10 @@
 /**
- * Studio Backend Protocol — the canonical route table. The dev server
- * (@jxsuite/server) is the reference implementation; every other backend
- * (desktop RPC bridge, cloud platforms) serves the same shapes, either at
- * these literal paths or through an equivalent transport. Optional routes
- * back optional StudioPlatform members — Studio degrades without them, as
- * described by each entry's `degradation`.
+ * Studio Backend Protocol — the canonical route table. The dev server (@jxsuite/server) is the
+ * reference implementation; every other backend (desktop RPC bridge, cloud platforms) serves the
+ * same shapes, either at these literal paths or through an equivalent transport. Optional routes
+ * mostly back optional StudioPlatform members — Studio degrades without them, as described by each
+ * entry's `degradation`. A few back no member at all: an adapter uses them to serve members it
+ * already has more cheaply (`filesRead`), and their `degradation` is the route they stand in for.
  *
  * @license MIT
  */
@@ -28,7 +28,10 @@ export type StudioRouteMethod = "GET" | "POST" | "PUT" | "DELETE";
 export interface StudioRoute {
   path: string;
   method: StudioRouteMethod;
-  /** True when a backend may omit the route (its PAL member is optional). */
+  /**
+   * True when a backend may omit the route: its PAL member is optional, or it has no member and an
+   * adapter falls back to another route.
+   */
   optional: boolean;
   /** One-line contract summary. */
   summary: string;
@@ -111,6 +114,31 @@ export const STUDIO_ROUTES = {
       "files project-wide",
   ),
   fileRead: route("GET", "/__studio/file", "Read a file's text content"),
+  /**
+   * Many reads in ONE round trip, for a backend whose every request is a network hop.
+   *
+   * The first optional route with no `StudioPlatform` member behind it: the PAL keeps `readFile`,
+   * and an adapter for such a backend coalesces the reads issued in one tick into this call itself
+   * (specs/desktop.md §3.1, §10.1). Callers never see it, so a backend without it costs latency and
+   * nothing else — which is why the dev server, whose reads are loopback, does not serve it.
+   *
+   * The answer is partial by design, never a 400: past `READ_FILES_MAX_PATHS` paths or the
+   * backend's byte budget, the rest come back in `omitted` for the client to ask again, and the
+   * first path is always answered so that asking again makes progress. Each answered path carries
+   * its own outcome, because one missing file is not a failed batch. It is a READ: a read-only
+   * session may call it, and whatever a single `fileRead` does on the backend's side (a cloud
+   * session fetches and stores the file it serves) this does per path too.
+   */
+  filesRead: route(
+    "POST",
+    "/__studio/files/read",
+    "Read many files' text content {paths} → ReadFilesResult {files: [path, {content} | " +
+      "{error: {status, code?, message}}][], omitted}. At most READ_FILES_MAX_PATHS (200) paths " +
+      "and a backend byte budget per call: the excess is listed in `omitted` (never a 400) and " +
+      "the first path is always answered. Per-path errors: 404 missing/deleted, 415 binary, 413 " +
+      "too large, 502 upstream. Allowed for read-only sessions; keeps fileRead's server-side effects",
+    "Adapters fall back to one fileRead per path.",
+  ),
   fileWrite: route("PUT", "/__studio/file", "Write a file's text content"),
   fileDelete: route("DELETE", "/__studio/file", "Delete a file"),
   fileUpload: route(
@@ -475,7 +503,10 @@ export function coreRouteNames(): StudioRouteName[] {
   );
 }
 
-/** Names of the optional routes (each backs an optional StudioPlatform member). */
+/**
+ * Names of the optional routes (each backs an optional StudioPlatform member, or is an adapter's
+ * optimisation with a fallback).
+ */
 export function optionalRouteNames(): StudioRouteName[] {
   return (Object.keys(STUDIO_ROUTES) as StudioRouteName[]).filter(
     (name) => STUDIO_ROUTES[name].optional,

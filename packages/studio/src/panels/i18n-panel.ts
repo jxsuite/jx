@@ -188,19 +188,25 @@ async function takeScan(root: string, rerender: () => void): Promise<void> {
  * @returns {Promise<Map<string, string>>}
  */
 async function readDeclaredKeys(files: readonly LibraryFile[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
   const platform = getPlatform();
-  for (const file of files) {
-    if (file.category === "Media" || !file.path.startsWith("pages/")) {
-      continue;
-    }
-    let text: string;
-    try {
-      text = await platform.readFile(file.path);
-    } catch {
-      continue;
-    }
-    if (!text.includes("$translationKey")) {
+  const pages = files.filter((file) => file.category !== "Media" && file.path.startsWith("pages/"));
+  /* Issued together, not one after another. Each read is a round trip on a remote backend, and a
+     sequential loop paid one per page; issued in one tick, the cloud adapter coalesces them into a
+     single batch request (specs/desktop.md §10.1). `Promise.all` keeps the input order, so the map
+     comes out in the same order the loop built it. */
+  const texts = await Promise.all(
+    pages.map(async (file) => {
+      try {
+        return await platform.readFile(file.path);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const out = new Map<string, string>();
+  for (const [index, file] of pages.entries()) {
+    const text = texts[index];
+    if (!text?.includes("$translationKey")) {
       continue;
     }
     const declared = /"\$translationKey"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text)?.[1];

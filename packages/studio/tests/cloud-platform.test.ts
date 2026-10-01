@@ -46,15 +46,26 @@ interface Call {
   init?: RequestInit | undefined;
 }
 
-/** Route fetches by URL substring; unmatched calls get an empty 200. */
+/**
+ * Route fetches by URL substring; unmatched calls get an empty 200.
+ *
+ * Except the batch read. `/file` and `/files` are both substrings of `/files/read`, so a test that
+ * stubs single reads or listings would otherwise answer the batch POST with the wrong route's body.
+ * The batch route matches only a needle that names it, and is otherwise a 404 — an older platform,
+ * which is the backend every test written before the route existed was describing.
+ */
 function mockFetch(routes: Record<string, { status?: number; body: unknown }> = {}): Call[] {
   const calls: Call[] = [];
   globalThis.fetch = ((url: string, init?: RequestInit) => {
     calls.push({ url, init });
+    const batch = url.includes("/files/read");
     for (const [needle, response] of Object.entries(routes)) {
-      if (url.includes(needle)) {
+      if (url.includes(needle) && (!batch || needle.includes("/files/read"))) {
         return Promise.resolve(Response.json(response.body, { status: response.status ?? 200 }));
       }
+    }
+    if (batch) {
+      return Promise.resolve(Response.json({ error: "Not found" }, { status: 404 }));
     }
     return Promise.resolve(Response.json({}));
   }) as unknown as typeof fetch;
@@ -201,6 +212,330 @@ describe("file operations", () => {
     mockFetch({ "/file?path=": { status: 404, body: { error: "gone" } } });
     const platform = createCloudPlatform(PROJECT);
     await platform.deleteFile("gone.md");
+  });
+});
+
+// ─── Read coalescing (specs/desktop.md §10.1) ─────────────────────────────────
+
+describe("read coalescing", () => {
+  const batchBody = (call: Call | undefined) =>
+    JSON.parse((call?.init?.body as string | undefined) ?? "null") as unknown;
+
+  test("reads issued together go out as ONE batch POST naming every path", async () => {
+    const calls = mockFetch({
+      "/files/read": {
+        body: {
+          files: [
+            ["a.md", { content: "A" }],
+            ["b.md", { content: "B" }],
+            ["c.md", { content: "C" }],
+          ],
+          omitted: [],
+        },
+      },
+    });
+    const p = createCloudPlatform(PROJECT);
+    expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md"), p.readFile("c.md")])).toEqual(
+      ["A", "B", "C"],
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`${BASE}/files/read`);
+    expect(calls[0]?.init?.method).toBe("POST");
+    expect(batchBody(calls[0])).toEqual({ paths: ["a.md", "b.md", "c.md"] });
+  });
+
+  test("a per-path error in the batch fails that read alone, with the backend's message", async () => {
+    mockFetch({
+      "/files/read": {
+        body: {
+          files: [
+            ["a.md", { content: "A" }],
+            [
+              "logo.png",
+              { error: { code: "binary", message: "Binary file: logo.png", status: 415 } },
+            ],
+          ],
+          omitted: [],
+        },
+      },
+    });
+    const p = createCloudPlatform(PROJECT);
+    const [a, logo] = await Promise.allSettled([p.readFile("a.md"), p.readFile("logo.png")]);
+    expect(a).toEqual({ status: "fulfilled", value: "A" });
+    expect(String((logo as PromiseRejectedResult).reason)).toContain("Binary file: logo.png");
+  });
+
+  test("a platform without the batch route (404) falls back to one GET per path, for good", async () => {
+    const calls = mockFetch({
+      "path=a.md": { body: { content: "A" } },
+      "path=b.md": { body: { content: "B" } },
+      "path=c.md": { body: { content: "C" } },
+    });
+    const p = createCloudPlatform(PROJECT);
+    expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["A", "B"]);
+    expect(calls.map((c) => c.url)).toEqual([
+      `${BASE}/files/read`,
+      `${BASE}/file?path=a.md`,
+      `${BASE}/file?path=b.md`,
+    ]);
+    // Asked once: the next window goes straight to single reads.
+    expect(await Promise.all([p.readFile("c.md"), p.readFile("a.md")])).toEqual(["C", "A"]);
+    expect(calls.filter((c) => c.url.endsWith("/files/read"))).toHaveLength(1);
+  });
+
+  test("a 405 is the same verdict as a 404", async () => {
+    const calls = mockFetch({
+      "/files/read": { status: 405, body: { error: "Method not allowed" } },
+      "path=a.md": { body: { content: "A" } },
+      "path=b.md": { body: { content: "B" } },
+    });
+    const p = createCloudPlatform(PROJECT);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    expect(calls.filter((c) => c.url.endsWith("/files/read"))).toHaveLength(1);
+  });
+
+  /* An older platform refuses every non-allowlisted POST from a read-only collaborator at the
+     gateway, before any route lookup — so for a viewer, "no such route" arrives as a 403 read_only.
+     The route is a declared read, so that refusal can only mean the backend predates it. */
+  test("a 403 read_only is an older platform refusing a viewer — the same verdict as a 404", async () => {
+    const calls = mockFetch({
+      "/files/read": {
+        status: 403,
+        body: { error: "Write access required", code: "read_only" },
+      },
+      "path=a.md": { body: { content: "A" } },
+      "path=b.md": { body: { content: "B" } },
+    });
+    const p = createCloudPlatform(PROJECT);
+    expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["A", "B"]);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    expect(calls.filter((c) => c.url.endsWith("/files/read"))).toHaveLength(1);
+  });
+
+  test("a read-only refusal as a problem document is recognised by its type slug", async () => {
+    const calls = mockFetch({
+      "/files/read": {
+        status: 403,
+        body: {
+          detail: "Write access required",
+          status: 403,
+          title: "Forbidden",
+          type: "https://jxsuite.com/problems/read-only",
+        },
+      },
+      "path=a.md": { body: { content: "A" } },
+      "path=b.md": { body: { content: "B" } },
+    });
+    const p = createCloudPlatform(PROJECT);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    expect(calls.filter((c) => c.url.endsWith("/files/read"))).toHaveLength(1);
+  });
+
+  test("any other 403 is not that verdict: the batch is re-served singly and batching stays on", async () => {
+    for (const body of [{ error: "Grant expired", code: "forbidden" }, "not json"]) {
+      const calls: string[] = [];
+      globalThis.fetch = ((url: string) => {
+        calls.push(url);
+        if (url.endsWith("/files/read")) {
+          return Promise.resolve(
+            typeof body === "string"
+              ? new Response(body, { status: 403 })
+              : Response.json(body, { status: 403 }),
+          );
+        }
+        return Promise.resolve(Response.json({ content: url.slice(-4) }));
+      }) as unknown as typeof fetch;
+      const p = createCloudPlatform(PROJECT);
+      expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["a.md", "b.md"]);
+      await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+      expect(calls.filter((url) => url.endsWith("/files/read"))).toHaveLength(2);
+    }
+  });
+
+  test("a 200 whose JSON body is null, or has no files array, is treated as absent — never a hang", async () => {
+    for (const body of [null, 42, { omitted: [] }]) {
+      const calls = mockFetch({
+        "/files/read": { body },
+        "path=a.md": { body: { content: "A" } },
+        "path=b.md": { body: { content: "B" } },
+      });
+      const p = createCloudPlatform(PROJECT);
+      expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["A", "B"]);
+      await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+      expect(calls.filter((c) => c.url.endsWith("/files/read"))).toHaveLength(1);
+    }
+  });
+
+  test("any other batch failure re-serves that batch singly and keeps batching on", async () => {
+    const calls = mockFetch({
+      "/files/read": { status: 503, body: { error: "busy" } },
+      "path=a.md": { body: { content: "A" } },
+      "path=b.md": { body: { content: "B" } },
+    });
+    const p = createCloudPlatform(PROJECT);
+    expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["A", "B"]);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    // Both windows asked for a batch: a 503 is a bad moment, not a missing route.
+    expect(calls.filter((c) => c.url.endsWith("/files/read"))).toHaveLength(2);
+  });
+
+  test("a 200 that is not JSON is not the route answering — treated as absent", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = ((url: string) => {
+      calls.push(url);
+      if (url.endsWith("/files/read")) {
+        return Promise.resolve(new Response("<!doctype html>", { status: 200 }));
+      }
+      return Promise.resolve(Response.json({ content: url.slice(-4) }));
+    }) as unknown as typeof fetch;
+    const p = createCloudPlatform(PROJECT);
+    expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["a.md", "b.md"]);
+    await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
+    expect(calls.filter((url) => url.endsWith("/files/read"))).toHaveLength(1);
+  });
+
+  test("omitted paths are asked for again until every read is answered", async () => {
+    const calls: Call[] = [];
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      calls.push({ init, url });
+      if (!url.endsWith("/files/read")) {
+        return Promise.resolve(Response.json({ content: `<${url.slice(-1)}>` }));
+      }
+      const { paths } = JSON.parse(init?.body as string) as { paths: string[] };
+      // A tight budget: one path per answer, the rest omitted.
+      const [first, ...rest] = paths;
+      return Promise.resolve(
+        Response.json({ files: [[first, { content: `<${first}>` }]], omitted: rest }),
+      );
+    }) as unknown as typeof fetch;
+    const p = createCloudPlatform(PROJECT);
+    expect(await Promise.all(["a", "b", "c"].map(async (path) => p.readFile(path)))).toEqual([
+      "<a>",
+      "<b>",
+      "<c>",
+    ]);
+    expect(calls.slice(0, 2).map((c) => batchBody(c))).toEqual([
+      { paths: ["a", "b", "c"] },
+      { paths: ["b", "c"] },
+    ]);
+    // ...and the last one, alone, as a plain read: a window of one is never a batch.
+    expect(calls).toHaveLength(3);
+    expect(calls[2]?.url).toBe(`${BASE}/file?path=c`);
+  });
+
+  test("a network failure of the batch rejects the reads it carried", async () => {
+    globalThis.fetch = (() =>
+      Promise.reject(new TypeError("Failed to fetch"))) as unknown as typeof fetch;
+    const p = createCloudPlatform(PROJECT);
+    const outcomes = await Promise.allSettled([p.readFile("a.md"), p.readFile("b.md")]);
+    expect(outcomes.map((o) => String((o as PromiseRejectedResult).reason))).toEqual([
+      "TypeError: Failed to fetch",
+      "TypeError: Failed to fetch",
+    ]);
+  });
+
+  test("package members asking at once share one manifest read, and nothing is kept after", async () => {
+    const calls = mockFetch({
+      "/file?path=package.json": {
+        body: { content: JSON.stringify({ dependencies: { a: "1" } }) },
+      },
+    });
+    const p = createCloudPlatform(PROJECT);
+    const [first, second] = await Promise.all([p.listPackages(), p.listPackages()]);
+    expect(first).toEqual([{ name: "a", version: "1" }]);
+    expect(second).toEqual(first);
+    expect(calls.filter((c) => c.url.includes("package.json"))).toHaveLength(1);
+    // Settled means forgotten: the next ask is a new read, which may follow a write.
+    await p.listPackages();
+    expect(calls.filter((c) => c.url.includes("package.json"))).toHaveLength(2);
+  });
+
+  test("a manifest read still in flight is joined by a caller from a LATER tick", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const calls: Call[] = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ init, url });
+      await gate;
+      return Response.json({ content: JSON.stringify({ dependencies: { a: "1" } }) });
+    }) as unknown as typeof fetch;
+    const p = createCloudPlatform(PROJECT);
+    const first = p.addPackage("x@1");
+    await new Promise((resolve) => {
+      realSetTimeout(resolve, 0);
+    });
+    // Too late to share the batcher's window, in time to share the request.
+    const second = p.addPackage("y@2");
+    release();
+    await Promise.all([first, second]);
+    expect(calls.filter((c) => c.url.includes("path=package.json"))).toHaveLength(1);
+    /* Each caller parsed its own copy. Two MUTATORS on one shared read is where a shared parsed
+       object would do harm: the second write would carry the first one's edit as well, so a
+       removal racing an add could resurrect or drop a dependency nobody asked about. */
+    const written = calls
+      .filter((c) => c.init?.method === "PUT")
+      .map((c) => {
+        const body = JSON.parse(c.init?.body as string) as { content: string };
+        return (JSON.parse(body.content) as { dependencies: Record<string, string> }).dependencies;
+      });
+    expect(written).toEqual([
+      { a: "1", x: "1" },
+      { a: "1", y: "2" },
+    ]);
+  });
+
+  /* `probe.idle()` counts a platform call until its promise settles. A coalesced read is still one
+     `readFile` call per caller, so Studio is not idle while the batch carrying them is open — and is
+     the moment every one of them has its answer. */
+  test("probe.idle() waits for every coalesced read to settle", async () => {
+    const { getPlatform, platformInFlight, registerPlatform } = await import("../src/platform");
+    const { probeIdle, defaultIdleSources } = await import("../src/services/idle");
+    const previous = (globalThis as { __jxPlatform?: unknown }).__jxPlatform;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      await gate;
+      const { paths } = JSON.parse(init?.body as string) as { paths: string[] };
+      return Response.json({ files: paths.map((p) => [p, { content: p }]), omitted: [] });
+    }) as unknown as typeof fetch;
+    try {
+      registerPlatform(createCloudPlatform(PROJECT));
+      const platform = getPlatform();
+      const order: string[] = [];
+      const reads = ["a", "b", "c"].map(async (path) =>
+        platform.readFile(path).then((text) => {
+          order.push(`read:${text}`);
+        }),
+      );
+      expect(platformInFlight()).toEqual(["readFile", "readFile", "readFile"]);
+      const idle = probeIdle({
+        raf: (callback) => {
+          realSetTimeout(callback, 0);
+        },
+        sources: defaultIdleSources().filter((source) => source.name === "platform"),
+      }).then(() => {
+        order.push("idle");
+      });
+      await until(() => order.length === 0 && platformInFlight().length === 3, "the open batch");
+      for (let i = 0; i < 5; i += 1) {
+        await new Promise((resolve) => {
+          realSetTimeout(resolve, 0);
+        });
+      }
+      expect(order).toEqual([]);
+      release();
+      await Promise.all([...reads, idle]);
+      expect(order).toEqual(["read:a", "read:b", "read:c", "idle"]);
+      expect(platformInFlight()).toEqual([]);
+    } finally {
+      (globalThis as { __jxPlatform?: unknown }).__jxPlatform = previous;
+    }
   });
 });
 
@@ -941,14 +1276,18 @@ describe("bound session surface", () => {
     expect(p.findReferences!({ tagName: "my-card" })).rejects.toThrow(/walker exploded/);
   });
 
+  /* Each read is awaited before the fetch stub changes. Issued in the same tick, the two would be
+     one coalesced read of "x" and both would see whichever stub was installed when it flushed. */
   test("error bodies surface their message; non-JSON errors fall back", async () => {
     mockFetch({ "/file?path=x": { status: 500, body: { error: "disk full" } } });
     const p = createCloudPlatform(PROJECT);
-    expect(p.readFile("x")).rejects.toThrow(/disk full/);
+    expect(String(await p.readFile("x").catch((error: unknown) => error))).toMatch(/disk full/);
 
     globalThis.fetch = (() =>
       Promise.resolve(new Response("plain text", { status: 500 }))) as unknown as typeof fetch;
-    expect(p.readFile("x")).rejects.toThrow(/Failed to read file/);
+    expect(String(await p.readFile("x").catch((error: unknown) => error))).toMatch(
+      /Failed to read file/,
+    );
   });
 
   test("locate, search, and resolveSiteContext map their wire shapes", async () => {
@@ -1326,7 +1665,21 @@ describe("collab capability", () => {
 describe("discoverComponents", () => {
   /** A session whose tree is `dirs` and whose files answer with `files`. */
   function session(dirs: Record<string, unknown[]>, files: Record<string, unknown>) {
-    globalThis.fetch = ((url: string) => {
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      // The batch read the walk's reads coalesce into: per-path outcomes, a 404 for a missing one.
+      if (url.endsWith("/files/read")) {
+        const { paths } = JSON.parse(init?.body as string) as { paths: string[] };
+        return Promise.resolve(
+          Response.json({
+            files: paths.map((path) =>
+              path in files
+                ? [path, { content: JSON.stringify(files[path]) }]
+                : [path, { error: { message: "gone", status: 404 } }],
+            ),
+            omitted: [],
+          }),
+        );
+      }
       const listed = /\/files\?dir=([^&]*)/u.exec(url);
       if (listed) {
         return Promise.resolve(Response.json(dirs[decodeURIComponent(listed[1] ?? "")] ?? []));
@@ -1376,6 +1729,32 @@ describe("discoverComponents", () => {
       { "pages/index.json": { children: [], tagName: "main" } },
     );
     expect(await createCloudPlatform(PROJECT).discoverComponents()).toEqual([]);
+  });
+
+  /* Discovery is the read storm coalescing exists for: up to four hundred files, all issued in one
+     tick. They go out as ONE batch request, not one GET each. */
+  test("every file the walk finds is read in one batch request", async () => {
+    session(
+      {
+        "": [file("a.json", "a.json"), file("b.json", "b.json"), file("c.json", "c.json")],
+      },
+      { "a.json": { tagName: "a-a" }, "b.json": { tagName: "b-b" }, "c.json": { tagName: "c-c" } },
+    );
+    const inner = globalThis.fetch;
+    const calls: { url: string; body?: string }[] = [];
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      calls.push({ url, ...(typeof init?.body === "string" ? { body: init.body } : {}) });
+      return (inner as (u: string, i?: RequestInit) => Promise<Response>)(url, init);
+    }) as unknown as typeof fetch;
+    const found = await createCloudPlatform(PROJECT).discoverComponents();
+    expect(found.map((c) => c.tagName)).toEqual(["a-a", "b-b", "c-c"]);
+    const reads = calls.filter((c) => c.url.includes("/file?") || c.url.endsWith("/files/read"));
+    expect(reads).toEqual([
+      {
+        body: JSON.stringify({ paths: ["a.json", "b.json", "c.json"] }),
+        url: `${BASE}/files/read`,
+      },
+    ]);
   });
 
   test("unreadable or non-JSON files are skipped, not fatal", async () => {

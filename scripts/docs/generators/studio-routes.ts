@@ -59,7 +59,7 @@ export function generateStudioRoutes(): string {
     "",
     "# Protocol route reference",
     "",
-    `The canonical Studio Backend Protocol route table (protocol version ${STUDIO_PROTOCOL_VERSION}), from \`@jxsuite/protocol\`. The dev server is the reference implementation; any backend serving these shapes can host Studio. Optional routes back optional platform-adapter members — Studio degrades without them as described.`,
+    `The canonical Studio Backend Protocol route table (protocol version ${STUDIO_PROTOCOL_VERSION}), from \`@jxsuite/protocol\`. The dev server is the reference implementation; any backend serving these shapes can host Studio. Optional routes mostly back optional platform-adapter members; a few (\`filesRead\`) back no member and let an adapter serve one it already has more cheaply, and their degradation names the route they stand in for. Studio degrades without any of them as described.`,
     "",
   ];
 
