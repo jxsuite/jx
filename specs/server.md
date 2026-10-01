@@ -183,7 +183,7 @@ The canonical endpoint list is the `STUDIO_ROUTES` table in `@jxsuite/protocol` 
 - **Packages** — dependency list/add/remove/install, an install-staleness check, the newest published version of every dependency (`packages/versions`, reported whether or not the pin is behind — comparing them is the client's job), bulk version updates
 - **Git** — status, branches, log, stage/unstage, commit, push/pull/fetch, checkout, branch, diff/show, discard, init, remotes, clone, PR
 - **Data surface + secrets** — connector connections, connection test, additive schema push, row paging/CRUD, secret env-var names (never values)
-- **AI proxy** — SSE chat proxy and model catalogue. The wire half (reading the body, the upstream request, the stream normalizer, SSE framing, problem responses) is the shared `@jxsuite/ai/gateway` (ai.md §2.4); `ai-api.ts` supplies this server's policy to it (key provenance, the environment-key fallback, the link-local base-URL guard of §4.2) and keeps the model catalogue.
+- **AI proxy** — SSE chat proxy and model catalogue. The wire half (reading the body, the upstream request, the stream normalizer, SSE framing, problem responses) is the shared `@jxsuite/ai/gateway` (ai.md §2.4); `ai-api.ts` supplies this server's policy to it (key provenance, the environment-key fallback, the link-local base-URL guard of §4.2, and the prompt-cache affinity it derives from the client's `X-Jx-Ai-Session` header under the `local` scope, ai.md §2.5) and keeps the model catalogue.
 - **Cloudflare publish** — allowlisted API passthrough
 
 Handlers are dispatched inside the `/__studio/*` branch in this order: collab → activate → AI (`ai-api.ts`) → import-site (`import-api.ts`) → code services (`code-api.ts`) → the main studio handler (`studio-api.ts`).

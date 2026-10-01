@@ -2,7 +2,7 @@
 /**
  * Cli.js — entrypoint for the AI-assistant eval harness.
  *
- *   bun run evals/cli.js [--tasks <glob-or-path>...] [--k <n>]
+ * Usage: `bun run evals/cli.js [--tasks <glob-or-path>...] [--k <n>]`
  *
  * Loads golden tasks, runs each through the real agent loop `k` times, grades with the render
  * critic (+ schema baseline), and writes a timestamped run under evals/runs/. Exits non-zero when a
@@ -108,8 +108,11 @@ async function main() {
   }
 
   const { outDir, summary, regressed } = writeRun(results, { stamp: stampNow() });
+  const { usage } = summary;
+  const cacheHit = usage.cacheRatio === null ? "n/a" : `${(usage.cacheRatio * 100).toFixed(0)}%`;
   console.log(
-    `\nMean pass-rate ${(summary.meanPassRate * 100).toFixed(0)}% · report: ${join(outDir, "report.md")}`,
+    `\nMean pass-rate ${(summary.meanPassRate * 100).toFixed(0)}% · ` +
+      `${usage.inputTokens} input tokens, ${cacheHit} from cache · report: ${join(outDir, "report.md")}`,
   );
   if (regressed.length > 0) {
     console.error(`✗ Regressions: ${regressed.join(", ")}`);

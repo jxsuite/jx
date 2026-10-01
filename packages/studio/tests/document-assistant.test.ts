@@ -212,6 +212,9 @@ describe("document-assistant", () => {
       true,
     );
     expect(listSessions("")[0]!.title).toBe("hi");
+    // The persisted session's id rides along, so the backend can derive a prompt-cache key from it.
+    expect(lastClientOpts?.sessionId).toBe(listSessions("")[0]!.id);
+    expect(lastClientOpts?.sessionId).toBe(a.activeSessionId());
   });
 
   test("executes a tool call that mutates the document as a single undo step", async () => {

@@ -4,6 +4,7 @@
  * @module @jxsuite/ai/gateway
  */
 
+import { upstreamCacheHints } from "../cache-hints.ts";
 import type { StreamEvent } from "../streaming-client.ts";
 import { fetchFailureFrame, normalizeOpenAIStream } from "./normalize.ts";
 import { problemResponse, refusal } from "./problem.ts";
@@ -30,6 +31,7 @@ interface UpstreamBody {
   tools?: unknown;
   tool_choice?: string;
   parallel_tool_calls?: boolean;
+  prompt_cache_key?: string;
 }
 
 /**
@@ -115,8 +117,10 @@ async function* exchange(
  *
  * The version 1 body is forwarded as the OpenAI-compatible request it describes: the system prompt
  * as a leading `system` message, `stream_options.include_usage` so the provider's own token count
- * arrives, and `tool_choice: "auto"` with parallel calls whenever tools are offered. The upstream
- * request carries `context.signal`, so aborting it ends the stream with `done: cancelled`.
+ * arrives, and `tool_choice: "auto"` with parallel calls whenever tools are offered. When the host
+ * resolved a `sessionAffinity`, it rides along as the prompt-cache hint the upstream's host
+ * understands, and not at all to any other host (`upstreamCacheHints`). The upstream request
+ * carries `context.signal`, so aborting it ends the stream with `done: cancelled`.
  *
  * @param {ChatGatewayOptions<C>} options - The host's policy
  * @returns {(request: Request, context: C) => Promise<Response>}
@@ -200,6 +204,8 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       upstreamBody.tool_choice = "auto";
       upstreamBody.parallel_tool_calls = true;
     }
+    const hints = upstreamCacheHints(upstream.baseUrl, upstream.sessionAffinity);
+    Object.assign(upstreamBody, hints.body);
 
     // Looked up per request, not captured at construction: a host or a test may swap it.
     const upstreamFetch = options.fetch ?? fetch;
@@ -208,6 +214,7 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${upstream.apiKey}`,
+        ...hints.headers,
       },
       body: JSON.stringify(upstreamBody),
       signal: context.signal,

@@ -1,0 +1,16 @@
+{
+  "id": "about-page-no-document",
+  "prompt": "Add an About page at pages/about.json. Give it the same structure as the home page: a heading reading \"About Acme Studio\" and one short paragraph about the studio.",
+  "tags": ["no-document", "list_files", "write_file"],
+  "intent": [
+    "discovers the home page with list_files / read_file rather than guessing its shape",
+    "writes pages/about.json as a new Jx document (write_file or create_page)",
+    "an h1 with textContent \"About Acme Studio\" and a p",
+    "leaves pages/index.json unchanged"
+  ],
+  "files": {
+    "project.json": "{\n  \"name\": \"Acme Studio\",\n  \"defaults\": {\n    \"lang\": \"en\"\n  }\n}\n",
+    "pages/index.json": "{\n  \"title\": \"Acme Studio\",\n  \"tagName\": \"main\",\n  \"children\": [\n    {\n      \"tagName\": \"h1\",\n      \"textContent\": \"Acme Studio\"\n    },\n    {\n      \"tagName\": \"p\",\n      \"textContent\": \"We design calm, fast websites for small teams.\"\n    }\n  ]\n}\n"
+  },
+  "output": "pages/about.json"
+}

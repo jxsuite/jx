@@ -64,10 +64,12 @@ const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; wh
 /**
  * The module graph each Worker-safe entry bundles today, repository-relative and sorted. This is
  * the non-vacuity pin: a build that resolved nothing cannot match it, and a new module entering a
- * Worker graph is a diff someone reads. Note what is NOT here: streaming-client's only import is
- * `import type { ProblemDetails } from "@jxsuite/protocol"`, which is erased, so @jxsuite/protocol
- * contributes no module at runtime. The gateway is the one entry that imports protocol at runtime,
- * and only its two problem modules (for `problemDetails` and `PROBLEM_MEDIA_TYPE`), never the root
+ * Worker graph is a diff someone reads. Note what is NOT here: streaming-client's only import
+ * outside this package is `import type { ProblemDetails } from "@jxsuite/protocol"`, which is
+ * erased, so @jxsuite/protocol contributes no module at runtime. `cache-hints.ts` is in both graphs
+ * on purpose: it is the prompt-cache hint table both upstream callers share, and it needs nothing
+ * but `crypto.subtle` and `URL`. The gateway is the one entry that imports protocol at runtime, and
+ * only its two problem modules (for `problemDetails` and `PROBLEM_MEDIA_TYPE`), never the root
  * barrel, which would bring the route table too. Its type-only imports (`gateway/types.ts`, and the
  * frame types it borrows from streaming-client) are erased the same way. When a change adds a
  * module on purpose, confirm it passes FORBIDDEN ("reaches no forbidden module" checks) and add it
@@ -75,6 +77,7 @@ const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; wh
  */
 const FROZEN_GRAPHS: Readonly<Record<string, readonly string[]>> = {
   "./gateway": [
+    "packages/ai/src/cache-hints.ts",
     "packages/ai/src/gateway/chat.ts",
     "packages/ai/src/gateway/index.ts",
     "packages/ai/src/gateway/models.ts",
@@ -85,7 +88,7 @@ const FROZEN_GRAPHS: Readonly<Record<string, readonly string[]>> = {
     "packages/protocol/src/problem.ts",
     "packages/protocol/src/problems.ts",
   ],
-  "./streaming-client": ["packages/ai/src/streaming-client.ts"],
+  "./streaming-client": ["packages/ai/src/cache-hints.ts", "packages/ai/src/streaming-client.ts"],
   "./tools": ["packages/ai/src/tools.ts"],
 };
 
@@ -654,6 +657,7 @@ describe("canary builds trip the gate", () => {
     expect(describeViolations(graph.violations)).toEqual([]);
     expect(graph.modules).toEqual([
       "packages/ai/src/__worker_gate_canary__.ts",
+      "packages/ai/src/cache-hints.ts",
       "packages/ai/src/streaming-client.ts",
       "packages/ai/src/tools.ts",
     ]);

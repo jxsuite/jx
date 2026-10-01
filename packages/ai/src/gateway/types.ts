@@ -27,6 +27,13 @@ export interface Upstream {
   readonly defaultModel: string;
   /** True when the platform brokers the credential, rather than the user supplying one. */
   readonly managed: boolean;
+  /**
+   * The prompt-cache affinity key for the request's conversation, when the host derived one: the
+   * gateway forwards it in whatever form this upstream understands, and to no other upstream
+   * (`upstreamCacheHints`). A host derives it with `affinityKey(scope, id)` from the client's
+   * `X-Jx-Ai-Session` header, so the raw id never leaves the host.
+   */
+  readonly sessionAffinity?: string;
 }
 
 /**

@@ -47,5 +47,30 @@ describe("scoreboard", () => {
     const report = readFileSync(join(second.outDir, "report.md"), "utf8");
     expect(report).toContain("Regressions vs previous run");
     expect(report).toContain("| a |");
+    // A run whose provider reported no counts says the cache ratio is unknown, not 0%.
+    expect(report).toContain("**Tokens:** 0 in · 0 cached (n/a cache hit)");
+  });
+
+  test("totals the trials' usage and reports the share the prompt cache served", () => {
+    const runsDir = mkdtempSync(join(tmpdir(), "jx-eval-"));
+    const task = taskResult("a", 1);
+    const [trial] = task.trials;
+    const usage = { cachedInputTokens: 750, inputTokens: 1000, outputTokens: 40, requests: 2 };
+    const { outDir, summary } = writeRun([{ ...task, trials: [{ ...trial!, usage }] }], {
+      runsDir,
+      stamp: "20260101-000000",
+    });
+    expect(summary.usage).toEqual({ ...usage, cacheRatio: 0.75 });
+    const report = readFileSync(join(outDir, "report.md"), "utf8");
+    expect(report).toContain(
+      "**Tokens:** 1000 in · 750 cached (75% cache hit) · 40 out over 2 reporting request(s)",
+    );
+    const results = JSON.parse(readFileSync(join(outDir, "results.json"), "utf8")) as {
+      tasks: { trials: { usage: unknown }[] }[];
+    };
+    expect(results.tasks[0]?.trials[0]?.usage).toEqual(usage);
+    expect(readFileSync(join(outDir, "transcripts", "a-1.md"), "utf8")).toContain(
+      "inputTokens=1000 cachedInputTokens=750 outputTokens=40",
+    );
   });
 });
