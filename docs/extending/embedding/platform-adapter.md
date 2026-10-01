@@ -210,6 +210,8 @@ Two lessons from it generalize to any adapter:
 
 Its transport also carries messages the launcher sends **unprompted**: a frame with a `method` and no request id. That is how `subscribeFileEvents` is fed, and how another window asks this one to come forward. If your host can push, a subscription member is a local handler plus a dispatch line. No polling needed.
 
+**Say when the stream has a gap.** `subscribeFileEvents` takes a second argument, `{ onResync }`. Events are deltas, so if your transport can drop and come back (a WebSocket, an `EventSource`), whatever was sent while it was down is lost and no later event repairs it. Call `onResync("reconnect")` on every reconnect after the first open, and `onResync("commit")` when the backend changes the tree without sending per-file events. Studio then re-lists the folders it has loaded and, after a reconnect, re-reads the clean open documents, leaving any whose content did not change untouched. The Chromium shell above does this from its socket's `open` listener. A transport that cannot lose events, such as an in-process watcher, never needs to call it.
+
 ## Related
 
 - [Embedding overview](/docs/extending/embedding): choosing between an adapter and the HTTP protocol

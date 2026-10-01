@@ -106,7 +106,7 @@ const methodLog: { method: string; params?: Record<string, unknown> }[] = [];
 
 /* Sockets the mock launcher can speak FIRST on. The chromium launcher pushes filesystem events and
    focus requests, which are not answers to anything the shell asked, so a test needs the same. */
-const clients: { send: (data: string) => void }[] = [];
+const clients: { send: (data: string) => void; close: () => void }[] = [];
 
 function pushToClient(frame: Record<string, unknown>) {
   for (const client of clients) {
@@ -876,6 +876,42 @@ describe("chromium desktop platform", () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  /**
+   * The launcher pushes `onFileEvents` to the sockets open at that moment and replays nothing, so a
+   * socket that drops and comes back has lost whatever was pushed in between. Only a RE-open says
+   * so: the first open precedes any event and has nothing to repair.
+   */
+  test("a socket that comes back reports a reconnect resync; the first open does not", async () => {
+    const reasons: string[] = [];
+    const unsubscribe = platform.subscribeFileEvents!(() => {}, {
+      onResync: (reason) => reasons.push(reason),
+    });
+    try {
+      // The platform opened in beforeAll, long before this subscriber existed.
+      await Bun.sleep(20);
+      expect(reasons).toEqual([]);
+
+      // The server drops every socket, as an idle timeout or a suspended window would.
+      for (const client of clients.splice(0)) {
+        client.close();
+      }
+      await until(() => reasons.length > 0);
+      expect(reasons).toEqual(["reconnect"]);
+      // The socket that came back carries requests again.
+      await expect(platform.readFile("a.json")).resolves.toBe("file content here");
+    } finally {
+      unsubscribe();
+    }
+
+    // Unsubscribed: a later reconnect has no one to tell.
+    for (const client of clients.splice(0)) {
+      client.close();
+    }
+    await until(() => clients.length >= 2);
+    await expect(platform.readFile("a.json")).resolves.toBe("file content here");
+    expect(reasons).toEqual(["reconnect"]);
   });
 
   test("a focus request raises the window, which only the page can do", async () => {

@@ -28,6 +28,7 @@ import type {
   ExtensionCatalogEntry,
   ExtensionsInfo,
   FsEvent,
+  FsResyncReason,
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
@@ -495,12 +496,27 @@ export function createDevServerPlatform() {
      * Subscribe to filesystem change events over the dev server's SSE stream. Listens for the named
      * "fs" event (the preview iframe's default `onmessage` ignores it), strips paths to
      * project-relative, and drops events for sibling projects outside the active root.
+     *
+     * `EventSource` reconnects by itself, and the dev server does not replay what it sent while the
+     * stream was down — a restarted `bun run dev` is the usual cause. So every `open` after the
+     * first reports a `"reconnect"` resync: one re-list of the cached tree is cheap next to an
+     * author editing a file the sidebar says is not there.
      */
-    subscribeFileEvents(handler: (events: FsEvent[]) => void) {
+    subscribeFileEvents(
+      handler: (events: FsEvent[]) => void,
+      options?: { onResync?: (reason: FsResyncReason) => void },
+    ) {
       if (typeof EventSource === "undefined") {
         return () => {};
       }
       const es = new EventSource("/__reload");
+      let opens = 0;
+      es.addEventListener("open", () => {
+        opens += 1;
+        if (opens > 1) {
+          options?.onResync?.("reconnect");
+        }
+      });
       es.addEventListener("fs", (ev: MessageEvent) => {
         let payload: { events?: FsEvent[] };
         try {

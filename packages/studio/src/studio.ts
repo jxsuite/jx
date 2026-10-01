@@ -126,6 +126,7 @@ import {
   openLastSessionOrHome,
   registerFileTreeDnD,
   reloadCleanTab,
+  reloadTabsIfChanged,
 } from "./files/files";
 import { resetIgnoreCache } from "./files/gitignore";
 import { startFsSync } from "./files/fs-events";
@@ -959,6 +960,9 @@ function ensureFsSync() {
       paneContext.resetParamValues();
     },
     onContentChange: reloadCleanTab,
+    /* A reconnect re-reads the clean, non-collab tabs, and leaves every one whose content did not
+       change untouched: most reconnects changed nothing, and a reload is a repaint per tab. */
+    onResyncContent: reloadTabsIfChanged,
     renderLeftPanel,
   });
 }

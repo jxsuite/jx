@@ -9,6 +9,7 @@ import type {
   ExtensionCatalogEntry,
   ExtensionsInfo,
   FsEvent,
+  FsResyncReason,
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
@@ -126,6 +127,15 @@ export function createDesktopPlatform() {
 
   // The studio sidebar's live-sync subscriber, if any. Set via subscribeFileEvents below.
   let fileEventHandler: ((events: FsEvent[]) => void) | null = null;
+  /*
+   * The same subscriber's resync hook. The launcher's `push` sends to the sockets open at that
+   * moment and replays nothing to one that comes back, so every `onFileEvents` frame sent while
+   * this socket was down is gone — and events are deltas, which no later delta repairs. A
+   * reconnect is therefore reported, and Studio re-reads what it has cached (`studio.md` §9.2).
+   */
+  let resyncHandler: ((reason: FsResyncReason) => void) | null = null;
+  /** Whether the socket has opened before: only a RE-open follows a gap in the event stream. */
+  let everOpened = false;
   /** The settings kernel's subscriber, so another window's change reaches this one. */
   let settingsHandler: ((settings: Record<string, string>) => void) | null = null;
 
@@ -178,6 +188,10 @@ export function createDesktopPlatform() {
       ws.addEventListener("open", () => {
         reconnectMs = RECONNECT_MIN_MS;
         connectionHandler?.({ online: true });
+        if (everOpened) {
+          resyncHandler?.("reconnect");
+        }
+        everOpened = true;
         resolve();
       });
     });
@@ -463,12 +477,23 @@ export function createDesktopPlatform() {
      * whenever the root changes) and pushes batched events as `onFileEvents` frames, so this only
      * has to say where they go. Without it the chromium sidebar refreshed only when asked, and a
      * file written by a terminal — or by the AI assistant — stayed invisible until then.
+     *
+     * The socket can drop and come back (see the transport above), and frames pushed in between are
+     * lost, so every re-open is reported as `onResync("reconnect")`.
      */
-    subscribeFileEvents(handler: (events: FsEvent[]) => void) {
+    subscribeFileEvents(
+      handler: (events: FsEvent[]) => void,
+      options?: { onResync?: (reason: FsResyncReason) => void },
+    ) {
       fileEventHandler = handler;
+      const onResync = options?.onResync ?? null;
+      resyncHandler = onResync;
       return () => {
         if (fileEventHandler === handler) {
           fileEventHandler = null;
+        }
+        if (resyncHandler === onResync) {
+          resyncHandler = null;
         }
       };
     },

@@ -1380,6 +1380,73 @@ describe("session events (WebSocket)", () => {
     }
   });
 
+  /*
+   * The stream is deltas, and the DO replays none of them to a socket that comes back — so the
+   * adapter must say when its stream has a gap, and when a change arrived without one.
+   */
+  test("every open after the first reports a reconnect resync", () => {
+    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
+    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    instances.length = 0;
+    try {
+      const p = createCloudPlatform(PROJECT);
+      const reasons: string[] = [];
+      const unsubscribe = p.subscribeFileEvents?.(() => {}, {
+        onResync: (reason) => reasons.push(reason),
+      });
+      const first = instances[0] as unknown as MockWebSocket;
+      first.emit("open", {});
+      // The first open is the subscription starting, not a gap: nothing was missed yet.
+      expect(reasons).toEqual([]);
+
+      first.emit("close", {});
+      expect(instances).toHaveLength(1);
+      /* The retry goes through the shared scheduler, which a wake signal cuts short — the same
+         path a laptop rejoining a network takes, and the only way to reach the second socket here
+         without waiting out a real backoff. */
+      window.dispatchEvent(new Event("online"));
+      expect(instances).toHaveLength(2);
+      const second = instances[1] as unknown as MockWebSocket;
+      second.emit("open", {});
+      expect(reasons).toEqual(["reconnect"]);
+
+      unsubscribe?.();
+      expect(second.closed).toBe(true);
+      // Unsubscribed: the scheduler's listeners are gone, so a wake opens nothing new.
+      second.emit("close", {});
+      window.dispatchEvent(new Event("online"));
+      expect(instances).toHaveLength(2);
+    } finally {
+      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+    }
+  });
+
+  test("a committed notice reports a commit resync; other git notices do not", () => {
+    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
+    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    instances.length = 0;
+    try {
+      const p = createCloudPlatform(PROJECT);
+      const reasons: string[] = [];
+      const batches: unknown[] = [];
+      const unsubscribe = p.subscribeFileEvents?.((events) => batches.push(events), {
+        onResync: (reason) => reasons.push(reason),
+      });
+      const socket = instances[0] as unknown as MockWebSocket;
+      socket.emit("open", {});
+      socket.emit("message", {
+        data: JSON.stringify({ event: "committed", kind: "git", sha: "abc123" }),
+      });
+      socket.emit("message", { data: JSON.stringify({ event: "pushed", kind: "git" }) });
+      expect(reasons).toEqual(["commit"]);
+      // A commit carries no per-file events, so the file handler hears nothing about it.
+      expect(batches).toHaveLength(0);
+      unsubscribe?.();
+    } finally {
+      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+    }
+  });
+
   test("opens no socket without a project (hub: empty base would be a bare /events)", () => {
     const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
     (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;

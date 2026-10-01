@@ -31,10 +31,13 @@ import {
   openProject,
   pickAndUploadTo,
   reloadFileInTab,
+  reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
 import type { DirEntry, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
+import { deriveJsonLayout } from "@jxsuite/schema/json-layout";
+import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-state";
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
 
@@ -839,6 +842,224 @@ describe("reloadFileInTab", () => {
     expect(tabA.doc.document.tagName).toBe("div");
     expect(tabB.doc.document.tagName).toBe("footer");
     expect(workspace.tabs.size).toBe(2);
+  });
+
+  /*
+   * `onlyIfChanged` is what a reconnect resync reloads with. Most reconnects changed nothing, and
+   * an assignment of an identical document is still a repaint and an undo boundary, so an unchanged
+   * file must leave the tab's document object exactly where it was.
+   */
+  describe("onlyIfChanged", () => {
+    test("an unchanged JSON file leaves the document alone but takes the text's layout", async () => {
+      const { state } = installFsPlatform({
+        "pages/a.json": JSON.stringify({ id: "x", tagName: "div" }),
+      });
+      siteState();
+      const tab = openTab({
+        document: { id: "x", tagName: "div" },
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      const before = tab.doc.document;
+      // The same document, reformatted on disk: nothing to repaint, but the next save must not
+      // Write it back in the old layout.
+      const reformatted = '{\n  "id": "x",\n\n  "tagName": "div"\n}\n';
+      state.files.set("pages/a.json", reformatted);
+
+      await reloadFileInTab("pages/a.json", { onlyIfChanged: true });
+
+      expect(tab.doc.document).toBe(before);
+      const expected = deriveJsonLayout(reformatted);
+      expect(expected.blankAfter.size).toBe(1);
+      expect([...(tab.doc.layout?.blankAfter ?? [])]).toEqual([...expected.blankAfter]);
+    });
+
+    test("a changed JSON file is reloaded as usual", async () => {
+      const { state } = installFsPlatform({ "pages/a.json": JSON.stringify({ tagName: "div" }) });
+      siteState();
+      const tab = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      state.files.set("pages/a.json", JSON.stringify({ tagName: "main" }));
+
+      await reloadFileInTab("pages/a.json", { onlyIfChanged: true });
+
+      expect(tab.doc.document.tagName).toBe("main");
+    });
+
+    test("a format file is skipped only when document AND frontmatter are unchanged", async () => {
+      const { state } = installFsPlatform({ "post.md": "---\ntitle: One\n---\n\n# Same\n" });
+      siteState();
+      const tab = openTab({
+        document: { children: [], tagName: "div" },
+        documentPath: "post.md",
+        id: "post.md",
+        sourceFormat: "Markdown",
+      });
+      // Load it once for real, so the tab holds exactly what the parser makes of the file.
+      await reloadFileInTab("post.md");
+      const before = tab.doc.document;
+
+      await reloadFileInTab("post.md", { onlyIfChanged: true });
+      expect(tab.doc.document).toBe(before);
+
+      // The body is the same and only the frontmatter moved: that is still a change.
+      state.files.set("post.md", "---\ntitle: Two\n---\n\n# Same\n");
+      await reloadFileInTab("post.md", { onlyIfChanged: true });
+      expect(tab.doc.content.frontmatter).toMatchObject({ title: "Two" });
+      expect(tab.doc.document).not.toBe(before);
+    });
+
+    test("reloadTabsIfChanged reloads each path it is given, unchanged ones untouched", async () => {
+      const { state } = installFsPlatform({
+        "pages/a.json": JSON.stringify({ tagName: "div" }),
+        "pages/b.json": JSON.stringify({ tagName: "div" }),
+      });
+      siteState();
+      const tabA = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      const tabB = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/b.json",
+        id: "pages/b.json",
+      });
+      const beforeA = tabA.doc.document;
+      state.files.set("pages/b.json", JSON.stringify({ tagName: "aside" }));
+
+      reloadTabsIfChanged(["pages/a.json", "pages/b.json"]);
+      await flush();
+      await flush();
+
+      expect(tabA.doc.document).toBe(beforeA);
+      expect(tabB.doc.document.tagName).toBe("aside");
+    });
+  });
+
+  /*
+   * Whether to reload is decided about the tab as it was when the read started, and the read is a
+   * round trip. A reconnect resync re-reads every clean tab at the moment the author returns to the
+   * window — exactly when the first keystrokes land — so an edit made during the read must survive
+   * it, not be replaced by the disk copy with `dirty` cleared.
+   */
+  describe("a tab that moves while its file is being read", () => {
+    /** Hold `readFile` until the test lets it go, so the test can act inside the round trip. */
+    function gateReads(platform: StudioPlatform, files: Map<string, string>) {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      platform.readFile = async (path: string) => {
+        await gate;
+        return files.get(path) ?? "";
+      };
+      return () => release();
+    }
+
+    test("an edit made during the read keeps the edit, and the tab stays dirty", async () => {
+      const { platform, state } = installFsPlatform({
+        "pages/a.json": JSON.stringify({ tagName: "div" }),
+      });
+      siteState();
+      const tab = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      const layoutBefore = tab.doc.layout;
+      const release = gateReads(platform, state.files);
+
+      const reload = reloadFileInTab("pages/a.json", { onlyIfChanged: true });
+      // The author types while the read is in flight: what `transact` does to a tab.
+      tab.doc.document = { tagName: "section" };
+      tab.doc.dirty = true;
+      release();
+      await reload;
+
+      expect(tab.doc.document.tagName).toBe("section");
+      expect(tab.doc.dirty).toBe(true);
+      // The layout belongs to the text the tab was opened from, not to the read it ignored.
+      expect(tab.doc.layout).toBe(layoutBefore);
+    });
+
+    test("an edit made during a format parse keeps the edit", async () => {
+      let onParse = () => {};
+      const { state } = installFsPlatform({ "post.md": "# Disk\n" }, {
+        formatAction: async (payload: Record<string, unknown>) => {
+          const result = await mockFormatAction(payload);
+          onParse();
+          return result;
+        },
+      } as Partial<StudioPlatform>);
+      siteState();
+      const tab = openTab({
+        document: { children: [], tagName: "div" },
+        documentPath: "post.md",
+        id: "post.md",
+        sourceFormat: "Markdown",
+      });
+      onParse = () => {
+        tab.doc.document = { children: [], tagName: "article" };
+        tab.doc.dirty = true;
+      };
+      state.files.set("post.md", "---\ntitle: Disk\n---\n\n# Disk\n");
+
+      await reloadFileInTab("post.md", { onlyIfChanged: true });
+
+      expect(tab.doc.document.tagName).toBe("article");
+      expect(tab.doc.dirty).toBe(true);
+      expect(tab.doc.content.frontmatter).not.toMatchObject({ title: "Disk" });
+    });
+
+    test("a tab that joined a co-editing session during the read is not reloaded", async () => {
+      const { platform, state } = installFsPlatform({
+        "pages/a.json": JSON.stringify({ tagName: "div" }),
+      });
+      siteState();
+      const tab = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      const before = tab.doc.document;
+      state.files.set("pages/a.json", JSON.stringify({ tagName: "main" }));
+      const release = gateReads(platform, state.files);
+
+      const reload = reloadFileInTab("pages/a.json");
+      registerCollabPath("pages/a.json");
+      try {
+        release();
+        await reload;
+        expect(tab.doc.document).toBe(before);
+      } finally {
+        unregisterCollabPath("pages/a.json");
+      }
+    });
+
+    test("an unedited tab is reloaded as usual once the read lands", async () => {
+      const { platform, state } = installFsPlatform({
+        "pages/a.json": JSON.stringify({ tagName: "div" }),
+      });
+      siteState();
+      const tab = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/a.json",
+        id: "pages/a.json",
+      });
+      state.files.set("pages/a.json", JSON.stringify({ tagName: "main" }));
+      const release = gateReads(platform, state.files);
+
+      const reload = reloadFileInTab("pages/a.json", { onlyIfChanged: true });
+      release();
+      await reload;
+
+      expect(tab.doc.document.tagName).toBe("main");
+      expect(tab.doc.dirty).toBe(false);
+    });
   });
 });
 
