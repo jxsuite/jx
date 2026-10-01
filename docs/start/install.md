@@ -1,6 +1,9 @@
 ---
 title: "Install Jx Studio"
 description: "Download the Jx Studio desktop app for macOS, Windows, or Linux, and run the visual editor on your own machine, against your own files."
+code:
+  - packages/desktop/snap/snapcraft.yaml
+  - packages/desktop/package.nix
 ---
 
 # Install Jx Studio
@@ -23,6 +26,22 @@ The macOS build is notarized, so it opens without a Gatekeeper prompt. The Windo
 :::doc-note
 Jx Studio is Apple Silicon only. Intel Macs can still run the last release built before Jx Studio moved to Electrobun 2, which publishes no macOS x64 build; that older release no longer receives automatic updates.
 :::
+
+## Ubuntu (Snap Store)
+
+On Ubuntu, and on any distribution with snapd, install Jx Studio from the Snap Store:
+
+```bash
+sudo snap install jx-studio
+```
+
+The snap runs Studio in a Chromium app window, draws natively on Wayland, and uses your system's graphics drivers for hardware acceleration. It updates itself through the Snap Store rather than through Studio's own update prompt.
+
+The snap is confined, so it reaches the folders in your home directory and on removable media. To open a project on removable media, connect that interface once:
+
+```bash
+sudo snap connect jx-studio:removable-media
+```
 
 ## NixOS
 
@@ -73,7 +92,7 @@ Once installed, open Studio and either **create a new project**, **open an exist
 
 ## Updating
 
-Studio checks your project's `@jxsuite/*` dependencies against each package's own newest published version and offers to update them when one is behind, and prompts when a newer release of the app itself is available. Studio's own copy of those packages is separate. Your project's ranges govern `jx build` and your project's types rather than the running app, so there is no reason for them to match Studio's version.
+Studio checks your project's `@jxsuite/*` dependencies against each package's own newest published version and offers to update them when one is behind, and prompts when a newer release of the app itself is available (the snap and the Nix package are updated by the Snap Store and by Nix instead). Studio's own copy of those packages is separate. Your project's ranges govern `jx build` and your project's types rather than the running app, so there is no reason for them to match Studio's version.
 
 ## For developers: scaffolding from a terminal
 

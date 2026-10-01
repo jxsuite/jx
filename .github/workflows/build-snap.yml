@@ -1,0 +1,139 @@
+# Builds the Ubuntu snap of Jx Studio and attaches it to the desktop release, the way build-msix.yml
+# does for the Microsoft Store package. snap-publish.yml takes it from the release to the Snap Store.
+#
+# The snap runs the Chromium app-mode launcher, not the Electrobun bundle. Electrobun's Linux native
+# wrapper embeds CEF in GTK through an X11 window id (`gdk_x11_window_get_xid`, `XOpenDisplay`), so
+# with DISPLAY unset it dies with "cannot open display" and can only ever run under XWayland.
+#
+# Nix builds the app tree (`nix build .#default`, the same derivation `nix run` ships); snapcraft
+# wraps it with Canonical's Chromium build and the official Bun binary
+# (packages/desktop/snap/snapcraft.yaml says why each comes from where it does).
+#
+# Two native runners, because nothing here cross-compiles, and both pinned to 24.04 rather than
+# `ubuntu-latest`: `--destructive-mode` builds on the host, which must match the snap's core24 base.
+name: Build snap
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Desktop release tag to build and attach the snaps to (e.g. desktop-v5.3.0).
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: >-
+          Desktop release tag to build and attach to. Leave blank to build the current ref and keep
+          the snaps as workflow artifacts only.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Snap (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
+
+      # `install: false` for the reason nix.yml gives: the derivation's `src` is the whole tree, and
+      # a node_modules in it would change the store path on every run.
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      # A tag is what a release ships, so its bun.nix must already describe its lockfile (nix.yml's
+      # release leg, same rule). A dispatch without a tag is a trial build of a moving ref, where
+      # bun.nix may lag by design, so it regenerates in the working tree like nix.yml's main leg.
+      - name: bun.nix must describe the lockfile in this tree
+        env:
+          STRICT: ${{ inputs.tag_name != '' && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ "$STRICT" = "true" ]; then
+            bun scripts/check-bun-nix.ts
+          else
+            bun scripts/check-bun-nix.ts --fix
+          fi
+
+      - uses: DeterminateSystems/nix-installer-action@v23
+        with:
+          extra-conf: |
+            accept-flake-config = true
+          determinate: false
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+        with:
+          diagnostic-endpoint: ""
+          use-flakehub: false
+
+      # Pull-only. On a release, nix.yml has usually published this exact app closure already.
+      - uses: cachix/cachix-action@v17
+        with:
+          name: jxsuite
+          skipPush: true
+
+      # snapcraft.yaml's `app` part dumps `snap-stage/`. `cp -r` keeps the tree's internal relative
+      # symlinks (node_modules/@jxsuite/* -> ../../packages/*) as symlinks.
+      - name: Build the app tree with Nix and stage it
+        run: |
+          set -euo pipefail
+          nix build .#default --accept-flake-config -L
+          mkdir -p packages/desktop/snap-stage/lib
+          cp -r "$(readlink -f ./result)/lib/jx-studio" packages/desktop/snap-stage/lib/
+          chmod -R u+w packages/desktop/snap-stage
+
+      - name: Pack the snap
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          sudo snap install snapcraft --classic
+          sudo snapcraft pack --destructive-mode
+          mkdir -p "$GITHUB_WORKSPACE/snap-out"
+          sudo mv ./*.snap "$GITHUB_WORKSPACE/snap-out/"
+          ls -la "$GITHUB_WORKSPACE/snap-out"
+
+      # The store's own automated review, run before upload so a rejection is a red build in the
+      # release run rather than an email after it.
+      # Judged on the verdict line, which must say `pass`, as well as the exit code: the tool exits 0
+      # on a `FAIL` and on a `RUNTIME ERROR` verdict alike (measured: a setuid chrome-sandbox it
+      # could not unpack came back `RUNTIME ERROR`, exit 0), so anything but `pass` is red.
+      - name: Store review
+        run: |
+          set -euo pipefail
+          sudo snap install review-tools
+          for snap in snap-out/*.snap; do
+            status=0
+            out="$(review-tools.snap-review "$snap" 2>&1)" || status=$?
+            echo "$out"
+            if [ "$status" -ne 0 ] || ! grep -qE "^$(basename "$snap"): pass$" <<<"$out"; then
+              echo "::error::$(basename "$snap") failed the Snap Store's automated review"
+              exit 1
+            fi
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snap-${{ matrix.arch }}
+          path: snap-out/*.snap
+          retention-days: 30
+
+      - name: Attach to the release
+        if: ${{ !cancelled() && inputs.tag_name != '' }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          files: snap-out/*.snap

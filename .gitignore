@@ -59,3 +59,7 @@ packages/server/tests/_git_remote_fixture/
 # Session plans a Claude Code run writes for itself. Program plans live in plans/ (plans/README.md),
 # where `bun run plans:check` can see them; six of these were once committed and went stale unseen.
 .claude/plans/
+
+# The Nix app tree build-snap.yml stages for packages/desktop/snap/snapcraft.yaml, and its output.
+packages/desktop/snap-stage/
+packages/desktop/*.snap

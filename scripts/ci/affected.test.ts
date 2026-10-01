@@ -229,16 +229,18 @@ describe("edges package.json cannot see", () => {
   });
 
   test("an extension's source retests schema — the inverted edge", () => {
-    // Nothing depends on @jxsuite/search, so without the edge this would be `search` alone and
-    // Schema's class-drift test, which walks every extension's src, would not have run.
-    expect(flagsFor("extensions/search/src/index.ts")).toEqual(["schema", "search"]);
+    // The only workspace that depends on @jxsuite/search is desktop, which declares every
+    // First-party extension so the app can resolve their schemas (specs/desktop.md §9.3). Without
+    // The edge this would be `desktop` and `search` alone, and schema's class-drift test, which
+    // Walks every extension's src, would not have run.
+    expect(flagsFor("extensions/search/src/index.ts")).toEqual(["desktop", "schema", "search"]);
   });
 
   test("the inverted edge adds schema WITHOUT dragging in schema's sixteen dependents", () => {
     const flags = flagsFor("extensions/search/src/index.ts");
     expect(flags).not.toContain("studio");
     expect(flags).not.toContain("server");
-    expect(flags.length).toBe(2);
+    expect(flags.length).toBe(3);
   });
 
   test("an extension change still expands its own real dependents", () => {

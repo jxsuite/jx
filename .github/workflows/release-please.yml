@@ -106,6 +106,28 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
+  # The Ubuntu twin of build-msix -> store-publish. The snap is built from the Nix flake rather
+  # than the Electrobun bundle (build-snap.yml says why), and neither job gates the `release`
+  # branch: a Store upload is a distribution channel, not part of what the tag is.
+  build-snap:
+    needs: release-please
+    if: needs.release-please.outputs.desktop_released == 'true'
+    uses: ./.github/workflows/build-snap.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.desktop_tag }}
+    secrets: inherit
+
+  # Skips rather than fails when build-snap did not succeed, for store-publish's reason: there is
+  # no asset to fetch. A clean no-op until SNAPCRAFT_STORE_CREDENTIALS exists (CLAUDE.md, "Snap
+  # Store Publishing").
+  snap-publish:
+    needs: [release-please, build-snap]
+    if: needs.release-please.outputs.desktop_released == 'true' && needs.build-snap.result == 'success'
+    uses: ./.github/workflows/snap-publish.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.desktop_tag }}
+    secrets: inherit
+
   # Append the platform Downloads table to the desktop release notes (preserves the
   # previous release-it footer). Runs AFTER the bundlers (with if: always()) and
   # builds the table from the assets that actually uploaded, so a failed platform
