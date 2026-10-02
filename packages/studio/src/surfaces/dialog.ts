@@ -96,6 +96,8 @@ export interface DialogSurfacePatch {
    */
   confirmLabel?: string;
   cancelLabel?: string;
+  /** The secondary button's text; the empty string takes the button away. */
+  secondaryLabel?: string;
   /** The sentence under the headline. Cleared by the empty string. */
   message?: string;
   value?: string;
@@ -297,6 +299,9 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
       }
       if (patch.cancelLabel !== undefined) {
         scope.cancelLabel = patch.cancelLabel;
+      }
+      if (patch.secondaryLabel !== undefined) {
+        scope.secondaryLabel = patch.secondaryLabel;
       }
       if (patch.message !== undefined) {
         scope.message = patch.message;

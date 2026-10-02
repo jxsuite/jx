@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioWelcome",
-  "$description": "The Start pane, shown when no project is loaded and no document is open. The adapter hands in the start actions, whether the GitHub App still needs installing, the recent projects with their distinguishing folders and last-opened labels, and the platform's catalogue; the document draws them in the order a first run needs them.",
+  "$description": "The Start pane, shown when no project is loaded and no document is open. The adapter hands in the start actions, whether the GitHub App still needs installing, the platform's own notices with the actions each offers, the recent projects with their distinguishing folders and last-opened labels, and the platform's catalogue; the document draws them in the order a first run needs them.",
   "tagName": "div",
   "attributes": {
     "part": "screen"
@@ -309,6 +309,91 @@
                 }
               ]
             }
+          }
+        },
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/notices"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "section",
+            "attributes": {
+              "part": "section",
+              "data-section": "notice",
+              "data-notice": "${$map.item.id}",
+              "data-level": "${$map.item.level}"
+            },
+            "children": [
+              {
+                "tagName": "h2",
+                "attributes": {
+                  "part": "section-title"
+                },
+                "textContent": "${$map.item.title}"
+              },
+              {
+                "tagName": "p",
+                "attributes": {
+                  "part": "note"
+                },
+                "textContent": "${$map.item.message}"
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "actions"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/actions"
+                    },
+                    "key": {
+                      "$ref": "$map/item/key"
+                    },
+                    "map": {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "variant": {
+                          "$ref": "$map/item/variant"
+                        }
+                      },
+                      "attributes": {
+                        "part": "notice-action",
+                        "data-action": "${$map.item.key}"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/noticeRun"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/key"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "${$map.item.label}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
           }
         },
         {

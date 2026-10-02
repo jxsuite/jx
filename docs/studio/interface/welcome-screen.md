@@ -5,6 +5,7 @@ code:
   - packages/studio/src/surfaces/welcome.ts
   - packages/studio/src/new-project/add-repo-modal.ts
   - packages/studio/src/surfaces/add-repo.ts
+  - packages/studio/src/account/action-flow.ts
 ---
 
 # Welcome screen
@@ -53,6 +54,12 @@ This entry appears when Studio is connected to your GitHub account.
 3. Click a repository. Studio imports it and opens it as a project.
 
 A repository must already contain a Jx project (a `project.json` file); if it doesn't, Studio tells you why it can't be added. Connecting your account is covered in **[GitHub](/docs/studio/publish/github)**.
+
+## Notices from a hosted Studio
+
+A hosted Studio can put notices on the Start pane: an announcement, or something it needs from you. Each notice is a section of its own, in the platform's words, with the buttons the platform offers. A notice goes away once the platform stops sending it.
+
+A hosted Studio can also refuse something until you do something first, such as opening or saving a project. When it does, a dialog says why and offers what the platform offers. Finish in the window that opens: the dialog closes by itself once that is done, and a project that could not open is opened again. **Not now** stops the offers that come up on their own for the rest of the visit. Anything you do on purpose, such as a commit, still asks. Rows the platform adds to **[Preferences › Accounts](/docs/studio/interface/preferences#accounts)** offer their own buttons too.
 
 ## Repository access
 

@@ -342,8 +342,9 @@ export async function signInToGithub(): Promise<void> {
 /**
  * @param {string} action
  * @param {unknown} [body]
+ * @returns {Promise<boolean>} Whether the action succeeded — its failure is already on screen.
  */
-async function gitAction(action: string, body?: unknown) {
+async function gitAction(action: string, body?: unknown): Promise<boolean> {
   const plat = getPlatform() as Record<string, (...args: unknown[]) => Promise<unknown>> &
     StudioPlatform;
   shell.git.loading = true;
@@ -351,9 +352,23 @@ async function gitAction(action: string, body?: unknown) {
   try {
     await plat[action]!(body);
     await refreshGitStatus();
+    return true;
   } catch (error) {
     shell.git.error = errorMessage(error);
     shell.git.loading = false;
+    return false;
+  }
+}
+
+/**
+ * Put a message back in the field after the commit that took it failed — unless the user has
+ * already started typing another. The field is cleared before the call so a second click cannot
+ * commit the same text twice, which used to mean a refused commit (a conflict, a backend that asks
+ * for an action first) silently threw the message away with it.
+ */
+function restoreCommitMessage(message: string): void {
+  if (!shell.git.commitMessage) {
+    shell.git.commitMessage = message;
   }
 }
 
@@ -578,7 +593,9 @@ async function doCommit(): Promise<void> {
   // Fold co-editing sessions into the backend's tree first so the commit never misses trailing
   // Keystrokes (the mirror is debounced).
   await flushAllCollab();
-  await gitAction("gitCommit", message);
+  if (!(await gitAction("gitCommit", message))) {
+    restoreCommitMessage(message);
+  }
 }
 
 /** Commit and push, as one operation with one loading state and one error. */
@@ -592,13 +609,19 @@ async function doCommitAndSync(): Promise<void> {
   shell.git.error = null;
   await flushAllCollab();
   const plat = getPlatform();
+  let committed = false;
   try {
     await plat.gitCommit(message);
+    committed = true;
     await plat.gitPush();
     await refreshGitStatus();
   } catch (error) {
     shell.git.error = errorMessage(error);
     shell.git.loading = false;
+    // A push that failed after the commit landed must not offer the same message again.
+    if (!committed) {
+      restoreCommitMessage(message);
+    }
   }
 }
 
