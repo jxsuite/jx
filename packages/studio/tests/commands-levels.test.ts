@@ -56,7 +56,7 @@ describe("the vocabularies", () => {
 
   test("the categories are the twelve the palette groups by", () => {
     expect(CATEGORIES).toContain("Source Control");
-    expect(CATEGORIES).toHaveLength(12);
+    expect(CATEGORIES).toHaveLength(13);
   });
 });
 

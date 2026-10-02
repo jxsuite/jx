@@ -122,7 +122,69 @@ export interface AccountStatus {
   installations: { id: number; account: string | null; manageUrl?: string }[];
   /** Where to install the App (github.com/apps/<slug>/installations/new), when known. */
   appInstallUrl?: string;
+  /**
+   * The plan the platform sells, and where this user stands on it. Absent on a platform that sells
+   * none, which is every platform but a hosted one — and absent is not "unsubscribed": nothing on
+   * screen may mention a plan the platform never named.
+   */
+  subscription?: AccountSubscription;
 }
+
+/**
+ * Where the signed-in user stands on a hosted platform's plan (desktop.md §10.4).
+ *
+ * Deliberately vocabulary-neutral: the platform names the plan, prices it and links to wherever it
+ * is bought and managed, and Studio renders what it is told. Nothing here knows which payment
+ * provider sits behind `upgradeUrl`.
+ */
+export interface AccountSubscription {
+  /** The plan, as the platform sells it. */
+  planName: string;
+  /** Its price as the platform prints it (`"$5/month"`), when it states one. */
+  priceLabel?: string;
+  /**
+   * Whether this deployment requires the plan for cloud work. False on a deployment that sells it
+   * without enforcing it, where the account row may still show it and no surface may nag.
+   */
+  required: boolean;
+  /** `grace` is a failed renewal the platform is still retrying; `ended` once had a plan. */
+  state: "none" | "trialing" | "active" | "grace" | "ended";
+  /** Whether the user may do what the plan covers right now. */
+  entitled: boolean;
+  /** Whether starting the plan would begin with a free trial. */
+  trialAvailable: boolean;
+  /** How long that trial lasts. */
+  trialDays?: number;
+  /** ISO 8601. When a running trial ends. */
+  trialEndsAt?: string;
+  /** ISO 8601. When an active plan next renews. */
+  renewsAt?: string;
+  /** ISO 8601. When a plan set to cancel stops. */
+  endsAt?: string;
+  /** Whether a payment method is on file — a trial without one ends rather than converts. */
+  hasPaymentMethod?: boolean;
+  /** Where the plan is started. */
+  upgradeUrl?: string;
+  /** Where a plan the user holds is managed — payment method, invoices, cancellation. */
+  manageUrl?: string;
+  /** A sentence the platform wants shown (an announcement), or absent. */
+  notice?: string;
+}
+
+/**
+ * How {@link StudioPlatform.startUpgrade} ended.
+ *
+ * - `subscribed` — the platform now reports the user entitled.
+ * - `redirect` — no window could be opened, so the whole page is navigating to the platform. The
+ *   caller must draw nothing more: the document is on its way out.
+ * - `canceled` — the window was closed with nothing changed.
+ * - `timeout` — the deadline passed with nothing changed.
+ */
+export type UpgradeOutcome =
+  | { status: "subscribed" }
+  | { status: "redirect" }
+  | { status: "canceled" }
+  | { status: "timeout" };
 
 /** A repository visible to `StudioPlatform.listRepos` (the add-existing-repository picker). */
 export interface RepoInfo {
@@ -639,6 +701,25 @@ export interface StudioPlatform {
    * prompt).
    */
   getAccountStatus?: () => Promise<AccountStatus | null>;
+  /**
+   * Start the plan a hosted platform sells, in a window of the platform's own, and resolve once the
+   * platform reports the user entitled or the window is given up on (desktop.md §10.4). Present
+   * only where {@link AccountStatus.subscription} can be.
+   *
+   * MUST open its window before its first `await`: it is called from a click, and a browser grants
+   * a popup only to code still running inside that click. `upgradeUrl` is the link a
+   * `subscription-required` refusal carried, so the platform can return the user to what they were
+   * doing.
+   */
+  startUpgrade?: (opts?: { upgradeUrl?: string }) => Promise<UpgradeOutcome | null>;
+  /** Open where the user manages the plan they hold. Same window rule as {@link startUpgrade}. */
+  manageSubscription?: () => Promise<void>;
+  /**
+   * How a full-page round trip through the platform's checkout ended, read once and cleared — the
+   * answer {@link startUpgrade} could not give because the page it ran in navigated away. Null when
+   * this page load is not such a return.
+   */
+  takeUpgradeReturn?: () => "success" | "canceled" | "pending" | "error" | null;
   /**
    * Browse every repository the platform's account link can reach — personal and organization repos
    * covered by a GitHub App installation on cloud. Backs the "Add Existing Repository" picker;

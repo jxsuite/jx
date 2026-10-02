@@ -54,6 +54,12 @@ This entry appears when Studio is connected to your GitHub account.
 
 A repository must already contain a Jx project (a `project.json` file); if it doesn't, Studio tells you why it can't be added. Connecting your account is covered in **[GitHub](/docs/studio/publish/github)**.
 
+## A plan on a hosted Studio
+
+A hosted Studio may require a plan for some of the work its cloud does for you, such as opening and saving GitHub projects. Where it does, the Start pane adds a section for the plan when there is something to act on: you need the plan and are not on it, your free trial ends within a week with no payment method on file, or the platform has an announcement. Its button starts the plan, or opens the page where the plan is managed.
+
+Opening or saving a project the plan covers, without the plan, brings up a dialog that says what the plan is and offers it. Finish in the window that opens: the dialog closes by itself once the plan is active, and a project that could not open is opened again. **Not now** stops the offer for the rest of the visit, and you can start the plan later from **[Preferences › Accounts](/docs/studio/interface/preferences#accounts)** or the palette's **Account: Plan and Billing…**.
+
 ## Repository access
 
 Studio only sees the repositories you have granted the **Jx Suite GitHub App** access to. There are two places to change that.

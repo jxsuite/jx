@@ -223,6 +223,63 @@ describe("openAddRepoModal", () => {
     expect(await promise).toBeNull();
   });
 
+  /* Adopting a repository opens it in the cloud editor, one of the actions a hosted plan covers
+     (desktop.md §10.4): the refusal is offered as an upgrade, and a plan that starts imports again. */
+  test("a plan refusal is offered as an upgrade, and the import runs again once the plan starts", async () => {
+    let attempts = 0;
+    installMockPlatform({
+      importProject: (async (opts: { owner: string; name: string }) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw Object.assign(new Error("Opening octocat/site needs Jx Studio Cloud."), {
+            code: "subscription_required",
+          });
+        }
+        return { root: `${opts.owner}/${opts.name}@main` };
+      }) as never,
+      listRepos: () => Promise.resolve(REPOS),
+      startUpgrade: async () => ({ status: "subscribed" }),
+    });
+    const promise = openAddRepoModal();
+    await flush(3);
+    click(rows()[0]!);
+    await flush(3);
+    expect(failureText()).toContain("needs Jx Studio Cloud");
+    const upgrade = [...document.querySelectorAll("jx-dialog")].find(
+      (element) => element.getAttribute("part") !== "add-repo",
+    ) as HTMLElement;
+    upgrade.dispatchEvent(new Event("confirm"));
+    expect(await promise).toEqual({ root: "octocat/site@main" });
+    expect(attempts).toBe(2);
+  });
+
+  test("a declined plan leaves the refusal inline and imports nothing more", async () => {
+    let attempts = 0;
+    installMockPlatform({
+      importProject: (async () => {
+        attempts += 1;
+        throw Object.assign(new Error("Opening octocat/site needs Jx Studio Cloud."), {
+          code: "subscription_required",
+        });
+      }) as never,
+      listRepos: () => Promise.resolve(REPOS),
+      startUpgrade: async () => ({ status: "canceled" }),
+    });
+    const promise = openAddRepoModal();
+    await flush(3);
+    click(rows()[0]!);
+    await flush(3);
+    const upgrade = [...document.querySelectorAll("jx-dialog")].find(
+      (element) => element.getAttribute("part") !== "add-repo",
+    ) as HTMLElement;
+    upgrade.dispatchEvent(new Event("cancel"));
+    await flush(3);
+    expect(attempts).toBe(1);
+    expect(failureText()).toContain("needs Jx Studio Cloud");
+    dismiss();
+    expect(await promise).toBeNull();
+  });
+
   test("a failed repo listing shows the error with an empty list", async () => {
     installMockPlatform({
       importProject: () => Promise.resolve({ root: "r" }),

@@ -44,6 +44,8 @@
 
 import { CHROME_THEMES, setChromeTheme, shell } from "../shell";
 import { layerHost } from "../ui/layers";
+import { hydrateAccountStatus } from "../account-status";
+import { getPlatform, hasPlatform } from "../platform";
 import { createAiCredentialsForm } from "../ui/ai-credentials-form";
 import { createManagedConnect } from "../ui/ai-managed-connect";
 import { activeRegistry } from "../commands/active-registry";
@@ -563,6 +565,11 @@ export function openPreferences(section?: string): Promise<null> {
      grant can lapse between visits, and a row that repaints the previous answer first is stating
      something it has no reason to believe. */
   resetCfConnectionCache();
+  /* And the plan's standing, for the same reason: a trial can end between visits. The row repaints
+     when the answer lands; until then it shows the last one, which is the only plan row there is. */
+  if (hasPlatform() && getPlatform().getAccountStatus) {
+    void hydrateAccountStatus().then(repaint);
+  }
   _section = section !== undefined && isPreferencesSection(section) ? section : _section;
   if (_surface) {
     repaint();

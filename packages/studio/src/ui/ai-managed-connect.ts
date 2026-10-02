@@ -19,8 +19,8 @@
  * State is per-instance (closure-scoped) like the credentials form; the capability probe behind
  * `ensureProbe` is shared module-wide by services/ai-models.ts.
  *
- * @docs studio/ai
  * @license MIT
+ * @docs studio/ai
  */
 
 import { getPlatform, hasPlatform } from "../platform";
@@ -30,8 +30,10 @@ import {
   isManagedProxy,
   isProxyConfigured,
   proxyStateCode,
+  proxyUpgradeOffer,
   resetModelCache,
 } from "../services/ai-models";
+import { canUpgrade, promptUpgrade } from "../account/upgrade-flow";
 import { createManagedConnectSurface } from "../surfaces/ai-managed-connect";
 import type { ManagedConnectSurface, ManagedConnectView } from "../surfaces/ai-managed-connect";
 import type { CfConnectOutcome } from "../types";
@@ -99,6 +101,11 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
    * round trip.
    */
   function canOffer(): boolean {
+    /* A plan refusal is offered on any platform that can sell the plan, whether or not it can
+       broker Cloudflare: no connection fixes it, so the connect member is beside the point. */
+    if (needsPlan()) {
+      return canUpgrade();
+    }
     if (!isManagedProxy() || !hasPlatform() || !getPlatform().cfConnect) {
       return false;
     }
@@ -111,6 +118,20 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
    * picked in Preferences, changes what the probe answers and this answer with it.
    */
   const needsAccount = () => proxyStateCode() === "cf_account_required";
+
+  /**
+   * The backend sells a plan that covers the assistant and this user is not on it (ai.md §2.1) — a
+   * state no Cloudflare round trip changes, so the button offers the plan instead.
+   */
+  const needsPlan = () => proxyStateCode() === "subscription_required";
+
+  /** Offer the plan, and re-probe once it starts: the gate opens on the backend's new answer. */
+  async function upgrade(): Promise<void> {
+    if (await promptUpgrade(proxyUpgradeOffer() ?? {})) {
+      resetModelCache();
+      await fetchAvailableModels({ force: true });
+    }
+  }
 
   /**
    * Re-probe after the connection changed, and CHECK the answer, because a change the backend does
@@ -194,9 +215,13 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
     try {
       /* `cf_account_required` is a grant that already works for authorization and names no
          account; the OAuth flow would land straight back here (ai.md §2.1). */
-      await (needsAccount()
-        ? chooseAccount()
-        : settle((await getPlatform().cfConnect?.()) ?? null));
+      if (needsPlan()) {
+        await upgrade();
+      } else if (needsAccount()) {
+        await chooseAccount();
+      } else {
+        await settle((await getPlatform().cfConnect?.()) ?? null);
+      }
     } catch (error) {
       connectError = error instanceof Error ? error.message : String(error);
     }
@@ -206,6 +231,15 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
 
   /** What the offer says right now — the whole of what the surface is told. */
   function view(): ManagedConnectView {
+    if (needsPlan()) {
+      const offer = proxyUpgradeOffer();
+      return {
+        buttonLabel: busy ? "Waiting…" : offer?.trialAvailable ? "Start free trial" : "Subscribe",
+        busy,
+        error: connectError,
+        intro: offer?.detail ?? "The assistant here needs a subscription.",
+      };
+    }
     if (needsAccount()) {
       return {
         buttonLabel: busy ? "Choosing…" : "Choose Cloudflare account",

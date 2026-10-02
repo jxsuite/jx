@@ -95,6 +95,7 @@ function capabilities(platform: StudioPlatform | null): CommandContext["capabili
     importSite: has("importSite"),
     openProjectInNewWindow: has("openProjectInNewWindow"),
     readFileBytes: has("readFileBytes"),
+    upgrade: has("startUpgrade"),
     // Multi-window is a desktop-only family; `newWindow` is the one every member implies.
     windowControls: has("newWindow"),
   };

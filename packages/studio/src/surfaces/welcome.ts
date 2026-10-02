@@ -19,7 +19,8 @@
  * @docs studio/interface/welcome-screen
  */
 
-import { getAccountStatus, needsAppInstall } from "../account-status";
+import { getAccountStatus, needsAppInstall, planNotice } from "../account-status";
+import { runPlanAction } from "../account/upgrade-flow";
 import { platformSupportsAddRepo } from "../new-project/add-repo-modal";
 import { getProjectList } from "../project-list";
 import { reactive } from "../reactivity";
@@ -182,6 +183,12 @@ interface WelcomeScope extends Record<string, unknown> {
   actions: StartAction[];
   installNeeded: boolean;
   installUrl: string;
+  /** The hosted plan's notice: shown, its title and sentence, and whether it offers a button. */
+  planShown: boolean;
+  planTitle: string;
+  planText: string;
+  planHasAction: boolean;
+  planActionLabel: string;
   hasRecent: boolean;
   recent: RecentRow[];
   hasCatalogue: boolean;
@@ -190,6 +197,7 @@ interface WelcomeScope extends Record<string, unknown> {
   open: (root: string) => void;
   remove: (root: string) => void;
   clear: () => void;
+  planRun: () => void;
 }
 
 let _state: WelcomeScope | null = null;
@@ -198,7 +206,7 @@ let _mount: Promise<SurfaceHandle> | null = null;
 let _handle: SurfaceHandle | null = null;
 
 /** The pane, as the surface reads it, from the platform and the stores as they stand now. */
-function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear"> {
+function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "planRun"> {
   const recent = getRecentProjects();
   // Catalogue entries already in Recent stay in that section only.
   const catalogue = getProjectList().filter((p) => !recent.some((r) => r.root === p.root));
@@ -230,12 +238,32 @@ function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear"> {
        structured needs-installation 403 that `platform-errors.ts` decodes. */
     installNeeded: needsAppInstall(),
     installUrl: getAccountStatus()?.appInstallUrl ?? "#",
+    ...planView(),
     recent: recent.map((entry) => ({
       location: recentLabels.get(entry.root) ?? entry.root,
       name: entry.name,
       root: entry.root,
       when: lastOpenedLabel(entry.timestamp),
     })),
+  };
+}
+
+/**
+ * The plan notice, flattened for the document: a hosted platform's announcement, a plan the user
+ * needs and does not hold, or a trial about to end with nothing to continue on (`account-status.ts`
+ * decides which). Everyone else — and every platform that sells nothing — gets no section at all.
+ */
+function planView(): Pick<
+  WelcomeScope,
+  "planShown" | "planTitle" | "planText" | "planHasAction" | "planActionLabel"
+> {
+  const notice = planNotice();
+  return {
+    planActionLabel: notice?.actionLabel ?? "",
+    planHasAction: Boolean(notice?.action),
+    planShown: notice !== null,
+    planText: notice?.text ?? "",
+    planTitle: notice?.title ?? "",
   };
 }
 
@@ -252,6 +280,15 @@ function state(): WelcomeScope {
     hasRecent: false,
     installNeeded: false,
     installUrl: "#",
+    planActionLabel: "",
+    planHasAction: false,
+    planRun: () => {
+      // The notice re-reads once the plan's standing changes, so a started plan takes it away.
+      void runPlanAction(planNotice()?.action ?? null).then(refresh);
+    },
+    planShown: false,
+    planText: "",
+    planTitle: "",
     open: (root: string) => {
       _ctx?.openRecentProject(root);
     },

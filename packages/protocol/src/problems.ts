@@ -6,7 +6,7 @@
  * declared once, exported as data, rendered into the docs by the same generator, and checked by the
  * same drift machinery.
  *
- * **What belongs here.** A type is a *class* of failure a client might handle differently — not a
+ * **What belongs here.** A type is a _class_ of failure a client might handle differently — not a
  * message. "The project root was refused" is a type; "root /x/y was refused" is a `detail`. If two
  * entries would only ever differ in their wording, they are one type.
  *
@@ -78,6 +78,17 @@ export const PROBLEM_TYPES = {
     403,
     "The path resolves outside the active project",
   ),
+  /*
+   * A hosted backend that sells a plan refusing an action the plan covers. Its own type rather than
+   * a `forbidden` with a code, by the same test as `needsInstallationAccess`: the client does
+   * something different with it — it offers the upgrade `upgradeUrl` names instead of a dead end.
+   * `trialAvailable` decides whether that offer reads "Start free trial" or "Subscribe". Nothing
+   * here names a payment provider; the URL is the backend's, and so is everything behind it.
+   */
+  subscriptionRequired: problem("subscription-required", 402, "A subscription is required", [
+    "upgradeUrl",
+    "trialAvailable",
+  ]),
 
   // ─── Backend state ────────────────────────────────────────────────────────
   noActiveProject: problem("no-active-project", 409, "No project is active on this backend"),

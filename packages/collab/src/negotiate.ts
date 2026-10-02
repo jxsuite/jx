@@ -55,9 +55,12 @@ export function negotiateCollab(probe: unknown): CollabNegotiation {
     // A 200 that is not a JSON object: pre-negotiation server. Connect as before, offering nothing.
     return { offer: [], refused: null };
   }
-  const body = probe as { collab?: unknown; protocols?: unknown };
+  const body = probe as { collab?: unknown; detail?: unknown; protocols?: unknown };
   if (body.collab === false) {
-    return { offer: [], refused: "This server has collaboration disabled." };
+    /* The server's own sentence wins when it sends one. "Disabled" is true of a flag that is off,
+       and false of a room a plan would open: that server knows which it is and says so. */
+    const detail = typeof body.detail === "string" ? body.detail.trim() : "";
+    return { offer: [], refused: detail || "This server has collaboration disabled." };
   }
   const { protocols } = body;
   if (!Array.isArray(protocols) || protocols.length === 0) {
