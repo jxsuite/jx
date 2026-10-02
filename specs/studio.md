@@ -1583,7 +1583,7 @@ Three doors reach it: ⌘,, the palette, and the first row of the rail foot's **
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Appearance | The chrome theme — Dark or Light (`shell.theme`, also settable by `view.setTheme`); it repaints the chrome, the overlays and any open code view, and the canvas stays a light document in both |
 | Assistant  | The AI provider key, model and endpoint, plus the keyless managed-connect path where a platform offers one                                                                                     |
-| Accounts   | Every credential Studio holds — GitHub, the AI provider, Cloudflare — listed with a Disconnect each                                                                                            |
+| Accounts   | Every credential Studio holds — GitHub, the AI provider, Cloudflare — listed with a Disconnect each; and the platform's plan, where it sells one (`desktop.md` §10.4)                          |
 | Keyboard   | Read-only, **generated** from the command registry                                                                                                                                             |
 
 Two rules the sections must keep:
@@ -1594,6 +1594,8 @@ Two rules the sections must keep:
 Saving or revoking a credential announces itself, so surfaces that gate on one (the Assistant tab's setup notice) repaint without Preferences having to know they exist.
 
 **A brokered credential is read from the broker, never from the local slot it does not occupy.** Where the platform holds an account on the user's behalf, the row describing it asks the platform for its state; a row derived from local storage on such a platform reads "Not connected" forever, names no account, and offers a Disconnect that clears nothing anywhere. A brokered row therefore states what the broker reports — connected and to which account, connected but not yet pointed at one, or a grant that has lapsed — and carries the verb that state actually needs: Reconnect for a lapsed grant, a choice of account for an unpointed one, and a Disconnect that reaches the broker. Rule 1 still holds: none of these print the credential.
+
+**A hosted plan is a row only where a plan is sold.** It is not a credential, so it breaks rule 1's company in one respect: its `revoke` does nothing, because a plan is ended where it is managed. Its sentence names where the user stands and the next move — a trial and its end, a renewal or an end date, a failed payment, an ended plan — and its verbs are the two the platform can serve: start the plan (Start free trial or Subscribe) while the user needs it, and Manage while there is somewhere to manage it. Opening Preferences re-reads the plan's standing, for the reason the brokered row is re-read: a trial can end between visits. On a platform that sells nothing there is no row at all, because there is nothing absent to report and a row would advertise a product that does not exist.
 
 Three rules govern the values themselves, and each of them is a defect that shipped:
 

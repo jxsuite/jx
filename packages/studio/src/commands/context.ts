@@ -35,6 +35,9 @@ export const CAPABILITIES = [
   /* The image editor's gate. A backend that cannot hand Studio a project file's raw bytes cannot
      decode one, so the Image mode is not offered at all rather than offered and then failing. */
   "readFileBytes",
+  /* A hosted platform that sells a plan (desktop.md §10.4) — `startUpgrade`. Every other platform
+     has no plan to show, so the Account verbs are not offered there at all. */
+  "upgrade",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -319,6 +322,7 @@ export function emptyContext(): CommandContext {
       windowControls: false,
       findReferences: false,
       readFileBytes: false,
+      upgrade: false,
     },
   };
 }

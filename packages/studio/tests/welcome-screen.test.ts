@@ -359,6 +359,89 @@ describe("renderWelcome — GitHub App install prompt", () => {
   });
 });
 
+describe("renderWelcome — hosted plan notice", () => {
+  const PLAN = {
+    entitled: false,
+    planName: "Jx Studio Cloud",
+    required: true,
+    state: "none" as const,
+    trialAvailable: true,
+    trialDays: 30,
+  };
+
+  test("a plan the user needs is offered in its own section, with its trial", async () => {
+    installMockPlatform({
+      getAccountStatus: () => Promise.resolve({ installations: [], subscription: PLAN }),
+    });
+    await hydrateAccountStatus();
+    const host = await renderScreen(makeCtx());
+    const section = host.querySelector('[data-section="plan"]') as HTMLElement;
+    expect(section.querySelector('[part="section-title"]')?.textContent).toBe("Jx Studio Cloud");
+    expect(section.querySelector('[part="note"]')?.textContent).toBe(
+      "Opening and saving projects here needs Jx Studio Cloud. Start with a 30-day free trial.",
+    );
+    expect(section.querySelector('[part="plan-action"]')?.textContent?.trim()).toBe(
+      "Start free trial",
+    );
+  });
+
+  test("the reminder's button opens where the plan is managed, and the notice follows the plan", async () => {
+    let plan = {
+      ...PLAN,
+      entitled: true,
+      hasPaymentMethod: false,
+      manageUrl: "https://studio.test/portal",
+      state: "trialing" as const,
+      trialEndsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    const manage = mock(async () => {
+      plan = { ...plan, hasPaymentMethod: true };
+      await hydrateAccountStatus();
+    });
+    installMockPlatform({
+      getAccountStatus: () => Promise.resolve({ installations: [], subscription: plan }),
+      manageSubscription: manage,
+    });
+    await hydrateAccountStatus();
+    const host = await renderScreen(makeCtx());
+    const button = host.querySelector('[part="plan-action"]') as HTMLElement;
+    expect(button.textContent?.trim()).toBe("Add payment method");
+    button.click();
+    await flush();
+    await flush();
+    expect(manage).toHaveBeenCalledTimes(1);
+    // A card on file is nothing left to remind about.
+    expect(host.querySelector('[data-section="plan"]')).toBeNull();
+  });
+
+  test("an announcement with nothing to do draws no button; good standing draws nothing", async () => {
+    installMockPlatform({
+      getAccountStatus: () =>
+        Promise.resolve({
+          installations: [],
+          subscription: { ...PLAN, entitled: true, notice: "Plans start soon.", state: "active" },
+        }),
+    });
+    await hydrateAccountStatus();
+    const announced = await renderScreen(makeCtx());
+    expect(announced.querySelector('[data-section="plan"] [part="note"]')?.textContent).toBe(
+      "Plans start soon.",
+    );
+    expect(announced.querySelector('[part="plan-action"]')).toBeNull();
+
+    installMockPlatform({
+      getAccountStatus: () =>
+        Promise.resolve({
+          installations: [],
+          subscription: { ...PLAN, entitled: true, state: "active" },
+        }),
+    });
+    await hydrateAccountStatus();
+    const quiet = await renderScreen(makeCtx());
+    expect(quiet.querySelector('[data-section="plan"]')).toBeNull();
+  });
+});
+
 describe("renderWelcome — project catalogue", () => {
   const CATALOGUE = [
     { name: "Portfolio", root: "sites/portfolio", description: "sites/portfolio" },

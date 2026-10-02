@@ -738,6 +738,80 @@ describe("openNewProjectModal — submit", () => {
   });
 });
 
+describe("openNewProjectModal — a hosted plan's refusal", () => {
+  /* Creating a repository is one of the actions a hosted plan covers (desktop.md §10.4). The refusal
+     is offered as an upgrade over the modal, and a plan that starts runs the create again, once. */
+  test("offers the plan over the modal, and creates once the plan starts", async () => {
+    let attempts = 0;
+    const startUpgrade = async () => ({ status: "subscribed" }) as const;
+    installMockPlatform({
+      createProject: (async (opts: { name: string }) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw Object.assign(new Error("Creating repositories needs Jx Studio Cloud."), {
+            code: "subscription_required",
+            trialAvailable: true,
+          });
+        }
+        return { config: { name: opts.name }, root: "/home/dev/Sites/paid" };
+      }) as never,
+      startUpgrade,
+    });
+    setProjectAdopter(async () => {});
+
+    const promise = openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npType(npName(), "Paid");
+    await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(3);
+
+    const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
+    const upgrade = dialogs.at(-1) as HTMLElement;
+    expect(upgrade.querySelector('[part="message"]')?.textContent).toStartWith(
+      "Creating repositories needs Jx Studio Cloud.",
+    );
+    upgrade.dispatchEvent(new Event("confirm"));
+    const result = await promise;
+    expect(attempts).toBe(2);
+    expect(result).toEqual({ config: { name: "Paid" }, root: "/home/dev/Sites/paid" } as never);
+  });
+
+  test("a declined offer leaves the error standing and asks no more", async () => {
+    let attempts = 0;
+    installMockPlatform({
+      createProject: (async () => {
+        attempts += 1;
+        throw Object.assign(new Error("Creating repositories needs Jx Studio Cloud."), {
+          code: "subscription_required",
+        });
+      }) as never,
+      startUpgrade: async () => ({ status: "canceled" }),
+    });
+    const promise = openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npType(npName(), "Unpaid");
+    await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(3);
+    const upgrade = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1) as HTMLElement;
+    upgrade.dispatchEvent(new Event("cancel"));
+    await flush(3);
+    expect(attempts).toBe(1);
+    expect(errorText()).toContain("needs Jx Studio Cloud");
+    npDismiss();
+    expect(await promise).toBeNull();
+  });
+});
+
 describe("openNewProjectModal — adoption", () => {
   /* `finishCreated` is what makes `project.new` from the command palette work at all: that entry
      point fires the modal and never looks at what it resolves with, so opening the project it just

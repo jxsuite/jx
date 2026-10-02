@@ -30,7 +30,9 @@ import { clearCfConnection, getCfAccountId, getCfToken } from "../services/cf-se
 import { clearAiProvider, getBaseUrl, hasOpenAiKey } from "../services/ai-settings";
 import { preferredModel, resetModelCache } from "../services/ai-models";
 import { getPlatform, hasPlatform } from "../platform";
-import type { CfConnection } from "../types";
+import { getSubscription } from "../account-status";
+import { canUpgrade, promptUpgrade } from "../account/upgrade-flow";
+import type { AccountSubscription, CfConnection } from "../types";
 
 /** One thing a row can do besides existing. */
 export interface AccountAction {
@@ -228,11 +230,91 @@ function localCloudflareRecord(): AccountRecord {
   };
 }
 
+// ─── The hosted plan ─────────────────────────────────────────────────────────
+
+/** A calendar date the reader's locale prints. */
+function day(iso: string): string {
+  return new Date(iso).toLocaleDateString();
+}
+
+/** Where the user stands on the plan, as one sentence that names the next move when there is one. */
+function planDetail(plan: AccountSubscription): string {
+  switch (plan.state) {
+    case "trialing": {
+      const until = plan.trialEndsAt ? ` until ${day(plan.trialEndsAt)}` : "";
+      const keep = plan.hasPaymentMethod === false ? " Add a payment method to keep it." : "";
+      return `Free trial${until}.${keep}`;
+    }
+    case "active": {
+      if (plan.endsAt) {
+        return `Active until ${day(plan.endsAt)}; it will not renew.`;
+      }
+      return `Active${plan.renewsAt ? `, renews ${day(plan.renewsAt)}` : ""}.`;
+    }
+    case "grace": {
+      return "The last payment failed. Update the payment method to keep the plan.";
+    }
+    case "ended": {
+      return plan.required ? "Ended. Subscribe again to open and save projects here." : "Ended.";
+    }
+    default: {
+      if (!plan.required) {
+        return "Not needed on this deployment.";
+      }
+      const days = plan.trialDays ? `A ${plan.trialDays}-day` : "A";
+      return plan.trialAvailable
+        ? `Not started. ${days} free trial is available.`
+        : "Not subscribed.";
+    }
+  }
+}
+
 /**
- * The three accounts, always all three.
+ * The plan's row — present only on a platform that sells one (desktop.md §10.4).
+ *
+ * `revoke` does nothing: a plan is not a credential this app holds, and ending one is done where it
+ * is managed. Its verbs are the two the platform can serve — start the plan, or open where it is
+ * managed — and each appears only when it would do something.
+ */
+function planRecord(plan: AccountSubscription): AccountRecord {
+  const actions: AccountAction[] = [];
+  if (!plan.entitled && canUpgrade()) {
+    actions.push({
+      id: "upgrade",
+      label: plan.trialAvailable ? "Start free trial" : "Subscribe",
+      run: async () => {
+        await promptUpgrade();
+      },
+      variant: "accent",
+    });
+  }
+  if (plan.manageUrl && hasPlatform() && getPlatform().manageSubscription) {
+    actions.push({
+      id: "manage",
+      label: "Manage",
+      run: async () => {
+        await getPlatform().manageSubscription?.();
+      },
+    });
+  }
+  return {
+    actions,
+    connected: plan.entitled,
+    detail: plan.priceLabel ? `${planDetail(plan)} ${plan.priceLabel}.` : planDetail(plan),
+    id: "plan",
+    label: plan.planName,
+    revoke: () => {},
+  };
+}
+
+/**
+ * The three accounts, always all three — and the hosted plan as a fourth, where the platform sells
+ * one.
  *
  * A disconnected account still gets a row: "you are not signed in to GitHub" is information, and a
- * list that hides what is absent cannot answer the question the section exists to answer.
+ * list that hides what is absent cannot answer the question the section exists to answer. The plan
+ * is the exception that proves it: on a platform that sells nothing there is nothing absent to
+ * report, and a row there would advertise a product that does not exist.
  */
 export function listAccounts(): AccountRecord[] {
   const githubToken = githubTokenStored();
@@ -260,7 +342,14 @@ export function listAccounts(): AccountRecord[] {
       revoke: clearAiProvider,
     },
     platformBrokersCf() ? brokeredCloudflareRecord() : localCloudflareRecord(),
+    ...planRows(),
   ];
+}
+
+/** The plan row, or none. */
+function planRows(): AccountRecord[] {
+  const plan = getSubscription();
+  return plan ? [planRecord(plan)] : [];
 }
 
 /**

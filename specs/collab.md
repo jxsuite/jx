@@ -78,6 +78,8 @@ A **type change** — text becoming a `$ref`, an object becoming a scalar — re
 
 Collab is a capability the platform may or may not expose. When disabled, `/__studio/collab` answers the probe negatively and the editor runs single-player. Enablement state and the seeding handshake are part of the session lifecycle; a full state machine will be documented here as it settles.
 
+A negative probe **may explain itself**: `{collab: false, detail}`. `negotiateCollab` (`packages/collab/src/negotiate.ts`) reports a non-blank `detail` as its `refused` reason in place of the generic "collaboration disabled", because a server knows which kind of no it is giving — a flag that is off, or a room a hosted plan would open (`desktop.md` §10.4) — and only one of those is true of "disabled".
+
 A session is in exactly one of four states, and **only one of them is silent**:
 
 | State         | Means                           | Shown as                           |

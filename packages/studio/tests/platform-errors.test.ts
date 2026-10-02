@@ -9,9 +9,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { installUrlOf, platformErrorInfo } from "../src/platform-errors";
+import { installUrlOf, isSubscriptionRequired, platformErrorInfo } from "../src/platform-errors";
 
 const INSTALL_URL = "https://github.com/apps/jx/installations/new";
+const UPGRADE_URL = "https://studio.example.test/api/v1/billing/checkout";
 
 describe("platformErrorInfo", () => {
   test("derives the code from a problem type", () => {
@@ -80,5 +81,45 @@ describe("installUrlOf", () => {
       type: "https://jxsuite.com/problems/forbidden",
     });
     expect(installUrlOf(otherFailure)).toBeNull();
+  });
+});
+
+describe("the subscription refusal", () => {
+  test("carries the upgrade link and the trial flag through, from either shape", () => {
+    const shapes = [
+      { type: "https://jxsuite.com/problems/subscription-required" },
+      { code: "subscription_required" },
+    ];
+    for (const structured of shapes) {
+      const error = Object.assign(new Error("needs a plan"), structured, {
+        trialAvailable: false,
+        upgradeUrl: UPGRADE_URL,
+      });
+      expect(platformErrorInfo(error)).toEqual({
+        code: "subscription-required",
+        trialAvailable: false,
+        upgradeUrl: UPGRADE_URL,
+      });
+      expect(isSubscriptionRequired(error)).toBe(true);
+    }
+  });
+
+  test("a trial flag that is not a boolean is not reported", () => {
+    const error = Object.assign(new Error("x"), {
+      code: "subscription_required",
+      trialAvailable: "yes",
+    });
+    expect(platformErrorInfo(error)).toEqual({ code: "subscription-required" });
+  });
+
+  test("the code alone is a refusal", () => {
+    const error = Object.assign(new Error("x"), { code: "subscription_required" });
+    expect(isSubscriptionRequired(error)).toBe(true);
+  });
+
+  test("any other failure is not one, whatever members it carries", () => {
+    const error = Object.assign(new Error("x"), { code: "forbidden", upgradeUrl: UPGRADE_URL });
+    expect(isSubscriptionRequired(error)).toBe(false);
+    expect(isSubscriptionRequired(null)).toBe(false);
   });
 });

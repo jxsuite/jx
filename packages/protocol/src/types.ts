@@ -812,8 +812,24 @@ export interface AiModelsResponse {
    * true`: Cloudflare being briefly unreachable is not a reason to send someone round an OAuth flow
    * that fixes nothing. `cf_account_required` is a live grant with no account chosen (ai.md §2.1):
    * re-authorizing lands back in the same state, so it calls for the account picker instead.
+   *
+   * `subscription_required` is the fourth, and no connection fixes it: the backend sells a plan,
+   * this user is not on it, and the assistant is part of what it covers (ai.md §2.1). It arrives
+   * with {@link detail} and {@link upgradeUrl}, the same members the `subscription-required`
+   * problem carries, so the gate can offer the upgrade in the backend's own words.
    */
-  code?: "cf_not_connected" | "cf_reconnect_required" | "cf_account_required" | "cf_upstream_error";
+  code?:
+    | "cf_not_connected"
+    | "cf_reconnect_required"
+    | "cf_account_required"
+    | "cf_upstream_error"
+    | "subscription_required";
+  /** Why the backend refuses, in its own words. Sent with `subscription_required`. */
+  detail?: string;
+  /** Where the user can start the plan the refusal names. Sent with `subscription_required`. */
+  upgradeUrl?: string;
+  /** Whether that plan still offers this user a free trial. Sent with `subscription_required`. */
+  trialAvailable?: boolean;
 }
 
 // ─── Cloudflare publish surface ──────────────────────────────────────────────

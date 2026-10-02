@@ -17,6 +17,10 @@ import { problemSlug } from "@jxsuite/protocol";
 export interface PlatformErrorInfo {
   code?: string;
   installUrl?: string;
+  /** Where a `subscription-required` refusal says the plan can be started. */
+  upgradeUrl?: string;
+  /** Whether that plan still offers this user a free trial. */
+  trialAvailable?: boolean;
 }
 
 /**
@@ -33,16 +37,20 @@ export function platformErrorInfo(error: unknown): PlatformErrorInfo {
   if (!error || typeof error !== "object") {
     return {};
   }
-  const { code, installUrl, type } = error as {
+  const { code, installUrl, trialAvailable, type, upgradeUrl } = error as {
     code?: unknown;
     installUrl?: unknown;
+    trialAvailable?: unknown;
     type?: unknown;
+    upgradeUrl?: unknown;
   };
   // A problem type wins over a legacy code: it is the shape the backend is migrating toward.
   const derived = problemSlug(type) ?? (typeof code === "string" ? normalizeCode(code) : null);
   return {
     ...(derived === null ? {} : { code: derived }),
     ...(typeof installUrl === "string" ? { installUrl } : {}),
+    ...(typeof upgradeUrl === "string" ? { upgradeUrl } : {}),
+    ...(typeof trialAvailable === "boolean" ? { trialAvailable } : {}),
   };
 }
 
@@ -50,4 +58,12 @@ export function platformErrorInfo(error: unknown): PlatformErrorInfo {
 export function installUrlOf(error: unknown): string | null {
   const info = platformErrorInfo(error);
   return info.code === "needs-installation-access" && info.installUrl ? info.installUrl : null;
+}
+
+/**
+ * True when the error is a hosted plan's refusal (`subscription-required`, HTTP 402) — whether the
+ * backend sent the problem type or the legacy `subscription_required` code.
+ */
+export function isSubscriptionRequired(error: unknown): boolean {
+  return platformErrorInfo(error).code === "subscription-required";
 }

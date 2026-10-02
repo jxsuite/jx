@@ -51,6 +51,22 @@ describe("the problem document", () => {
     expect(PROBLEM_TYPES.needsInstallationAccess.extensions).toContain("installUrl");
   });
 
+  /*
+   * A refusal a plan would lift is its own type, 402 rather than 403, because the client offers the
+   * upgrade instead of a dead end — and the two members it needs to do so ride on the document.
+   */
+  test("a subscription refusal is a 402 carrying where to upgrade and whether a trial is left", () => {
+    const body = problemDetails("subscriptionRequired", "Opening acme/site needs a plan", {
+      trialAvailable: true,
+      upgradeUrl: "https://studio.example.test/billing",
+    });
+    expect(body.status).toBe(402);
+    expect(problemSlug(body.type)).toBe("subscription-required");
+    expect(body.upgradeUrl).toBe("https://studio.example.test/billing");
+    expect(body.trialAvailable).toBe(true);
+    expect(PROBLEM_TYPES.subscriptionRequired.extensions).toEqual(["upgradeUrl", "trialAvailable"]);
+  });
+
   // `instance` identifies one occurrence, and Jx has no per-occurrence resource to point at.
   test("never fabricates an instance", () => {
     expect(problemDetails("internalError", "boom")).not.toHaveProperty("instance");

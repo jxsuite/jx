@@ -221,6 +221,8 @@ import {
 import { initCssData } from "./panels/style-utils";
 import { initQuickSearch } from "./panels/quick-search";
 import { hydrateAccountStatus } from "./account-status";
+import { consumeUpgradeReturn, wireUpgradeReports } from "./account/upgrade-flow";
+import { isSubscriptionRequired } from "./platform-errors";
 import { hydrateProjectList } from "./project-list";
 import { addRecentProject, hydrateRecentProjects, removeRecentProject } from "./recent-projects";
 import {
@@ -257,6 +259,7 @@ import { registerCollabCommands } from "./collab/collab-commands";
 import { registerLibraryCommands } from "./browse/library-commands";
 import { registerFileFormatCommands } from "./format/convert-file";
 import { registerPublishCommands } from "./publish/publish-commands";
+import { accountCommands } from "./account/account-commands";
 import { registerGridViewCommands } from "./grid/grid-panel";
 import { registerRedirectsCommands } from "./grid/redirects-grid";
 import { registerContentCommands } from "./content/entry-commands";
@@ -507,6 +510,9 @@ toolbarPanel.mount(toolbarEl, {
 });
 
 initLayers();
+/* Before anything reaches the backend: a hosted platform's plan refusal (desktop.md §10.4) can be
+   the answer to the very first request, and the dialog that offers the plan needs the layers above. */
+wireUpgradeReports();
 initQuickSearch({ openRecentProject: (root: string) => openRecentProject(root) });
 
 /* The pane's four surfaces come from its CELL, not from `document.querySelector`.
@@ -979,7 +985,10 @@ if (!_projectParam) {
     // No project is bound yet, so this call only warms the canvasUrl; a backend that refuses it
     // Still gets the render below rather than an unhandled rejection.
     ?.catch((error: unknown) => {
-      console.error("Boot activation failed:", error);
+      // A plan refusal is the upgrade flow's to explain; it is not a fault.
+      if (!isSubscriptionRequired(error)) {
+        console.error("Boot activation failed:", error);
+      }
     })
     .then(() => {
       render();
@@ -1188,6 +1197,8 @@ void hydrateProjectList().then(() => {
 // The welcome screen's install prompt. No-op on platforms without getAccountStatus.
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- deliberate fire-and-forget: hydration must not block initial render
 void hydrateAccountStatus().then(() => {
+  // After the status, so the success toast can name the plan the round trip started.
+  consumeUpgradeReturn();
   render();
 });
 
@@ -1582,6 +1593,7 @@ registerNewProjectCommands(commandRegistry);
 registerStyleCommands(commandRegistry);
 registerSourceControlCommands(commandRegistry);
 registerPublishCommands(commandRegistry);
+commandRegistry.registerAll(accountCommands());
 registerGridViewCommands(commandRegistry);
 registerRedirectsCommands(commandRegistry);
 registerAboutCommands(commandRegistry);

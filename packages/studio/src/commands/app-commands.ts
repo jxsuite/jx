@@ -57,6 +57,7 @@ import { aboutCommands } from "../about/about-modal";
 import { libraryCommands } from "../browse/library-commands";
 import { sourceControlCommands } from "../panels/git-panel";
 import { publishCommands } from "../publish/publish-commands";
+import { accountCommands } from "../account/account-commands";
 import { gridViewCommands } from "../grid/grid-panel";
 import { redirectsCommands } from "../grid/redirects-grid";
 import { contentCommands } from "../content/entry-commands";
@@ -157,6 +158,7 @@ export function appCommandSet(): AnyCommand[] {
     ...i18nCommands(),
     ...sourceControlCommands(),
     ...publishCommands(),
+    ...accountCommands(),
     ...gridViewCommands(),
     ...redirectsCommands(),
     ...newProjectCommands(),

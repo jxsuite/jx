@@ -66,6 +66,16 @@ describe("Cloudflare API wrappers", () => {
     expect(await listAccounts()).toEqual([{ id: "a1", name: "Acme" }]);
   });
 
+  /* A hosted plan's refusal is offered as an upgrade (on a platform that sells one) and still
+     thrown: the publish step that asked failed, and it says so in its own words. */
+  test("a refused call still fails the step that made it", async () => {
+    const refusal = Object.assign(new Error("Publishing needs Jx Studio Cloud."), {
+      code: "subscription_required",
+    });
+    withCfApi({ "/accounts": refusal });
+    expect(listAccounts()).rejects.toBe(refusal);
+  });
+
   test("getPagesProject returns null when the project does not exist", async () => {
     withCfApi({ "/pages/projects/missing": new Error("404") });
     expect(await getPagesProject(DEPLOY.accountId, "missing")).toBeNull();

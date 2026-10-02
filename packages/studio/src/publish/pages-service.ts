@@ -1,11 +1,10 @@
 /// <reference lib="dom" />
 /**
- * Pages-service — Cloudflare Pages publish domain logic over the PAL's
- * `cfApi` passthrough. Works identically on every platform that provides it:
- * the dev server / desktop (user API token via cf-settings → /__studio/cf/proxy)
- * and the cloud platform (hosted OAuth). Publish state is written to
- * project.json `build.deploy` — it travels with the repo, so any Studio can
- * tell whether the publish workflow already exists.
+ * Pages-service — Cloudflare Pages publish domain logic over the PAL's `cfApi` passthrough. Works
+ * identically on every platform that provides it: the dev server / desktop (user API token via
+ * cf-settings → /__studio/cf/proxy) and the cloud platform (hosted OAuth). Publish state is written
+ * to project.json `build.deploy` — it travels with the repo, so any Studio can tell whether the
+ * publish workflow already exists.
  *
  * @license MIT
  */
@@ -13,6 +12,7 @@
 import { updateWranglerConfig } from "@jxsuite/create/scaffold";
 import type { DeployConfig, ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
+import { upgradeIfRequired } from "../account/upgrade-flow";
 import { updateSiteConfig } from "../site-context";
 
 export interface CfAccount {
@@ -52,12 +52,22 @@ export function platformSupportsPublish(): boolean {
   }
 }
 
+/**
+ * One Cloudflare call. A hosted platform's plan refusal is offered as an upgrade here, once for
+ * every publish step, and still thrown: the step that asked failed, and its caller reports that in
+ * its own words while the offer says how to fix it.
+ */
 async function cfApi<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const api = getPlatform().cfApi;
   if (!api) {
     throw new Error("This platform cannot reach the Cloudflare API");
   }
-  return (await api(path, init)) as T;
+  try {
+    return (await api(path, init)) as T;
+  } catch (error) {
+    void upgradeIfRequired(error);
+    throw error;
+  }
 }
 
 export async function listAccounts(): Promise<CfAccount[]> {
