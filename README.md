@@ -140,6 +140,16 @@ bun run desktop        # launch the desktop app
 
 Behavior is specified in [`specs/`](specs) and documented in [`docs/`](docs); both travel with the code in the same change set. See [Working in the monorepo](https://jxsuite.com/docs/extending/contributing/monorepo).
 
+## Support
+
+- **Questions and bugs** in Jx itself: [GitHub issues](https://github.com/jxsuite/jx/issues).
+- **Accounts and billing** for the hosted studio: [support@jxsuite.com](mailto:support@jxsuite.com).
+- **Security reports**: privately, as [SECURITY.md](.github/SECURITY.md) describes. Never in a public issue.
+
+More at [jxsuite.com/support](https://jxsuite.com/support).
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. Copyright (c) 2026 Avunu LLC and Jx Suite contributors. See [LICENSE](LICENSE).
+
+Jx Suite is a project of [Avunu LLC](https://jxsuite.com/support), which maintains it, runs jxsuite.com and the hosted studio, and answers support.
