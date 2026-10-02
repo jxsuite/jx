@@ -386,7 +386,14 @@ describe("the full-page return", () => {
     expect(toasts).toHaveLength(count);
   });
 
-  test("with no plan known, the success is still announced; with no platform, nothing runs", () => {
+  test("with no platform registered there is no return to read, and nothing is said", () => {
+    delete (globalThis as { __jxPlatform?: unknown }).__jxPlatform;
+    const before = toasts.length;
+    consumeUpgradeReturn();
+    expect(toasts).toHaveLength(before);
+  });
+
+  test("with no plan known, the success is still announced", () => {
     installMockPlatform({ takeUpgradeReturn: () => "success" });
     consumeUpgradeReturn();
     expect(toasts.at(-1)?.message).toBe("Your subscription is active.");

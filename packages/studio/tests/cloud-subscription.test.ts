@@ -511,3 +511,78 @@ describe("session base", () => {
     expect(calls[0]?.url).toBe(`${BASE}/activate`);
   });
 });
+
+/** Run `body` with a global missing, as it is outside a browser, and put it back after. */
+async function withoutGlobal(name: string, body: () => Promise<void> | void): Promise<void> {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  Object.defineProperty(globalThis, name, { configurable: true, value: undefined });
+  try {
+    await body();
+  } finally {
+    if (descriptor) {
+      Object.defineProperty(globalThis, name, descriptor);
+    } else {
+      delete (globalThis as Record<string, unknown>)[name];
+    }
+  }
+}
+
+describe("outside a browser", () => {
+  /* The members run where a click can open a window, and nowhere else: without a window there is
+     nothing to open and nothing to navigate, and without history there is no return to read. */
+  test("starting or managing a plan does nothing, and there is no return to read", async () => {
+    const p = createCloudPlatform(PROJECT);
+    await withoutGlobal("window", async () => {
+      expect(await p.startUpgrade?.()).toBeNull();
+      expect(await p.manageSubscription?.()).toBeUndefined();
+    });
+    await withoutGlobal("history", () => {
+      expect(p.takeUpgradeReturn?.()).toBeNull();
+    });
+  });
+});
+
+describe("a checkout that ends while the poll is asking", () => {
+  /* The relay can settle the flow while a poll is waiting on `/me`. That poll must stop where it
+     is: settling twice would resolve a promise that already answered, and re-arming the timer
+     would keep asking the platform about a window nobody is waiting on any more. */
+  test("the waiting poll stops at its answer rather than settling again or re-arming", async () => {
+    let release: (response: Response) => void = () => {};
+    let asked = 0;
+    globalThis.fetch = ((url: string) => {
+      if (url.includes("/api/v1/me")) {
+        asked += 1;
+        return new Promise<Response>((resolve) => {
+          release = resolve;
+        });
+      }
+      return Promise.resolve(Response.json({}));
+    }) as unknown as typeof fetch;
+    fastTimers();
+    (window as { open: unknown }).open = mock(() => ({ close: () => {}, closed: false }));
+    const pending = createCloudPlatform(null).startUpgrade?.();
+    await until(() => asked === 1, "the first poll to ask");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "jx-billing", status: "canceled" },
+        origin: location.origin,
+      }),
+    );
+    expect(await pending).toEqual({ status: "canceled" });
+
+    // The platform answers the poll that was waiting — with a plan, which must change nothing now.
+    release(
+      Response.json({
+        billing: { plan: { name: "Plan" } },
+        subscription: { entitled: true, state: "active" },
+      }),
+    );
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((resolve) => {
+        realSetTimeout(resolve, 0);
+      });
+    }
+    expect(asked).toBe(1);
+  });
+});

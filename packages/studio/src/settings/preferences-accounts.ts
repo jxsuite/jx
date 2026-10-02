@@ -239,34 +239,28 @@ function day(iso: string): string {
 
 /** Where the user stands on the plan, as one sentence that names the next move when there is one. */
 function planDetail(plan: AccountSubscription): string {
-  switch (plan.state) {
-    case "trialing": {
-      const until = plan.trialEndsAt ? ` until ${day(plan.trialEndsAt)}` : "";
-      const keep = plan.hasPaymentMethod === false ? " Add a payment method to keep it." : "";
-      return `Free trial${until}.${keep}`;
-    }
-    case "active": {
-      if (plan.endsAt) {
-        return `Active until ${day(plan.endsAt)}; it will not renew.`;
-      }
-      return `Active${plan.renewsAt ? `, renews ${day(plan.renewsAt)}` : ""}.`;
-    }
-    case "grace": {
-      return "The last payment failed. Update the payment method to keep the plan.";
-    }
-    case "ended": {
-      return plan.required ? "Ended. Subscribe again to open and save projects here." : "Ended.";
-    }
-    default: {
-      if (!plan.required) {
-        return "Not needed on this deployment.";
-      }
-      const days = plan.trialDays ? `A ${plan.trialDays}-day` : "A";
-      return plan.trialAvailable
-        ? `Not started. ${days} free trial is available.`
-        : "Not subscribed.";
-    }
+  if (plan.state === "trialing") {
+    const until = plan.trialEndsAt ? ` until ${day(plan.trialEndsAt)}` : "";
+    const keep = plan.hasPaymentMethod === false ? " Add a payment method to keep it." : "";
+    return `Free trial${until}.${keep}`;
   }
+  if (plan.state === "active") {
+    return plan.endsAt
+      ? `Active until ${day(plan.endsAt)}; it will not renew.`
+      : `Active${plan.renewsAt ? `, renews ${day(plan.renewsAt)}` : ""}.`;
+  }
+  if (plan.state === "grace") {
+    return "The last payment failed. Update the payment method to keep the plan.";
+  }
+  if (plan.state === "ended") {
+    return plan.required ? "Ended. Subscribe again to open and save projects here." : "Ended.";
+  }
+  // Never had a plan: say whether one is needed here, and what starting it would mean.
+  if (!plan.required) {
+    return "Not needed on this deployment.";
+  }
+  const days = plan.trialDays ? `A ${plan.trialDays}-day` : "A";
+  return plan.trialAvailable ? `Not started. ${days} free trial is available.` : "Not subscribed.";
 }
 
 /**
