@@ -96,6 +96,10 @@ jobs:
           cp -r "$(readlink -f ./result)/lib/jx-studio" packages/desktop/snap-stage/lib/
           chmod -R u+w packages/desktop/snap-stage
 
+      # The chown is load-bearing. `sudo` leaves the snap owned by root, and review-tools is a strict
+      # snap whose only file access is the `home` interface, whose AppArmor rule is
+      # `owner @{HOME}/[^.]** rwkl`: a root-owned file under $HOME is denied to the runner user at
+      # any mode. That was desktop-v5.3.0's `[Errno 13] Permission denied ... RUNTIME ERROR`.
       - name: Pack the snap
         working-directory: packages/desktop
         run: |
@@ -104,6 +108,7 @@ jobs:
           sudo snapcraft pack --destructive-mode
           mkdir -p "$GITHUB_WORKSPACE/snap-out"
           sudo mv ./*.snap "$GITHUB_WORKSPACE/snap-out/"
+          sudo chown "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"/snap-out/*.snap
           ls -la "$GITHUB_WORKSPACE/snap-out"
 
       # The store's own automated review, run before upload so a rejection is a red build in the

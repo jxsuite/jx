@@ -1,39 +1,32 @@
 # Submits the desktop MSIX to the Microsoft Store, so a desktop release stops ending at "a human
-# opens Partner Center and clicks through five pages by hand" — which is exactly how desktop-v5.2.0
-# shipped: `build-msix.yml` already attaches `JxStudio_<version>_x64.msix` to the GitHub release,
-# and until this workflow existed nothing did anything with it.
+# opens Partner Center and clicks through five pages by hand", which is how desktop-v5.2.0 shipped:
+# `build-msix.yml` already attaches `JxStudio_<version>_x64.msix` to the GitHub release.
 #
-# The actual API calls live in `scripts/store-submit.ts` (CLAUDE.md's "Microsoft Store Publishing"
-# section has the full design and the manual Azure AD setup this workflow depends on). This
-# workflow is deliberately thin: fetch the asset the desktop bundlers already produced, hand it to
-# the script, let the script decide everything else — including refusing to touch a submission
-# that's already pending, and no-opping cleanly if the four STORE_* secrets aren't configured yet.
+# This is Microsoft's own path, as its guide lays it out
+# (learn.microsoft.com/windows/apps/publish/msstore-dev-cli/github-actions): the
+# `microsoft/microsoft-store-apppublisher` action installs the Microsoft Store Developer CLI, and
+# `msstore publish` does the rest. It creates a submission from the last published one, uploads the
+# package, swaps it in, commits, and waits for the Store to accept the commit. Certification is not
+# waited for. CLAUDE.md's "Microsoft Store Publishing" section has the decisions and the one-time
+# setup, including the one that matters most: a pending submission is REPLACED, never preserved.
 #
-# Called from release-please.yml at the desktop release tag; `workflow_dispatch` exists to retry or
-# backfill a specific release the same way publish.yml's manual entry point does.
+# Called from release-please.yml at the desktop release tag; `workflow_dispatch` retries or backfills
+# a specific release the same way publish.yml's manual entry point does.
 name: Publish to Microsoft Store
 
 on:
   workflow_call:
     inputs:
       tag_name:
-        description: Desktop release tag to fetch the MSIX from (e.g. desktop-v5.2.0).
+        description: Desktop release tag to fetch the MSIX from (e.g. desktop-v5.3.0).
         required: true
         type: string
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Desktop release tag to fetch the MSIX from (e.g. desktop-v5.2.0).
+        description: Desktop release tag to fetch the MSIX from (e.g. desktop-v5.3.0).
         required: true
         type: string
-      force_replace_pending:
-        description: >-
-          Delete an already-pending Partner Center submission before creating a new one. Only for
-          recovering a stuck submission from a previous failed run — never the default, because it
-          would just as happily delete one a human is mid-edit on. Leave false unless you checked.
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -41,38 +34,88 @@ permissions:
 jobs:
   store-publish:
     name: Submit to Microsoft Store
-    runs-on: ubuntu-latest
+    # Windows, as the guide runs it, and not for taste: `msstore reconfigure` keeps the client secret
+    # in the OS credential store. On Linux that is libsecret, which needs a Secret Service a hosted
+    # runner does not run.
+    runs-on: windows-latest
+    # `msstore publish` polls without a bound while a commit reads `CommitStarted`, and the Store
+    # has been reported to sit there for hours (microsoft/msstore-cli#29).
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    # No checkout: the release's MSIX is the only input, fetched by tag, and nothing runs from the
+    # tree. The secrets are given only to the steps that read them, never to the installer action.
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag_name }}
-
-      # No dependency to install: the script reads four env vars, shells out to `gh`/`zip`, and
-      # talks to `manage.devcenter.microsoft.com` with the platform `fetch`. Matches
-      # verify-release-integrity's reasoning in release-please.yml for the same flag.
-      - uses: ./.github/actions/setup-bun
-        with:
-          install: false
-
-      - name: Download the MSIX from the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: gh release download "${{ inputs.tag_name }}" --pattern '*.msix' --dir msix-download
-
-      - name: Submit to the Microsoft Store
+      # A no-op until the five secrets exist, so the lane can merge before Partner Center is wired
+      # up. A warning rather than silence: four of five set is a setup mistake worth seeing.
+      - name: Check the Store credentials
+        id: credentials
         env:
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_SELLER_ID: ${{ secrets.STORE_SELLER_ID }}
           STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
           STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
           STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
-          FORCE_REPLACE_PENDING: ${{ inputs.force_replace_pending || 'false' }}
         run: |
           set -euo pipefail
-          msix="$(find msix-download -name '*.msix' | head -n1)"
-          if [ -z "$msix" ]; then
-            echo "::error::No .msix asset found on release ${{ inputs.tag_name }}"
+          missing=()
+          for name in STORE_TENANT_ID STORE_SELLER_ID STORE_CLIENT_ID STORE_CLIENT_SECRET STORE_APP_ID; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::warning::Microsoft Store credentials not configured (missing ${missing[*]}); skipping the Store submission. See CLAUDE.md, \"Microsoft Store Publishing\"."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the MSIX from the release
+        if: steps.credentials.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: gh release download "$TAG_NAME" --pattern '*.msix' --dir msix-download
+
+      # The CLI version is pinned: a re-run must behave like the run it repeats, and recent
+      # releases have shipped regressions (a v0.4.0 crash, microsoft/msstore-cli#154; an upload
+      # timeout that defaulted to zero, #162). Dependabot does not see this input, so it moves by
+      # hand.
+      - name: Install the Microsoft Store CLI
+        if: steps.credentials.outputs.configured == 'true'
+        uses: microsoft/microsoft-store-apppublisher@v1.4
+        with:
+          version: v0.4.3
+
+      - name: Sign the CLI in to Partner Center
+        if: steps.credentials.outputs.configured == 'true'
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_SELLER_ID: ${{ secrets.STORE_SELLER_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          msstore reconfigure \
+            --tenantId "$STORE_TENANT_ID" \
+            --sellerId "$STORE_SELLER_ID" \
+            --clientId "$STORE_CLIENT_ID" \
+            --clientSecret "$STORE_CLIENT_SECRET"
+
+      - name: Publish to the Microsoft Store
+        if: steps.credentials.outputs.configured == 'true'
+        env:
+          STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(msix-download/*.msix)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::Expected one .msix asset on release $TAG_NAME, found ${#packages[@]}"
             exit 1
           fi
-          bun run store:submit "$msix"
+          msstore publish "${packages[0]}" --appId "$STORE_APP_ID"

@@ -83,6 +83,19 @@ describe("snapcraft.yaml", () => {
     expect(workflow).toContain("packages/desktop/snap-stage/lib/");
   });
 
+  test("hands the store review a snap the runner owns", () => {
+    // The review-tools snap reads through the `home` interface, whose AppArmor rule carries
+    // `owner`: a root-owned snap under $HOME is a `Permission denied` RUNTIME ERROR at any mode.
+    const workflow = readFileSync(resolve(repo, ".github/workflows/build-snap.yml"), "utf8");
+    const pack = workflow.indexOf("sudo snapcraft pack");
+    const chown = workflow.indexOf('sudo chown "$(id -u):$(id -g)"');
+    const review = workflow.indexOf("review-tools.snap-review");
+    expect(pack).toBeGreaterThan(-1);
+    expect(chown).toBeGreaterThan(pack);
+    expect(review).toBeGreaterThan(chown);
+    expect(workflow).not.toContain("sudo review-tools");
+  });
+
   test("pins Bun to the series CI runs, by checksum", () => {
     const build = snapcraft.parts.bun?.["override-build"] ?? "";
     const pinned = /version=(\d+\.\d+)\.\d+/.exec(build)?.[1];

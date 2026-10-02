@@ -41,10 +41,10 @@ jobs:
     name: Upload to the Snap Store
     runs-on: ubuntu-latest
     steps:
+      # The workflow's own commit, not the tag, for store-publish.yml's reason: the snaps come from
+      # the release by tag, and a retry dispatched from main must run main's script.
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag_name }}
 
       # The script spawns `snapcraft` and needs no dependency of its own.
       - uses: ./.github/actions/setup-bun
