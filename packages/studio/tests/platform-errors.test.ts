@@ -9,10 +9,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { installUrlOf, isSubscriptionRequired, platformErrorInfo } from "../src/platform-errors";
+import {
+  installUrlOf,
+  isActionRequired,
+  offeredActions,
+  platformErrorInfo,
+  retryHint,
+} from "../src/platform-errors";
 
 const INSTALL_URL = "https://github.com/apps/jx/installations/new";
-const UPGRADE_URL = "https://studio.example.test/api/v1/billing/checkout";
+const JOIN = { href: "https://example.test/join", id: "join", label: "Join", primary: true };
 
 describe("platformErrorInfo", () => {
   test("derives the code from a problem type", () => {
@@ -84,42 +90,78 @@ describe("installUrlOf", () => {
   });
 });
 
-describe("the subscription refusal", () => {
-  test("carries the upgrade link and the trial flag through, from either shape", () => {
+describe("the action-required refusal", () => {
+  test("carries its actions, heading and retry hint through, from either shape", () => {
     const shapes = [
-      { type: "https://jxsuite.com/problems/subscription-required" },
-      { code: "subscription_required" },
+      { type: "https://jxsuite.com/problems/action-required" },
+      { code: "action_required" },
     ];
     for (const structured of shapes) {
-      const error = Object.assign(new Error("needs a plan"), structured, {
-        trialAvailable: false,
-        upgradeUrl: UPGRADE_URL,
+      const error = Object.assign(new Error("needs a step"), structured, {
+        actions: [JOIN],
+        heading: "Join first",
+        retry: "repeat",
       });
       expect(platformErrorInfo(error)).toEqual({
-        code: "subscription-required",
-        trialAvailable: false,
-        upgradeUrl: UPGRADE_URL,
+        actions: [JOIN],
+        code: "action-required",
+        heading: "Join first",
+        retry: "repeat",
       });
-      expect(isSubscriptionRequired(error)).toBe(true);
+      expect(isActionRequired(error)).toBe(true);
     }
   });
 
-  test("a trial flag that is not a boolean is not reported", () => {
+  test("members of the wrong type are not reported", () => {
     const error = Object.assign(new Error("x"), {
-      code: "subscription_required",
-      trialAvailable: "yes",
+      actions: "join",
+      code: "action_required",
+      heading: 7,
+      retry: "later",
     });
-    expect(platformErrorInfo(error)).toEqual({ code: "subscription-required" });
+    expect(platformErrorInfo(error)).toEqual({ actions: [], code: "action-required" });
   });
 
   test("the code alone is a refusal", () => {
-    const error = Object.assign(new Error("x"), { code: "subscription_required" });
-    expect(isSubscriptionRequired(error)).toBe(true);
+    const error = Object.assign(new Error("x"), { code: "action_required" });
+    expect(isActionRequired(error)).toBe(true);
   });
 
   test("any other failure is not one, whatever members it carries", () => {
-    const error = Object.assign(new Error("x"), { code: "forbidden", upgradeUrl: UPGRADE_URL });
-    expect(isSubscriptionRequired(error)).toBe(false);
-    expect(isSubscriptionRequired(null)).toBe(false);
+    const error = Object.assign(new Error("x"), { actions: [JOIN], code: "forbidden" });
+    expect(isActionRequired(error)).toBe(false);
+    expect(isActionRequired(null)).toBe(false);
+  });
+});
+
+describe("offeredActions", () => {
+  test("keeps each well-formed action, and only the members of the right type", () => {
+    expect(
+      offeredActions([
+        JOIN,
+        { href: 3, id: "ask", label: "Ask", primary: "yes" },
+        { href: "", id: "plain", label: "Plain" },
+        { id: "", label: "No id" },
+        { id: "no-label", label: "" },
+        { id: 1, label: "Numeric id" },
+        null,
+        "join",
+      ]),
+    ).toEqual([JOIN, { id: "ask", label: "Ask" }, { id: "plain", label: "Plain" }]);
+  });
+
+  test("anything but a list is no actions", () => {
+    expect(offeredActions(null)).toEqual([]);
+    expect(offeredActions({ id: "join", label: "Join" })).toEqual([]);
+  });
+});
+
+describe("retryHint", () => {
+  test("names only the hints the contract defines", () => {
+    expect(retryHint("reload")).toBe("reload");
+    expect(retryHint("repeat")).toBe("repeat");
+    expect(retryHint("none")).toBe("none");
+    expect(retryHint("later")).toBeUndefined();
+    expect(retryHint(1)).toBeUndefined();
   });
 });

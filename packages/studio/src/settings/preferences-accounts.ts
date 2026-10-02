@@ -30,9 +30,9 @@ import { clearCfConnection, getCfAccountId, getCfToken } from "../services/cf-se
 import { clearAiProvider, getBaseUrl, hasOpenAiKey } from "../services/ai-settings";
 import { preferredModel, resetModelCache } from "../services/ai-models";
 import { getPlatform, hasPlatform } from "../platform";
-import { getSubscription } from "../account-status";
-import { canUpgrade, promptUpgrade } from "../account/upgrade-flow";
-import type { AccountSubscription, CfConnection } from "../types";
+import { getAccountEntries } from "../account-status";
+import { runOfferedAction } from "../account/action-flow";
+import type { AccountEntry, CfConnection, OfferedAction } from "../types";
 
 /** One thing a row can do besides existing. */
 export interface AccountAction {
@@ -230,85 +230,47 @@ function localCloudflareRecord(): AccountRecord {
   };
 }
 
-// ─── The hosted plan ─────────────────────────────────────────────────────────
-
-/** A calendar date the reader's locale prints. */
-function day(iso: string): string {
-  return new Date(iso).toLocaleDateString();
-}
-
-/** Where the user stands on the plan, as one sentence that names the next move when there is one. */
-function planDetail(plan: AccountSubscription): string {
-  if (plan.state === "trialing") {
-    const until = plan.trialEndsAt ? ` until ${day(plan.trialEndsAt)}` : "";
-    const keep = plan.hasPaymentMethod === false ? " Add a payment method to keep it." : "";
-    return `Free trial${until}.${keep}`;
-  }
-  if (plan.state === "active") {
-    return plan.endsAt
-      ? `Active until ${day(plan.endsAt)}; it will not renew.`
-      : `Active${plan.renewsAt ? `, renews ${day(plan.renewsAt)}` : ""}.`;
-  }
-  if (plan.state === "grace") {
-    return "The last payment failed. Update the payment method to keep the plan.";
-  }
-  if (plan.state === "ended") {
-    return plan.required ? "Ended. Subscribe again to open and save projects here." : "Ended.";
-  }
-  // Never had a plan: say whether one is needed here, and what starting it would mean.
-  if (!plan.required) {
-    return "Not needed on this deployment.";
-  }
-  const days = plan.trialDays ? `A ${plan.trialDays}-day` : "A";
-  return plan.trialAvailable ? `Not started. ${days} free trial is available.` : "Not subscribed.";
-}
+// ─── The platform's own rows ─────────────────────────────────────────────────
 
 /**
- * The plan's row — present only on a platform that sells one (desktop.md §10.4).
+ * One row the platform adds (desktop.md §10.4) — a membership, a role, a plan; Studio does not know
+ * which, and draws it in the platform's words.
  *
- * `revoke` does nothing: a plan is not a credential this app holds, and ending one is done where it
- * is managed. Its verbs are the two the platform can serve — start the plan, or open where it is
- * managed — and each appears only when it would do something.
+ * Its id is namespaced so no platform can shadow one of Studio's own rows by naming it `github`.
+ * `revoke` does nothing: whatever the row describes is not a credential this app holds, so there is
+ * nothing here to forget, and its verbs are the actions the platform offers with it.
  */
-function planRecord(plan: AccountSubscription): AccountRecord {
-  const actions: AccountAction[] = [];
-  if (!plan.entitled && canUpgrade()) {
-    actions.push({
-      id: "upgrade",
-      label: plan.trialAvailable ? "Start free trial" : "Subscribe",
-      run: async () => {
-        await promptUpgrade();
-      },
-      variant: "accent",
-    });
+function platformAction(action: OfferedAction): AccountAction {
+  const verb: AccountAction = {
+    id: action.id,
+    label: action.label,
+    run: async () => {
+      await runOfferedAction(action);
+    },
+  };
+  if (action.primary) {
+    verb.variant = "accent";
   }
-  if (plan.manageUrl && hasPlatform() && getPlatform().manageSubscription) {
-    actions.push({
-      id: "manage",
-      label: "Manage",
-      run: async () => {
-        await getPlatform().manageSubscription?.();
-      },
-    });
-  }
+  return verb;
+}
+
+function platformRecord(entry: AccountEntry): AccountRecord {
   return {
-    actions,
-    connected: plan.entitled,
-    detail: plan.priceLabel ? `${planDetail(plan)} ${plan.priceLabel}.` : planDetail(plan),
-    id: "plan",
-    label: plan.planName,
+    actions: (entry.actions ?? []).map((action) => platformAction(action)),
+    connected: entry.connected ?? false,
+    detail: entry.detail,
+    id: `platform:${entry.id}`,
+    label: entry.label,
     revoke: () => {},
   };
 }
 
 /**
- * The three accounts, always all three — and the hosted plan as a fourth, where the platform sells
- * one.
+ * The three accounts, always all three — then any rows the platform adds.
  *
  * A disconnected account still gets a row: "you are not signed in to GitHub" is information, and a
- * list that hides what is absent cannot answer the question the section exists to answer. The plan
- * is the exception that proves it: on a platform that sells nothing there is nothing absent to
- * report, and a row there would advertise a product that does not exist.
+ * list that hides what is absent cannot answer the question the section exists to answer. The
+ * platform's rows are the platform's to include or leave out; Studio adds none of its own.
  */
 export function listAccounts(): AccountRecord[] {
   const githubToken = githubTokenStored();
@@ -336,14 +298,8 @@ export function listAccounts(): AccountRecord[] {
       revoke: clearAiProvider,
     },
     platformBrokersCf() ? brokeredCloudflareRecord() : localCloudflareRecord(),
-    ...planRows(),
+    ...getAccountEntries().map((entry) => platformRecord(entry)),
   ];
-}
-
-/** The plan row, or none. */
-function planRows(): AccountRecord[] {
-  const plan = getSubscription();
-  return plan ? [planRecord(plan)] : [];
 }
 
 /**

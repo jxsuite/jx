@@ -8,11 +8,12 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   getAccountStatus,
   getRepoAccessLinks,
-  getSubscription,
+  getAccountEntries,
+  getBannerNotices,
   hydrateAccountStatus,
   needsAppInstall,
-  planNotice,
   resetAccountStatus,
+  takeToastNotices,
 } from "../src/account-status";
 import { installUrlOf, platformErrorInfo } from "../src/platform-errors";
 
@@ -143,98 +144,46 @@ describe("platform-errors", () => {
   });
 });
 
-describe("the hosted plan", () => {
-  const PLAN = {
-    entitled: false,
-    planName: "Jx Studio Cloud",
-    required: true,
-    state: "none" as const,
-    trialAvailable: true,
-    trialDays: 30,
-  };
+describe("the platform's rows and notices", () => {
+  const ROW = { detail: "Member since spring.", id: "team", label: "Team" };
+  const BANNER = { id: "b", message: "Read the new policy.", title: "Policy" };
+  const TOAST = { display: "toast" as const, id: "t", message: "You joined.", title: "Joined" };
 
-  async function withPlan(subscription?: Record<string, unknown>): Promise<void> {
+  async function withStatus(extra: Record<string, unknown> = {}): Promise<void> {
     installMockPlatform({
-      getAccountStatus: () =>
-        Promise.resolve({
-          installations: [],
-          ...(subscription ? { subscription: subscription as never } : {}),
-        }),
+      getAccountStatus: () => Promise.resolve({ installations: [], ...extra }),
     });
     await hydrateAccountStatus();
   }
 
-  test("a platform that sells nothing has no plan and no notice", async () => {
-    await withPlan();
-    expect(getSubscription()).toBeNull();
-    expect(planNotice()).toBeNull();
+  test("a platform that sends none has none, and nothing is read before hydration", async () => {
     resetAccountStatus();
-    expect(getSubscription()).toBeNull();
+    expect(getAccountEntries()).toEqual([]);
+    expect(getBannerNotices()).toEqual([]);
+    expect(takeToastNotices()).toEqual([]);
+    await withStatus();
+    expect(getAccountEntries()).toEqual([]);
+    expect(getBannerNotices()).toEqual([]);
+    expect(takeToastNotices()).toEqual([]);
   });
 
-  test("a required plan the user does not hold is offered, with its trial when there is one", async () => {
-    await withPlan(PLAN);
-    expect(getSubscription()?.planName).toBe("Jx Studio Cloud");
-    expect(planNotice()).toEqual({
-      action: "upgrade",
-      actionLabel: "Start free trial",
-      text: "Opening and saving projects here needs Jx Studio Cloud. Start with a 30-day free trial.",
-      title: "Jx Studio Cloud",
+  test("rows pass through; banners and toasts are told apart", async () => {
+    await withStatus({
+      entries: [ROW],
+      notices: [BANNER, { ...BANNER, display: "banner", id: "b2" }, TOAST],
     });
-    await withPlan({ ...PLAN, trialAvailable: false });
-    expect(planNotice()).toMatchObject({
-      actionLabel: "Subscribe",
-      text: "Opening and saving projects here needs Jx Studio Cloud.",
-    });
-    await withPlan({ ...PLAN, trialDays: undefined });
-    expect(planNotice()?.text).toEndWith("Start with a free trial.");
+    expect(getAccountEntries()).toEqual([ROW]);
+    expect(getBannerNotices().map((notice) => notice.id)).toEqual(["b", "b2"]);
+    expect(takeToastNotices()).toEqual([TOAST]);
   });
 
-  test("the platform's announcement wins, and offers the plan only to someone who needs it", async () => {
-    await withPlan({ ...PLAN, notice: "Plans start on 1 November." });
-    expect(planNotice()).toEqual({
-      action: "upgrade",
-      actionLabel: "Start free trial",
-      text: "Plans start on 1 November.",
-      title: "Jx Studio Cloud",
-    });
-    await withPlan({
-      ...PLAN,
-      entitled: true,
-      notice: "Plans start on 1 November.",
-      state: "active",
-    });
-    expect(planNotice()).toMatchObject({ action: null, actionLabel: "" });
-  });
-
-  test("a trial about to end with nothing to continue on is a reminder; otherwise nothing", async () => {
-    const now = Date.parse("2026-10-28T00:00:00Z");
-    const trial = {
-      ...PLAN,
-      entitled: true,
-      hasPaymentMethod: false,
-      manageUrl: "https://studio.test/portal",
-      state: "trialing",
-      trialEndsAt: "2026-11-01T00:00:00Z",
-    };
-    await withPlan(trial);
-    expect(planNotice(now)).toMatchObject({ action: "manage", actionLabel: "Add payment method" });
-    expect(planNotice(now)?.text).toStartWith("Your trial ends on ");
-    // Weeks away, a card on file, or no date to count down to: nothing to say.
-    expect(planNotice(Date.parse("2026-10-01T00:00:00Z"))).toBeNull();
-    await withPlan({ ...trial, hasPaymentMethod: true });
-    expect(planNotice(now)).toBeNull();
-    await withPlan({ ...trial, trialEndsAt: "soon" });
-    expect(planNotice(now)).toBeNull();
-    // A reminder with nowhere to manage the plan says so without a button.
-    await withPlan({ ...trial, manageUrl: undefined });
-    expect(planNotice(now)).toMatchObject({ action: null, actionLabel: "" });
-  });
-
-  test("a user in good standing, or on a plan this deployment does not require, sees nothing", async () => {
-    await withPlan({ ...PLAN, entitled: true, state: "active" });
-    expect(planNotice()).toBeNull();
-    await withPlan({ ...PLAN, required: false });
-    expect(planNotice()).toBeNull();
+  test("a toast is taken once, until the status is reset", async () => {
+    await withStatus({ notices: [TOAST] });
+    expect(takeToastNotices()).toEqual([TOAST]);
+    await hydrateAccountStatus();
+    expect(takeToastNotices()).toEqual([]);
+    resetAccountStatus();
+    await withStatus({ notices: [TOAST] });
+    expect(takeToastNotices()).toEqual([TOAST]);
   });
 });

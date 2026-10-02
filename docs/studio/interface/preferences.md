@@ -47,7 +47,7 @@ The list never shows the credential itself, only that one is stored. A long endp
 
 On Jx Cloud the Cloudflare row is different in one way that matters: the connection is held for you by the platform rather than stored on this machine, so the row reports what the platform says about it. It names the connected account, or tells you the authorization has expired and offers **Reconnect**, or offers to pick an account when your Cloudflare login covers several and none has been chosen yet. **Disconnect** there reaches the platform and drops the authorization itself, not just a local copy of it.
 
-A hosted Studio that sells a plan adds a row for it. The row says where you stand: a free trial and the day it ends, the day the plan renews or stops, a payment that failed, or a plan that has ended. While you need the plan it offers **Start free trial** or **Subscribe**, and once there is something to manage it offers **Manage**, which opens the plan's billing page. It has no **Disconnect**, because a plan is ended where it is managed. Opening Preferences checks your standing again every time, so a trial that ended since your last visit is never reported as running. A Studio that sells no plan shows no such row, and the desktop app sells none.
+A hosted Studio may add rows of its own after these three, such as a membership or a role. Each row says what the platform says about it and offers the buttons the platform offers with it, if any. These rows have no **Disconnect**, because what they describe is not a credential Studio holds. Opening Preferences reads them again every time, so a row never reports something that has changed since your last visit. The desktop app adds no rows of its own.
 
 ## Keyboard
 

@@ -52,19 +52,26 @@ describe("the problem document", () => {
   });
 
   /*
-   * A refusal a plan would lift is its own type, 402 rather than 403, because the client offers the
-   * upgrade instead of a dead end — and the two members it needs to do so ride on the document.
+   * A refusal the user can act on is its own type, because the client offers what it lists instead
+   * of a dead end. 403, not 402: it says nothing about why (a role, a policy, a plan), which is the
+   * backend's to say in `heading` and `detail`.
    */
-  test("a subscription refusal is a 402 carrying where to upgrade and whether a trial is left", () => {
-    const body = problemDetails("subscriptionRequired", "Opening acme/site needs a plan", {
-      trialAvailable: true,
-      upgradeUrl: "https://studio.example.test/billing",
+  test("an action-required refusal is a 403 carrying its actions, heading and retry hint", () => {
+    const body = problemDetails("actionRequired", "Opening acme/site needs a plan.", {
+      actions: [
+        { href: "https://studio.example.test/plan", id: "start", label: "Start", primary: true },
+      ],
+      heading: "Example Cloud",
+      retry: "reload",
     });
-    expect(body.status).toBe(402);
-    expect(problemSlug(body.type)).toBe("subscription-required");
-    expect(body.upgradeUrl).toBe("https://studio.example.test/billing");
-    expect(body.trialAvailable).toBe(true);
-    expect(PROBLEM_TYPES.subscriptionRequired.extensions).toEqual(["upgradeUrl", "trialAvailable"]);
+    expect(body.status).toBe(403);
+    expect(problemSlug(body.type)).toBe("action-required");
+    expect(body.actions).toEqual([
+      { href: "https://studio.example.test/plan", id: "start", label: "Start", primary: true },
+    ]);
+    expect(body.heading).toBe("Example Cloud");
+    expect(body.retry).toBe("reload");
+    expect(PROBLEM_TYPES.actionRequired.extensions).toEqual(["actions", "heading", "retry"]);
   });
 
   // `instance` identifies one occurrence, and Jx has no per-occurrence resource to point at.

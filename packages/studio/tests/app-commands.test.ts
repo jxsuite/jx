@@ -43,9 +43,6 @@ describe("the set", () => {
   test("covers every contribution point the bootstrap composes", () => {
     const namespaces = new Set(COMMANDS.map((c) => c.id.split(".")[0]));
     expect([...namespaces].toSorted()).toEqual([
-      // `account.plan` — the hosted plan (desktop.md §10.4): where it is managed for a user who
-      // Holds one, the offer for everyone else. Offered only where `capability.upgrade` holds.
-      "account",
       // `app.preferences` — ⌘, the application-preferences sheet (Appearance · Assistant ·
       // Accounts · Keyboard). Application configuration, as distinct from `settings.*`, which
       // Configures a project.

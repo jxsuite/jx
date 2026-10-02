@@ -738,24 +738,27 @@ describe("openNewProjectModal — submit", () => {
   });
 });
 
-describe("openNewProjectModal — a hosted plan's refusal", () => {
-  /* Creating a repository is one of the actions a hosted plan covers (desktop.md §10.4). The refusal
-     is offered as an upgrade over the modal, and a plan that starts runs the create again, once. */
-  test("offers the plan over the modal, and creates once the plan starts", async () => {
+const JOIN = { href: "https://example.test/join", id: "join", label: "Join" };
+
+describe("openNewProjectModal — an action-required refusal", () => {
+  /* Creating a repository is something a backend may refuse until the user acts (desktop.md §10.4).
+     The refusal's actions are offered over the modal, and one that is done runs the create again,
+     once. */
+  test("offers the action over the modal, and creates once it is done", async () => {
     let attempts = 0;
-    const startUpgrade = async () => ({ status: "subscribed" }) as const;
+    const performAction = async () => ({ status: "done" }) as const;
     installMockPlatform({
       createProject: (async (opts: { name: string }) => {
         attempts += 1;
         if (attempts === 1) {
-          throw Object.assign(new Error("Creating repositories needs Jx Studio Cloud."), {
-            code: "subscription_required",
-            trialAvailable: true,
+          throw Object.assign(new Error("Creating repositories needs a team membership."), {
+            actions: [JOIN],
+            code: "action_required",
           });
         }
-        return { config: { name: opts.name }, root: "/home/dev/Sites/paid" };
+        return { config: { name: opts.name }, root: "/home/dev/Sites/joined" };
       }) as never,
-      startUpgrade,
+      performAction,
     });
     setProjectAdopter(async () => {});
 
@@ -763,7 +766,7 @@ describe("openNewProjectModal — a hosted plan's refusal", () => {
     await flush(3);
     npPress("Confirm");
     await flush(2);
-    npType(npName(), "Paid");
+    npType(npName(), "Joined");
     await flush();
     npFillLocation();
     await flush();
@@ -771,14 +774,14 @@ describe("openNewProjectModal — a hosted plan's refusal", () => {
     await flush(3);
 
     const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
-    const upgrade = dialogs.at(-1) as HTMLElement;
-    expect(upgrade.querySelector('[part="message"]')?.textContent).toStartWith(
-      "Creating repositories needs Jx Studio Cloud.",
+    const offer = dialogs.at(-1) as HTMLElement;
+    expect(offer.querySelector('[part="message"]')?.textContent).toBe(
+      "Creating repositories needs a team membership.",
     );
-    upgrade.dispatchEvent(new Event("confirm"));
+    offer.dispatchEvent(new Event("confirm"));
     const result = await promise;
     expect(attempts).toBe(2);
-    expect(result).toEqual({ config: { name: "Paid" }, root: "/home/dev/Sites/paid" } as never);
+    expect(result).toEqual({ config: { name: "Joined" }, root: "/home/dev/Sites/joined" } as never);
   });
 
   test("a declined offer leaves the error standing and asks no more", async () => {
@@ -786,27 +789,28 @@ describe("openNewProjectModal — a hosted plan's refusal", () => {
     installMockPlatform({
       createProject: (async () => {
         attempts += 1;
-        throw Object.assign(new Error("Creating repositories needs Jx Studio Cloud."), {
-          code: "subscription_required",
+        throw Object.assign(new Error("Creating repositories needs a team membership."), {
+          actions: [JOIN],
+          code: "action_required",
         });
       }) as never,
-      startUpgrade: async () => ({ status: "canceled" }),
+      performAction: async () => ({ status: "canceled" }),
     });
     const promise = openNewProjectModal();
     await flush(3);
     npPress("Confirm");
     await flush(2);
-    npType(npName(), "Unpaid");
+    npType(npName(), "Outsider");
     await flush();
     npFillLocation();
     await flush();
     npPress("Confirm");
     await flush(3);
-    const upgrade = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1) as HTMLElement;
-    upgrade.dispatchEvent(new Event("cancel"));
+    const offer = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1) as HTMLElement;
+    offer.dispatchEvent(new Event("cancel"));
     await flush(3);
     expect(attempts).toBe(1);
-    expect(errorText()).toContain("needs Jx Studio Cloud");
+    expect(errorText()).toContain("needs a team membership");
     npDismiss();
     expect(await promise).toBeNull();
   });

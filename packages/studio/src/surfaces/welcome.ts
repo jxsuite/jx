@@ -19,8 +19,8 @@
  * @docs studio/interface/welcome-screen
  */
 
-import { getAccountStatus, needsAppInstall, planNotice } from "../account-status";
-import { runPlanAction } from "../account/upgrade-flow";
+import { getAccountStatus, getBannerNotices, needsAppInstall } from "../account-status";
+import { runOfferedAction } from "../account/action-flow";
 import { platformSupportsAddRepo } from "../new-project/add-repo-modal";
 import { getProjectList } from "../project-list";
 import { reactive } from "../reactivity";
@@ -31,6 +31,7 @@ import { mountSurface, registerSurface } from "../ui/surface";
 import welcomeDoc from "./welcome.json";
 import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
+import type { AccountNotice, OfferedAction } from "../types";
 
 registerSurface("welcome", welcomeDoc as unknown as JxDocument);
 
@@ -173,6 +174,21 @@ interface RecentRow {
   when: string;
 }
 
+/** One notice's button: `key` is `<notice id>/<action id>`, which `noticeRun` resolves. */
+interface NoticeActionRow {
+  key: string;
+  label: string;
+  variant: string;
+}
+
+interface NoticeRow {
+  id: string;
+  title: string;
+  message: string;
+  level: string;
+  actions: NoticeActionRow[];
+}
+
 interface CatalogueRow {
   root: string;
   name: string;
@@ -183,12 +199,8 @@ interface WelcomeScope extends Record<string, unknown> {
   actions: StartAction[];
   installNeeded: boolean;
   installUrl: string;
-  /** The hosted plan's notice: shown, its title and sentence, and whether it offers a button. */
-  planShown: boolean;
-  planTitle: string;
-  planText: string;
-  planHasAction: boolean;
-  planActionLabel: string;
+  /** The platform's own notices (desktop.md §10.4), each with the actions it offers. */
+  notices: NoticeRow[];
   hasRecent: boolean;
   recent: RecentRow[];
   hasCatalogue: boolean;
@@ -197,7 +209,7 @@ interface WelcomeScope extends Record<string, unknown> {
   open: (root: string) => void;
   remove: (root: string) => void;
   clear: () => void;
-  planRun: () => void;
+  noticeRun: (key: string) => void;
 }
 
 let _state: WelcomeScope | null = null;
@@ -206,7 +218,7 @@ let _mount: Promise<SurfaceHandle> | null = null;
 let _handle: SurfaceHandle | null = null;
 
 /** The pane, as the surface reads it, from the platform and the stores as they stand now. */
-function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "planRun"> {
+function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "noticeRun"> {
   const recent = getRecentProjects();
   // Catalogue entries already in Recent stay in that section only.
   const catalogue = getProjectList().filter((p) => !recent.some((r) => r.root === p.root));
@@ -238,7 +250,7 @@ function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "pl
        structured needs-installation 403 that `platform-errors.ts` decodes. */
     installNeeded: needsAppInstall(),
     installUrl: getAccountStatus()?.appInstallUrl ?? "#",
-    ...planView(),
+    notices: getBannerNotices().map((notice) => noticeRow(notice)),
     recent: recent.map((entry) => ({
       location: recentLabels.get(entry.root) ?? entry.root,
       name: entry.name,
@@ -249,22 +261,33 @@ function project(): Omit<WelcomeScope, "run" | "open" | "remove" | "clear" | "pl
 }
 
 /**
- * The plan notice, flattened for the document: a hosted platform's announcement, a plan the user
- * needs and does not hold, or a trial about to end with nothing to continue on (`account-status.ts`
- * decides which). Everyone else — and every platform that sells nothing — gets no section at all.
+ * One notice, flattened for the document. Each action's key names its notice too, because the
+ * button's handler sees only the inner row; the primary one is the accent button.
  */
-function planView(): Pick<
-  WelcomeScope,
-  "planShown" | "planTitle" | "planText" | "planHasAction" | "planActionLabel"
-> {
-  const notice = planNotice();
+function noticeRow(notice: AccountNotice): NoticeRow {
   return {
-    planActionLabel: notice?.actionLabel ?? "",
-    planHasAction: Boolean(notice?.action),
-    planShown: notice !== null,
-    planText: notice?.text ?? "",
-    planTitle: notice?.title ?? "",
+    actions: (notice.actions ?? []).map((action) => ({
+      key: `${notice.id}/${action.id}`,
+      label: action.label,
+      variant: action.primary ? "accent" : "secondary",
+    })),
+    id: notice.id,
+    level: notice.level ?? "info",
+    message: notice.message,
+    title: notice.title,
   };
+}
+
+/** The action a notice button's key names, read from the notices as they stand now. */
+function noticeAction(key: string): OfferedAction | null {
+  for (const notice of getBannerNotices()) {
+    for (const action of notice.actions ?? []) {
+      if (`${notice.id}/${action.id}` === key) {
+        return action;
+      }
+    }
+  }
+  return null;
 }
 
 /** The reactive scope the surface reads, made once. */
@@ -280,15 +303,14 @@ function state(): WelcomeScope {
     hasRecent: false,
     installNeeded: false,
     installUrl: "#",
-    planActionLabel: "",
-    planHasAction: false,
-    planRun: () => {
-      // The notice re-reads once the plan's standing changes, so a started plan takes it away.
-      void runPlanAction(planNotice()?.action ?? null).then(refresh);
+    noticeRun: (key: string) => {
+      const action = noticeAction(key);
+      if (action) {
+        // The account status is re-read after every action, so a notice it settled goes away.
+        void runOfferedAction(action).then(refresh);
+      }
     },
-    planShown: false,
-    planText: "",
-    planTitle: "",
+    notices: [],
     open: (root: string) => {
       _ctx?.openRecentProject(root);
     },

@@ -5,7 +5,7 @@
  * "install the GitHub App" when the user has no repository access yet.
  */
 import { getPlatform, hasPlatform } from "./platform";
-import type { AccountStatus, AccountSubscription } from "./types";
+import type { AccountEntry, AccountNotice, AccountStatus } from "./types";
 
 let cache: AccountStatus | null = null;
 
@@ -62,79 +62,35 @@ export function getRepoAccessLinks(): RepoAccessLinks | null {
   return { manage, ...(cache.appInstallUrl ? { installUrl: cache.appInstallUrl } : {}) };
 }
 
-/**
- * The plan the platform sells and where this user stands on it; null when it sells none, or when
- * the standing is unknown — which is the same answer to every surface: say nothing about a plan.
- */
-export function getSubscription(): AccountSubscription | null {
-  return cache?.subscription ?? null;
+/** The rows the platform adds to Preferences › Accounts (desktop.md §10.4); none when absent. */
+export function getAccountEntries(): AccountEntry[] {
+  return cache?.entries ?? [];
 }
 
-/** How far ahead a trial's end is worth a word on the Start pane. */
-const TRIAL_REMINDER_DAYS = 7;
-
-/** What the Start pane's plan notice says and offers; null when it has nothing to say. */
-export interface PlanNotice {
-  /** The plan, as the section's title. */
-  title: string;
-  /** One sentence. */
-  text: string;
-  /** The button: start the plan, manage the one held, or none for an announcement. */
-  action: "upgrade" | "manage" | null;
-  /** The button's words. */
-  actionLabel: string;
+/** The platform's notices to draw on the Start pane: every one that is not a one-time toast. */
+export function getBannerNotices(): AccountNotice[] {
+  return (cache?.notices ?? []).filter((notice) => notice.display !== "toast");
 }
 
+/** Toast notices already shown, by id, so a repeated hydrate does not announce one twice. */
+const shownToasts = new Set<string>();
+
 /**
- * The Start pane's plan notice — present only when there is something the user should act on or the
- * platform asked to have said. A user in good standing on a plan sees nothing at all, and so does
- * everyone on a platform that sells none.
- *
- * Three cases, in priority order: the platform's own announcement; a required plan the user does
- * not hold; a trial ending within {@link TRIAL_REMINDER_DAYS} with no payment method to continue
- * on.
+ * The platform's one-time notices not yet shown, marked shown as they are taken. A platform that
+ * keeps sending one after it was shown — before it hears it was seen — does not repeat itself.
  */
-export function planNotice(now: number = Date.now()): PlanNotice | null {
-  const plan = getSubscription();
-  if (!plan) {
-    return null;
+export function takeToastNotices(): AccountNotice[] {
+  const fresh = (cache?.notices ?? []).filter(
+    (notice) => notice.display === "toast" && !shownToasts.has(notice.id),
+  );
+  for (const notice of fresh) {
+    shownToasts.add(notice.id);
   }
-  const upgradeLabel = plan.trialAvailable ? "Start free trial" : "Subscribe";
-  const needsPlan = plan.required && !plan.entitled;
-  if (plan.notice) {
-    return {
-      action: needsPlan ? "upgrade" : null,
-      actionLabel: needsPlan ? upgradeLabel : "",
-      text: plan.notice,
-      title: plan.planName,
-    };
-  }
-  if (needsPlan) {
-    const days = plan.trialDays ? `${plan.trialDays}-day ` : "";
-    return {
-      action: "upgrade",
-      actionLabel: upgradeLabel,
-      text: plan.trialAvailable
-        ? `Opening and saving projects here needs ${plan.planName}. Start with a ${days}free trial.`
-        : `Opening and saving projects here needs ${plan.planName}.`,
-      title: plan.planName,
-    };
-  }
-  if (plan.state === "trialing" && plan.trialEndsAt && plan.hasPaymentMethod === false) {
-    const ends = Date.parse(plan.trialEndsAt);
-    if (Number.isFinite(ends) && ends - now <= TRIAL_REMINDER_DAYS * 86_400_000) {
-      return {
-        action: plan.manageUrl ? "manage" : null,
-        actionLabel: plan.manageUrl ? "Add payment method" : "",
-        text: `Your trial ends on ${new Date(ends).toLocaleDateString()}. Add a payment method to keep your plan.`,
-        title: plan.planName,
-      };
-    }
-  }
-  return null;
+  return fresh;
 }
 
 /** Reset seam for tests. */
 export function resetAccountStatus(): void {
   cache = null;
+  shownToasts.clear();
 }

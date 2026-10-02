@@ -417,7 +417,6 @@ describe("collab, ai and capabilities", () => {
       importSite: false,
       openProjectInNewWindow: false,
       readFileBytes: false,
-      upgrade: false,
       windowControls: false,
     });
   });
@@ -439,8 +438,6 @@ describe("collab, ai and capabilities", () => {
       openProjectInNewWindow: false,
       // On: the harness's mock ships `readFileBytes`, which is what gates the image editor.
       readFileBytes: true,
-      // Off: only a hosted platform that sells a plan implements `startUpgrade`.
-      upgrade: false,
       windowControls: true,
     });
   });

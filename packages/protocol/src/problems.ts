@@ -79,17 +79,17 @@ export const PROBLEM_TYPES = {
     "The path resolves outside the active project",
   ),
   /*
-   * A hosted backend that sells a plan refusing an action the plan covers. Its own type rather than
-   * a `forbidden` with a code, by the same test as `needsInstallationAccess`: the client does
-   * something different with it — it offers the upgrade `upgradeUrl` names instead of a dead end.
-   * `trialAvailable` decides whether that offer reads "Start free trial" or "Subscribe". Nothing
-   * here names a payment provider; the URL is the backend's, and so is everything behind it.
+   * Refused for a reason the user can act on (desktop.md §10.4): a role, a policy, a plan, a quota.
+   * Its own type rather than a `forbidden` with a code, by the same test as
+   * `needsInstallationAccess`: the client does something different with it — it offers the
+   * `actions` the backend listed, under the backend's `heading`, and follows `retry` once one is
+   * done. Nothing here says WHY; that is the backend's, and so is every word the user reads.
    */
-  subscriptionRequired: problem("subscription-required", 402, "A subscription is required", [
-    "upgradeUrl",
-    "trialAvailable",
+  actionRequired: problem("action-required", 403, "An action is required first", [
+    "actions",
+    "heading",
+    "retry",
   ]),
-
   // ─── Backend state ────────────────────────────────────────────────────────
   noActiveProject: problem("no-active-project", 409, "No project is active on this backend"),
   capabilityUnavailable: problem(

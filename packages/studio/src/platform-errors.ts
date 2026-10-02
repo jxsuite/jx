@@ -13,14 +13,55 @@
  */
 
 import { problemSlug } from "@jxsuite/protocol";
+import type { OfferedAction, RetryHint } from "@jxsuite/protocol";
 
 export interface PlatformErrorInfo {
   code?: string;
   installUrl?: string;
-  /** Where a `subscription-required` refusal says the plan can be started. */
-  upgradeUrl?: string;
-  /** Whether that plan still offers this user a free trial. */
-  trialAvailable?: boolean;
+  /** What an `action-required` refusal offers the user (desktop.md §10.4). */
+  actions?: OfferedAction[];
+  /** That refusal's heading, in the backend's words. */
+  heading?: string;
+  /** What to do once one of its actions is done. */
+  retry?: RetryHint;
+}
+
+const RETRY_HINTS = new Set<string>(["reload", "repeat", "none"]);
+
+/**
+ * The offered actions a wire value holds, each one checked: an action needs an `id` and a `label`
+ * to be drawn at all, and anything else it carries is kept only when it has the right type. A
+ * malformed entry is dropped rather than drawn as a button that does nothing.
+ */
+export function offeredActions(value: unknown): OfferedAction[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry): OfferedAction[] => {
+    const raw = entry as Partial<Record<keyof OfferedAction, unknown>> | null;
+    if (
+      !raw ||
+      typeof raw.id !== "string" ||
+      !raw.id ||
+      typeof raw.label !== "string" ||
+      !raw.label
+    ) {
+      return [];
+    }
+    return [
+      {
+        id: raw.id,
+        label: raw.label,
+        ...(typeof raw.href === "string" && raw.href ? { href: raw.href } : {}),
+        ...(raw.primary === true ? { primary: true } : {}),
+      },
+    ];
+  });
+}
+
+/** The retry hint a wire value names, or undefined when it names none we know. */
+export function retryHint(value: unknown): RetryHint | undefined {
+  return typeof value === "string" && RETRY_HINTS.has(value) ? (value as RetryHint) : undefined;
 }
 
 /**
@@ -37,20 +78,23 @@ export function platformErrorInfo(error: unknown): PlatformErrorInfo {
   if (!error || typeof error !== "object") {
     return {};
   }
-  const { code, installUrl, trialAvailable, type, upgradeUrl } = error as {
+  const { actions, code, heading, installUrl, retry, type } = error as {
+    actions?: unknown;
     code?: unknown;
+    heading?: unknown;
     installUrl?: unknown;
-    trialAvailable?: unknown;
+    retry?: unknown;
     type?: unknown;
-    upgradeUrl?: unknown;
   };
+  const hint = retryHint(retry);
   // A problem type wins over a legacy code: it is the shape the backend is migrating toward.
   const derived = problemSlug(type) ?? (typeof code === "string" ? normalizeCode(code) : null);
   return {
     ...(derived === null ? {} : { code: derived }),
     ...(typeof installUrl === "string" ? { installUrl } : {}),
-    ...(typeof upgradeUrl === "string" ? { upgradeUrl } : {}),
-    ...(typeof trialAvailable === "boolean" ? { trialAvailable } : {}),
+    ...(actions === undefined ? {} : { actions: offeredActions(actions) }),
+    ...(typeof heading === "string" && heading ? { heading } : {}),
+    ...(hint === undefined ? {} : { retry: hint }),
   };
 }
 
@@ -61,9 +105,9 @@ export function installUrlOf(error: unknown): string | null {
 }
 
 /**
- * True when the error is a hosted plan's refusal (`subscription-required`, HTTP 402) — whether the
- * backend sent the problem type or the legacy `subscription_required` code.
+ * True when the error is an `action-required` refusal (HTTP 403, desktop.md §10.4) — whether the
+ * backend sent the problem type or the legacy `action_required` code.
  */
-export function isSubscriptionRequired(error: unknown): boolean {
-  return platformErrorInfo(error).code === "subscription-required";
+export function isActionRequired(error: unknown): boolean {
+  return platformErrorInfo(error).code === "action-required";
 }

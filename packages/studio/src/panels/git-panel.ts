@@ -363,8 +363,8 @@ async function gitAction(action: string, body?: unknown): Promise<boolean> {
 /**
  * Put a message back in the field after the commit that took it failed — unless the user has
  * already started typing another. The field is cleared before the call so a second click cannot
- * commit the same text twice, which used to mean a refused commit (a conflict, a plan refusal on a
- * hosted platform) silently threw the message away with it.
+ * commit the same text twice, which used to mean a refused commit (a conflict, a backend that asks
+ * for an action first) silently threw the message away with it.
  */
 function restoreCommitMessage(message: string): void {
   if (!shell.git.commitMessage) {

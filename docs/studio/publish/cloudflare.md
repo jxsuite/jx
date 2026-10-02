@@ -29,7 +29,7 @@ If the panel instead says it can't reach the Cloudflare API on this platform, yo
 
 Where the platform holds the connection for you, an authorization that has expired is named as exactly that: the panel says the connection expired and offers **Reconnect Cloudflare**, rather than asking you to connect an account you already connected. Your deployments are untouched. The site keeps serving, and only the panel's ability to read and change the Pages project is waiting on the reconnection.
 
-A hosted Studio may include publishing in a plan. If yours does and you are not on it, the step that needed the plan says so and Studio offers the plan; once it starts, run the step again.
+A hosted Studio may need something from you before it publishes. If so, the step that was refused says why, and Studio offers what the platform offers. Once that is done, run the step again.
 
 ## Create and connect a Pages project
 

@@ -66,11 +66,12 @@ describe("Cloudflare API wrappers", () => {
     expect(await listAccounts()).toEqual([{ id: "a1", name: "Acme" }]);
   });
 
-  /* A hosted plan's refusal is offered as an upgrade (on a platform that sells one) and still
+  /* An `action-required` refusal is offered (on a platform that can perform its actions) and still
      thrown: the publish step that asked failed, and it says so in its own words. */
   test("a refused call still fails the step that made it", async () => {
-    const refusal = Object.assign(new Error("Publishing needs Jx Studio Cloud."), {
-      code: "subscription_required",
+    const refusal = Object.assign(new Error("Publishing needs one more step."), {
+      actions: [{ href: "https://example.test/go", id: "go", label: "Go" }],
+      code: "action_required",
     });
     withCfApi({ "/accounts": refusal });
     expect(listAccounts()).rejects.toBe(refusal);

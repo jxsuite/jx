@@ -44,7 +44,7 @@ import { enumArg, enumProperty } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { getPlatform } from "../platform";
 import { installUrlOf } from "../platform-errors";
-import { upgradeIfRequired } from "../account/upgrade-flow";
+import { actIfRequired } from "../account/action-flow";
 import { hasAiCredentials } from "../services/ai-models";
 import { setPendingAgentPrompt } from "../services/agent-seed";
 import { adoptCreatedProject } from "../services/project-adoption";
@@ -504,9 +504,9 @@ function goBack(): void {
 /**
  * Create the project from the chosen source, then run `after` with the result.
  *
- * A hosted platform's plan refusal is offered as an upgrade over the modal, and a plan that starts
- * runs the create again — once, so a platform that still refuses afterwards leaves its error
- * standing rather than asking forever.
+ * A refusal that offers an action (desktop.md §10.4) is offered over the modal, and an action that
+ * is done runs the create again — once, so a platform that still refuses afterwards leaves its
+ * error standing rather than asking forever.
  */
 async function create(
   source: { starter: string } | { template: string },
@@ -530,7 +530,7 @@ async function create(
     _creating = false;
     captureError(error);
     redraw();
-    if (!retried && (await upgradeIfRequired(error))) {
+    if (!retried && (await actIfRequired(error))) {
       await create(source, after, true);
     }
   }
