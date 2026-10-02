@@ -204,6 +204,13 @@ export interface SitePreviewResult extends SiteBuildResult {
   reused?: boolean;
 }
 
+/**
+ * Why a file-event transport asks Studio to re-read rather than trust its event stream (see
+ * `StudioPlatform.subscribeFileEvents`). Studio-side only: no wire message carries this union, so
+ * `FsEvent` itself is unchanged.
+ */
+export type FsResyncReason = "reconnect" | "commit" | "open";
+
 export interface StudioPlatform {
   id: string;
   projectRoot: string;
@@ -361,8 +368,21 @@ export interface StudioPlatform {
   /**
    * Subscribe to backend filesystem change events for the active project. Returns an unsubscribe
    * function. Optional: platforms without a watcher omit it and the sidebar stays manual-refresh.
+   *
+   * `options.onResync` is how a transport admits that the event stream alone may not describe the
+   * tree any more. `"reconnect"`: the stream dropped and came back, so every event in between was
+   * lost and Studio must re-read what it has cached. `"commit"`: the backend committed without
+   * emitting per-file events, so the listings are re-read but open documents are not. `"open"`: the
+   * stream's FIRST open — events sent before it reached nobody, and listings made before it (the
+   * project's first ones, raced against the handshake) may already be stale; a transport whose
+   * listings carry `DirEntry.version` reports it, so content versions noted before the stream was
+   * live are dropped and the loaded listings re-read. A platform whose stream cannot lose events
+   * (an in-process watcher) never calls it.
    */
-  subscribeFileEvents?: (handler: (events: FsEvent[]) => void) => () => void;
+  subscribeFileEvents?: (
+    handler: (events: FsEvent[]) => void,
+    options?: { onResync?: (reason: FsResyncReason) => void },
+  ) => () => void;
   discoverComponents: (dir?: string) => Promise<ComponentMeta[]>;
   addPackage: (name: string) => Promise<unknown>;
   removePackage: (name: string) => Promise<unknown>;

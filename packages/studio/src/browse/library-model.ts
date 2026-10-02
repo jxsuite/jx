@@ -20,6 +20,7 @@
 
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { projectState } from "../store";
+import { notedListing } from "../files/asset-versions";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { resolveI18n, servedLocaleOfPath } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
@@ -174,7 +175,8 @@ async function walk(
 ): Promise<void> {
   let entries: DirEntry[];
   try {
-    entries = await platform.listDirectory(dir);
+    // Noted: the Library walks every media directory, so it is where most versions are learned.
+    entries = await notedListing(() => platform.listDirectory(dir));
   } catch (error) {
     failures.push({ dir, error: errorMessage(error) });
     return;

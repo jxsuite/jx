@@ -126,6 +126,7 @@ describe("the offer reaches the socket", () => {
     const connection = createWsCollabConnection({
       protocols: [COLLAB_SUBPROTOCOL],
       reconnectDelayMs: 1,
+      reconnectRandom: () => 1,
       url: "ws://localhost/collab",
       webSocketImpl: impl,
     });

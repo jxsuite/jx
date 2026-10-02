@@ -2,13 +2,26 @@ import { installMockPlatform, resetStudioState } from "./harness";
 import { describe, expect, mock, test } from "bun:test";
 import {
   applyFsEvents,
+  cleanOpenTabPaths,
+  forgetEventVersions,
   isRecentLocal,
   markLocalMutation,
+  relistLoadedDirs,
   startFsSync,
 } from "../src/files/fs-events";
 import { ensureIgnoreLayers, isIgnoredEntry } from "../src/files/gitignore";
+import {
+  beginListing,
+  noteListing,
+  resetAssetVersions,
+  versionOf,
+} from "../src/files/asset-versions";
 import { invalidateUsages, loadUsages } from "../src/services/references";
-import type { DirEntry, FsEvent } from "../src/types";
+import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-state";
+import { getPlatform } from "../src/platform";
+import { projectState, setProjectState } from "../src/store";
+import { closeAllTabs, openTab } from "../src/workspace/workspace";
+import type { DirEntry, FsEvent, FsResyncReason } from "../src/types";
 
 const entry = (path: string, type: "file" | "directory" = "file"): DirEntry => ({
   name: path.split("/").pop() ?? path,
@@ -293,5 +306,623 @@ describe("startFsSync and .gitignore", () => {
     expect(renders).toHaveLength(1);
     expect(isIgnoredEntry(".", "coverage", true)).toBe(true);
     stop();
+  });
+});
+
+// ─── Resync: when the event stream itself cannot be trusted ───────────────────
+
+/**
+ * `onResync` is the transport saying its deltas have a gap (a reconnect) or never carried the
+ * change (a commit). Deltas cannot repair a gap in deltas, so the cases below hold the resync to
+ * re-reading what this window has cached — and to touching nothing the author is holding.
+ */
+describe("relistLoadedDirs", () => {
+  test("replaces every cached listing and drops a directory that no longer lists", async () => {
+    const dirs = new Map<string, DirEntry[]>([
+      [".", [entry("pages", "directory")]],
+      ["pages", [entry("pages/stale.json")]],
+      ["gone", [entry("gone/x.json")]],
+    ]);
+    const fresh: Record<string, DirEntry[]> = {
+      ".": [entry("pages", "directory"), entry("README.md")],
+      pages: [entry("pages/a.json")],
+    };
+    await relistLoadedDirs(dirs, async (dir) => {
+      const listing = fresh[dir];
+      if (!listing) {
+        throw new Error(`ENOENT ${dir}`);
+      }
+      return listing;
+    });
+    expect(dirs.get(".")?.map((e) => e.path)).toEqual(["pages", "README.md"]);
+    expect(dirs.get("pages")?.map((e) => e.path)).toEqual(["pages/a.json"]);
+    expect(dirs.has("gone")).toBe(false);
+  });
+
+  test("never grows the cache, and a directory removed mid-flight stays removed", async () => {
+    const dirs = new Map<string, DirEntry[]>([
+      ["a", []],
+      ["b", []],
+    ]);
+    await relistLoadedDirs(dirs, async (dir) => {
+      // An `unlinkDir` for `b` lands while the listings are in flight: the event is the newer fact.
+      dirs.delete("b");
+      return [entry(`${dir}/new.json`)];
+    });
+    expect([...dirs.keys()]).toEqual(["a"]);
+  });
+
+  test("keeps at most eight listings in flight", async () => {
+    const dirs = new Map<string, DirEntry[]>(
+      Array.from({ length: 20 }, (_, i) => [`d${i}`, []] as [string, DirEntry[]]),
+    );
+    let inFlight = 0;
+    let peak = 0;
+    const listed: string[] = [];
+    await relistLoadedDirs(dirs, async (dir) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await sleep(1);
+      inFlight -= 1;
+      listed.push(dir);
+      return [];
+    });
+    expect(peak).toBe(8);
+    expect(listed).toHaveLength(20);
+  });
+
+  /*
+   * Nothing orders a listing's HTTP response against a message on the event socket, so a listing
+   * can arrive OLDER than an event applied while it was in flight. Applying it would drop the new
+   * file from the tree until something touched that directory again.
+   */
+  test("a listing overtaken by an event is read again, and the second read wins", async () => {
+    const dirs = new Map<string, DirEntry[]>([["pages", [entry("pages/a.json")]]]);
+    const reads: string[] = [];
+    await relistLoadedDirs(dirs, async (dir) => {
+      reads.push(dir);
+      if (reads.length === 1) {
+        // The server read `pages`, then another window created `new.json`, whose event lands
+        // Before this response does — in place, which is why identity alone could not tell.
+        applyFsEvents(dirs, new Set(), [{ isDir: false, path: "pages/new.json", type: "add" }]);
+        return [entry("pages/a.json"), entry("pages/missed.json")];
+      }
+      return [entry("pages/a.json"), entry("pages/missed.json"), entry("pages/new.json")];
+    });
+    expect(reads).toEqual(["pages", "pages"]);
+    expect(dirs.get("pages")?.map((e) => e.path)).toEqual([
+      "pages/a.json",
+      "pages/missed.json",
+      "pages/new.json",
+    ]);
+  });
+
+  test("a local re-load mid-flight also counts as newer than the read", async () => {
+    const dirs = new Map<string, DirEntry[]>([["pages", [entry("pages/a.json")]]]);
+    let reads = 0;
+    await relistLoadedDirs(dirs, async () => {
+      reads += 1;
+      if (reads === 1) {
+        // Studio deleted `a.json` and re-loaded the parent; the echo of it will be filtered.
+        dirs.set("pages", []);
+        return [entry("pages/a.json")];
+      }
+      return [];
+    });
+    expect(reads).toBe(2);
+    expect(dirs.get("pages")).toEqual([]);
+  });
+
+  test("a directory that moves under every read keeps what the newer changes made of it", async () => {
+    const dirs = new Map<string, DirEntry[]>([["pages", []]]);
+    let reads = 0;
+    await relistLoadedDirs(dirs, async () => {
+      reads += 1;
+      applyFsEvents(dirs, new Set(), [
+        { isDir: false, path: `pages/event-${reads}.json`, type: "add" },
+      ]);
+      return [entry("pages/stale.json")];
+    });
+    expect(reads).toBe(2);
+    expect(dirs.get("pages")?.map((e) => e.path)).toEqual([
+      "pages/event-1.json",
+      "pages/event-2.json",
+    ]);
+  });
+
+  test("a failed read overtaken by an event does not drop the directory", async () => {
+    const dirs = new Map<string, DirEntry[]>([["pages", []]]);
+    let reads = 0;
+    await relistLoadedDirs(dirs, async () => {
+      reads += 1;
+      if (reads === 1) {
+        applyFsEvents(dirs, new Set(), [{ isDir: false, path: "pages/new.json", type: "add" }]);
+        throw new Error("network");
+      }
+      return [entry("pages/new.json")];
+    });
+    expect(dirs.get("pages")?.map((e) => e.path)).toEqual(["pages/new.json"]);
+  });
+
+  test("an empty cache lists nothing", async () => {
+    const list = mock(async () => []);
+    await relistLoadedDirs(new Map(), list);
+    expect(list).not.toHaveBeenCalled();
+  });
+});
+
+describe("cleanOpenTabPaths", () => {
+  test("names clean tabs once each, and never a dirty, co-edited or unsaved one", () => {
+    closeAllTabs();
+    openTab({ document: { tagName: "div" }, documentPath: "pages/clean.json", id: "t1" });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/clean.json", id: "t1-again" });
+    const dirty = openTab({
+      document: { tagName: "div" },
+      documentPath: "pages/dirty.json",
+      id: "t2",
+    });
+    dirty.doc.dirty = true;
+    openTab({ document: { tagName: "div" }, documentPath: "pages/shared.json", id: "t3" });
+    openTab({ document: { tagName: "div" }, documentPath: null, id: "t4" });
+    /* Tabs whose document is a placeholder: re-reading their file has nothing to refresh, and on
+       cloud a binary read is refused, so each reconnect would raise a false "could not reload". */
+    openTab({
+      capabilities: { modes: ["media"] },
+      document: { children: [], tagName: "div" },
+      documentPath: "img/logo.png",
+      id: "img/logo.png",
+    });
+    openTab({
+      capabilities: { modes: ["media", "source"] },
+      document: { children: [], tagName: "div" },
+      documentPath: "img/icon.svg",
+      id: "img/icon.svg",
+    });
+    openTab({
+      capabilities: { modes: ["grid", "source"] },
+      document: { tagName: "div" },
+      documentPath: "data/rows.csv",
+      id: "data/rows.csv",
+    });
+    openTab({
+      capabilities: { modes: ["git-diff"] },
+      document: { tagName: "div" },
+      documentPath: "fonts/a.woff2",
+      id: "fonts/a.woff2",
+    });
+    openTab({
+      capabilities: { modes: ["manage"] },
+      document: { tagName: "div" },
+      documentPath: "library.json",
+      id: "library",
+    });
+    registerCollabPath("pages/shared.json");
+    try {
+      expect(cleanOpenTabPaths()).toEqual(["pages/clean.json"]);
+    } finally {
+      unregisterCollabPath("pages/shared.json");
+      closeAllTabs();
+    }
+  });
+});
+
+describe("startFsSync resync", () => {
+  /** A watcher-capable backend whose `onResync` the test can fire. */
+  function installResyncPlatform(files: Record<string, string>, failing: string[] = []) {
+    let onResync: ((reason: FsResyncReason) => void) | undefined;
+    let unsubscribed = false;
+    const handle = installMockPlatform(
+      {
+        subscribeFileEvents: (_handler, options) => {
+          onResync = options?.onResync;
+          return () => {
+            unsubscribed = true;
+          };
+        },
+      },
+      files,
+    );
+    const { listDirectory: list } = handle.platform;
+    handle.platform.listDirectory = async (dir) => {
+      if (failing.includes(dir)) {
+        throw new Error(`ENOENT ${dir}`);
+      }
+      return list(dir);
+    };
+    return {
+      fire: (reason: FsResyncReason) => onResync?.(reason),
+      state: handle.state,
+      unsubscribed: () => unsubscribed,
+    };
+  }
+
+  function context() {
+    const calls = { content: [] as string[][], drops: 0, renders: 0 };
+    const ctx = {
+      invalidateDerivedCaches: () => {
+        calls.drops += 1;
+      },
+      onResyncContent: (paths: string[]) => {
+        calls.content.push(paths);
+      },
+      renderLeftPanel: () => {
+        calls.renders += 1;
+      },
+    };
+    return { calls, ctx };
+  }
+
+  test("a reconnect re-lists the loaded tree, re-reads the rules, and offers the clean tabs", async () => {
+    const { fire, state } = installResyncPlatform(
+      { ".gitignore": "dist/\n", "pages/a.json": "{}", "pages/b.json": "{}" },
+      ["removed"],
+    );
+    resetStudioState({
+      dirs: new Map([
+        [".", [entry("pages", "directory"), entry("removed", "directory")]],
+        ["pages", [entry("pages/a.json")]],
+        ["removed", [entry("removed/x.json")]],
+      ]),
+      expanded: new Set(["pages", "removed"]),
+    });
+    await ensureIgnoreLayers(".");
+    closeAllTabs();
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "a" });
+    const dirty = openTab({ document: { tagName: "div" }, documentPath: "pages/b.json", id: "b" });
+    dirty.doc.dirty = true;
+    openTab({
+      capabilities: { modes: ["media"] },
+      document: { children: [], tagName: "div" },
+      documentPath: "img/logo.png",
+      id: "img/logo.png",
+    });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+    state.calls.length = 0;
+    /* What the stream missed while it was down: `.gitignore` now hides `pages` instead of `dist`.
+       No event will ever say so — that is what the resync is for. */
+    state.files.set(".gitignore", "pages/\n");
+
+    fire("reconnect");
+    await sleep(300);
+
+    const { dirs } = projectState!;
+    expect(dirs.get("pages")?.map((e) => e.path)).toEqual(["pages/a.json", "pages/b.json"]);
+    expect(dirs.has("removed")).toBe(false);
+    expect(state.calls).toContainEqual(["readFile", ".gitignore"]);
+    expect(isIgnoredEntry(".", "pages", true)).toBe(true);
+    expect(calls.drops).toBe(1);
+    expect(calls.content).toEqual([["pages/a.json"]]);
+    expect(calls.renders).toBe(1);
+    stop();
+    closeAllTabs();
+  });
+
+  test("a commit re-lists and repaints, and leaves the caches and open tabs alone", async () => {
+    const { fire } = installResyncPlatform({ "pages/a.json": "{}", "pages/new.json": "{}" });
+    resetStudioState({
+      dirs: new Map([["pages", [entry("pages/a.json")]]]),
+      expanded: new Set(["pages"]),
+    });
+    closeAllTabs();
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "a" });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+
+    fire("commit");
+    await sleep(300);
+
+    expect(projectState!.dirs.get("pages")?.map((e) => e.path)).toEqual([
+      "pages/a.json",
+      "pages/new.json",
+    ]);
+    expect(calls.drops).toBe(0);
+    expect(calls.content).toEqual([]);
+    expect(calls.renders).toBe(1);
+    stop();
+    closeAllTabs();
+  });
+
+  test("a burst is debounced into one pass, and a reconnect in it wins over a commit", async () => {
+    const { fire, state } = installResyncPlatform({ "pages/a.json": "{}" });
+    resetStudioState({ dirs: new Map([["pages", []]]), expanded: new Set() });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+    state.calls.length = 0;
+
+    fire("reconnect");
+    fire("commit");
+    fire("commit");
+    await sleep(100);
+    // Still inside the window: nothing has been read yet.
+    expect(state.calls.filter(([name]) => name === "listDirectory")).toHaveLength(0);
+    await sleep(250);
+
+    expect(state.calls.filter(([name]) => name === "listDirectory")).toHaveLength(1);
+    expect(calls.drops).toBe(1);
+    expect(calls.content).toHaveLength(1);
+    expect(calls.renders).toBe(1);
+    stop();
+  });
+
+  test("an open re-lists the loaded tree and leaves the caches and open tabs alone", async () => {
+    const { fire, state } = installResyncPlatform({ "pages/a.json": "{}", "pages/new.json": "{}" });
+    resetStudioState({
+      dirs: new Map([["pages", [entry("pages/a.json")]]]),
+      expanded: new Set(["pages"]),
+    });
+    closeAllTabs();
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "a" });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+    state.calls.length = 0;
+
+    // A burst: the wider pass wins (an open over a commit), and still costs one read.
+    fire("commit");
+    fire("open");
+    fire("commit");
+    await sleep(300);
+
+    expect(projectState!.dirs.get("pages")?.map((e) => e.path)).toEqual([
+      "pages/a.json",
+      "pages/new.json",
+    ]);
+    expect(state.calls.filter(([name]) => name === "listDirectory")).toHaveLength(1);
+    expect(calls.drops).toBe(0);
+    expect(calls.content).toEqual([]);
+    expect(calls.renders).toBe(1);
+    stop();
+    closeAllTabs();
+  });
+
+  test("a reconnect in a burst wins over an open", async () => {
+    const { fire } = installResyncPlatform({ "pages/a.json": "{}" });
+    resetStudioState({ dirs: new Map([["pages", []]]), expanded: new Set() });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+
+    fire("reconnect");
+    fire("open");
+    await sleep(300);
+
+    expect(calls.drops).toBe(1);
+    expect(calls.content).toHaveLength(1);
+    stop();
+  });
+
+  test("a project switched mid-resync is not repainted with the old project's listings", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { fire } = installResyncPlatform({});
+    const platform = getPlatform();
+    platform.listDirectory = async () => {
+      await gate;
+      return [];
+    };
+    resetStudioState({ dirs: new Map([["pages", []]]), expanded: new Set() });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+
+    fire("reconnect");
+    await sleep(300);
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    release();
+    await sleep(10);
+
+    expect(calls.content).toEqual([]);
+    expect(calls.renders).toBe(0);
+    stop();
+  });
+
+  test("with no project open, a resync does nothing", async () => {
+    const { fire, state } = installResyncPlatform({});
+    setProjectState(null);
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+    state.calls.length = 0;
+
+    fire("reconnect");
+    await sleep(300);
+
+    expect(state.calls).toEqual([]);
+    expect(calls.renders).toBe(0);
+    stop();
+  });
+
+  test("unsubscribing cancels a pending resync", async () => {
+    const { fire, state, unsubscribed } = installResyncPlatform({});
+    resetStudioState({ dirs: new Map([["pages", []]]), expanded: new Set() });
+    const { calls, ctx } = context();
+    const stop = startFsSync(ctx);
+    state.calls.length = 0;
+
+    fire("reconnect");
+    stop();
+    await sleep(300);
+
+    expect(unsubscribed()).toBe(true);
+    expect(state.calls).toEqual([]);
+    expect(calls.renders).toBe(0);
+  });
+});
+
+// ─── Content versions ─────────────────────────────────────────────────────────
+
+/**
+ * A content version is what lets a host cache a file's URL immutably, so it must not outlive the
+ * bytes it names. The forget sits BEFORE the echo filter for the reason the usage cache does: the
+ * filter drops the events Studio caused, and Studio's own upload changes a file's bytes exactly as
+ * much as anyone else's write.
+ */
+describe("content versions", () => {
+  const versioned = (path: string, version: string): DirEntry => ({ ...entry(path), version });
+
+  function learn(...entries: DirEntry[]): void {
+    noteListing(entries, beginListing());
+  }
+
+  test("forgetEventVersions forgets changed, added and removed files and removed directories", () => {
+    resetAssetVersions();
+    learn(
+      versioned("public/a.png", "1"),
+      versioned("public/b.png", "2"),
+      versioned("public/c.png", "3"),
+      versioned("public/img/d.png", "4"),
+      versioned("public/keep.png", "5"),
+      versioned("public/new/e.png", "6"),
+    );
+    forgetEventVersions([
+      { isDir: false, path: "public/a.png", type: "change" },
+      { isDir: false, path: "public/b.png", type: "add" },
+      { isDir: false, path: "public/c.png", type: "unlink" },
+      { isDir: true, path: "public/img", type: "unlinkDir" },
+      // An added directory names no bytes the map holds.
+      { isDir: true, path: "public/new", type: "addDir" },
+    ]);
+    expect(versionOf("public/a.png")).toBeUndefined();
+    expect(versionOf("public/b.png")).toBeUndefined();
+    expect(versionOf("public/c.png")).toBeUndefined();
+    expect(versionOf("public/img/d.png")).toBeUndefined();
+    expect(versionOf("public/keep.png")).toBe("5");
+    expect(versionOf("public/new/e.png")).toBe("6");
+    // A batch with nothing to forget is a no-op.
+    forgetEventVersions([{ isDir: true, path: "public/other", type: "addDir" }]);
+    expect(versionOf("public/keep.png")).toBe("5");
+    resetAssetVersions();
+  });
+
+  test("an event forgets its file's version even when the echo filter drops it", () => {
+    let handler: (events: FsEvent[]) => void = () => {};
+    installMockPlatform({
+      subscribeFileEvents: (h) => {
+        handler = h;
+        return () => {};
+      },
+    });
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    resetAssetVersions();
+    const stop = startFsSync({ renderLeftPanel: () => {} });
+    learn(versioned("public/img/a.png", "old"));
+    /* Studio marks its own write — which forgets the version — and then a listing that began after
+       the mark but before the write landed learns the OLD version back. Only the write's echo can
+       correct that, and the echo is exactly what the tree's filter drops. */
+    markLocalMutation("public/hero.png");
+    learn(versioned("public/hero.png", "old"));
+    expect(versionOf("public/hero.png")).toBe("old");
+    expect(isRecentLocal("public/hero.png")).toBe(true);
+    handler([
+      { isDir: false, path: "public/hero.png", type: "change" },
+      { isDir: true, path: "public/img", type: "unlinkDir" },
+    ]);
+    expect(versionOf("public/hero.png")).toBeUndefined();
+    expect(versionOf("public/img/a.png")).toBeUndefined();
+    stop();
+    resetAssetVersions();
+  });
+
+  test("markLocalMutation forgets a written file and everything under a moved directory", () => {
+    resetAssetVersions();
+    learn(versioned("public/hero.png", "1"), versioned("public/img/a.png", "2"));
+    markLocalMutation("public/hero.png", "public/img");
+    expect(versionOf("public/hero.png")).toBeUndefined();
+    expect(versionOf("public/img/a.png")).toBeUndefined();
+    resetAssetVersions();
+  });
+
+  test("a commit re-list hands back the versions of files the commit made clean", async () => {
+    let onResync: ((reason: FsResyncReason) => void) | undefined;
+    const handle = installMockPlatform({
+      subscribeFileEvents: (_handler, options) => {
+        onResync = options?.onResync;
+        return () => {};
+      },
+    });
+    handle.platform.listDirectory = async () => [versioned("public/hero.png", "committed")];
+    resetStudioState({
+      dirs: new Map([["public", [entry("public/hero.png")]]]),
+      expanded: new Set(["public"]),
+    });
+    resetAssetVersions();
+    const stop = startFsSync({ renderLeftPanel: () => {} });
+    onResync?.("commit");
+    await sleep(300);
+    expect(versionOf("public/hero.png")).toBe("committed");
+    stop();
+    resetAssetVersions();
+  });
+
+  /** A watcher-capable backend whose resync the test fires and whose listings it controls. */
+  function gapPlatform(list: (dir: string) => Promise<DirEntry[]>) {
+    let onResync: ((reason: FsResyncReason) => void) | undefined;
+    const handle = installMockPlatform({
+      subscribeFileEvents: (_handler, options) => {
+        onResync = options?.onResync;
+        return () => {};
+      },
+    });
+    handle.platform.listDirectory = list;
+    return { fire: (reason: FsResyncReason) => onResync?.(reason) };
+  }
+
+  /* A gap's events are gone, and the Library walk, the media picker and media metadata all learn
+     versions in directories the tree never loaded — where its re-list cannot reach. A version
+     nobody can vouch for any more must go, or the old bytes come back from an immutable cache. */
+  for (const reason of ["reconnect", "open"] as const) {
+    test(`the "${reason}" resync forgets versions the tree never listed`, async () => {
+      const { fire } = gapPlatform(async () => [versioned("public/hero.png", "relisted")]);
+      resetStudioState({
+        dirs: new Map([["public", [entry("public/hero.png")]]]),
+        expanded: new Set(["public"]),
+      });
+      resetAssetVersions();
+      const stop = startFsSync({ renderLeftPanel: () => {} });
+      // Learned by the Library walk, in a directory the tree has not expanded.
+      learn(versioned("public/img/photo.png", "old"), versioned("public/hero.png", "old"));
+      fire(reason);
+      // Forgotten at once, not after the debounce: a render in between must not use it.
+      expect(versionOf("public/img/photo.png")).toBeUndefined();
+      expect(versionOf("public/hero.png")).toBeUndefined();
+      await sleep(300);
+      expect(versionOf("public/img/photo.png")).toBeUndefined();
+      // The tree's own directories are re-listed, and vouch again.
+      expect(versionOf("public/hero.png")).toBe("relisted");
+      stop();
+      resetAssetVersions();
+    });
+  }
+
+  test("a listing begun before a reconnect and answered after the resync cannot restore", async () => {
+    const { fire } = gapPlatform(async () => [versioned("public/hero.png", "new")]);
+    resetStudioState({
+      dirs: new Map([["public", [entry("public/hero.png")]]]),
+      expanded: new Set(["public"]),
+    });
+    resetAssetVersions();
+    const stop = startFsSync({ renderLeftPanel: () => {} });
+    // A Library listing goes out before the socket drops...
+    const since = beginListing();
+    fire("reconnect");
+    await sleep(300);
+    expect(versionOf("public/hero.png")).toBe("new");
+    // ...and its answer, with the pre-gap version, lands after the resync's fresh one.
+    noteListing([versioned("public/hero.png", "old")], since);
+    expect(versionOf("public/hero.png")).toBe("new");
+    stop();
+    resetAssetVersions();
+  });
+
+  test("a commit keeps the versions the tree never listed: it lost no events", async () => {
+    const { fire } = gapPlatform(async () => []);
+    resetStudioState({ dirs: new Map(), expanded: new Set() });
+    resetAssetVersions();
+    const stop = startFsSync({ renderLeftPanel: () => {} });
+    learn(versioned("public/img/photo.png", "kept"));
+    fire("commit");
+    await sleep(300);
+    expect(versionOf("public/img/photo.png")).toBe("kept");
+    stop();
+    resetAssetVersions();
   });
 });

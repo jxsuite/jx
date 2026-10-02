@@ -148,6 +148,19 @@ export type ParentToIframe =
       dialogOpen?: (string | number)[] | null;
       gen: number;
     }
+  /**
+   * The content versions of the project's media, by normalized project path — what the frame folds
+   * into every render's `assets` context so a repo-space reference resolves to `<file>?v=<version>`
+   * (specs/studio.md §3.4). A path absent here resolves unversioned.
+   *
+   * A message of its own, not a field on `render`: the map is as large as the project's media and
+   * changes far less often than the document does. The host posts it before a frame's first render
+   * and again before any render or patch that would otherwise see an older map — the channel is
+   * FIFO, so "posted before" is "applied before". Gen-less and render-free: the frame keeps the
+   * latest map and re-installs its asset resolver around it, so the next node a patch draws already
+   * uses it. A frame built before this message existed ignores it and keeps resolving unversioned.
+   */
+  | { kind: "assetVersions"; versions: Readonly<Record<string, string>> }
   // Flip the forced color-scheme preview on the iframe root without re-rendering — a document-level
   // Idempotent attribute write, deliberately gen-less (like endEdit).
   | { kind: "setColorScheme"; scheme: "light" | "dark" | null }

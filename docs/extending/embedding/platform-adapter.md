@@ -10,6 +10,7 @@ code:
   - packages/studio/src/types.ts
   - packages/studio/src/platforms/devserver.ts
   - packages/studio/src/utils/base64.ts
+  - packages/studio/src/files/asset-versions.ts
   - packages/desktop/src/platform.ts
   - packages/desktop/src/chromium/platform.ts
   - packages/desktop/src/boot.ts
@@ -65,6 +66,8 @@ Set it to `"repo"` when nothing does, and set `documentBaseUrl` with it. `"repo"
 :::doc-note
 A site URL is resolved the way a **build** would resolve it. The editing servers do it differently: `serveProjectFile` tries the project root before `public/`, so a file at `<root>/hero.jpg` loads at `/hero.jpg` in a dev preview and 404s on the deployed site. With no filesystem to probe, the canvas has to pick one answer, and the one that makes the preview agree with production is the build's.
 :::
+
+A `listDirectory` entry may also carry `version`: an opaque token for the file's bytes, where two equal versions mean identical bytes. Set it only when your backend can vouch for those bytes, and leave it out for an uncommitted, dirty or just-uploaded file. In repo space Studio then requests that file as `<documentBaseUrl><path>?v=<version>`. Your route may answer it with an immutable cache lifetime only when `v` is a version you issued and you return exactly the bytes it names, so a page full of images repaints from the browser cache. A version names bytes, not a moment, so this holds for an older version too. Answer a `v` you do not recognize (one typed into a document by hand, say) and every unversioned URL exactly as you do today. Because the browser keeps an immutable answer for good, an old versioned URL goes on yielding the old bytes after the file changes, so keeping versions true is Studio's job: it forgets a version on every file event that names the file, and forgets them all when your event stream has a gap. So keep reporting writes through `subscribeFileEvents`, report a reopened stream as `onResync("reconnect")`, and report its first open as `onResync("open")`. A backend that sets no `version` loses nothing.
 
 `assetCapabilities` declares what your backend will accept as an upload: `maxUploadBytes` and an `accept` string in `<input accept>` syntax. Both are optional and absence means "no declared limit": Studio will not invent one, because a limit it made up is a file the user cannot upload for no reason anyone can name. Declare a limit and Studio refuses oversized files before spending the round trip, naming the number, and narrows the file picker to your `accept`. Nothing widens it.
 
@@ -209,6 +212,8 @@ Two lessons from it generalize to any adapter:
 - **Not every absent member is a gap.** This adapter deliberately omits the updater family (the system package manager owns updates, so there is no feed to report on) and `windowControls` (the desktop environment decorates the window, so Studio must not draw its own buttons). Omission is how you say "not here"; the alternative is a control that does nothing.
 
 Its transport also carries messages the launcher sends **unprompted**: a frame with a `method` and no request id. That is how `subscribeFileEvents` is fed, and how another window asks this one to come forward. If your host can push, a subscription member is a local handler plus a dispatch line. No polling needed.
+
+**Say when the stream has a gap.** `subscribeFileEvents` takes a second argument, `{ onResync }`. Events are deltas, so if your transport can drop and come back (a WebSocket, an `EventSource`), whatever was sent while it was down is lost and no later event repairs it. Call `onResync("reconnect")` on every reconnect after the first open, and `onResync("commit")` when the backend changes the tree without sending per-file events. Studio then re-lists the folders it has loaded and, after a reconnect, re-reads the clean open documents, leaving any whose content did not change untouched. The Chromium shell above does this from its socket's `open` listener. A transport that cannot lose events, such as an in-process watcher, never needs to call it.
 
 ## Related
 

@@ -126,8 +126,10 @@ import {
   openLastSessionOrHome,
   registerFileTreeDnD,
   reloadCleanTab,
+  reloadTabsIfChanged,
 } from "./files/files";
 import { resetIgnoreCache } from "./files/gitignore";
+import { resetAssetVersions } from "./files/asset-versions";
 import { startFsSync } from "./files/fs-events";
 import { invalidateParamValues } from "./page-params";
 import {
@@ -959,6 +961,9 @@ function ensureFsSync() {
       paneContext.resetParamValues();
     },
     onContentChange: reloadCleanTab,
+    /* A reconnect re-reads the clean, non-collab tabs, and leaves every one whose content did not
+       change untouched: most reconnects changed nothing, and a reload is a repaint per tab. */
+    onResyncContent: reloadTabsIfChanged,
     renderLeftPanel,
   });
 }
@@ -1022,6 +1027,7 @@ if (_projectParam) {
           }
 
           resetIgnoreCache();
+          resetAssetVersions();
           setProjectState({
             dirs: new Map(),
             expanded: new Set(),
@@ -1355,6 +1361,7 @@ async function openRecentProject(root: string) {
 
     closeAllTabs();
     resetIgnoreCache();
+    resetAssetVersions();
 
     setProjectState({
       ...projectState,
