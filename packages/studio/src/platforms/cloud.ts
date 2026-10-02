@@ -551,10 +551,10 @@ function awaitUpgrade(popup: Window): Promise<UpgradeOutcome> {
       );
     };
     window.addEventListener("message", onMessage);
+    /* Only ever started by the timer, and `cleanup` clears the timer before anything else can
+       arm it, so a settled flow never starts another poll. What can happen is a settle WHILE a
+       poll is waiting on the platform, which is the check after the await. */
     const poll = async () => {
-      if (done) {
-        return;
-      }
       if (Date.now() > deadline) {
         settle({ status: "timeout" });
         return;
