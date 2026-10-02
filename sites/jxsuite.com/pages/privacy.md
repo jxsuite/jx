@@ -28,8 +28,8 @@ $elements:
 
 # Privacy Policy
 
-**Effective date:** 21 August 2026\
-**Last updated:** 21 August 2026
+**Effective date:** 2 October 2026\
+**Last updated:** 2 October 2026
 
 This policy explains what personal data Avunu LLC handles when you use Jx Suite, why we handle it, how long we keep it, and what you can require of us.
 
@@ -37,7 +37,7 @@ Jx Suite spans three quite different things, and the honest answer to "what do y
 
 ## 1. Who we are
 
-**Avunu LLC** ("Avunu", "we", "us") is a Pennsylvania limited liability company and the owner and operator of Jx Suite, which comprises the jxsuite.com website, the Jx Studio desktop application and `jx` command-line tools, the open-source `@jxsuite/*` packages, and the hosted Jx Publishing Platform, which we market as "Jx Cloud", at studio.jxsuite.com.
+**Avunu LLC** ("Avunu", "we", "us") is a Pennsylvania limited liability company and the owner and operator of Jx Suite, which comprises the jxsuite.com website, the Jx Studio desktop application and `jx` command-line tools, the open-source `@jxsuite/*` packages, the hosted Jx Publishing Platform, which we market as "Jx Cloud", at studio.jxsuite.com, and the Jx Studio Cloud subscription that unlocks it.
 
 Avunu LLC is the **data controller** for the processing described in this policy.
 
@@ -48,12 +48,12 @@ If you are in the European Economic Area or the United Kingdom, see section 14 f
 
 ## 2. Which part of Jx Suite are you using?
 
-| What you are using                                             | Who runs it                       | What reaches Avunu                                                                                              |
-| -------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| jxsuite.com — the marketing site and documentation             | GitHub                            | Nothing beyond standard web-server request logs. No analytics, no trackers, no cookies.                         |
-| Jx Studio desktop app, the jx CLI, and the @jxsuite/* packages | You, on your own device or server | Nothing. The software contains no telemetry and no analytics. It has no account and phones no home.             |
-| Jx Publishing Platform — studio.jxsuite.com                    | Us                                | Your GitHub identity, your project working files while you edit them, and the operational records in section 6. |
-| A website you built with Jx and its visitors                   | You                               | Nothing. See section 9.                                                                                         |
+| What you are using                                             | Who runs it                       | What reaches Avunu                                                                                                                                                     |
+| -------------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| jxsuite.com — the marketing site and documentation             | GitHub                            | Nothing beyond standard web-server request logs. No analytics, no trackers, no cookies.                                                                                |
+| Jx Studio desktop app, the jx CLI, and the @jxsuite/* packages | You, on your own device or server | Nothing. The software contains no telemetry and no analytics. It has no account and phones no home.                                                                    |
+| Jx Publishing Platform — studio.jxsuite.com                    | Us                                | Your GitHub identity, your project working files while you edit them, the operational records in section 6, and, if you subscribe, the billing records in section 6.9. |
+| A website you built with Jx and its visitors                   | You                               | Nothing. See section 9.                                                                                                                                                |
 
 ## 3. Things we do not do
 
@@ -104,7 +104,7 @@ Jx Studio talks to third parties only when you ask it to, and always directly �
 
 ## 6. Jx Publishing Platform (studio.jxsuite.com)
 
-The Publishing Platform is our hosted service. It is the part of Jx Suite where we do process personal data about you, and it is deliberately narrow: GitHub holds your code and decides your permissions, your own Cloudflare account performs your deployments and your AI inference, and our service brokers between them.
+The Publishing Platform is our hosted service. It is the part of Jx Suite where we do process personal data about you, and it is deliberately narrow: GitHub holds your code and decides your permissions, your own Cloudflare account performs your deployments and your AI inference, Stripe handles payment if you subscribe, and our service brokers between them.
 
 ### 6.1 Account and identity
 
@@ -118,7 +118,7 @@ You sign in with GitHub. When you do, we record from your GitHub profile:
 | Avatar URL                                          | Interface labelling                         |
 | Account creation and most recent sign-in timestamps | Account lifecycle, abuse investigation      |
 
-We never receive your GitHub password. We do not ask for your email address, and we do not send marketing email.
+We never receive your GitHub password, and signing in does not ask for your email address. If you subscribe to Jx Studio Cloud, Stripe collects an email address for receipts and billing notices (section 6.9). We do not send marketing email.
 
 **Legal basis:** performance of our contract with you (GDPR Article 6(1)(b)).
 
@@ -191,7 +191,24 @@ What we do keep is a metadata record of the request: the timestamp, your user id
 | AI rate-limit counters | Your user id and a per-day request count                                                                                                         | Enforcing per-minute and per-day request limits                        | 48 hours, then automatic expiry |
 | GitHub webhook events  | Repository push and deletion notifications from GitHub                                                                                           | Keeping working trees current; purging data for deleted repositories   | Processed and discarded         |
 
-Application request logging is **disabled** in our production service configuration. Our infrastructure provider retains its own edge logs for network operation and security under its own terms.
+The service also writes **request logs** for diagnosing faults: the time, method and URL of each request, its response status, connection details that can include the IP address, and any error message. They hold no request or response bodies, so no project content and no AI conversation. Cloudflare keeps them for us for a few days, under the retention limits of its Workers logging. Separately, Cloudflare retains its own edge logs for network operation and security under its own terms.
+
+### 6.9 Billing and payments
+
+If you start a Jx Studio Cloud subscription or free trial, payment is handled by **Stripe, Inc.** Stripe's checkout and billing pages collect your email address, your card or other payment details, and your billing address where tax law needs it, and Stripe holds them under its own privacy policy. **Your card details never reach our systems.** We send Stripe your GitHub login and our user id for your account, so that a subscription can be matched to it.
+
+We keep, in our own database:
+
+| Record              | Contents                                                                                                                                  | Purpose                                                       |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Billing customer    | Your Stripe customer id, linked to your GitHub user id                                                                                    | Matching payments to your account                             |
+| Subscription status | For each subscription: its status, price, trial and billing-period dates, whether a payment method is on file, and when we last synced it | Deciding what your account includes; showing it in the studio |
+| Trial record        | Your GitHub user id and the date your free trial began                                                                                    | Offering the free trial once per GitHub account               |
+| Billing notices     | The id and type of each notification Stripe sends us about a subscription, with no personal data                                          | Processing each notice exactly once                           |
+
+Stripe sends receipts, trial reminders, payment-failure notices and any notice of a price change on our behalf, to the address you gave at checkout. We do not keep that address ourselves, and nothing about your subscription is ever used for marketing.
+
+**Legal basis:** performance of our contract with you (Article 6(1)(b)); keeping the accounting records tax law requires, compliance with a legal obligation (Article 6(1)(c)); and preventing repeated free trials, our legitimate interest in a fair trial offer (Article 6(1)(f)).
 
 **Legal basis:** our legitimate interest in operating a secure and abuse-resistant service (Article 6(1)(f)), and in the case of records we must keep, compliance with a legal obligation (Article 6(1)(c)).
 
@@ -213,6 +230,7 @@ We disclose personal data to a small set of service providers, each acting on ou
 | ------------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Cloudflare, Inc.         | Hosting, storage, and network delivery for the Publishing Platform and jxsuite.com; edge request metadata | Infrastructure processor. Where you connect your own Cloudflare account, Cloudflare is additionally an independent controller under your agreement with it. |
 | GitHub, Inc. (Microsoft) | Your sign-in, your repositories, your commits                                                             | Identity and source of truth. GitHub is an independent controller for your GitHub account.                                                                  |
+| Stripe, Inc.             | Your email address, payment details and billing address, and your GitHub login and user id                | Only if you subscribe. Payment processor for Jx Studio Cloud; Stripe is an independent controller for some purposes, such as fraud prevention.              |
 | Your chosen AI provider  | Prompts and project context you send, under your own key                                                  | Only if you configure one. Independent controller under your agreement with it.                                                                             |
 | npm / registry hosts     | Package requests from your own machine                                                                    | Only when you install packages.                                                                                                                             |
 
@@ -244,12 +262,15 @@ Where we transfer personal data out of the EEA, the United Kingdom, or Switzerla
 | AI prompts and responses                           | Not retained                                                                        |
 | AI request metadata and rate-limit counters        | 48 hours for counters; 12 months for the audit record                               |
 | Audit log                                          | 12 months                                                                           |
+| Billing customer and subscription records          | While you have a subscription, then for as long as tax and accounting law requires  |
+| Free-trial record                                  | For as long as we offer a free trial, so it is offered once per GitHub account      |
 
 Deleting a repository on GitHub causes us to purge its cached project record and its working-tree sessions.
 
 ## 12. Security
 
 - Third-party tokens are encrypted at rest with AES-256-GCM under a key held in our secret store and versioned for rotation, never in our database or source code.
+- Payment card details are entered on Stripe's own pages and never pass through our service.
 - The session cookie is `HttpOnly`, `Secure`, and `SameSite=Lax`, and mutating requests are checked against the expected origin.
 - Authorization is delegated to GitHub rather than reimplemented: if you cannot write a repository on GitHub, you cannot write it through us.
 - Our request proxy is allowlisted to specific API paths, so a connected account cannot be reached beyond the features you enabled.
@@ -283,7 +304,7 @@ For anything else, write to [privacy@jxsuite.com](mailto:privacy@jxsuite.com). W
 
 If you are a California resident, the CCPA as amended by the CPRA gives you the rights below.
 
-**What we collect, in CCPA categories.** In the last 12 months we have collected: _identifiers_ (GitHub user id, login, display name, avatar URL, IP address in server logs); _internet or network activity_ (request metadata and audit records for the Publishing Platform); and _other information you provide_ (the content of project files you choose to edit with the hosted service). We do not collect sensitive personal information for the purpose of inferring characteristics, and we do not collect biometric, geolocation, health, or financial account data.
+**What we collect, in CCPA categories.** In the last 12 months we have collected: _identifiers_ (GitHub user id, login, display name, avatar URL, IP address in server logs); _commercial information_ (if you subscribe: your subscription's status and billing dates); _internet or network activity_ (request metadata and audit records for the Publishing Platform); and _other information you provide_ (the content of project files you choose to edit with the hosted service). We do not collect sensitive personal information for the purpose of inferring characteristics, and we do not collect biometric, geolocation, or health data. Payment card details for a subscription are collected and held by our payment processor, Stripe, and never reach us.
 
 **Sources, purposes, and disclosures.** We collect this from you and from GitHub when you sign in. We use it for the purposes described in sections 4 to 6. We disclose it for business purposes to the service providers in section 8.
 

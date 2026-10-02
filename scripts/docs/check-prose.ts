@@ -175,10 +175,14 @@ export function isAllowed(hit: Hit, allow: AllowEntry[], used: Set<AllowEntry>):
 }
 
 /**
- * Every published page under the marketing site that carries copy. `privacy.md` is legal text and
- * is deliberately not in the corpus: rewording a privacy policy for cadence is a legal change.
+ * Every published page under the marketing site that carries copy. `privacy.md` and `terms.md` are
+ * legal text and deliberately not in the corpus: rewording a privacy policy or a contract for
+ * cadence is a legal change.
  */
-const SITE_EXCLUDED = new Set(["sites/jxsuite.com/pages/privacy.md"]);
+const SITE_EXCLUDED = new Set([
+  "sites/jxsuite.com/pages/privacy.md",
+  "sites/jxsuite.com/pages/terms.md",
+]);
 
 /**
  * Tracked files under one directory. `git ls-files`, not a glob, so node_modules can never enter.
