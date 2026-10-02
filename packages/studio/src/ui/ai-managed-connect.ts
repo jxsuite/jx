@@ -30,10 +30,10 @@ import {
   isManagedProxy,
   isProxyConfigured,
   proxyStateCode,
-  proxyUpgradeOffer,
+  proxyActionOffer,
   resetModelCache,
 } from "../services/ai-models";
-import { canUpgrade, promptUpgrade } from "../account/upgrade-flow";
+import { canPerformActions, leadingActions, promptAction } from "../account/action-flow";
 import { createManagedConnectSurface } from "../surfaces/ai-managed-connect";
 import type { ManagedConnectSurface, ManagedConnectView } from "../surfaces/ai-managed-connect";
 import type { CfConnectOutcome } from "../types";
@@ -101,10 +101,11 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
    * round trip.
    */
   function canOffer(): boolean {
-    /* A plan refusal is offered on any platform that can sell the plan, whether or not it can
-       broker Cloudflare: no connection fixes it, so the connect member is beside the point. */
-    if (needsPlan()) {
-      return canUpgrade();
+    /* A backend that asks for an action first is offered on any platform that can perform one,
+       whether or not it can broker Cloudflare: no connection fixes it, so the connect member is
+       beside the point. An offer with nothing in it is no offer. */
+    if (needsAction()) {
+      return canPerformActions() && Boolean(proxyActionOffer()?.actions.length);
     }
     if (!isManagedProxy() || !hasPlatform() || !getPlatform().cfConnect) {
       return false;
@@ -120,14 +121,15 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
   const needsAccount = () => proxyStateCode() === "cf_account_required";
 
   /**
-   * The backend sells a plan that covers the assistant and this user is not on it (ai.md §2.1) — a
-   * state no Cloudflare round trip changes, so the button offers the plan instead.
+   * The backend requires something of the user before the assistant runs (ai.md §2.1) — a state no
+   * Cloudflare round trip changes, so the button offers what the backend offers instead.
    */
-  const needsPlan = () => proxyStateCode() === "subscription_required";
+  const needsAction = () => proxyStateCode() === "action_required";
 
-  /** Offer the plan, and re-probe once it starts: the gate opens on the backend's new answer. */
-  async function upgrade(): Promise<void> {
-    if (await promptUpgrade(proxyUpgradeOffer() ?? {})) {
+  /** Offer the backend's actions, and re-probe once one is done: the gate opens on its new answer. */
+  async function act(): Promise<void> {
+    const offer = proxyActionOffer();
+    if (offer && (await promptAction(offer))) {
       resetModelCache();
       await fetchAvailableModels({ force: true });
     }
@@ -215,8 +217,8 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
     try {
       /* `cf_account_required` is a grant that already works for authorization and names no
          account; the OAuth flow would land straight back here (ai.md §2.1). */
-      if (needsPlan()) {
-        await upgrade();
+      if (needsAction()) {
+        await act();
       } else if (needsAccount()) {
         await chooseAccount();
       } else {
@@ -231,13 +233,14 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
 
   /** What the offer says right now — the whole of what the surface is told. */
   function view(): ManagedConnectView {
-    if (needsPlan()) {
-      const offer = proxyUpgradeOffer();
+    if (needsAction()) {
+      const offer = proxyActionOffer();
+      const lead = leadingActions(offer?.actions ?? [])?.lead;
       return {
-        buttonLabel: busy ? "Waiting…" : offer?.trialAvailable ? "Start free trial" : "Subscribe",
+        buttonLabel: busy ? "Waiting…" : (lead?.label ?? "Continue"),
         busy,
         error: connectError,
-        intro: offer?.detail ?? "The assistant here needs a subscription.",
+        intro: offer?.detail ?? "The assistant here needs one more step first.",
       };
     }
     if (needsAccount()) {

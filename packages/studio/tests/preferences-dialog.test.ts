@@ -48,7 +48,7 @@ void mock.module("../src/services/ai-models", () => ({
   // Every named export ai-managed-connect.ts imports must be here: a partial mock.module() of a
   // Module someone else imports is a SyntaxError at link time, not a missing stub at call time.
   proxyStateCode: () => {},
-  proxyUpgradeOffer: () => null,
+  proxyActionOffer: () => null,
   proxyModelsErrorMessage: () => "",
 }));
 
@@ -951,27 +951,23 @@ describe("Accounts, when the platform brokers Cloudflare", () => {
 });
 
 /*
- * The hosted plan's row (desktop.md §10.4) appears only where the platform sells one, and opening
- * the sheet re-reads where the user stands: a trial can end between visits, and a row that repainted
+ * The platform's own rows (desktop.md §10.4) appear only where the platform sends some, and opening
+ * the sheet re-reads them: whatever they report can change between visits, and a row that repainted
  * the last answer would be stating something it has no reason to believe.
  */
-describe("Accounts, when the platform sells a plan", () => {
-  test("opening re-reads the plan's standing, and the row paints what came back", async () => {
+describe("Accounts, when the platform adds rows", () => {
+  test("opening re-reads the account status, and the row paints what came back", async () => {
     const getAccountStatus = mock(async () => ({
+      entries: [{ connected: true, detail: "Member since spring.", id: "team", label: "Team" }],
       installations: [],
-      subscription: {
-        entitled: true,
-        planName: "Jx Studio Cloud",
-        required: true,
-        state: "active" as const,
-        trialAvailable: false,
-      },
     }));
     installMockPlatform({ getAccountStatus });
     void openPreferences("accounts");
     await flush(4);
     expect(getAccountStatus).toHaveBeenCalledTimes(1);
-    expect(d('[part="account"][data-account="plan"]')!.textContent).toContain("Jx Studio Cloud");
+    expect(d('[part="account"][data-account="platform:team"]')!.textContent).toContain(
+      "Member since spring.",
+    );
     installMockPlatform();
   });
 });

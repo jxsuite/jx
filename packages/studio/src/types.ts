@@ -14,6 +14,7 @@ import type {
 import type {
   AppInfo,
   AssetCapabilities,
+  OfferedAction,
   CfAccountSummary,
   CfConnection,
   CfConnectOutcome,
@@ -57,6 +58,8 @@ export type {
   AiModelInfo,
   AiModelsResponse,
   AppInfo,
+  OfferedAction,
+  RetryHint,
   CfAccountSummary,
   CfConnection,
   CfConnectOutcome,
@@ -122,69 +125,57 @@ export interface AccountStatus {
   installations: { id: number; account: string | null; manageUrl?: string }[];
   /** Where to install the App (github.com/apps/<slug>/installations/new), when known. */
   appInstallUrl?: string;
-  /**
-   * The plan the platform sells, and where this user stands on it. Absent on a platform that sells
-   * none, which is every platform but a hosted one — and absent is not "unsubscribed": nothing on
-   * screen may mention a plan the platform never named.
-   */
-  subscription?: AccountSubscription;
+  /** Rows the platform adds to Preferences › Accounts (desktop.md §10.4). Absent: none. */
+  entries?: AccountEntry[];
+  /** Things the platform wants said: Start-pane banners and one-time toasts. Absent: none. */
+  notices?: AccountNotice[];
 }
 
 /**
- * Where the signed-in user stands on a hosted platform's plan (desktop.md §10.4).
- *
- * Deliberately vocabulary-neutral: the platform names the plan, prices it and links to wherever it
- * is bought and managed, and Studio renders what it is told. Nothing here knows which payment
- * provider sits behind `upgradeUrl`.
+ * A row the platform adds to Preferences › Accounts. Every word is the platform's; Studio draws it
+ * after its own credential rows and runs its actions through `performAction`.
  */
-export interface AccountSubscription {
-  /** The plan, as the platform sells it. */
-  planName: string;
-  /** Its price as the platform prints it (`"$5/month"`), when it states one. */
-  priceLabel?: string;
-  /**
-   * Whether this deployment requires the plan for cloud work. False on a deployment that sells it
-   * without enforcing it, where the account row may still show it and no surface may nag.
-   */
-  required: boolean;
-  /** `grace` is a failed renewal the platform is still retrying; `ended` once had a plan. */
-  state: "none" | "trialing" | "active" | "grace" | "ended";
-  /** Whether the user may do what the plan covers right now. */
-  entitled: boolean;
-  /** Whether starting the plan would begin with a free trial. */
-  trialAvailable: boolean;
-  /** How long that trial lasts. */
-  trialDays?: number;
-  /** ISO 8601. When a running trial ends. */
-  trialEndsAt?: string;
-  /** ISO 8601. When an active plan next renews. */
-  renewsAt?: string;
-  /** ISO 8601. When a plan set to cancel stops. */
-  endsAt?: string;
-  /** Whether a payment method is on file — a trial without one ends rather than converts. */
-  hasPaymentMethod?: boolean;
-  /** Where the plan is started. */
-  upgradeUrl?: string;
-  /** Where a plan the user holds is managed — payment method, invoices, cancellation. */
-  manageUrl?: string;
-  /** A sentence the platform wants shown (an announcement), or absent. */
-  notice?: string;
+export interface AccountEntry {
+  /** Stable — the row's `data-account`, prefixed so it can never collide with Studio's own. */
+  id: string;
+  /** What the row is about. */
+  label: string;
+  /** One sentence: where the user stands, and the next move when there is one. */
+  detail: string;
+  /** Whether the row reads as active. */
+  connected?: boolean;
+  /** What the user can do from the row. */
+  actions?: OfferedAction[];
 }
 
 /**
- * How {@link StudioPlatform.startUpgrade} ended.
- *
- * - `subscribed` — the platform now reports the user entitled.
- * - `redirect` — no window could be opened, so the whole page is navigating to the platform. The
- *   caller must draw nothing more: the document is on its way out.
- * - `canceled` — the window was closed with nothing changed.
- * - `timeout` — the deadline passed with nothing changed.
+ * Something the platform wants said that no request asked about (desktop.md §10.4). A `banner` is
+ * drawn on the Start pane while the platform keeps sending it; a `toast` is shown once — which is
+ * how a platform announces how an action that left the page ended.
  */
-export type UpgradeOutcome =
-  | { status: "subscribed" }
+export interface AccountNotice {
+  id: string;
+  title: string;
+  message: string;
+  level?: "info" | "warning";
+  display?: "banner" | "toast";
+  actions?: OfferedAction[];
+}
+
+/**
+ * How {@link StudioPlatform.performAction} ended.
+ *
+ * - `done` — the platform says the action completed.
+ * - `redirect` — no window could be opened, so the whole page is navigating to the action. The caller
+ *   must draw nothing more: the document is on its way out.
+ * - `canceled` — the user closed the action's window having said so.
+ * - `unknown` — the window closed, or the wait ran out, without anything being said.
+ */
+export type ActionOutcome =
+  | { status: "done" }
   | { status: "redirect" }
   | { status: "canceled" }
-  | { status: "timeout" };
+  | { status: "unknown" };
 
 /** A repository visible to `StudioPlatform.listRepos` (the add-existing-repository picker). */
 export interface RepoInfo {
@@ -702,24 +693,14 @@ export interface StudioPlatform {
    */
   getAccountStatus?: () => Promise<AccountStatus | null>;
   /**
-   * Start the plan a hosted platform sells, in a window of the platform's own, and resolve once the
-   * platform reports the user entitled or the window is given up on (desktop.md §10.4). Present
-   * only where {@link AccountStatus.subscription} can be.
+   * Perform an action the backend offered (desktop.md §10.4) — on an `action-required` refusal, a
+   * notice or an account row. The platform decides what it means; for an action with an `href`,
+   * that is a window of the platform's own, and the outcome is what the platform heard back.
    *
    * MUST open its window before its first `await`: it is called from a click, and a browser grants
-   * a popup only to code still running inside that click. `upgradeUrl` is the link a
-   * `subscription-required` refusal carried, so the platform can return the user to what they were
-   * doing.
+   * a popup only to code still running inside that click.
    */
-  startUpgrade?: (opts?: { upgradeUrl?: string }) => Promise<UpgradeOutcome | null>;
-  /** Open where the user manages the plan they hold. Same window rule as {@link startUpgrade}. */
-  manageSubscription?: () => Promise<void>;
-  /**
-   * How a full-page round trip through the platform's checkout ended, read once and cleared — the
-   * answer {@link startUpgrade} could not give because the page it ran in navigated away. Null when
-   * this page load is not such a return.
-   */
-  takeUpgradeReturn?: () => "success" | "canceled" | "pending" | "error" | null;
+  performAction?: (action: OfferedAction) => Promise<ActionOutcome | null>;
   /**
    * Browse every repository the platform's account link can reach — personal and organization repos
    * covered by a GitHub App installation on cloud. Backs the "Add Existing Repository" picker;

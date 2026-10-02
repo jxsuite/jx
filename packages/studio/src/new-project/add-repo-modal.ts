@@ -31,7 +31,7 @@
  * closer nothing in the app called was left over from drawing the box by hand.
  */
 
-import { upgradeIfRequired } from "../account/upgrade-flow";
+import { actIfRequired } from "../account/action-flow";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
   getAccountStatus,
@@ -169,8 +169,8 @@ function settle(result: { root: string } | null): void {
 }
 
 /**
- * Adopt the picked repository. A hosted platform's plan refusal is offered as an upgrade, and a
- * plan that starts runs the import again, once.
+ * Adopt the picked repository. A refusal that offers an action (desktop.md §10.4) is offered, and
+ * an action that is done runs the import again, once.
  */
 async function chooseRepo(fullName: string, retried = false): Promise<void> {
   if (_importing) {
@@ -194,7 +194,7 @@ async function chooseRepo(fullName: string, retried = false): Promise<void> {
     _error = errorMessage(error);
     _importing = "";
     redraw();
-    if (!retried && (await upgradeIfRequired(error))) {
+    if (!retried && (await actIfRequired(error))) {
       await chooseRepo(fullName, true);
     }
     return;

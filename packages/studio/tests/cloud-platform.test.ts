@@ -610,8 +610,8 @@ describe("git surface", () => {
   });
 
   /* The chat route is not under the session base, so the bound project rides in the query — the
-     one way the platform learns which project a call is for, and so whether a plan exemption keyed
-     on its owner applies. The hub has no project to name. */
+     one way the platform learns which project a call is for, and so whether access rules keyed on
+     the repository apply. The hub has no project to name. */
   test("aiChatUrl points at the platform Workers AI proxy, naming the bound project", () => {
     expect(createCloudPlatform(PROJECT).aiChatUrl()).toBe(
       "/api/v1/ai/chat?project=octocat%2Fmy-site",

@@ -59,14 +59,14 @@ describe("negotiateCollab", () => {
     );
   });
 
-  /* A refusal a plan would lift is not "disabled", and only the server knows which one it is. */
+  /* A refusal an action would lift is not "disabled", and only the server knows which one it is. */
   test("a refusal that explains itself is reported in the server's own words", () => {
     const result = negotiateCollab({
       collab: false,
-      detail: "  Live collaboration on acme/site needs Jx Studio Cloud.  ",
+      detail: "  Live collaboration on acme/site is for team members.  ",
     });
     expect(result.offer).toEqual([]);
-    expect(result.refused).toBe("Live collaboration on acme/site needs Jx Studio Cloud.");
+    expect(result.refused).toBe("Live collaboration on acme/site is for team members.");
   });
 
   test("a blank or non-string detail falls back to the generic sentence", () => {

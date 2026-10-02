@@ -565,8 +565,8 @@ export function openPreferences(section?: string): Promise<null> {
      grant can lapse between visits, and a row that repaints the previous answer first is stating
      something it has no reason to believe. */
   resetCfConnectionCache();
-  /* And the plan's standing, for the same reason: a trial can end between visits. The row repaints
-     when the answer lands; until then it shows the last one, which is the only plan row there is. */
+  /* And the platform's own account rows, for the same reason: whatever they report can change
+     between visits. They repaint when the answer lands; until then they show the last one. */
   if (hasPlatform() && getPlatform().getAccountStatus) {
     void hydrateAccountStatus().then(repaint);
   }

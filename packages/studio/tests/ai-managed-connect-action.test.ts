@@ -1,42 +1,45 @@
 /**
- * The assistant gate's fourth managed state (ai.md §2.1): the backend sells a plan that covers the
- * assistant, and this user is not on it. No Cloudflare round trip changes that, so the offer is the
- * plan — in the backend's own words, read off the `/models` probe — and a plan that starts re-runs
- * the probe, which is what opens the gate.
+ * The assistant gate's fourth managed state (ai.md §2.1): the backend requires something of the
+ * user before the assistant runs. No Cloudflare round trip changes that, so the offer is what the
+ * backend offers — in its own words, read off the `/models` probe — and an action that is done
+ * re-runs the probe, which is what opens the gate.
  *
- * The upgrade flow is doubled: it opens a dialog, and what the gate owes it is a call with the
+ * The action flow is doubled: it opens a dialog, and what the gate owes it is a call with the
  * probe's offer.
  */
 import { flush, installMockPlatform, pointer } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
-import type { UpgradePrompt } from "../src/account/upgrade-flow";
+import type { ActionPrompt } from "../src/account/action-flow";
+import type { OfferedAction } from "../src/types";
 
-const offers: UpgradePrompt[] = [];
-let upgradeResult = true;
-let sellsPlan = true;
-void mock.module("../src/account/upgrade-flow", () => ({
-  canUpgrade: () => sellsPlan,
-  promptUpgrade: async (prompt: UpgradePrompt) => {
+const offers: ActionPrompt[] = [];
+let actionResult = true;
+let performsActions = true;
+void mock.module("../src/account/action-flow", () => ({
+  canPerformActions: () => performsActions,
+  leadingActions: (actions: OfferedAction[]) => (actions[0] ? { lead: actions[0] } : null),
+  promptAction: async (prompt: ActionPrompt) => {
     offers.push(prompt);
-    return upgradeResult;
+    return actionResult;
   },
 }));
 
 const { createManagedConnect } = await import("../src/ui/ai-managed-connect");
-const { fetchAvailableModels, proxyUpgradeOffer, resetModelCache } =
+const { fetchAvailableModels, proxyActionOffer, resetModelCache } =
   await import("../src/services/ai-models");
 
 installMockPlatform();
 
+const JOIN = { href: "https://studio.test/join", id: "join", label: "Join the team" };
+
 const REFUSED = {
-  code: "subscription_required",
+  actions: [JOIN, { id: "broken" }],
+  code: "action_required",
   configured: false,
-  detail: "The assistant on Jx Cloud needs Jx Studio Cloud.",
+  detail: "The assistant here is for team members.",
   managed: true,
   models: [],
-  trialAvailable: true,
-  upgradeUrl: "https://studio.test/checkout",
 };
 
 let probeBody: Record<string, unknown> = REFUSED;
@@ -65,8 +68,8 @@ async function makeConnect() {
 beforeEach(async () => {
   resetModelCache();
   offers.length = 0;
-  upgradeResult = true;
-  sellsPlan = true;
+  actionResult = true;
+  performsActions = true;
   probeBody = REFUSED;
   probes = 0;
   for (const node of containers.splice(0)) {
@@ -74,53 +77,45 @@ beforeEach(async () => {
   }
 });
 
-describe("the probe's plan offer", () => {
-  test("is kept only from a subscription_required answer, and dropped by a reset", async () => {
+describe("the probe's action offer", () => {
+  test("is kept only from an action_required answer, and dropped by a reset", async () => {
     await fetchAvailableModels({ force: true });
-    expect(proxyUpgradeOffer()).toEqual({
-      detail: REFUSED.detail,
-      trialAvailable: true,
-      upgradeUrl: REFUSED.upgradeUrl,
-    });
+    expect(proxyActionOffer()).toEqual({ actions: [JOIN], detail: REFUSED.detail });
     resetModelCache();
-    expect(proxyUpgradeOffer()).toBeNull();
+    expect(proxyActionOffer()).toBeNull();
 
-    probeBody = { code: "subscription_required", configured: false, detail: "", models: [] };
+    probeBody = { code: "action_required", configured: false, detail: "", models: [] };
     await fetchAvailableModels({ force: true });
-    // An empty sentence and absent members are not invented.
-    expect(proxyUpgradeOffer()).toEqual({});
+    // An empty sentence and absent actions are not invented.
+    expect(proxyActionOffer()).toEqual({ actions: [] });
 
     probeBody = { code: "cf_not_connected", configured: false, managed: true, models: [] };
     await fetchAvailableModels({ force: true });
-    expect(proxyUpgradeOffer()).toBeNull();
+    expect(proxyActionOffer()).toBeNull();
   });
 });
 
 describe("the gate", () => {
-  test("offers the plan in the backend's words, whether or not the platform brokers Cloudflare", async () => {
+  test("offers the backend's action in its words, whether or not the platform brokers Cloudflare", async () => {
     await fetchAvailableModels({ force: true });
     const { container, mc } = await makeConnect();
     expect(mc.canOffer()).toBe(true);
     expect(container.querySelector('[part="intro"]')?.textContent).toBe(REFUSED.detail);
-    expect(container.querySelector('[part="connect"]')?.textContent?.trim()).toBe(
-      "Start free trial",
-    );
+    expect(container.querySelector('[part="connect"]')?.textContent?.trim()).toBe("Join the team");
   });
 
-  test("a plan that starts re-runs the probe", async () => {
+  test("an action that is done re-runs the probe", async () => {
     await fetchAvailableModels({ force: true });
     const { container } = await makeConnect();
     const before = probes;
     pointer(container.querySelector('[part="connect"] [part="control"]') as HTMLElement, "click");
     await flush(6);
-    expect(offers).toEqual([
-      { detail: REFUSED.detail, trialAvailable: true, upgradeUrl: REFUSED.upgradeUrl },
-    ]);
+    expect(offers).toEqual([{ actions: [JOIN], detail: REFUSED.detail }]);
     expect(probes).toBe(before + 1);
   });
 
   test("a declined offer leaves the probe alone", async () => {
-    upgradeResult = false;
+    actionResult = false;
     await fetchAvailableModels({ force: true });
     const { container } = await makeConnect();
     const before = probes;
@@ -130,18 +125,23 @@ describe("the gate", () => {
     expect(probes).toBe(before);
   });
 
-  test("without a trial it says Subscribe, and without words it says what it can", async () => {
-    probeBody = { code: "subscription_required", configured: false, managed: true, models: [] };
+  test("without words it says what it can", async () => {
+    probeBody = { actions: [JOIN], code: "action_required", configured: false, models: [] };
     await fetchAvailableModels({ force: true });
     const { container } = await makeConnect();
     expect(container.querySelector('[part="intro"]')?.textContent).toBe(
-      "The assistant here needs a subscription.",
+      "The assistant here needs one more step first.",
     );
-    expect(container.querySelector('[part="connect"]')?.textContent?.trim()).toBe("Subscribe");
   });
 
-  test("a platform that cannot sell the plan offers nothing", async () => {
-    sellsPlan = false;
+  test("an offer with nothing in it, or a platform that performs nothing, offers nothing", async () => {
+    probeBody = { code: "action_required", configured: false, managed: true, models: [] };
+    await fetchAvailableModels({ force: true });
+    const empty = await makeConnect();
+    expect(empty.mc.canOffer()).toBe(false);
+
+    probeBody = REFUSED;
+    performsActions = false;
     await fetchAvailableModels({ force: true });
     const { mc } = await makeConnect();
     expect(mc.canOffer()).toBe(false);

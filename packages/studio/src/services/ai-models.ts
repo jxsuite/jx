@@ -10,8 +10,9 @@
  * @license MIT
  */
 
-import type { AiModelsResponse } from "@jxsuite/protocol";
+import type { AiModelsResponse, OfferedAction } from "@jxsuite/protocol";
 import { getPlatform } from "../platform";
+import { offeredActions } from "../platform-errors";
 import { getBaseUrl, getOpenAiKey, hasOpenAiKey, storedModel } from "./ai-settings";
 import { SETTINGS } from "./settings/definitions";
 import { onSettingsChanged } from "./settings/kernel";
@@ -75,14 +76,13 @@ let proxyManaged = false;
 let proxyDefaultModel = "";
 let proxyCode: AiModelsResponse["code"];
 let proxyModelsError = "";
-/** What a `subscription_required` probe said about the plan; null for every other answer. */
-let proxyUpgrade: ProxyUpgradeOffer | null = null;
+/** What an `action_required` probe offered; null for every other answer. */
+let proxyAction: ProxyActionOffer | null = null;
 
-/** The plan a managed backend says the assistant needs, in the backend's own words. */
-export interface ProxyUpgradeOffer {
+/** What a managed backend says the assistant needs first, in the backend's own words. */
+export interface ProxyActionOffer {
   detail?: string;
-  upgradeUrl?: string;
-  trialAvailable?: boolean;
+  actions: OfferedAction[];
 }
 
 /**
@@ -126,7 +126,7 @@ export function resetModelCache() {
   proxyDefaultModel = "";
   proxyCode = undefined;
   proxyModelsError = "";
-  proxyUpgrade = null;
+  proxyAction = null;
   /* The probe's result IS the flags above. Clearing them while keeping the settled promise
      would strand every gate on a permanent "unconfigured, unmanaged" reading — ensureProxyProbe
      would no-op forever and the managed option would vanish until a full reload. */
@@ -288,12 +288,11 @@ export function proxyModelsErrorMessage(): string {
 }
 
 /**
- * The plan offer the last probe carried — set only when the backend answered
- * `subscription_required` (ai.md §2.1), and null for every other answer, so no gate can offer a
- * plan the backend did not name.
+ * The offer the last probe carried — set only when the backend answered `action_required` (ai.md
+ * §2.1), and null for every other answer, so no gate can offer an action the backend did not name.
  */
-export function proxyUpgradeOffer(): ProxyUpgradeOffer | null {
-  return proxyUpgrade;
+export function proxyActionOffer(): ProxyActionOffer | null {
+  return proxyAction;
 }
 
 /** The proxy's preferred model id ("" when it does not declare one). */
@@ -387,14 +386,11 @@ export async function fetchAvailableModels(
   proxyDefaultModel = data.defaultModel ?? "";
   proxyCode = data.code;
   proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
-  proxyUpgrade =
-    data.code === "subscription_required"
+  proxyAction =
+    data.code === "action_required"
       ? {
+          actions: offeredActions(data.actions),
           ...(typeof data.detail === "string" && data.detail ? { detail: data.detail } : {}),
-          ...(typeof data.upgradeUrl === "string" ? { upgradeUrl: data.upgradeUrl } : {}),
-          ...(typeof data.trialAvailable === "boolean"
-            ? { trialAvailable: data.trialAvailable }
-            : {}),
         }
       : null;
   /* Capabilities are kept, not dropped. The backend has reported `toolSupport` all along and the

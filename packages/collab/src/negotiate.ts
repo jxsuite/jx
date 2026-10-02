@@ -58,7 +58,7 @@ export function negotiateCollab(probe: unknown): CollabNegotiation {
   const body = probe as { collab?: unknown; detail?: unknown; protocols?: unknown };
   if (body.collab === false) {
     /* The server's own sentence wins when it sends one. "Disabled" is true of a flag that is off,
-       and false of a room a plan would open: that server knows which it is and says so. */
+       and false of a room an action would open: that server knows which it is and says so. */
     const detail = typeof body.detail === "string" ? body.detail.trim() : "";
     return { offer: [], refused: detail || "This server has collaboration disabled." };
   }

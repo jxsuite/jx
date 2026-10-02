@@ -50,7 +50,6 @@ export const CATEGORIES = [
   "Publish",
   "Assistant",
   "Collaborate",
-  "Account",
   "Help",
 ] as const;
 

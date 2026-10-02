@@ -18,8 +18,10 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { streamImport } from "../services/import-client";
 import type {
+  AccountEntry,
+  AccountNotice,
   AccountStatus,
-  AccountSubscription,
+  ActionOutcome,
   CfAccountSummary,
   CfConnection,
   CfConnectOutcome,
@@ -35,6 +37,7 @@ import type {
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
+  OfferedAction,
   PackageInfo,
   ProjectListEntry,
   SiteBuildResult,
@@ -44,12 +47,11 @@ import type {
   RepoInfo,
   StarterInfo,
   StudioPlatform,
-  UpgradeOutcome,
 } from "../types";
 import { problemDetail, problemSlug } from "@jxsuite/protocol";
 import type { ReadFilesRequest, ReadFilesResult, UploadResult } from "@jxsuite/protocol";
-import { reportUpgradeRequired } from "../account/upgrade-required";
-import type { UpgradeRequiredReport } from "../account/upgrade-required";
+import { reportActionRequired } from "../account/action-required";
+import { offeredActions, retryHint } from "../platform-errors";
 import { createReadBatcher } from "./read-batcher";
 import type { BatchAnswer } from "./read-batcher";
 
@@ -123,18 +125,25 @@ async function isReadOnlyRefusal(res: Response): Promise<boolean> {
 interface StructuredBody extends ErrorBody {
   type?: unknown;
   installUrl?: unknown;
-  upgradeUrl?: unknown;
-  trialAvailable?: unknown;
+  actions?: unknown;
+  heading?: unknown;
+  retry?: unknown;
+}
+
+/** The refusal's heading, when the body carries a usable one. */
+function headingOf(body: StructuredBody | null): string | undefined {
+  return typeof body?.heading === "string" && body.heading ? body.heading : undefined;
 }
 
 /**
  * The error a failed response becomes: the backend's sentence as the message, and every member a
  * surface can act on carried alongside it for `platform-errors.ts` to recover — the install link a
- * missing App installation sends, the upgrade link and trial flag a plan refusal sends.
+ * missing App installation sends, and the actions, heading and retry hint an `action-required`
+ * refusal sends (desktop.md §10.4).
  *
  * This used to be the message alone, everywhere but `createProject`, which had grown its own copy
- * of this function to keep the install link. So a plan refusal reaching any other member arrived as
- * flat text: the code that says "this is fixable, and here is how" was read and dropped.
+ * of this function to keep the install link. So a refusal reaching any other member arrived as flat
+ * text: the members that say "this is fixable, and here is how" were read and dropped.
  */
 async function platformError(res: Response, fallback: string): Promise<Error> {
   let body: StructuredBody | null;
@@ -144,12 +153,16 @@ async function platformError(res: Response, fallback: string): Promise<Error> {
     body = null;
   }
   const code = problemSlug(body?.type) ?? body?.code;
+  const actions = offeredActions(body?.actions);
+  const heading = headingOf(body);
+  const retry = retryHint(body?.retry);
   return Object.assign(new Error(problemDetail(body) ?? fallback), {
     status: res.status,
     ...(code ? { code } : {}),
     ...(typeof body?.installUrl === "string" ? { installUrl: body.installUrl } : {}),
-    ...(typeof body?.upgradeUrl === "string" ? { upgradeUrl: body.upgradeUrl } : {}),
-    ...(typeof body?.trialAvailable === "boolean" ? { trialAvailable: body.trialAvailable } : {}),
+    ...(actions.length > 0 ? { actions } : {}),
+    ...(heading === undefined ? {} : { heading }),
+    ...(retry === undefined ? {} : { retry }),
   });
 }
 
@@ -160,35 +173,40 @@ async function okJson<T>(res: Response, fallback: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/**
- * What a refused session request was doing, for the upgrade flow's one decision: a project that
- * never loaded is reloaded once the plan starts, and anything else is the user's to run again.
- */
-function refusalKind(path: string): UpgradeRequiredReport["kind"] {
-  if (path === "/activate" || path === "/project-info") {
-    return "open";
-  }
-  return /^\/git\/(commit|push|create-branch|pr)\b/.test(path) ? "save" : "other";
+/** Whether a failure body is an `action-required` refusal, by problem type or legacy code. */
+function isActionRequiredBody(body: StructuredBody | null): boolean {
+  const code = problemSlug(body?.type) ?? body?.code;
+  return code === "action-required" || code === "action_required";
 }
 
 /**
- * Raise a plan refusal on the upgrade channel, read from a CLONE so the caller still gets the body
- * it is about to parse for its own error. A body that does not parse still reports: the status
- * alone says a plan would lift it.
+ * Raise an `action-required` refusal on the channel, read from a CLONE so the caller still gets the
+ * body it is about to parse for its own error. Only a refusal that offers something is raised: with
+ * no actions there is nothing to offer, and the caller's own error says the rest. Every other 403 —
+ * a read-only collaborator, a missing installation — is the caller's alone.
  */
-async function reportRefusal(res: Response, path: string): Promise<void> {
-  let body: StructuredBody | null = null;
+async function reportRefusal(res: Response): Promise<void> {
+  let body: StructuredBody | null;
   try {
     body = (await res.json()) as StructuredBody | null;
   } catch {
-    // The status is the report; the body was only ever going to add words to it.
+    return;
+  }
+  if (!isActionRequiredBody(body)) {
+    return;
+  }
+  const actions = offeredActions(body?.actions);
+  if (actions.length === 0) {
+    return;
   }
   const detail = problemDetail(body);
-  reportUpgradeRequired({
-    kind: refusalKind(path),
+  const heading = headingOf(body);
+  const retry = retryHint(body?.retry);
+  reportActionRequired({
+    actions,
     ...(detail === null ? {} : { detail }),
-    ...(typeof body?.upgradeUrl === "string" ? { upgradeUrl: body.upgradeUrl } : {}),
-    ...(typeof body?.trialAvailable === "boolean" ? { trialAvailable: body.trialAvailable } : {}),
+    ...(heading === undefined ? {} : { heading }),
+    ...(retry === undefined ? {} : { retry }),
   });
 }
 
@@ -392,130 +410,116 @@ async function runCfConnect(
   });
 }
 
-// ─── The hosted plan (desktop.md §10.4) ──────────────────────────────────────
+// ─── Backend-directed access (desktop.md §10.4) ──────────────────────────────
 
 /** `GET /api/v1/me`, as far as this adapter reads it. */
 interface MeWire {
   installations?: { id: number; account: string | null; manageUrl?: string }[];
   appInstallUrl?: string;
-  /** Where this user stands; null when the platform could not say. */
-  subscription?: {
-    state?: unknown;
-    entitled?: unknown;
-    trialAvailable?: unknown;
-    trialEndsAt?: unknown;
-    renewsAt?: unknown;
-    endsAt?: unknown;
-    hasPaymentMethod?: unknown;
-  } | null;
-  /** What the platform sells; absent on one that sells nothing. */
-  billing?: {
-    enforced?: unknown;
-    plan?: { name?: unknown; priceLabel?: unknown; trialDays?: unknown };
-    upgradeUrl?: unknown;
-    manageUrl?: unknown;
-    notice?: unknown;
-  };
+  entries?: unknown;
+  notices?: unknown;
 }
 
-const SUBSCRIPTION_STATES = new Set<AccountSubscription["state"]>([
-  "none",
-  "trialing",
-  "active",
-  "grace",
-  "ended",
-]);
+/** A wire value as a non-empty string, or undefined. */
+function wireText(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
 
 /**
- * The plan block of `/me`, as the neutral {@link AccountSubscription}; null when the platform sells
- * nothing, and ALSO null when it sells something but could not say where this user stands.
- *
- * The second null is deliberate. An unknown standing is not "unsubscribed", and reading it as one
- * would put a "start your trial" nag in front of somebody who is paying — so an answer the platform
- * did not give is no answer, and every surface that reads this draws nothing.
+ * The account rows a `/me` body holds, each one checked. A row needs an id, a label and a detail to
+ * be drawn at all; a malformed one is dropped rather than drawn half-empty.
  */
-function subscriptionFrom(me: MeWire): AccountSubscription | null {
-  const { billing, subscription } = me;
-  const planName = billing?.plan?.name;
-  if (!billing || typeof planName !== "string" || !planName || !subscription) {
-    return null;
+function accountEntries(value: unknown): AccountEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
   }
-  const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
-  const state = SUBSCRIPTION_STATES.has(subscription.state as AccountSubscription["state"])
-    ? (subscription.state as AccountSubscription["state"])
-    : "none";
-  const optional: { [K in keyof AccountSubscription]?: AccountSubscription[K] | undefined } = {
-    priceLabel: text(billing.plan?.priceLabel),
-    trialDays: typeof billing.plan?.trialDays === "number" ? billing.plan.trialDays : undefined,
-    trialEndsAt: text(subscription.trialEndsAt),
-    renewsAt: text(subscription.renewsAt),
-    endsAt: text(subscription.endsAt),
-    hasPaymentMethod:
-      typeof subscription.hasPaymentMethod === "boolean"
-        ? subscription.hasPaymentMethod
-        : undefined,
-    upgradeUrl: text(billing.upgradeUrl),
-    manageUrl: text(billing.manageUrl),
-    notice: text(billing.notice),
-  };
-  return {
-    planName,
-    required: billing.enforced === true,
-    state,
-    entitled: subscription.entitled === true,
-    trialAvailable: subscription.trialAvailable === true,
-    // Omitted rather than undefined: absent means the platform said nothing.
-    ...Object.fromEntries(Object.entries(optional).filter(([, value]) => value !== undefined)),
-  };
+  return value.flatMap((raw: Record<string, unknown> | null): AccountEntry[] => {
+    const id = wireText(raw?.["id"]);
+    const label = wireText(raw?.["label"]);
+    const detail = wireText(raw?.["detail"]);
+    if (!id || !label || !detail) {
+      return [];
+    }
+    const actions = offeredActions(raw?.["actions"]);
+    return [
+      {
+        detail,
+        id,
+        label,
+        ...(typeof raw?.["connected"] === "boolean" ? { connected: raw["connected"] } : {}),
+        ...(actions.length > 0 ? { actions } : {}),
+      },
+    ];
+  });
 }
 
-/** Whether the platform reports this user entitled right now; false when it cannot be asked. */
-async function fetchEntitled(): Promise<boolean> {
-  const res = await fetch("/api/v1/me", { credentials: "include" });
-  if (!res.ok) {
-    return false;
+/** The notices a `/me` body holds, each one checked, on the same terms as the rows. */
+function accountNotices(value: unknown): AccountNotice[] {
+  if (!Array.isArray(value)) {
+    return [];
   }
-  return subscriptionFrom((await res.json()) as MeWire)?.entitled === true;
+  return value.flatMap((raw: Record<string, unknown> | null): AccountNotice[] => {
+    const id = wireText(raw?.["id"]);
+    const title = wireText(raw?.["title"]);
+    const message = wireText(raw?.["message"]);
+    if (!id || !title || !message) {
+      return [];
+    }
+    const actions = offeredActions(raw?.["actions"]);
+    const level = raw?.["level"];
+    const display = raw?.["display"];
+    return [
+      {
+        id,
+        message,
+        title,
+        ...(level === "info" || level === "warning" ? { level } : {}),
+        ...(display === "banner" || display === "toast" ? { display } : {}),
+        ...(actions.length > 0 ? { actions } : {}),
+      },
+    ];
+  });
 }
 
-/** The page to return to after a round trip through the platform's checkout. */
-function returnPath(): string {
-  return encodeURIComponent(`${location.pathname}${location.search}`);
-}
-
-interface UpgradeFlow {
+interface ActionFlow {
   popup: Window | null;
-  promise: Promise<UpgradeOutcome | null>;
+  promise: Promise<ActionOutcome | null>;
 }
 
 /**
- * The upgrade currently running, or null — module-level for `cfConnectFlow`'s reason: the popup's
- * target name is global to the browsing context, and two flows would share one window.
+ * The action window currently open, or null — module-level for `cfConnectFlow`'s reason: the
+ * window's target name is global to the browsing context, and two flows would share one window.
  */
-let upgradeFlow: UpgradeFlow | null = null;
+let actionFlow: ActionFlow | null = null;
 
-/** How long an open checkout window is waited on before the flow gives up on it. */
-const UPGRADE_DEADLINE_MS = 15 * 60_000;
+/** How long an open action window is waited on before the flow gives up on hearing back. */
+const ACTION_DEADLINE_MS = 15 * 60_000;
 
 /**
- * Wait on a checkout window the caller has ALREADY opened (opening it is the caller's, because only
- * code still inside the click may). Settles `subscribed` once the platform reports the user
- * entitled — told by the window's own relay, or found by the poll that stands behind it.
+ * How long a closed window is given for its relay to land. A page that relays and then closes
+ * itself can be seen closed a moment before its message is delivered, and reading that as "closed
+ * without saying" would put an offer back in front of someone who just completed it.
  */
-function awaitUpgrade(popup: Window): Promise<UpgradeOutcome> {
-  const deadline = Date.now() + UPGRADE_DEADLINE_MS;
-  return new Promise<UpgradeOutcome>((resolve, reject) => {
+const CLOSE_GRACE_MS = 300;
+
+/**
+ * Wait on an action window the caller has ALREADY opened (opening it is the caller's, because only
+ * code still inside the click may). Settles on the window's own relay — `{source: "jx-action",
+ * status}`, same-origin, which is the platform's to send from wherever the action ends — or
+ * `unknown` when the window closes, or the deadline passes, without one.
+ */
+function awaitAction(popup: Window): Promise<ActionOutcome> {
+  const deadline = Date.now() + ACTION_DEADLINE_MS;
+  return new Promise<ActionOutcome>((resolve, reject) => {
     let timer = 0;
-    let done = false;
     const cleanup = () => {
-      done = true;
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
       if (!popup.closed) {
         popup.close();
       }
     };
-    const settle = (outcome: UpgradeOutcome) => {
+    const settle = (outcome: ActionOutcome) => {
       cleanup();
       resolve(outcome);
     };
@@ -524,61 +528,31 @@ function awaitUpgrade(popup: Window): Promise<UpgradeOutcome> {
         return;
       }
       const data = event.data as { source?: string; status?: string; reason?: string | null };
-      if (!data || data.source !== "jx-billing") {
+      if (!data || data.source !== "jx-action") {
         return;
       }
-      if (data.status === "canceled") {
-        settle({ status: "canceled" });
-        return;
-      }
-      if (data.status === "error") {
+      if (data.status === "done" || data.status === "canceled") {
+        settle({ status: data.status });
+      } else if (data.status === "error") {
         cleanup();
-        reject(new Error(data.reason ?? "The checkout could not be completed"));
-        return;
+        reject(new Error(data.reason ?? "The action could not be completed"));
       }
-      /* "success" or "pending" is a CLAIM; the platform's own answer adjudicates it, as the Cloud-
-         flare relay's is. Pending — the payment landed and the platform has not caught up — keeps
-         the poll running rather than giving up on a purchase that went through. */
-      void fetchEntitled().then(
-        (entitled) => {
-          if (entitled && !done) {
-            settle({ status: "subscribed" });
-          }
-        },
-        () => {
-          // A blip: the poll is still running, and it will ask again.
-        },
-      );
     };
     window.addEventListener("message", onMessage);
-    /* Only ever started by the timer, and `cleanup` clears the timer before anything else can
-       arm it, so a settled flow never starts another poll. What can happen is a settle WHILE a
-       poll is waiting on the platform, which is the check after the await. */
-    const poll = async () => {
+    const watch = () => {
       if (Date.now() > deadline) {
-        settle({ status: "timeout" });
-        return;
-      }
-      const entitled = await fetchEntitled().catch(() => false);
-      if (done) {
-        return;
-      }
-      if (entitled) {
-        settle({ status: "subscribed" });
+        settle({ status: "unknown" });
         return;
       }
       if (popup.closed) {
-        const final = await fetchEntitled().catch(() => false);
-        settle(final ? { status: "subscribed" } : { status: "canceled" });
+        timer = window.setTimeout(() => {
+          settle({ status: "unknown" });
+        }, CLOSE_GRACE_MS);
         return;
       }
-      timer = window.setTimeout(() => {
-        void poll();
-      }, 2000);
+      timer = window.setTimeout(watch, 1000);
     };
-    timer = window.setTimeout(() => {
-      void poll();
-    }, 2000);
+    timer = window.setTimeout(watch, 1000);
   });
 }
 
@@ -651,20 +625,21 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
   let collabNegotiation: Promise<CollabNegotiation> | null = null;
 
   /**
-   * Every session request, and the one place a plan refusal is noticed.
+   * Every session request, and the one place an `action-required` refusal is noticed.
    *
-   * A 402 is reported on the upgrade channel and then returned like any other failure, so the
-   * caller still throws its own error with its own wording. The channel is what tells the user the
-   * fix; the caller's error is what tells it the request failed. Neither has to know about the
-   * other, which is what lets a directory listing deep in the file tree stay ignorant of plans.
+   * A refusal is reported on the channel and then returned like any other failure, so the caller
+   * still throws its own error with its own wording. The channel is what tells the user what they
+   * can do; the caller's error is what tells it the request failed. Neither has to know about the
+   * other, which is what lets a directory listing deep in the file tree stay ignorant of access
+   * rules.
    */
   async function api(path: string, init?: RequestInit): Promise<Response> {
     if (!project) {
       throw new Error("No project is open in this session");
     }
     const res = await fetch(`${base}${path}`, { credentials: "include", ...init });
-    if (res.status === 402) {
-      await reportRefusal(res.clone(), path);
+    if (res.status === 403) {
+      await reportRefusal(res.clone());
     }
     return res;
   }
@@ -672,9 +647,9 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
   /**
    * The bound project as the hint the platform's unscoped routes read (`owner/repo`), or null in
    * the hub. The AI and Cloudflare routes are not under the session base, so this is the only way
-   * they learn which project a call is for — which is what a plan exemption keyed on the
-   * repository's owner needs to know. A hint, not a credential: the platform verifies it against
-   * the user's own access before it counts.
+   * they learn which project a call is for — which is what a backend whose access rules depend on
+   * the repository needs to know. A hint, not a credential: the platform verifies it against the
+   * user's own access before it counts.
    */
   const projectHint = project ? `${project.owner}/${project.repo}` : null;
 
@@ -1481,7 +1456,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       });
       if (!res.ok) {
         /* Structured, so the New Project modal can act on what failed: an install link for a
-           missing App installation, an upgrade for a plan refusal. */
+           missing App installation, the offered actions of an `action-required` refusal. */
         throw await platformError(res, "Failed to create project");
       }
       const created = (await res.json()) as { owner: string; name: string; defaultBranch: string };
@@ -1582,8 +1557,10 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     },
 
     /**
-     * GitHub-App installation coverage from /me — powers the welcome install prompt and the repo
-     * picker's "grant access to more repositories" links (`manageUrl` per installation).
+     * The account status from /me: GitHub-App installation coverage — which powers the welcome
+     * install prompt and the repo picker's "grant access to more repositories" links (`manageUrl`
+     * per installation) — and whatever account rows and notices the platform sends (desktop.md
+     * §10.4), each checked before it is drawn.
      */
     async getAccountStatus() {
       const res = await fetch("/api/v1/me", { credentials: "include" });
@@ -1591,7 +1568,8 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         return null;
       }
       const me = (await res.json()) as MeWire;
-      const subscription = subscriptionFrom(me);
+      const entries = accountEntries(me.entries);
+      const notices = accountNotices(me.notices);
       return {
         installations: (me.installations ?? []).map((entry) => {
           const installation: AccountStatus["installations"][number] = {
@@ -1604,81 +1582,47 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           return installation;
         }),
         ...(me.appInstallUrl ? { appInstallUrl: me.appInstallUrl } : {}),
-        ...(subscription ? { subscription } : {}),
+        ...(entries.length > 0 ? { entries } : {}),
+        ...(notices.length > 0 ? { notices } : {}),
       };
     },
 
     /**
-     * The hosted plan's checkout, in a popup. Synchronous up to `window.open`, which is the whole
-     * contract (types.ts): this runs inside a click, and a popup opened after an `await` is a popup
-     * the browser blocks. So the target is the link the refusal carried, or the platform's checkout
-     * route — never something that has to be fetched first.
+     * An offered action, in a window of its own. Synchronous up to `window.open`, which is the
+     * whole contract (types.ts): this runs inside a click, and a window opened after an `await` is
+     * one the browser blocks. So the target is the action's own `href`, never something that has to
+     * be fetched first; an action with no `href` is not one this platform performs.
      *
-     * A blocked popup navigates the page itself, and the platform's return brings it back here with
-     * `?billing=` for {@link takeUpgradeReturn} to read. Concurrent calls join the running flow, for
-     * `cfConnect`'s reason.
+     * A blocked window navigates the page itself, and whatever the platform has to say about how
+     * that ended arrives as a `toast` notice once the page is back. Concurrent calls join the
+     * running flow, for `cfConnect`'s reason.
      */
-    startUpgrade(opts?: { upgradeUrl?: string }) {
-      if (typeof window === "undefined" || typeof location === "undefined") {
+    performAction(action: OfferedAction) {
+      if (typeof window === "undefined" || typeof location === "undefined" || !action.href) {
         return Promise.resolve(null);
       }
-      const running = upgradeFlow;
+      const running = actionFlow;
       if (running) {
         try {
           running.popup?.focus();
         } catch {
-          // A cross-origin popup may refuse focus; joining the flow is what mattered.
+          // A cross-origin window may refuse focus; joining the flow is what mattered.
         }
         return running.promise;
       }
-      const target = opts?.upgradeUrl ?? `/api/v1/billing/checkout?returnTo=${returnPath()}`;
-      const popup = window.open(target, "jx-billing", "width=980,height=820");
+      const popup = window.open(action.href, "jx-action", "width=980,height=820");
       if (!popup) {
-        location.assign(target);
+        location.assign(action.href);
         return Promise.resolve({ status: "redirect" } as const);
       }
-      const handle: UpgradeFlow = { popup, promise: Promise.resolve(null) };
-      upgradeFlow = handle;
-      handle.promise = awaitUpgrade(popup).finally(() => {
-        if (upgradeFlow === handle) {
-          upgradeFlow = null;
+      const handle: ActionFlow = { popup, promise: Promise.resolve(null) };
+      actionFlow = handle;
+      handle.promise = awaitAction(popup).finally(() => {
+        if (actionFlow === handle) {
+          actionFlow = null;
         }
       });
       return handle.promise;
-    },
-
-    /** The platform's subscription management page, in a tab of its own. */
-    async manageSubscription() {
-      if (typeof window === "undefined" || typeof location === "undefined") {
-        return;
-      }
-      const target = `/api/v1/billing/portal?returnTo=${returnPath()}`;
-      if (!window.open(target, "jx-billing-manage")) {
-        location.assign(target);
-      }
-    },
-
-    /**
-     * Read, and strip, the `?billing=` a full-page checkout round trip came back with. Stripped so
-     * a reload does not announce the same purchase twice.
-     */
-    takeUpgradeReturn() {
-      if (typeof location === "undefined" || typeof history === "undefined") {
-        return null;
-      }
-      const url = new URL(location.href);
-      const status = url.searchParams.get("billing");
-      if (
-        status !== "success" &&
-        status !== "canceled" &&
-        status !== "pending" &&
-        status !== "error"
-      ) {
-        return null;
-      }
-      url.searchParams.delete("billing");
-      history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
-      return status;
     },
 
     /** Open a PR from this session's branch (ProjectSession /git/pr). */
@@ -1727,7 +1671,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }
       const handle: CfConnectFlow = { popup: null, promise: Promise.resolve(null) };
       cfConnectFlow = handle;
-      /* The project rides along so a plan exemption keyed on its owner can apply to the connect,
+      /* The project rides along so access rules keyed on the repository can apply to the connect,
          which is not under the session base and would otherwise not know which project asked. */
       const connectUrl = projectHint
         ? `/api/v1/cf/connect?project=${encodeURIComponent(projectHint)}`
@@ -1789,10 +1733,17 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         ...(Object.keys(headers).length === 0 ? {} : { headers }),
         ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       });
-      /* A plan refusal is the platform's answer, not Cloudflare's, so it is not dressed as one: it
-         keeps its own sentence and the members the publish flow offers the upgrade from. */
-      if (res.status === 402) {
-        throw await platformError(res, "Publishing needs a subscription");
+      /* An `action-required` refusal is the platform's answer, not Cloudflare's, so it is not
+         dressed as one: it keeps its own sentence and the actions the publish flow offers. Read
+         from a clone, because every other 403 is Cloudflare's own and is parsed below. */
+      if (res.status === 403) {
+        const refusal = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as StructuredBody | null;
+        if (isActionRequiredBody(refusal)) {
+          throw await platformError(res, "Publishing was refused");
+        }
       }
       const envelope = (await res.json()) as {
         success?: boolean;

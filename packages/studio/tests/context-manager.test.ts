@@ -12,7 +12,7 @@ import type { Message } from "@jxsuite/ai/chat-state";
 let reportedWindows: Record<string, number> = {};
 void mock.module("../src/services/ai-models", () => ({
   modelContextWindow: (id: string) => reportedWindows[id],
-  proxyUpgradeOffer: () => null,
+  proxyActionOffer: () => null,
 }));
 
 const { pruneOrphanToolMessages, trimContext } = await import("../src/services/context-manager");

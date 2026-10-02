@@ -12,7 +12,7 @@
 import { updateWranglerConfig } from "@jxsuite/create/scaffold";
 import type { DeployConfig, ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
-import { upgradeIfRequired } from "../account/upgrade-flow";
+import { actIfRequired } from "../account/action-flow";
 import { updateSiteConfig } from "../site-context";
 
 export interface CfAccount {
@@ -53,7 +53,7 @@ export function platformSupportsPublish(): boolean {
 }
 
 /**
- * One Cloudflare call. A hosted platform's plan refusal is offered as an upgrade here, once for
+ * One Cloudflare call. A refusal that offers an action (desktop.md §10.4) is offered here, once for
  * every publish step, and still thrown: the step that asked failed, and its caller reports that in
  * its own words while the offer says how to fix it.
  */
@@ -65,7 +65,7 @@ async function cfApi<T>(path: string, init?: { method?: string; body?: unknown }
   try {
     return (await api(path, init)) as T;
   } catch (error) {
-    void upgradeIfRequired(error);
+    void actIfRequired(error);
     throw error;
   }
 }

@@ -223,59 +223,63 @@ describe("openAddRepoModal", () => {
     expect(await promise).toBeNull();
   });
 
-  /* Adopting a repository opens it in the cloud editor, one of the actions a hosted plan covers
-     (desktop.md §10.4): the refusal is offered as an upgrade, and a plan that starts imports again. */
-  test("a plan refusal is offered as an upgrade, and the import runs again once the plan starts", async () => {
+  const JOIN = { href: "https://example.test/join", id: "join", label: "Join" };
+
+  /* Adopting a repository is something a backend may refuse until the user acts (desktop.md §10.4):
+     the refusal's actions are offered, and an action that is done imports again. */
+  test("an action-required refusal is offered, and the import runs again once it is done", async () => {
     let attempts = 0;
     installMockPlatform({
       importProject: (async (opts: { owner: string; name: string }) => {
         attempts += 1;
         if (attempts === 1) {
-          throw Object.assign(new Error("Opening octocat/site needs Jx Studio Cloud."), {
-            code: "subscription_required",
+          throw Object.assign(new Error("Opening octocat/site needs a team membership."), {
+            actions: [JOIN],
+            code: "action_required",
           });
         }
         return { root: `${opts.owner}/${opts.name}@main` };
       }) as never,
       listRepos: () => Promise.resolve(REPOS),
-      startUpgrade: async () => ({ status: "subscribed" }),
+      performAction: async () => ({ status: "done" }),
     });
     const promise = openAddRepoModal();
     await flush(3);
     click(rows()[0]!);
     await flush(3);
-    expect(failureText()).toContain("needs Jx Studio Cloud");
-    const upgrade = [...document.querySelectorAll("jx-dialog")].find(
+    expect(failureText()).toContain("needs a team membership");
+    const offer = [...document.querySelectorAll("jx-dialog")].find(
       (element) => element.getAttribute("part") !== "add-repo",
     ) as HTMLElement;
-    upgrade.dispatchEvent(new Event("confirm"));
+    offer.dispatchEvent(new Event("confirm"));
     expect(await promise).toEqual({ root: "octocat/site@main" });
     expect(attempts).toBe(2);
   });
 
-  test("a declined plan leaves the refusal inline and imports nothing more", async () => {
+  test("a declined offer leaves the refusal inline and imports nothing more", async () => {
     let attempts = 0;
     installMockPlatform({
       importProject: (async () => {
         attempts += 1;
-        throw Object.assign(new Error("Opening octocat/site needs Jx Studio Cloud."), {
-          code: "subscription_required",
+        throw Object.assign(new Error("Opening octocat/site needs a team membership."), {
+          actions: [JOIN],
+          code: "action_required",
         });
       }) as never,
       listRepos: () => Promise.resolve(REPOS),
-      startUpgrade: async () => ({ status: "canceled" }),
+      performAction: async () => ({ status: "canceled" }),
     });
     const promise = openAddRepoModal();
     await flush(3);
     click(rows()[0]!);
     await flush(3);
-    const upgrade = [...document.querySelectorAll("jx-dialog")].find(
+    const offer = [...document.querySelectorAll("jx-dialog")].find(
       (element) => element.getAttribute("part") !== "add-repo",
     ) as HTMLElement;
-    upgrade.dispatchEvent(new Event("cancel"));
+    offer.dispatchEvent(new Event("cancel"));
     await flush(3);
     expect(attempts).toBe(1);
-    expect(failureText()).toContain("needs Jx Studio Cloud");
+    expect(failureText()).toContain("needs a team membership");
     dismiss();
     expect(await promise).toBeNull();
   });
