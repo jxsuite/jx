@@ -738,6 +738,84 @@ describe("openNewProjectModal — submit", () => {
   });
 });
 
+const JOIN = { href: "https://example.test/join", id: "join", label: "Join" };
+
+describe("openNewProjectModal — an action-required refusal", () => {
+  /* Creating a repository is something a backend may refuse until the user acts (desktop.md §10.4).
+     The refusal's actions are offered over the modal, and one that is done runs the create again,
+     once. */
+  test("offers the action over the modal, and creates once it is done", async () => {
+    let attempts = 0;
+    const performAction = async () => ({ status: "done" }) as const;
+    installMockPlatform({
+      createProject: (async (opts: { name: string }) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw Object.assign(new Error("Creating repositories needs a team membership."), {
+            actions: [JOIN],
+            code: "action_required",
+          });
+        }
+        return { config: { name: opts.name }, root: "/home/dev/Sites/joined" };
+      }) as never,
+      performAction,
+    });
+    setProjectAdopter(async () => {});
+
+    const promise = openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npType(npName(), "Joined");
+    await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(3);
+
+    const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
+    const offer = dialogs.at(-1) as HTMLElement;
+    expect(offer.querySelector('[part="message"]')?.textContent).toBe(
+      "Creating repositories needs a team membership.",
+    );
+    offer.dispatchEvent(new Event("confirm"));
+    const result = await promise;
+    expect(attempts).toBe(2);
+    expect(result).toEqual({ config: { name: "Joined" }, root: "/home/dev/Sites/joined" } as never);
+  });
+
+  test("a declined offer leaves the error standing and asks no more", async () => {
+    let attempts = 0;
+    installMockPlatform({
+      createProject: (async () => {
+        attempts += 1;
+        throw Object.assign(new Error("Creating repositories needs a team membership."), {
+          actions: [JOIN],
+          code: "action_required",
+        });
+      }) as never,
+      performAction: async () => ({ status: "canceled" }),
+    });
+    const promise = openNewProjectModal();
+    await flush(3);
+    npPress("Confirm");
+    await flush(2);
+    npType(npName(), "Outsider");
+    await flush();
+    npFillLocation();
+    await flush();
+    npPress("Confirm");
+    await flush(3);
+    const offer = [...document.querySelectorAll("#layer-dialog jx-dialog")].at(-1) as HTMLElement;
+    offer.dispatchEvent(new Event("cancel"));
+    await flush(3);
+    expect(attempts).toBe(1);
+    expect(errorText()).toContain("needs a team membership");
+    npDismiss();
+    expect(await promise).toBeNull();
+  });
+});
+
 describe("openNewProjectModal — adoption", () => {
   /* `finishCreated` is what makes `project.new` from the command palette work at all: that entry
      point fires the modal and never looks at what it resolves with, so opening the project it just

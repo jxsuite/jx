@@ -48,6 +48,7 @@ void mock.module("../src/services/ai-models", () => ({
   // Every named export ai-managed-connect.ts imports must be here: a partial mock.module() of a
   // Module someone else imports is a SyntaxError at link time, not a missing stub at call time.
   proxyStateCode: () => {},
+  proxyActionOffer: () => null,
   proxyModelsErrorMessage: () => "",
 }));
 
@@ -945,6 +946,28 @@ describe("Accounts, when the platform brokers Cloudflare", () => {
         (el) => el.dataset.action,
       ),
     ).toEqual(["disconnect"]);
+    installMockPlatform();
+  });
+});
+
+/*
+ * The platform's own rows (desktop.md §10.4) appear only where the platform sends some, and opening
+ * the sheet re-reads them: whatever they report can change between visits, and a row that repainted
+ * the last answer would be stating something it has no reason to believe.
+ */
+describe("Accounts, when the platform adds rows", () => {
+  test("opening re-reads the account status, and the row paints what came back", async () => {
+    const getAccountStatus = mock(async () => ({
+      entries: [{ connected: true, detail: "Member since spring.", id: "team", label: "Team" }],
+      installations: [],
+    }));
+    installMockPlatform({ getAccountStatus });
+    void openPreferences("accounts");
+    await flush(4);
+    expect(getAccountStatus).toHaveBeenCalledTimes(1);
+    expect(d('[part="account"][data-account="platform:team"]')!.textContent).toContain(
+      "Member since spring.",
+    );
     installMockPlatform();
   });
 });

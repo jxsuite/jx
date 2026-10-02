@@ -2,17 +2,17 @@
 /**
  * Ai-models.js — available-model listing from the studio AI proxy.
  *
- * Fetches the proxy's /models endpoint (the chat endpoint's sibling), forwarding the
- * stored API key as X-Api-Key and the endpoint override as X-Api-Base-URL so the proxy
- * lists models from the user's chosen provider. Shared by the credentials form and the
- * chat composer's model picker; results are cached module-wide until invalidated (e.g.
- * after credentials change).
+ * Fetches the proxy's /models endpoint (the chat endpoint's sibling), forwarding the stored API key
+ * as X-Api-Key and the endpoint override as X-Api-Base-URL so the proxy lists models from the
+ * user's chosen provider. Shared by the credentials form and the chat composer's model picker;
+ * results are cached module-wide until invalidated (e.g. after credentials change).
  *
  * @license MIT
  */
 
-import type { AiModelsResponse } from "@jxsuite/protocol";
+import type { AiModelsResponse, OfferedAction } from "@jxsuite/protocol";
 import { getPlatform } from "../platform";
+import { offeredActions } from "../platform-errors";
 import { getBaseUrl, getOpenAiKey, hasOpenAiKey, storedModel } from "./ai-settings";
 import { SETTINGS } from "./settings/definitions";
 import { onSettingsChanged } from "./settings/kernel";
@@ -76,6 +76,14 @@ let proxyManaged = false;
 let proxyDefaultModel = "";
 let proxyCode: AiModelsResponse["code"];
 let proxyModelsError = "";
+/** What an `action_required` probe offered; null for every other answer. */
+let proxyAction: ProxyActionOffer | null = null;
+
+/** What a managed backend says the assistant needs first, in the backend's own words. */
+export interface ProxyActionOffer {
+  detail?: string;
+  actions: OfferedAction[];
+}
 
 /**
  * One-shot capability probe shared by every credentials gate, plus the hosts to repaint when it
@@ -118,6 +126,7 @@ export function resetModelCache() {
   proxyDefaultModel = "";
   proxyCode = undefined;
   proxyModelsError = "";
+  proxyAction = null;
   /* The probe's result IS the flags above. Clearing them while keeping the settled promise
      would strand every gate on a permanent "unconfigured, unmanaged" reading — ensureProxyProbe
      would no-op forever and the managed option would vanish until a full reload. */
@@ -278,6 +287,14 @@ export function proxyModelsErrorMessage(): string {
   return proxyModelsError;
 }
 
+/**
+ * The offer the last probe carried — set only when the backend answered `action_required` (ai.md
+ * §2.1), and null for every other answer, so no gate can offer an action the backend did not name.
+ */
+export function proxyActionOffer(): ProxyActionOffer | null {
+  return proxyAction;
+}
+
 /** The proxy's preferred model id ("" when it does not declare one). */
 export function getProxyDefaultModel(): string {
   return proxyDefaultModel;
@@ -369,6 +386,13 @@ export async function fetchAvailableModels(
   proxyDefaultModel = data.defaultModel ?? "";
   proxyCode = data.code;
   proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
+  proxyAction =
+    data.code === "action_required"
+      ? {
+          actions: offeredActions(data.actions),
+          ...(typeof data.detail === "string" && data.detail ? { detail: data.detail } : {}),
+        }
+      : null;
   /* Capabilities are kept, not dropped. The backend has reported `toolSupport` all along and the
      ingest mapped `{id, name}` only, so a Workers AI model that cannot call tools looked exactly
      like one that can — the agent loop ran, called nothing, and answered as if that were normal.

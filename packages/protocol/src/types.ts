@@ -812,9 +812,46 @@ export interface AiModelsResponse {
    * true`: Cloudflare being briefly unreachable is not a reason to send someone round an OAuth flow
    * that fixes nothing. `cf_account_required` is a live grant with no account chosen (ai.md §2.1):
    * re-authorizing lands back in the same state, so it calls for the account picker instead.
+   *
+   * `action_required` is the fourth, and no connection fixes it: the backend requires something of
+   * the user before the assistant will run (desktop.md §10.4, ai.md §2.1). It arrives with
+   * {@link detail} and {@link actions}, the same members the `action-required` problem carries, so
+   * the gate can offer what the backend offers in the backend's own words.
    */
-  code?: "cf_not_connected" | "cf_reconnect_required" | "cf_account_required" | "cf_upstream_error";
+  code?:
+    | "cf_not_connected"
+    | "cf_reconnect_required"
+    | "cf_account_required"
+    | "cf_upstream_error"
+    | "action_required";
+  /** Why the backend refuses, in its own words. Sent with `action_required`. */
+  detail?: string;
+  /** What the user can do about it. Sent with `action_required`. */
+  actions?: OfferedAction[];
 }
+
+// ─── Backend-directed access (desktop.md §10.4) ──────────────────────────────
+
+/**
+ * Something the user can do, offered by the backend: on an `action-required` refusal, a notice, or
+ * an account row. The backend decides what it means; the platform adapter performs it.
+ */
+export interface OfferedAction {
+  /** Stable within the offer — for the backend's bookkeeping and a test's selector. */
+  id: string;
+  /** The button's words. */
+  label: string;
+  /** A page the platform opens for the user. Absent: the platform performs it by `id`. */
+  href?: string;
+  /** The one action a surface leads with. */
+  primary?: boolean;
+}
+
+/**
+ * What the client does once an offered action is done: `reload` the page (the refusal broke the
+ * session), `repeat` (the user runs what was refused again), or `none`.
+ */
+export type RetryHint = "reload" | "repeat" | "none";
 
 // ─── Cloudflare publish surface ──────────────────────────────────────────────
 

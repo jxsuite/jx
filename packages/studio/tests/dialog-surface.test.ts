@@ -127,6 +127,21 @@ describe("the dialog surface", () => {
     handle.close();
   });
 
+  test("update moves the secondary button's words, and the empty string takes it away", async () => {
+    const handle = open({ onSecondary: () => {}, secondaryLabel: "Learn more" });
+    await handle.ready;
+    await flush();
+    const dialog = layer.querySelector("jx-dialog")!;
+    expect(dialog.getAttribute("secondary-label")).toBe("Learn more");
+    handle.update({ secondaryLabel: "" });
+    await flush();
+    expect(dialog.hasAttribute("secondary-label")).toBe(false);
+    handle.update({ secondaryLabel: "Details" });
+    await flush();
+    expect(dialog.getAttribute("secondary-label")).toBe("Details");
+    handle.close();
+  });
+
   test("whenReady answers at once for an element that has rendered, and waits for jx-ready otherwise", async () => {
     const rendered = document.createElement("div");
     rendered.innerHTML = '<dialog part="dialog"></dialog>';

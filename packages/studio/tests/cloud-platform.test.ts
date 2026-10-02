@@ -609,9 +609,14 @@ describe("git surface", () => {
     expect(await platform.gitDiff()).toBe("--- a/x\n+++ b/x\n");
   });
 
-  test("aiChatUrl points at the platform Workers AI proxy", () => {
-    const platform = createCloudPlatform(PROJECT);
-    expect(platform.aiChatUrl()).toBe("/api/v1/ai/chat");
+  /* The chat route is not under the session base, so the bound project rides in the query — the
+     one way the platform learns which project a call is for, and so whether access rules keyed on
+     the repository apply. The hub has no project to name. */
+  test("aiChatUrl points at the platform Workers AI proxy, naming the bound project", () => {
+    expect(createCloudPlatform(PROJECT).aiChatUrl()).toBe(
+      "/api/v1/ai/chat?project=octocat%2Fmy-site",
+    );
+    expect(createCloudPlatform(null).aiChatUrl()).toBe("/api/v1/ai/chat");
   });
 });
 
@@ -1527,7 +1532,7 @@ describe("static-posture members", () => {
     const p = createCloudPlatform(PROJECT);
     expect(await p.codeService("lint", {})).toBeNull();
     expect(await p.fetchPluginSchema("src")).toBeNull();
-    expect(p.aiChatUrl()).toBe("/api/v1/ai/chat");
+    expect(p.aiChatUrl()).toBe("/api/v1/ai/chat?project=octocat%2Fmy-site");
   });
 
   test("package reads tolerate unreadable manifests", async () => {

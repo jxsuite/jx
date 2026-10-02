@@ -19,8 +19,8 @@
  * State is per-instance (closure-scoped) like the credentials form; the capability probe behind
  * `ensureProbe` is shared module-wide by services/ai-models.ts.
  *
- * @docs studio/ai
  * @license MIT
+ * @docs studio/ai
  */
 
 import { getPlatform, hasPlatform } from "../platform";
@@ -30,8 +30,10 @@ import {
   isManagedProxy,
   isProxyConfigured,
   proxyStateCode,
+  proxyActionOffer,
   resetModelCache,
 } from "../services/ai-models";
+import { canPerformActions, leadingActions, promptAction } from "../account/action-flow";
 import { createManagedConnectSurface } from "../surfaces/ai-managed-connect";
 import type { ManagedConnectSurface, ManagedConnectView } from "../surfaces/ai-managed-connect";
 import type { CfConnectOutcome } from "../types";
@@ -99,6 +101,12 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
    * round trip.
    */
   function canOffer(): boolean {
+    /* A backend that asks for an action first is offered on any platform that can perform one,
+       whether or not it can broker Cloudflare: no connection fixes it, so the connect member is
+       beside the point. An offer with nothing in it is no offer. */
+    if (needsAction()) {
+      return canPerformActions() && Boolean(proxyActionOffer()?.actions.length);
+    }
     if (!isManagedProxy() || !hasPlatform() || !getPlatform().cfConnect) {
       return false;
     }
@@ -111,6 +119,21 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
    * picked in Preferences, changes what the probe answers and this answer with it.
    */
   const needsAccount = () => proxyStateCode() === "cf_account_required";
+
+  /**
+   * The backend requires something of the user before the assistant runs (ai.md §2.1) — a state no
+   * Cloudflare round trip changes, so the button offers what the backend offers instead.
+   */
+  const needsAction = () => proxyStateCode() === "action_required";
+
+  /** Offer the backend's actions, and re-probe once one is done: the gate opens on its new answer. */
+  async function act(): Promise<void> {
+    const offer = proxyActionOffer();
+    if (offer && (await promptAction(offer))) {
+      resetModelCache();
+      await fetchAvailableModels({ force: true });
+    }
+  }
 
   /**
    * Re-probe after the connection changed, and CHECK the answer, because a change the backend does
@@ -194,9 +217,13 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
     try {
       /* `cf_account_required` is a grant that already works for authorization and names no
          account; the OAuth flow would land straight back here (ai.md §2.1). */
-      await (needsAccount()
-        ? chooseAccount()
-        : settle((await getPlatform().cfConnect?.()) ?? null));
+      if (needsAction()) {
+        await act();
+      } else if (needsAccount()) {
+        await chooseAccount();
+      } else {
+        await settle((await getPlatform().cfConnect?.()) ?? null);
+      }
     } catch (error) {
       connectError = error instanceof Error ? error.message : String(error);
     }
@@ -206,6 +233,16 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
 
   /** What the offer says right now — the whole of what the surface is told. */
   function view(): ManagedConnectView {
+    if (needsAction()) {
+      const offer = proxyActionOffer();
+      const lead = leadingActions(offer?.actions ?? [])?.lead;
+      return {
+        buttonLabel: busy ? "Waiting…" : (lead?.label ?? "Continue"),
+        busy,
+        error: connectError,
+        intro: offer?.detail ?? "The assistant here needs one more step first.",
+      };
+    }
     if (needsAccount()) {
       return {
         buttonLabel: busy ? "Choosing…" : "Choose Cloudflare account",
