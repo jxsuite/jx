@@ -97,7 +97,7 @@ jobs:
   # used here on purpose: a build-msix failure means there is no asset to fetch, so this should
   # skip rather than fail on a missing file. See store-publish.yml and CLAUDE.md's "Microsoft Store
   # Publishing" section for what happens once it runs — including that it's a clean no-op until the
-  # four STORE_* secrets are configured, so merging this is safe before that setup is done.
+  # five STORE_* secrets are configured, so merging this is safe before that setup is done.
   store-publish:
     needs: [release-please, build-msix]
     if: needs.release-please.outputs.desktop_released == 'true' && needs.build-msix.result == 'success'
