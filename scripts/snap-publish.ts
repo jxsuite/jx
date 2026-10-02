@@ -1,6 +1,6 @@
 /**
  * Publishes the desktop snaps to the Snap Store, so an Ubuntu release reaches `snap install
- * jx-studio` the same way a Windows release reaches the Microsoft Store (`store-submit.ts`): with
+ * jx-studio` the same way a Windows release reaches the Microsoft Store (`store-publish.yml`): with
  * nothing left for a human to click after the one-time setup.
  *
  * `build-snap.yml` builds one `jx-studio_<version>_<arch>.snap` per architecture
