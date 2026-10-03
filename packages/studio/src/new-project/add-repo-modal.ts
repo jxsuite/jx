@@ -31,6 +31,7 @@
  * closer nothing in the app called was left over from drawing the box by hand.
  */
 
+import { actIfRequired } from "../account/action-flow";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
   getAccountStatus,
@@ -167,7 +168,11 @@ function settle(result: { root: string } | null): void {
   handle?.close();
 }
 
-async function chooseRepo(fullName: string) {
+/**
+ * Adopt the picked repository. A refusal that offers an action (desktop.md §10.4) is offered, and
+ * an action that is done runs the import again, once.
+ */
+async function chooseRepo(fullName: string, retried = false): Promise<void> {
   if (_importing) {
     return;
   }
@@ -187,6 +192,12 @@ async function chooseRepo(fullName: string) {
     _error = "This platform cannot import repositories.";
   } catch (error) {
     _error = errorMessage(error);
+    _importing = "";
+    redraw();
+    if (!retried && (await actIfRequired(error))) {
+      await chooseRepo(fullName, true);
+    }
+    return;
   }
   _importing = "";
   redraw();

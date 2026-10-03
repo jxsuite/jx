@@ -44,6 +44,7 @@ import { enumArg, enumProperty } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { getPlatform } from "../platform";
 import { installUrlOf } from "../platform-errors";
+import { actIfRequired } from "../account/action-flow";
 import { hasAiCredentials } from "../services/ai-models";
 import { setPendingAgentPrompt } from "../services/agent-seed";
 import { adoptCreatedProject } from "../services/project-adoption";
@@ -500,10 +501,17 @@ function goBack(): void {
   redraw();
 }
 
-/** Create the project from the chosen source, then run `after` with the result. */
+/**
+ * Create the project from the chosen source, then run `after` with the result.
+ *
+ * A refusal that offers an action (desktop.md §10.4) is offered over the modal, and an action that
+ * is done runs the create again — once, so a platform that still refuses afterwards leaves its
+ * error standing rather than asking forever.
+ */
 async function create(
   source: { starter: string } | { template: string },
   after: (result: { root: string; config: ProjectConfig }) => void | Promise<void>,
+  retried = false,
 ): Promise<void> {
   const destination = validateParams();
   if (!destination) {
@@ -522,6 +530,9 @@ async function create(
     _creating = false;
     captureError(error);
     redraw();
+    if (!retried && (await actIfRequired(error))) {
+      await create(source, after, true);
+    }
   }
 }
 

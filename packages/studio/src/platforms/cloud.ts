@@ -20,7 +20,10 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { streamImport } from "../services/import-client";
 import type {
+  AccountEntry,
+  AccountNotice,
   AccountStatus,
+  ActionOutcome,
   CfAccountSummary,
   CfConnection,
   CfConnectOutcome,
@@ -37,6 +40,7 @@ import type {
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
+  OfferedAction,
   PackageInfo,
   ProjectListEntry,
   SiteBuildResult,
@@ -49,6 +53,8 @@ import type {
 } from "../types";
 import { problemDetail, problemSlug } from "@jxsuite/protocol";
 import type { ReadFilesRequest, ReadFilesResult, UploadResult } from "@jxsuite/protocol";
+import { reportActionRequired } from "../account/action-required";
+import { offeredActions, retryHint } from "../platform-errors";
 import { createReadBatcher } from "./read-batcher";
 import type { BatchAnswer } from "./read-batcher";
 
@@ -118,11 +124,93 @@ async function isReadOnlyRefusal(res: Response): Promise<boolean> {
   return code === "read_only" || code === "read-only";
 }
 
+/** A failure body's machine-readable members, each one optional and none of them trusted. */
+interface StructuredBody extends ErrorBody {
+  type?: unknown;
+  installUrl?: unknown;
+  actions?: unknown;
+  heading?: unknown;
+  retry?: unknown;
+}
+
+/** The refusal's heading, when the body carries a usable one. */
+function headingOf(body: StructuredBody | null): string | undefined {
+  return typeof body?.heading === "string" && body.heading ? body.heading : undefined;
+}
+
+/**
+ * The error a failed response becomes: the backend's sentence as the message, and every member a
+ * surface can act on carried alongside it for `platform-errors.ts` to recover — the install link a
+ * missing App installation sends, and the actions, heading and retry hint an `action-required`
+ * refusal sends (desktop.md §10.4).
+ *
+ * This used to be the message alone, everywhere but `createProject`, which had grown its own copy
+ * of this function to keep the install link. So a refusal reaching any other member arrived as flat
+ * text: the members that say "this is fixable, and here is how" were read and dropped.
+ */
+async function platformError(res: Response, fallback: string): Promise<Error> {
+  let body: StructuredBody | null;
+  try {
+    body = (await res.json()) as StructuredBody | null;
+  } catch {
+    body = null;
+  }
+  const code = problemSlug(body?.type) ?? body?.code;
+  const actions = offeredActions(body?.actions);
+  const heading = headingOf(body);
+  const retry = retryHint(body?.retry);
+  return Object.assign(new Error(problemDetail(body) ?? fallback), {
+    status: res.status,
+    ...(code ? { code } : {}),
+    ...(typeof body?.installUrl === "string" ? { installUrl: body.installUrl } : {}),
+    ...(actions.length > 0 ? { actions } : {}),
+    ...(heading === undefined ? {} : { heading }),
+    ...(retry === undefined ? {} : { retry }),
+  });
+}
+
 async function okJson<T>(res: Response, fallback: string): Promise<T> {
   if (!res.ok) {
-    throw new Error(await errorMessage(res, fallback));
+    throw await platformError(res, fallback);
   }
   return (await res.json()) as T;
+}
+
+/** Whether a failure body is an `action-required` refusal, by problem type or legacy code. */
+function isActionRequiredBody(body: StructuredBody | null): boolean {
+  const code = problemSlug(body?.type) ?? body?.code;
+  return code === "action-required" || code === "action_required";
+}
+
+/**
+ * Raise an `action-required` refusal on the channel, read from a CLONE so the caller still gets the
+ * body it is about to parse for its own error. Only a refusal that offers something is raised: with
+ * no actions there is nothing to offer, and the caller's own error says the rest. Every other 403 —
+ * a read-only collaborator, a missing installation — is the caller's alone.
+ */
+async function reportRefusal(res: Response): Promise<void> {
+  let body: StructuredBody | null;
+  try {
+    body = (await res.json()) as StructuredBody | null;
+  } catch {
+    return;
+  }
+  if (!isActionRequiredBody(body)) {
+    return;
+  }
+  const actions = offeredActions(body?.actions);
+  if (actions.length === 0) {
+    return;
+  }
+  const detail = problemDetail(body);
+  const heading = headingOf(body);
+  const retry = retryHint(body?.retry);
+  reportActionRequired({
+    actions,
+    ...(detail === null ? {} : { detail }),
+    ...(heading === undefined ? {} : { heading }),
+    ...(retry === undefined ? {} : { retry }),
+  });
 }
 
 /** Editor URL for a project session (mirrors the shell's route). */
@@ -225,17 +313,20 @@ let cfConnectFlow: CfConnectFlow | null = null;
  * Drive one hosted OAuth connect to a {@link CfConnectOutcome}. See `cfConnect` for the semantics;
  * this lives at module scope so the single-flight handle can too.
  */
-async function runCfConnect(handle: CfConnectFlow): Promise<CfConnectOutcome | null> {
+async function runCfConnect(
+  handle: CfConnectFlow,
+  connectUrl: string,
+): Promise<CfConnectOutcome | null> {
   /* The baseline is read BEFORE the popup opens, and it is what keeps the poll honest: a row that
      was already healthy proves nothing about THIS flow, so the poll must not settle on one. Reading
      it after the popup opened would race the callback and could capture the new row as "old". */
   const baseline = await fetchCfConnection().catch(() => null);
   const healthyBaseline = Boolean(baseline?.connected && !baseline.needsReconnect);
-  const popup = window.open("/api/v1/cf/connect", "cf-connect", "width=980,height=780");
+  const popup = window.open(connectUrl, "cf-connect", "width=980,height=780");
   if (!popup) {
     /* Popup blocked: the whole page is now navigating to the broker. Not a failure — the caller
        must render nothing at all rather than an error it will never get to show. */
-    location.assign("/api/v1/cf/connect");
+    location.assign(connectUrl);
     return { status: "redirect" };
   }
   handle.popup = popup;
@@ -322,6 +413,152 @@ async function runCfConnect(handle: CfConnectFlow): Promise<CfConnectOutcome | n
   });
 }
 
+// ─── Backend-directed access (desktop.md §10.4) ──────────────────────────────
+
+/** `GET /api/v1/me`, as far as this adapter reads it. */
+interface MeWire {
+  installations?: { id: number; account: string | null; manageUrl?: string }[];
+  appInstallUrl?: string;
+  entries?: unknown;
+  notices?: unknown;
+}
+
+/** A wire value as a non-empty string, or undefined. */
+function wireText(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+/**
+ * The account rows a `/me` body holds, each one checked. A row needs an id, a label and a detail to
+ * be drawn at all; a malformed one is dropped rather than drawn half-empty.
+ */
+function accountEntries(value: unknown): AccountEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((raw: Record<string, unknown> | null): AccountEntry[] => {
+    const id = wireText(raw?.["id"]);
+    const label = wireText(raw?.["label"]);
+    const detail = wireText(raw?.["detail"]);
+    if (!id || !label || !detail) {
+      return [];
+    }
+    const actions = offeredActions(raw?.["actions"]);
+    return [
+      {
+        detail,
+        id,
+        label,
+        ...(typeof raw?.["connected"] === "boolean" ? { connected: raw["connected"] } : {}),
+        ...(actions.length > 0 ? { actions } : {}),
+      },
+    ];
+  });
+}
+
+/** The notices a `/me` body holds, each one checked, on the same terms as the rows. */
+function accountNotices(value: unknown): AccountNotice[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((raw: Record<string, unknown> | null): AccountNotice[] => {
+    const id = wireText(raw?.["id"]);
+    const title = wireText(raw?.["title"]);
+    const message = wireText(raw?.["message"]);
+    if (!id || !title || !message) {
+      return [];
+    }
+    const actions = offeredActions(raw?.["actions"]);
+    const level = raw?.["level"];
+    const display = raw?.["display"];
+    return [
+      {
+        id,
+        message,
+        title,
+        ...(level === "info" || level === "warning" ? { level } : {}),
+        ...(display === "banner" || display === "toast" ? { display } : {}),
+        ...(actions.length > 0 ? { actions } : {}),
+      },
+    ];
+  });
+}
+
+interface ActionFlow {
+  popup: Window | null;
+  promise: Promise<ActionOutcome | null>;
+}
+
+/**
+ * The action window currently open, or null — module-level for `cfConnectFlow`'s reason: the
+ * window's target name is global to the browsing context, and two flows would share one window.
+ */
+let actionFlow: ActionFlow | null = null;
+
+/** How long an open action window is waited on before the flow gives up on hearing back. */
+const ACTION_DEADLINE_MS = 15 * 60_000;
+
+/**
+ * How long a closed window is given for its relay to land. A page that relays and then closes
+ * itself can be seen closed a moment before its message is delivered, and reading that as "closed
+ * without saying" would put an offer back in front of someone who just completed it.
+ */
+const CLOSE_GRACE_MS = 300;
+
+/**
+ * Wait on an action window the caller has ALREADY opened (opening it is the caller's, because only
+ * code still inside the click may). Settles on the window's own relay — `{source: "jx-action",
+ * status}`, same-origin, which is the platform's to send from wherever the action ends — or
+ * `unknown` when the window closes, or the deadline passes, without one.
+ */
+function awaitAction(popup: Window): Promise<ActionOutcome> {
+  const deadline = Date.now() + ACTION_DEADLINE_MS;
+  return new Promise<ActionOutcome>((resolve, reject) => {
+    let timer = 0;
+    const cleanup = () => {
+      window.removeEventListener("message", onMessage);
+      window.clearTimeout(timer);
+      if (!popup.closed) {
+        popup.close();
+      }
+    };
+    const settle = (outcome: ActionOutcome) => {
+      cleanup();
+      resolve(outcome);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== location.origin) {
+        return;
+      }
+      const data = event.data as { source?: string; status?: string; reason?: string | null };
+      if (!data || data.source !== "jx-action") {
+        return;
+      }
+      if (data.status === "done" || data.status === "canceled") {
+        settle({ status: data.status });
+      } else if (data.status === "error") {
+        cleanup();
+        reject(new Error(data.reason ?? "The action could not be completed"));
+      }
+    };
+    window.addEventListener("message", onMessage);
+    const watch = () => {
+      if (Date.now() > deadline) {
+        settle({ status: "unknown" });
+        return;
+      }
+      if (popup.closed) {
+        timer = window.setTimeout(() => {
+          settle({ status: "unknown" });
+        }, CLOSE_GRACE_MS);
+        return;
+      }
+      timer = window.setTimeout(watch, 1000);
+    };
+    timer = window.setTimeout(watch, 1000);
+  });
+}
+
 /** Parse an "owner/repo@branch" root key; null when malformed. */
 export function parseRootKey(root: string): CloudProject | null {
   const match = /^([^/@]+)\/([^/@]+)@(.+)$/.exec(root);
@@ -390,12 +627,34 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
   /** Lazy subprotocol negotiation from the gateway's capability probe (null = not asked yet). */
   let collabNegotiation: Promise<CollabNegotiation> | null = null;
 
-  function api(path: string, init?: RequestInit): Promise<Response> {
+  /**
+   * Every session request, and the one place an `action-required` refusal is noticed.
+   *
+   * A refusal is reported on the channel and then returned like any other failure, so the caller
+   * still throws its own error with its own wording. The channel is what tells the user what they
+   * can do; the caller's error is what tells it the request failed. Neither has to know about the
+   * other, which is what lets a directory listing deep in the file tree stay ignorant of access
+   * rules.
+   */
+  async function api(path: string, init?: RequestInit): Promise<Response> {
     if (!project) {
-      return Promise.reject(new Error("No project is open in this session"));
+      throw new Error("No project is open in this session");
     }
-    return fetch(`${base}${path}`, { credentials: "include", ...init });
+    const res = await fetch(`${base}${path}`, { credentials: "include", ...init });
+    if (res.status === 403) {
+      await reportRefusal(res.clone());
+    }
+    return res;
   }
+
+  /**
+   * The bound project as the hint the platform's unscoped routes read (`owner/repo`), or null in
+   * the hub. The AI and Cloudflare routes are not under the session base, so this is the only way
+   * they learn which project a call is for — which is what a backend whose access rules depend on
+   * the repository needs to know. A hint, not a credential: the platform verifies it against the
+   * user's own access before it counts.
+   */
+  const projectHint = project ? `${project.owner}/${project.repo}` : null;
 
   function postJson(path: string, body: unknown): Promise<Response> {
     return api(path, {
@@ -523,11 +782,17 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
        (owner, name, visibility) rather than a folder. */
     createDestination: "repo",
 
+    /* A refusal throws rather than resolving as though the session were live. This used to ignore
+       the response entirely, so a project the backend would not open "activated" fine and the first
+       visible failure was a generic "Failed to load project" two calls later. */
     async activate() {
       if (!project) {
         return;
       }
-      await postJson("/activate", {});
+      const res = await postJson("/activate", {});
+      if (!res.ok) {
+        throw await platformError(res, "Failed to open the project session");
+      }
     },
 
     /* The shell binds the session to one repo+branch before Studio boots, so
@@ -1213,22 +1478,9 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         }),
       });
       if (!res.ok) {
-        // Preserve the structured 403 (needs_installation_access + installUrl) so the New
-        // Project modal can render an install link instead of flattened text.
-        const body = (await res.json().catch(() => null)) as
-          | (ErrorBody & { installUrl?: string; type?: string })
-          | null;
-        /*
-         * `code` survives as the machine-readable discriminator the modal branches on, and a
-         * problem document supplies it from its `type` — `problemSlug` derives the same string the
-         * old `code` field carried, so the modal's branch is unchanged either way.
-         */
-        throw Object.assign(new Error(problemDetail(body) ?? "Failed to create project"), {
-          ...((problemSlug(body?.type) ?? body?.code)
-            ? { code: problemSlug(body?.type) ?? body?.code }
-            : {}),
-          ...(body?.installUrl ? { installUrl: body.installUrl } : {}),
-        });
+        /* Structured, so the New Project modal can act on what failed: an install link for a
+           missing App installation, the offered actions of an `action-required` refusal. */
+        throw await platformError(res, "Failed to create project");
       }
       const created = (await res.json()) as { owner: string; name: string; defaultBranch: string };
       return {
@@ -1328,18 +1580,19 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     },
 
     /**
-     * GitHub-App installation coverage from /me — powers the welcome install prompt and the repo
-     * picker's "grant access to more repositories" links (`manageUrl` per installation).
+     * The account status from /me: GitHub-App installation coverage — which powers the welcome
+     * install prompt and the repo picker's "grant access to more repositories" links (`manageUrl`
+     * per installation) — and whatever account rows and notices the platform sends (desktop.md
+     * §10.4), each checked before it is drawn.
      */
     async getAccountStatus() {
       const res = await fetch("/api/v1/me", { credentials: "include" });
       if (!res.ok) {
         return null;
       }
-      const me = (await res.json()) as {
-        installations?: { id: number; account: string | null; manageUrl?: string }[];
-        appInstallUrl?: string;
-      };
+      const me = (await res.json()) as MeWire;
+      const entries = accountEntries(me.entries);
+      const notices = accountNotices(me.notices);
       return {
         installations: (me.installations ?? []).map((entry) => {
           const installation: AccountStatus["installations"][number] = {
@@ -1352,7 +1605,47 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           return installation;
         }),
         ...(me.appInstallUrl ? { appInstallUrl: me.appInstallUrl } : {}),
+        ...(entries.length > 0 ? { entries } : {}),
+        ...(notices.length > 0 ? { notices } : {}),
       };
+    },
+
+    /**
+     * An offered action, in a window of its own. Synchronous up to `window.open`, which is the
+     * whole contract (types.ts): this runs inside a click, and a window opened after an `await` is
+     * one the browser blocks. So the target is the action's own `href`, never something that has to
+     * be fetched first; an action with no `href` is not one this platform performs.
+     *
+     * A blocked window navigates the page itself, and whatever the platform has to say about how
+     * that ended arrives as a `toast` notice once the page is back. Concurrent calls join the
+     * running flow, for `cfConnect`'s reason.
+     */
+    performAction(action: OfferedAction) {
+      if (typeof window === "undefined" || typeof location === "undefined" || !action.href) {
+        return Promise.resolve(null);
+      }
+      const running = actionFlow;
+      if (running) {
+        try {
+          running.popup?.focus();
+        } catch {
+          // A cross-origin window may refuse focus; joining the flow is what mattered.
+        }
+        return running.promise;
+      }
+      const popup = window.open(action.href, "jx-action", "width=980,height=820");
+      if (!popup) {
+        location.assign(action.href);
+        return Promise.resolve({ status: "redirect" } as const);
+      }
+      const handle: ActionFlow = { popup, promise: Promise.resolve(null) };
+      actionFlow = handle;
+      handle.promise = awaitAction(popup).finally(() => {
+        if (actionFlow === handle) {
+          actionFlow = null;
+        }
+      });
+      return handle.promise;
     },
 
     /** Open a PR from this session's branch (ProjectSession /git/pr). */
@@ -1401,7 +1694,12 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }
       const handle: CfConnectFlow = { popup: null, promise: Promise.resolve(null) };
       cfConnectFlow = handle;
-      handle.promise = runCfConnect(handle).finally(() => {
+      /* The project rides along so access rules keyed on the repository can apply to the connect,
+         which is not under the session base and would otherwise not know which project asked. */
+      const connectUrl = projectHint
+        ? `/api/v1/cf/connect?project=${encodeURIComponent(projectHint)}`
+        : "/api/v1/cf/connect";
+      handle.promise = runCfConnect(handle, connectUrl).finally(() => {
         if (cfConnectFlow === handle) {
           cfConnectFlow = null;
         }
@@ -1446,16 +1744,30 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
 
     /** Allowlisted Cloudflare API passthrough (platform injects the OAuth token). */
     async cfApi(apiPath: string, init?: { method?: string; body?: unknown }) {
+      /* The project rides in a HEADER, never the query: the platform forwards this path's query
+         string to Cloudflare verbatim. */
+      const headers: Record<string, string> = {
+        ...(projectHint ? { "X-Jx-Project": projectHint } : {}),
+        ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }),
+      };
       const res = await fetch(`/api/v1/cf/proxy${apiPath}`, {
         method: init?.method ?? "GET",
         credentials: "include",
-        ...(init?.body === undefined
-          ? {}
-          : {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(init.body),
-            }),
+        ...(Object.keys(headers).length === 0 ? {} : { headers }),
+        ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       });
+      /* An `action-required` refusal is the platform's answer, not Cloudflare's, so it is not
+         dressed as one: it keeps its own sentence and the actions the publish flow offers. Read
+         from a clone, because every other 403 is Cloudflare's own and is parsed below. */
+      if (res.status === 403) {
+        const refusal = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as StructuredBody | null;
+        if (isActionRequiredBody(refusal)) {
+          throw await platformError(res, "Publishing was refused");
+        }
+      }
       const envelope = (await res.json()) as {
         success?: boolean;
         result?: unknown;
@@ -1472,8 +1784,12 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
 
     // ─── AI (platform Workers AI proxy, StreamEvent SSE) ───────────────────
 
+    /* With a project bound, the chat route is told which one — `siblingRoute` keeps the query, so
+       the `/models` probe carries it too. */
     aiChatUrl() {
-      return "/api/v1/ai/chat";
+      return projectHint
+        ? `/api/v1/ai/chat?project=${encodeURIComponent(projectHint)}`
+        : "/api/v1/ai/chat";
     },
   };
 

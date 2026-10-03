@@ -6,7 +6,7 @@
  * declared once, exported as data, rendered into the docs by the same generator, and checked by the
  * same drift machinery.
  *
- * **What belongs here.** A type is a *class* of failure a client might handle differently — not a
+ * **What belongs here.** A type is a _class_ of failure a client might handle differently — not a
  * message. "The project root was refused" is a type; "root /x/y was refused" is a `detail`. If two
  * entries would only ever differ in their wording, they are one type.
  *
@@ -78,7 +78,18 @@ export const PROBLEM_TYPES = {
     403,
     "The path resolves outside the active project",
   ),
-
+  /*
+   * Refused for a reason the user can act on (desktop.md §10.4): a role, a policy, a plan, a quota.
+   * Its own type rather than a `forbidden` with a code, by the same test as
+   * `needsInstallationAccess`: the client does something different with it — it offers the
+   * `actions` the backend listed, under the backend's `heading`, and follows `retry` once one is
+   * done. Nothing here says WHY; that is the backend's, and so is every word the user reads.
+   */
+  actionRequired: problem("action-required", 403, "An action is required first", [
+    "actions",
+    "heading",
+    "retry",
+  ]),
   // ─── Backend state ────────────────────────────────────────────────────────
   noActiveProject: problem("no-active-project", 409, "No project is active on this backend"),
   capabilityUnavailable: problem(

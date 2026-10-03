@@ -102,6 +102,8 @@ const TEST_OBS = "observability accessor — only its own tests read the private
  */
 const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "account-status.ts": { resetAccountStatus: TEST_RESET },
+  "account/action-flow.ts": { resetActionFlow: TEST_RESET },
+  "account/action-required.ts": { resetActionReports: TEST_RESET },
   /* The surface registry's readers were on this ledger from the day the façade landed until the
      live chrome lane (`services/live-surfaces.ts`) read them; the ledger ratcheted down as designed. */
   "services/surface-registry.ts": {

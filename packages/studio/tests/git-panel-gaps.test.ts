@@ -718,6 +718,39 @@ describe("commit form", () => {
     await flush();
     expect(String(git.error)).toContain("push boom");
     expect(git.loading).toBe(false);
+    // The commit landed, so offering the same message again would invite a duplicate commit.
+    expect(git.commitMessage).toBe("");
+  });
+
+  /* The field is cleared before the call, so a refused commit — a conflict, or a hosted plan's
+     refusal (desktop.md §10.4) — used to take the message down with it. */
+  test("a commit that fails gives the message back, both ways of committing", async () => {
+    mockPlatform.gitCommit = log("gitCommit", async () => {
+      throw new Error("Saving needs a plan");
+    });
+    seedRepoUi({ commitMessage: "keep me" });
+    const panel = await draw();
+    chord(commitInput(panel), { ctrlKey: true });
+    await flush();
+    expect(String(git.error)).toContain("Saving needs a plan");
+    expect(git.commitMessage).toBe("keep me");
+
+    click(part(panel, "commit-button"));
+    await flush();
+    expect(git.commitMessage).toBe("keep me");
+    expect(callNames()).not.toContain("gitPush");
+  });
+
+  test("a message typed while the failed commit ran is not overwritten", async () => {
+    mockPlatform.gitCommit = log("gitCommit", async () => {
+      git.commitMessage = "a fresh draft";
+      throw new Error("conflict");
+    });
+    seedRepoUi({ commitMessage: "old message" });
+    const panel = await draw();
+    chord(commitInput(panel), { ctrlKey: true });
+    await flush();
+    expect(git.commitMessage).toBe("a fresh draft");
   });
 
   /* The split button's dropdown is the KIT MENU. It was a hand-built `<div>` toggled by a

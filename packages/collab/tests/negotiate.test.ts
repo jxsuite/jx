@@ -54,7 +54,28 @@ describe("negotiateCollab", () => {
   });
 
   test("refuses a server that says collaboration is off", () => {
-    expect(negotiateCollab({ collab: false }).refused).toBeString();
+    expect(negotiateCollab({ collab: false }).refused).toBe(
+      "This server has collaboration disabled.",
+    );
+  });
+
+  /* A refusal an action would lift is not "disabled", and only the server knows which one it is. */
+  test("a refusal that explains itself is reported in the server's own words", () => {
+    const result = negotiateCollab({
+      collab: false,
+      detail: "  Live collaboration on acme/site is for team members.  ",
+    });
+    expect(result.offer).toEqual([]);
+    expect(result.refused).toBe("Live collaboration on acme/site is for team members.");
+  });
+
+  test("a blank or non-string detail falls back to the generic sentence", () => {
+    expect(negotiateCollab({ collab: false, detail: "   " }).refused).toBe(
+      "This server has collaboration disabled.",
+    );
+    expect(negotiateCollab({ collab: false, detail: 42 }).refused).toBe(
+      "This server has collaboration disabled.",
+    );
   });
 });
 

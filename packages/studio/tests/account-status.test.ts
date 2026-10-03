@@ -8,9 +8,12 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   getAccountStatus,
   getRepoAccessLinks,
+  getAccountEntries,
+  getBannerNotices,
   hydrateAccountStatus,
   needsAppInstall,
   resetAccountStatus,
+  takeToastNotices,
 } from "../src/account-status";
 import { installUrlOf, platformErrorInfo } from "../src/platform-errors";
 
@@ -138,5 +141,49 @@ describe("platform-errors", () => {
     // A different structured code is not the install case.
     const otherCode = Object.assign(new Error("x"), { code: "other", installUrl: "u" });
     expect(installUrlOf(otherCode)).toBeNull();
+  });
+});
+
+describe("the platform's rows and notices", () => {
+  const ROW = { detail: "Member since spring.", id: "team", label: "Team" };
+  const BANNER = { id: "b", message: "Read the new policy.", title: "Policy" };
+  const TOAST = { display: "toast" as const, id: "t", message: "You joined.", title: "Joined" };
+
+  async function withStatus(extra: Record<string, unknown> = {}): Promise<void> {
+    installMockPlatform({
+      getAccountStatus: () => Promise.resolve({ installations: [], ...extra }),
+    });
+    await hydrateAccountStatus();
+  }
+
+  test("a platform that sends none has none, and nothing is read before hydration", async () => {
+    resetAccountStatus();
+    expect(getAccountEntries()).toEqual([]);
+    expect(getBannerNotices()).toEqual([]);
+    expect(takeToastNotices()).toEqual([]);
+    await withStatus();
+    expect(getAccountEntries()).toEqual([]);
+    expect(getBannerNotices()).toEqual([]);
+    expect(takeToastNotices()).toEqual([]);
+  });
+
+  test("rows pass through; banners and toasts are told apart", async () => {
+    await withStatus({
+      entries: [ROW],
+      notices: [BANNER, { ...BANNER, display: "banner", id: "b2" }, TOAST],
+    });
+    expect(getAccountEntries()).toEqual([ROW]);
+    expect(getBannerNotices().map((notice) => notice.id)).toEqual(["b", "b2"]);
+    expect(takeToastNotices()).toEqual([TOAST]);
+  });
+
+  test("a toast is taken once, until the status is reset", async () => {
+    await withStatus({ notices: [TOAST] });
+    expect(takeToastNotices()).toEqual([TOAST]);
+    await hydrateAccountStatus();
+    expect(takeToastNotices()).toEqual([]);
+    resetAccountStatus();
+    await withStatus({ notices: [TOAST] });
+    expect(takeToastNotices()).toEqual([TOAST]);
   });
 });
