@@ -25,6 +25,7 @@
 
 import { getPlatform } from "../platform";
 import { baseName, dirName, normalizeProjectPath } from "./media-paths";
+import { notedListing } from "./asset-versions";
 import { extensionOf, mediaKind } from "./media-upload";
 import type { AssetKind } from "./media-upload";
 import type { DirEntry } from "../types";
@@ -126,7 +127,7 @@ export async function loadMediaMeta(path: string): Promise<MediaMeta> {
   const pending = (async (): Promise<MediaMeta> => {
     let entry: DirEntry | undefined;
     try {
-      const listing = await getPlatform().listDirectory(dirName(key));
+      const listing = await notedListing(() => getPlatform().listDirectory(dirName(key)));
       entry = listing.find((item) => normalizeProjectPath(item.path) === key);
     } catch {
       // Unreadable or not yet created — the size stays unknown rather than becoming zero.

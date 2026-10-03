@@ -13,6 +13,8 @@
 
 import { negotiateCollab } from "@jxsuite/collab/negotiate";
 import type { CollabNegotiation } from "@jxsuite/collab/negotiate";
+// Static, and free to be: `reconnect.ts` imports nothing, so no Yjs reaches the initial bundle.
+import { createReconnectScheduler } from "@jxsuite/collab/reconnect";
 import type { WsCollabConnection } from "@jxsuite/collab/client";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
@@ -31,6 +33,7 @@ import type {
   ExtensionCatalogEntry,
   ExtensionsInfo,
   FsEvent,
+  FsResyncReason,
   GitBranchesResult,
   GitLogEntry,
   GitStatusResult,
@@ -957,11 +960,25 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     },
 
     /**
-     * Live session events over the gateway WebSocket. Reconnects with a small backoff; the DO
-     * pushes {kind:"fs"} batches for file mutations (including those from other tabs) and
-     * {kind:"git"} notices this handler ignores.
+     * Live session events over the gateway WebSocket. The DO pushes {kind:"fs"} batches for file
+     * mutations (including those from other tabs) and {kind:"git"} notices.
+     *
+     * The socket reconnects on jittered backoff, cut short by the browser's wake signals
+     * (`@jxsuite/collab/reconnect`): every Studio on a gateway loses it at the same deploy, and a
+     * laptop that wakes onto a network should not sit out a 30-second timer first.
+     *
+     * Two things the event stream cannot say on its own are reported through `onResync`. A socket
+     * that came back missed every batch sent while it was gone, and the DO does not replay them —
+     * so every open after the first is a `"reconnect"`. The first open is an `"open"`: the
+     * session's listings carry content versions, the boot's first listings race the handshake, and
+     * a change broadcast before this socket joined (a first connect that fails during a gateway
+     * deploy can stretch that to a whole backoff) reached nobody. And a commit lands with a
+     * `committed` notice and no per-file events, so it is a `"commit"`.
      */
-    subscribeFileEvents(handler: (events: FsEvent[]) => void) {
+    subscribeFileEvents(
+      handler: (events: FsEvent[]) => void,
+      options?: { onResync?: (reason: FsResyncReason) => void },
+    ) {
       // No project means an empty base, so the bare `/events` URL hits no gateway route.
       // That fails in a reconnect loop; mirror `collab`'s guard and degrade to no-op on the hub.
       if (!project || typeof WebSocket === "undefined" || typeof location === "undefined") {
@@ -969,11 +986,12 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }
       let socket: WebSocket | null = null;
       let closed = false;
-      let retryMs = 1000;
+      let everOpened = false;
       const connect = () => {
         const scheme = location.protocol === "https:" ? "wss" : "ws";
-        socket = new WebSocket(`${scheme}://${location.host}${base}/events`);
-        socket.addEventListener("message", (ev: MessageEvent) => {
+        const ws = new WebSocket(`${scheme}://${location.host}${base}/events`);
+        socket = ws;
+        ws.addEventListener("message", (ev: MessageEvent) => {
           let payload: SessionEventWire;
           try {
             payload = JSON.parse(ev.data as string) as SessionEventWire;
@@ -982,21 +1000,26 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           }
           if (payload.kind === "fs" && payload.events?.length) {
             handler(payload.events);
+          } else if (payload.kind === "git" && payload.event === "committed") {
+            options?.onResync?.("commit");
           }
         });
-        socket.addEventListener("open", () => {
-          retryMs = 1000;
+        ws.addEventListener("open", () => {
+          scheduler.opened();
+          options?.onResync?.(everOpened ? "reconnect" : "open");
+          everOpened = true;
         });
-        socket.addEventListener("close", () => {
+        ws.addEventListener("close", () => {
           if (!closed) {
-            setTimeout(connect, retryMs);
-            retryMs = Math.min(retryMs * 2, 30_000);
+            scheduler.scheduleRetry();
           }
         });
       };
+      const scheduler = createReconnectScheduler(connect);
       connect();
       return () => {
         closed = true;
+        scheduler.dispose();
         socket?.close();
       };
     },

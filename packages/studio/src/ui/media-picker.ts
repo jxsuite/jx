@@ -47,6 +47,7 @@ import {
   seedMediaMeta,
 } from "../files/media-meta";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
+import { notedListing } from "../files/asset-versions";
 import type { MediaBrowserRow, MediaBrowserSurfaceHandle } from "../surfaces/media-browser";
 import type { MediaFieldHandle, MediaFieldView } from "../surfaces/media-field";
 
@@ -75,7 +76,7 @@ async function collectMedia(
 ): Promise<MediaEntry[]> {
   const results: MediaEntry[] = [];
   try {
-    const entries = await platform.listDirectory(dir);
+    const entries = await notedListing(() => platform.listDirectory(dir));
     seedMediaMeta(entries);
     for (const entry of entries) {
       if (entry.type === "directory") {
