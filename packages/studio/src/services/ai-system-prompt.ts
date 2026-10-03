@@ -1,8 +1,8 @@
 /**
  * Ai-system-prompt.js — Dynamic system prompt builder for the Jx AI assistant
  *
- * Constructs the system prompt based on the current project context, open document,
- * and available components. The quality of AI output depends critically on this file.
+ * Constructs the system prompt based on the current project context, open document, and available
+ * components. The quality of AI output depends critically on this file.
  *
  * @license MIT
  */
@@ -656,6 +656,75 @@ When asked to build a site with multiple pages:
 
 // ─── System prompt builder ───────────────────────────────────────────────────
 
+const ROLE = `You are an expert Jx builder assistant embedded in Jx Studio. You help users build websites, components, pages, and layouts using the Jx JSON schema. The live jxsuite.com marketing site is built entirely with Jx — you can produce production-quality Jx code.`;
+
+/**
+ * What to do when a tool call fails. Static: it names tools and validation messages, never the
+ * state, so it belongs to the cacheable prefix rather than after the dynamic sections.
+ */
+const ERROR_RECOVERY = `## Error Recovery
+
+If a tool call fails (returns { success: false }):
+1. Read the error message carefully — it includes a "→ Fix:" hint telling you exactly how to correct the error.
+2. Each error points to a specific path in the document and a specific rule violation.
+3. Apply the suggested fix using set_property, delete_node, or add_child as appropriate.
+4. Do NOT re-issue the exact same tool call with the same arguments — you must CHANGE something.
+5. If you see the SAME error after 2 attempts, try a completely different approach (e.g., remove and re-add the node instead of patching it).
+
+### Common validation errors and their fixes:
+
+| Error pattern | What happened | How to fix |
+|---|---|---|
+| "must NOT have additional property" in style | You used a non-camelCase CSS property (e.g. "background-color") or put an HTML attribute directly on the element. | Use camelCase: "backgroundColor". Put aria-*, data-*, role, and other non-IDL attributes inside the "attributes" object: { "attributes": { "aria-label": "..." } } |
+| "must match pattern" on tagName | A custom element tag name doesn't contain a hyphen. | Add a hyphen: "newsletter-form" not "newsletter". Standard HTML elements use their exact name ("div", "p", "input"). |
+| "must be string" | A value is an unquoted number, boolean, or bare word. | Wrap the value in quotes: "10px" not 10px. All CSS values and text must be strings. |
+| "must be number" / "must be integer" | A numeric field (like index, tabIndex) is wrapped in quotes. | Remove the quotes: use 0 not "0". |
+| "must have required property" | A required field is missing from the node. | Add the missing property. Every element must have "tagName". |
+| "must be object" | A field that expects an object (like style or attributes) received a string or other type. | Use {} not a string. |
+| "No node exists at path" | The path you provided doesn't point to an existing node. | Call read_document first to see the current structure and valid paths, then use the correct path. |
+
+### If you keep getting errors:
+- Call read_document again — the document may have changed since you last read it.
+- Remove the problematic node entirely with delete_node, then re-create it correctly with add_child.
+- If the error message points to a different path than you expected, the node might have moved due to previous edits.`;
+
+/** What every section of the prompt is joined with. */
+const SECTION_SEPARATOR = "\n\n---\n\n";
+
+/**
+ * The part of every system prompt that does not depend on the state, byte for byte: the role, the
+ * Jx reference sections, and the error-recovery guidance, each followed by the section separator.
+ *
+ * It exists for providers' prompt caches. A cache matches on a PREFIX of the request, and the
+ * system prompt is the request's first message, so the reference material (most of the prompt's
+ * tokens) only hits when nothing that changes between rounds comes before it. The prompt used to
+ * open with the role, the workflow for the current state and its tool list, so opening a document
+ * or registering one more command tool moved the first changed byte to the second paragraph and
+ * every request after it paid for the whole reference again. Everything dynamic — the mode, the
+ * tool list, the document, project and file summaries — now follows this prefix, and the closing
+ * instructions stay last. {@link buildSystemPrompt} always starts with it, and its tests hold that
+ * for every combination of the state flags.
+ */
+export const SYSTEM_PROMPT_STATIC_PREFIX =
+  [
+    // 1. Role
+    ROLE,
+    // 2. Jx schema reference — kept in ALL modes (pre-project the model plans starter content)
+    JX_SCHEMA_REFERENCE,
+    // 2a. State shape decision tree
+    STATE_SHAPE_DECISION_TREE,
+    // 2b. Real-world patterns
+    REAL_WORLD_PATTERNS,
+    // 2c. Design principles — spacing, type, color, layout, restraint
+    DESIGN_PRINCIPLES,
+    // 2d. Control flow & reactivity — signals, list rendering ($map), conditionals ($switch)
+    CONTROL_FLOW_PATTERNS,
+    // 2e. Multi-page site building — layouts, file-based routing, navigation
+    MULTI_PAGE_PATTERNS,
+    // 3. Error recovery guidance
+    ERROR_RECOVERY,
+  ].join(SECTION_SEPARATOR) + SECTION_SEPARATOR;
+
 /**
  * Build a dynamic system prompt for the AI assistant.
  *
@@ -681,7 +750,7 @@ export function buildSystemPrompt({
 }: BuildSystemPromptOptions = {}) {
   const hasDocument = Boolean(document);
 
-  // 1. Role, state-appropriate workflow, and the tool list for the current state.
+  // The state-appropriate workflow and the tool list for the current state.
   // The list the model is TOLD about and the list the gate will honour are the same filter, so a
   // Refusal is never a surprise to it. The command-projected tools arrive already filtered by
   // Their records' own gates, for the same reason — one function answers both the prompt and the
@@ -694,8 +763,6 @@ export function buildSystemPrompt({
   ]
     .map((blurb) => `- ${blurb}`)
     .join("\n");
-
-  const role = `You are an expert Jx builder assistant embedded in Jx Studio. You help users build websites, components, pages, and layouts using the Jx JSON schema. The live jxsuite.com marketing site is built entirely with Jx — you can produce production-quality Jx code.`;
 
   let workflow: string;
   if (!hasProject && !hasDocument) {
@@ -734,23 +801,10 @@ ${ASKING_THE_USER}
 
 Be concise. Don't explain what Jx is unless asked. Just build.`;
 
-  const sections = [`${role}\n\n${workflow}\n\n${closing}`];
-
-  // eslint-disable-next-line unicorn/no-immediate-mutation -- conditional section builder: later sections are pushed only when their context exists
-  sections.push(
-    // 2. Jx schema reference — kept in ALL modes (pre-project the model plans starter content)
-    JX_SCHEMA_REFERENCE,
-    // 3. State shape decision tree
-    STATE_SHAPE_DECISION_TREE,
-    // 4. Real-world patterns
-    REAL_WORLD_PATTERNS,
-    // 4a. Design principles — spacing, type, color, layout, restraint
-    DESIGN_PRINCIPLES,
-    // 4b. Control flow & reactivity — signals, list rendering ($map), conditionals ($switch)
-    CONTROL_FLOW_PATTERNS,
-    // 4c. Multi-page site building — layouts, file-based routing, navigation
-    MULTI_PAGE_PATTERNS,
-  );
+  /* 4. The mode. Everything from here on is a function of what is open right now, so it all follows
+     SYSTEM_PROMPT_STATIC_PREFIX: a provider's prompt cache matches on a prefix, and the first byte
+     that differs between two requests ends the match. */
+  const sections = [`## Current Mode\n\n${workflow}`];
 
   // 5. Current document context
   if (document) {
@@ -758,7 +812,7 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
     sections.push(`## Current Document\n\n${summary}`);
   }
 
-  // 6. Project context
+  // 5a. Project context
   if (hasProject && (projectConfig || components || projectRoot)) {
     const projectSummary = buildProjectSummary({
       components,
@@ -771,7 +825,7 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
     }
   }
 
-  // 6a. File inventory — a compact map of the project for cross-file work
+  // 5b. File inventory — a compact map of the project for cross-file work
   if (hasProject && fileInventory && fileInventory.length > 0) {
     const capped = fileInventory.slice(0, FILE_INVENTORY_CAP);
     const more =
@@ -781,34 +835,10 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
     sections.push(`## Project Files\n\n${capped.join("\n")}${more}`);
   }
 
-  // 7. Error recovery guidance
-  sections.push(`## Error Recovery
+  // 6. Closing — last, where a long prompt's final instructions carry the most weight.
+  sections.push(closing);
 
-If a tool call fails (returns { success: false }):
-1. Read the error message carefully — it includes a "→ Fix:" hint telling you exactly how to correct the error.
-2. Each error points to a specific path in the document and a specific rule violation.
-3. Apply the suggested fix using set_property, delete_node, or add_child as appropriate.
-4. Do NOT re-issue the exact same tool call with the same arguments — you must CHANGE something.
-5. If you see the SAME error after 2 attempts, try a completely different approach (e.g., remove and re-add the node instead of patching it).
-
-### Common validation errors and their fixes:
-
-| Error pattern | What happened | How to fix |
-|---|---|---|
-| "must NOT have additional property" in style | You used a non-camelCase CSS property (e.g. "background-color") or put an HTML attribute directly on the element. | Use camelCase: "backgroundColor". Put aria-*, data-*, role, and other non-IDL attributes inside the "attributes" object: { "attributes": { "aria-label": "..." } } |
-| "must match pattern" on tagName | A custom element tag name doesn't contain a hyphen. | Add a hyphen: "newsletter-form" not "newsletter". Standard HTML elements use their exact name ("div", "p", "input"). |
-| "must be string" | A value is an unquoted number, boolean, or bare word. | Wrap the value in quotes: "10px" not 10px. All CSS values and text must be strings. |
-| "must be number" / "must be integer" | A numeric field (like index, tabIndex) is wrapped in quotes. | Remove the quotes: use 0 not "0". |
-| "must have required property" | A required field is missing from the node. | Add the missing property. Every element must have "tagName". |
-| "must be object" | A field that expects an object (like style or attributes) received a string or other type. | Use {} not a string. |
-| "No node exists at path" | The path you provided doesn't point to an existing node. | Call read_document first to see the current structure and valid paths, then use the correct path. |
-
-### If you keep getting errors:
-- Call read_document again — the document may have changed since you last read it.
-- Remove the problematic node entirely with delete_node, then re-create it correctly with add_child.
-- If the error message points to a different path than you expected, the node might have moved due to previous edits.`);
-
-  return sections.join("\n\n---\n\n");
+  return SYSTEM_PROMPT_STATIC_PREFIX + sections.join(SECTION_SEPARATOR);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
