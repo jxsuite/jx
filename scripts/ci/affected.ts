@@ -196,6 +196,8 @@ const NO_TESTS = [
   ".gitattributes",
   ".gitignore",
   ".oxfmtrc.json",
+  // Agent tooling: the MCP servers a coding agent starts. No suite reads it.
+  ".mcp.json",
   ".pre-commit-config.yaml",
   "commitlint.config.ts",
   "release-please-config.json",
