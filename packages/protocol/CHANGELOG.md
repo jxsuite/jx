@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.6.0](https://github.com/jxsuite/jx/compare/protocol-v2.5.0...protocol-v2.6.0) (2026-10-03)
+
+
+### Features
+
+* backend-directed access: action-required refusals, offered actions, platform account rows ([87862db](https://github.com/jxsuite/jx/commit/87862dbc16d5b9c99f664030d5d907cf34d897fe))
+* offer a hosted platform's plan when it refuses with subscription-required ([9e3bc2f](https://github.com/jxsuite/jx/commit/9e3bc2fda60125292f9a1bc572bfb86fdd9d017c))
+* replace the hosted-plan client with backend-directed access ([42d164c](https://github.com/jxsuite/jx/commit/42d164c2a9b9196d3d888af433c47f19131dd225))
+
 ## [2.5.0](https://github.com/jxsuite/jx/compare/protocol-v2.4.0...protocol-v2.5.0) (2026-10-01)
 
 
