@@ -6,7 +6,7 @@ on:
       - main
   # …and on a schedule, because `push` is no longer reliable on this branch.
   #
-  # Under the dependency-autopilot policy (CLAUDE.md) most merges to `main` are auto-merges, and
+  # Under the dependency-autopilot policy (.github/AGENTS.md) most merges to `main` are auto-merges, and
   # GitHub suppresses the events raised by its own `GITHUB_TOKEN` — so a Dependabot merge produces
   # no `push` event and this workflow would simply never see it. The visible symptom would be a
   # release pull request that silently stops picking up commits.
@@ -95,7 +95,7 @@ jobs:
   # Needs build-msix specifically (not just release-please) because it downloads the .msix THAT
   # job attaches to the release — there is nothing to submit until it exists. `if: always()` isn't
   # used here on purpose: a build-msix failure means there is no asset to fetch, so this should
-  # skip rather than fail on a missing file. See store-publish.yml and CLAUDE.md's "Microsoft Store
+  # skip rather than fail on a missing file. See store-publish.yml and packages/desktop/AGENTS.md's "Microsoft Store
   # Publishing" section for what happens once it runs — including that it's a clean no-op until the
   # five STORE_* secrets are configured, so merging this is safe before that setup is done.
   store-publish:
@@ -118,7 +118,7 @@ jobs:
     secrets: inherit
 
   # Skips rather than fails when build-snap did not succeed, for store-publish's reason: there is
-  # no asset to fetch. A clean no-op until SNAPCRAFT_STORE_CREDENTIALS exists (CLAUDE.md, "Snap
+  # no asset to fetch. A clean no-op until SNAPCRAFT_STORE_CREDENTIALS exists (packages/desktop/AGENTS.md, "Snap
   # Store Publishing").
   snap-publish:
     needs: [release-please, build-snap]

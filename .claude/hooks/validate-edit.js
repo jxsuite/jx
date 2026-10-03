@@ -144,7 +144,7 @@ if (file.endsWith(".md")) {
  * the script also gets `isFormattable`'s exemptions (CHANGELOG, fixtures,
  * vendor) for free.
  *
- * The escape half is worth the subprocess on its own: CLAUDE.md's Specs policy
+ * The escape half is worth the subprocess on its own: AGENTS.md's Specs policy
  * notes the escape and the UNRECOVERABLE link/bold flattening are the same
  * event, so this firing is the prompt to check the file's links survived.
  */

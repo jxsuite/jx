@@ -394,7 +394,7 @@ async function main() {
             `(${failure.tests.map((test) => basename(test)).join(", ")}), but none of them load it.`,
     );
   }
-  console.error(`\nNew source files must ship with tests in the same PR (CLAUDE.md).`);
+  console.error(`\nNew source files must ship with tests in the same PR (AGENTS.md).`);
   process.exit(1);
 }
 

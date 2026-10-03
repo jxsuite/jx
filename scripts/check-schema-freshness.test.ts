@@ -353,7 +353,7 @@ describe("the backfill lane", () => {
   test("commits as a `chore`, with no angle bracket in the subject", () => {
     // `chore` so landing on a release pull request cannot change what it releases; no `<tag>`
     // Because a raw angle bracket in a subject deletes a package from its own release
-    // (CLAUDE.md, and scripts/check-changelog-safety.ts).
+    // (.github/AGENTS.md, and scripts/check-changelog-safety.ts).
     const subjects = [...runs.matchAll(/git commit -m "([^"]+)"/g)].map((m) => m[1]!);
     expect(subjects.length).toBeGreaterThan(0);
     for (const subject of subjects) {

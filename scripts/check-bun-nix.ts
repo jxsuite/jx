@@ -13,10 +13,10 @@
  * the same answer in under a second, naming the packages that moved and the command that fixes it.
  *
  * IT IS NOT A BLOCKING GATE ON EVERY PULL REQUEST, on purpose. Under the dependency-autopilot
- * policy (CLAUDE.md) a Dependabot pull request merges with `bun.lock` moved and `bun.nix` untouched
- * — no bot can regenerate it on a Dependabot branch and have the result re-checked — so `main`
- * carries a lagging `bun.nix` between releases and a gate here would simply block every dependency
- * update. Three callers use it instead, each asking a different question:
+ * policy (.github/AGENTS.md) a Dependabot pull request merges with `bun.lock` moved and `bun.nix`
+ * untouched — no bot can regenerate it on a Dependabot branch and have the result re-checked — so
+ * `main` carries a lagging `bun.nix` between releases and a gate here would simply block every
+ * dependency update. Three callers use it instead, each asking a different question:
  *
  * - `.github/workflows/nix.yml` runs `--fix` in the WORKING TREE before every build, so the Nix check
  *   on a pull request answers "does this dependency set build?" rather than "did a bot remember to

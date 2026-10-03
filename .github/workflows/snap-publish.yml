@@ -1,6 +1,6 @@
 # Uploads the desktop snaps to the Snap Store, the Ubuntu twin of store-publish.yml: build-snap.yml
 # already attached `jx-studio_<version>_<arch>.snap` to the GitHub release, and this hands them to
-# `scripts/snap-publish.ts`, which owns every decision after that (CLAUDE.md, "Snap Store
+# `scripts/snap-publish.ts`, which owns every decision after that (packages/desktop/AGENTS.md, "Snap Store
 # Publishing"): no-op until SNAPCRAFT_STORE_CREDENTIALS exists, a re-run of an uploaded release is
 # success, a manual-review hold is success, and an expiring login is a warning before it is an
 # outage.

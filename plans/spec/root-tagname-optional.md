@@ -87,7 +87,7 @@ Run `bun test --isolate --coverage` from `packages/compiler` and from `packages/
   - The page is `{ $layout: "./l.json", tagName: "main", children: [{ tagName: "p" }] }`.
   - The result's `tagName` is `"body"`, and its `children` equal `[{ tagName: "p" }]`, so no `main` node appears anywhere in the tree.
 
-Coverage: both cases exercise existing lines only and add no source file, so the manifest check is unaffected. They cannot lower any file's coverage. The thresholds in `packages/compiler/bunfig.toml` (`lines = 0.982, functions = 0.98`) and `packages/site/bunfig.toml` (`lines = 0.99, functions = 1.0`) stay as they are unless the run shows a worst file rising, in which case ratchet as CLAUDE.md says.
+Coverage: both cases exercise existing lines only and add no source file, so the manifest check is unaffected. They cannot lower any file's coverage. The thresholds in `packages/compiler/bunfig.toml` (`lines = 0.982, functions = 0.98`) and `packages/site/bunfig.toml` (`lines = 0.99, functions = 1.0`) stay as they are unless the run shows a worst file rising, in which case ratchet as AGENTS.md says.
 
 Gates for the paper half, all in `checks`:
 

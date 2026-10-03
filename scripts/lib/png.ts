@@ -4,7 +4,7 @@
  * `scripts/check-image-lock.ts --report` has to say **12.4% of pixels** rather than **the bytes
  * differ**, because a reviewer asked to eyeball 65 images will eyeball none. Saying it needs a
  * decoder, and this repo deliberately has none: `scripts/screenshots/thumbnails.ts` already builds
- * with image optimisation off because "Sharp is unavailable on some hosts" (NixOS), and CLAUDE.md
+ * with image optimisation off because "Sharp is unavailable on some hosts" (NixOS), and AGENTS.md
  * requires sharp to be mocked in every test for the same reason. So a native image dependency
  * cannot be added here without making the check unrunnable on a maintainer's laptop.
  *

@@ -136,7 +136,7 @@ jobs:
       # bun.nix is a pure function of bun.lock, and under the dependency-autopilot policy it is
       # allowed to lag: a Dependabot pull request moves the lockfile and cannot regenerate this
       # file, because a GITHUB_TOKEN push to a bot branch produces no check runs on the new head.
-      # See CLAUDE.md, Dependency Autopilot.
+      # See .github/AGENTS.md, Dependency Autopilot.
       #
       # So the two legs ask different questions, and the difference is the whole point.
       #

@@ -24,7 +24,7 @@ coveragePathIgnorePatterns = [
   # own run (0.95), and a build-only module such as `icons-build.ts` is 0% here by construction.
   "../ui/**",
 ]
-# Ratcheted to just under the workspace's worst file, per CLAUDE.md. The margin is thin on
+# Ratcheted to just under the workspace's worst file, per AGENTS.md. The margin is thin on
 # purpose — that is what a ratchet is — so a PR that drops either file below its current figure is
 # meant to go red rather than quietly spend the headroom.
 #

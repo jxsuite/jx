@@ -196,8 +196,11 @@ const NO_TESTS = [
   ".gitattributes",
   ".gitignore",
   ".oxfmtrc.json",
-  // Agent tooling: the MCP servers a coding agent starts. No suite reads it.
+  // Agent tooling: the MCP servers a coding agent starts, and the agent notes at every depth. Only
+  // `scripts/**` tests read the notes, and those run on every pull request regardless.
   ".mcp.json",
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
   "commitlint.config.ts",
   "release-please-config.json",
   ".release-please-manifest.json",
@@ -244,7 +247,7 @@ export function anchorProblems(
     }
   }
 
-  // Every workspace the matrix will emit must carry a coverage threshold — CLAUDE.md's per-file
+  // Every workspace the matrix will emit must carry a coverage threshold — AGENTS.md's per-file
   // Ratchet is enforced by each workspace's own bunfig, and a workspace without one is silently
   // Exempt from the policy.
   for (const w of workspaces) {
@@ -252,7 +255,7 @@ export function anchorProblems(
     if (!existsSync(bunfig)) {
       problems.push(
         `${w.dir} has no bunfig.toml, so it has no coverageThreshold and the per-file coverage\n` +
-          `  ratchet does not apply to it. See CLAUDE.md, Testing & Coverage Policy.`,
+          `  ratchet does not apply to it. See AGENTS.md, Testing & Coverage Policy.`,
       );
     }
   }
