@@ -19,7 +19,7 @@
  *   this, `clearGithubToken()` had zero callers: signing out of GitHub was not expressible.
  * - **Keyboard** — GENERATED from `commands/reference.ts`'s `shortcutReference()`, the same
  *   projection `docs/studio/interface/shortcuts.md` is built from. The registry is the one place a
- *   chord is declared, so the sheet cannot drift from the app or from the docs. Per CLAUDE.md's
+ *   chord is declared, so the sheet cannot drift from the app or from the docs. Per AGENTS.md's
  *   Screenshot Policy there is deliberately no screenshot of it — photographing generated content
  *   is a bug. It is searchable two ways, because there are two questions ("what is the shortcut for
  *   X" and "what did I just press"), and rebindable — as a LAYER over the registry

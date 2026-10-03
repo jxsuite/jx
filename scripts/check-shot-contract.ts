@@ -104,7 +104,7 @@ export const CONTRACT_VERSION = 1;
  * The check fails when a count goes UP — that is the whole contract. When a count goes down the run
  * prints a ratchet line naming the new value; lowering the committed number is then a one-line
  * edit, and raising one needs the same written justification as lowering a coverage threshold
- * (CLAUDE.md).
+ * (AGENTS.md).
  *
  * - `selectorActions` `click`/`hover`/`type`/`canvasClick`/`dispatchDragOver` with a selector. **0**
  *   — the contract has no verb that takes one.

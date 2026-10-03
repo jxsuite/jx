@@ -1,6 +1,5 @@
 {
   "name": "jxsuite",
-  "version": "0.34.0",
   "private": true,
   "license": "MIT",
   "author": "Avunu LLC <support@jxsuite.com> (https://jxsuite.com)",
@@ -29,7 +28,7 @@
     "desktop:msix": "bun run --cwd packages/desktop build:msix",
     "desktop:release": "bun run --cwd packages/desktop build:release",
     "desktop:stable": "bun run --cwd packages/desktop build:stable",
-    "dev": "bun run server.js",
+    "dev": "bun run scripts/dev.ts",
     "catalog:verify": "bun scripts/check-extension-catalog.ts",
     "catalog:sync": "bun scripts/check-extension-catalog.ts --fix",
     "docs:check": "bun run docs:generate && bun scripts/docs/check-doc-refs.ts",
@@ -94,7 +93,6 @@
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@commitlint/types": "^21.2.3",
-    "@ttsc/graph": "^0.30.4",
     "@types/bun": "1.4.2",
     "bun-types": "^1.4.2",
     "bun2nix": "^2.1.2",
@@ -109,7 +107,6 @@
     "release-please": "^17.11.2",
     "ts-migrate": "^0.1.35",
     "ts-migrate-plugins": "^0.1.35",
-    "ttsc": "^0.30.4",
     "typescript": "^7.0.2"
   },
   "nano-staged": {

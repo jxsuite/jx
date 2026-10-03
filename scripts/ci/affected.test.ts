@@ -154,6 +154,21 @@ describe("the nix build", () => {
     }
   });
 
+  test("agent tooling config costs NOTHING in the test matrix", () => {
+    // No suite reads these; unclassified, each would fail open into the whole fan-out.
+    for (const path of [
+      ".mcp.json",
+      "scripts/AGENTS.md",
+      "scripts/CLAUDE.md",
+      ".github/AGENTS.md",
+    ]) {
+      const d = decide([path], workspaces);
+      expect(d.mode).toBe("affected");
+      expect(d.testDirs).toEqual([]);
+      expect(d.bundles).toEqual([]);
+    }
+  });
+
   test("nix.yml must not ALSO carry its own pull_request trigger", async () => {
     // Two triggers would mean two builds of the same commit on the release pull request, in
     // Different concurrency groups, neither cancelling the other. test.yml owns this leg.

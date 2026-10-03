@@ -237,7 +237,7 @@ stdenv.mkDerivation {
     bun run --cwd packages/desktop scripts/pre-build-rpc.ts
 
     # The tree above is the WORKSPACE's: every member's dependencies plus the root's dev tooling
-    # (ttsc, release-please, oxlint, typescript, ts-migrate, …), which is what the app used to ship
+    # (release-please, oxlint, typescript, ts-migrate, …), which is what the app used to ship
     # — a ~950 MB store path that every `nix run`, Cachix push and snap carried. What the app runs
     # needs only @jxsuite/desktop's production graph, so it is installed again from the same
     # lockfile, against the same registry shim, with nothing else in it. The build outputs are

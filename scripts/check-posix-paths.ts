@@ -28,8 +28,8 @@
  *
  * Usage: `bun scripts/check-posix-paths.ts` (also run as the integration case in
  * `scripts/check-posix-paths.test.ts`, which is what puts it in the `changes` job's `bun test
- * --isolate scripts` — see CLAUDE.md's "Dependency Autopilot"/testing sections for why `scripts/**`
- * has no coverage workspace of its own).
+ * --isolate scripts` — see AGENTS.md's "Testing & Coverage Policy" for why `scripts/**` has no
+ * coverage workspace of its own).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

@@ -10,8 +10,8 @@
  * script adds is the policy the CLI does not have:
  *
  * - **Soft no-op until the secret exists.** `SNAPCRAFT_STORE_CREDENTIALS` is the output of `snapcraft
- *   export-login`, a one-time manual step (CLAUDE.md, "Snap Store Publishing"). Until it is set
- *   this exits 0 with a notice rather than reddening every release.
+ *   export-login`, a one-time manual step (packages/desktop/AGENTS.md, "Snap Store Publishing").
+ *   Until it is set this exits 0 with a notice rather than reddening every release.
  * - **Idempotent re-runs.** The store refuses a byte-identical upload. On a re-run of a release that
  *   already reached the store, that refusal means the work is done, so it is success.
  * - **Manual review is not failure.** The store holds some uploads for a human reviewer (always the
@@ -128,7 +128,7 @@ export async function publishSnaps(
   if (days !== null && days <= EXPIRY_WARNING_DAYS) {
     lines.push(
       `::warning::${CREDENTIALS_ENV} expires in ${days} day(s). Re-run snapcraft export-login and ` +
-        `replace the secret before then (CLAUDE.md, "Snap Store Publishing").`,
+        `replace the secret before then (packages/desktop/AGENTS.md, "Snap Store Publishing").`,
     );
   }
 
@@ -186,7 +186,7 @@ if (import.meta.main) {
   if (!Bun.env[CREDENTIALS_ENV]) {
     console.log(
       `Snap Store credentials not configured (missing ${CREDENTIALS_ENV}); skipping the upload. ` +
-        'See CLAUDE.md\'s "Snap Store Publishing" section.',
+        'See packages/desktop/AGENTS.md\'s "Snap Store Publishing" section.',
     );
     process.exit(0);
   }
