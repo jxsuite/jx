@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"first\")",
     "toMessagesArray()",
-    "setTokenCount(5517)",
+    "setTokenCount(5524)",
     "setContextWarning(false)",
-    "setTokenCount(5517)",
+    "setTokenCount(5524)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"q1\", \"ask_user\")",
@@ -15,9 +15,9 @@
     "clearChat()",
     "sendMessage(\"import\")",
     "toMessagesArray()",
-    "setTokenCount(5517)",
+    "setTokenCount(5524)",
     "setContextWarning(false)",
-    "setTokenCount(5517)",
+    "setTokenCount(5524)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendDelta(\"Importing.\")",
@@ -38,9 +38,8 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "168ec6a4495e",
+        "hash": "3f815a6821c0",
         "headings": [
-          "## Asking the user",
           "## Jx Document Format",
           "### Element Properties",
           "### Void Elements (cannot have children)",
@@ -74,12 +73,14 @@
           "### Navigation between pages",
           "### Page metadata",
           "### Multi-page workflow",
-          "## Current Document",
           "## Error Recovery",
           "### Common validation errors and their fixes:",
-          "### If you keep getting errors:"
+          "### If you keep getting errors:",
+          "## Current Mode",
+          "## Current Document",
+          "## Asking the user"
         ],
-        "length": 22042
+        "length": 22069
       },
       "tools": [
         "ask_user",
@@ -141,7 +142,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5517,
+    "tokenCount": 5524,
     "usage": null
   },
   "finalDocument": {
