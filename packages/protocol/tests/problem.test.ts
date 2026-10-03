@@ -51,6 +51,29 @@ describe("the problem document", () => {
     expect(PROBLEM_TYPES.needsInstallationAccess.extensions).toContain("installUrl");
   });
 
+  /*
+   * A refusal the user can act on is its own type, because the client offers what it lists instead
+   * of a dead end. 403, not 402: it says nothing about why (a role, a policy, a plan), which is the
+   * backend's to say in `heading` and `detail`.
+   */
+  test("an action-required refusal is a 403 carrying its actions, heading and retry hint", () => {
+    const body = problemDetails("actionRequired", "Opening acme/site needs a plan.", {
+      actions: [
+        { href: "https://studio.example.test/plan", id: "start", label: "Start", primary: true },
+      ],
+      heading: "Example Cloud",
+      retry: "reload",
+    });
+    expect(body.status).toBe(403);
+    expect(problemSlug(body.type)).toBe("action-required");
+    expect(body.actions).toEqual([
+      { href: "https://studio.example.test/plan", id: "start", label: "Start", primary: true },
+    ]);
+    expect(body.heading).toBe("Example Cloud");
+    expect(body.retry).toBe("reload");
+    expect(PROBLEM_TYPES.actionRequired.extensions).toEqual(["actions", "heading", "retry"]);
+  });
+
   // `instance` identifies one occurrence, and Jx has no per-occurrence resource to point at.
   test("never fabricates an instance", () => {
     expect(problemDetails("internalError", "boom")).not.toHaveProperty("instance");

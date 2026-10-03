@@ -5,7 +5,7 @@
  * "install the GitHub App" when the user has no repository access yet.
  */
 import { getPlatform, hasPlatform } from "./platform";
-import type { AccountStatus } from "./types";
+import type { AccountEntry, AccountNotice, AccountStatus } from "./types";
 
 let cache: AccountStatus | null = null;
 
@@ -62,7 +62,35 @@ export function getRepoAccessLinks(): RepoAccessLinks | null {
   return { manage, ...(cache.appInstallUrl ? { installUrl: cache.appInstallUrl } : {}) };
 }
 
+/** The rows the platform adds to Preferences › Accounts (desktop.md §10.4); none when absent. */
+export function getAccountEntries(): AccountEntry[] {
+  return cache?.entries ?? [];
+}
+
+/** The platform's notices to draw on the Start pane: every one that is not a one-time toast. */
+export function getBannerNotices(): AccountNotice[] {
+  return (cache?.notices ?? []).filter((notice) => notice.display !== "toast");
+}
+
+/** Toast notices already shown, by id, so a repeated hydrate does not announce one twice. */
+const shownToasts = new Set<string>();
+
+/**
+ * The platform's one-time notices not yet shown, marked shown as they are taken. A platform that
+ * keeps sending one after it was shown — before it hears it was seen — does not repeat itself.
+ */
+export function takeToastNotices(): AccountNotice[] {
+  const fresh = (cache?.notices ?? []).filter(
+    (notice) => notice.display === "toast" && !shownToasts.has(notice.id),
+  );
+  for (const notice of fresh) {
+    shownToasts.add(notice.id);
+  }
+  return fresh;
+}
+
 /** Reset seam for tests. */
 export function resetAccountStatus(): void {
   cache = null;
+  shownToasts.clear();
 }

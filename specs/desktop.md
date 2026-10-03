@@ -1083,6 +1083,8 @@ Concretely, the shipped adapter is session-bound: every call goes to `/api/v1/p/
 
 **The `/events` stream says when it cannot be trusted.** The socket carries deltas — `{kind:"fs"}` batches — and the gateway replays none of them to a socket that comes back, so a Studio that was offline for a minute would otherwise keep drawing whatever the tree looked like before. The adapter therefore reports resyncs through `subscribeFileEvents`' `onResync` option (`packages/studio/src/types.ts`): **`"reconnect"`** on every open after the first, **`"commit"`** on a `{kind:"git", event:"committed"}` notice, which arrives with no per-file events, and **`"open"`** on the first open. The session's listings carry content versions (§3.1), the boot's first listings race the socket's handshake, and a change broadcast before this socket joined reached nobody — a window a first connect that fails during a gateway deploy stretches to a whole backoff — so a version noted before the stream was live cannot be trusted. The socket reconnects on the same jittered backoff and wake triggers as the collab socket (`collab.md` §2), and the dev server adapter reports `"reconnect"` on every `EventSource` open after the first for the same reason. So does the Chromium shell (`packages/desktop/src/chromium/platform.ts`), whose RPC socket carries the launcher's `onFileEvents` pushes: the launcher sends them only to the sockets open at that moment, and that socket drops for ordinary reasons (the server's idle timeout, a suspended window), so every re-open after the first reports `"reconnect"`. What Studio does with a resync is `studio.md` §9.2.
 
+An `action-required` refusal reaches every member with its members intact, the adapter reports refusals on session routes it was not asked to handle, and it tells the routes outside the session base which project a call is for; §10.4 is that contract.
+
 Because a cloud project _is_ a repository, the adapter sets `createDestination: "repo"` and the New Project modal collects a repository location — owner (personal account or organization), repository name, and visibility — instead of a folder (§4.5). The adapter forwards all three to the API, which resolves the owner against the session login to choose between the personal and organization creation endpoints. Nothing about the destination is defaulted server-side.
 
 ### 10.2 Storage Backend
@@ -1128,6 +1130,34 @@ What shipped is one optional PAL member — `collab?: (docPath) => Promise<Colla
 
 The member is still additive in the way this section intended: Studio checks for its presence and falls back to solo, file-level saves without it.
 
+### 10.4 Backend-Directed Access
+
+> **Status: Implemented.** `actionRequired` and `OfferedAction` in `packages/protocol/src/problems.ts` and `types.ts`; the refusal reading, the report channel and `performAction` in `packages/studio/src/platforms/cloud.ts`; the dialog, the notices and the account rows in `packages/studio/src/account/`, `packages/studio/src/account-status.ts` and `packages/studio/src/settings/preferences-accounts.ts`.
+
+A backend may refuse an action for a reason the user can do something about — a role they do not hold, a policy their organization set, a plan they are not on, a quota they reached — and may want to tell the user things about their account that no request asked about. Studio carries all of it and decides none of it. **Why** something was refused, **what** the user is offered, and **every word** shown are the backend's; Studio knows only how to show a refusal, offer what the backend offered, run the chosen action through the platform, and do what the backend said to do once it is done. A hosted product's business model therefore lives entirely in the hosted product, and changes there without a release of Studio.
+
+**The refusal.** `action-required` (`PROBLEM_TYPES.actionRequired`, HTTP 403) carries three extension members beside its `detail`:
+
+- `actions` — what the user can do, as `OfferedAction`s: an `id`, a `label` (the button's words), an optional `href` (a page the platform opens for the user), and an optional `primary` (the one a surface leads with). A refusal with no actions is a refusal with nothing to offer, and surfaces it as the plain error it is.
+- `heading` — a short heading for the refusal in the backend's words, because RFC 9457's `title` is fixed per type and cannot name the product or the policy.
+- `retry` — what Studio does once an action is `done`: `reload` the page (the refusal broke the session, as a project that never opened has), `repeat` (the user runs what was refused again), or `none`.
+
+403 rather than 402: the type is about acting before proceeding, not about payment, and 402 would build one business model into the protocol. The adapter carries the refusal through to the thrown error with every member intact (`platformError`), so any surface can recover it with `platformErrorInfo`.
+
+**Two answers stay 200.** The AI models probe answers `code: "action_required"` with `detail` and `actions` beside `managed: true` (`ai.md` §2.1), because a capability probe that failed would read as a backend that is down. The collaboration probe answers `{collab: false, detail}`, and `negotiateCollab` reports that `detail` as its refusal (`collab.md` §4).
+
+**Refusals nobody caught are reported once.** Session requests are made deep inside the adapter by callers that know nothing of access rules, so `api()` raises every `action-required` refusal on a side channel (`account/action-required.ts`) and still returns it, letting the caller throw its own error in its own words. The flow offers the refusal's actions in one dialog — the heading as its headline, the detail as its message, the primary action as its confirm and one other as its secondary — and applies `retry` once an action is done. A burst of refusals is one dialog, and once the user declines, the reports that arrive on their own stop offering until the page reloads. A deliberate action — New Project, adopting a repository, a publish step — still asks, because that is a new question, and New Project and the repository picker run the action once more when the offer is done.
+
+**Running an action.** `performAction(action)` is the platform's: it opens the action's `href` in a window of its own and resolves `done`, `canceled`, `redirect` (no window could be opened, so the page itself is navigating) or `unknown` (the window closed without saying), and resolves `null` for an action it cannot perform. It opens that window before its first `await`, because it is called from a click and a browser grants a popup only to code still inside one. The cloud adapter hears the outcome from the window itself: wherever the action ends, the backend's page posts `{source: "jx-action", status: "done" | "canceled" | "error", reason?}` to its opener, same-origin, and an `error` rejects with the `reason`. After every outcome but `redirect`, Studio re-reads the account status, because an action is how account state changes; a page a redirect lands back on reads it at boot.
+
+**Unscoped routes are told the project.** The AI and Cloudflare routes are not under the session base, so the bound project rides along as `owner/repo`: in the chat URL's `project` query (the models probe inherits it), in the Cloudflare connect URL's, and in an `X-Jx-Project` header on the Cloudflare proxy, never its query, which is forwarded upstream verbatim. It is a hint for an access rule keyed on the repository; the backend verifies it against the user's own access before it counts.
+
+**What the account status carries.** Beside the GitHub App installations, `AccountStatus` may carry:
+
+- `entries` — rows for Preferences › Accounts (`studio.md` §15): an `id`, a `label`, a one-sentence `detail`, whether it reads as `connected`, and the `actions` it offers. Studio draws them after its own credential rows and runs their actions through `performAction`.
+- `notices` — things the backend wants said: an `id`, a `title`, a `message`, a `level` (`info` or `warning`), `actions`, and a `display`. A `banner` notice is drawn on the Start pane while the backend keeps sending it; a `toast` notice is shown once as a toast — which is how the backend announces the result of an action that ended in a full-page round trip, since only it knows what happened.
+
+Both are absent on a platform that has nothing to say, and every surface draws nothing for what is absent.
 ---
 
 ## 11. Implementation Roadmap

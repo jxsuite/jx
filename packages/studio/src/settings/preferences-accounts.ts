@@ -30,7 +30,9 @@ import { clearCfConnection, getCfAccountId, getCfToken } from "../services/cf-se
 import { clearAiProvider, getBaseUrl, hasOpenAiKey } from "../services/ai-settings";
 import { preferredModel, resetModelCache } from "../services/ai-models";
 import { getPlatform, hasPlatform } from "../platform";
-import type { CfConnection } from "../types";
+import { getAccountEntries } from "../account-status";
+import { runOfferedAction } from "../account/action-flow";
+import type { AccountEntry, CfConnection, OfferedAction } from "../types";
 
 /** One thing a row can do besides existing. */
 export interface AccountAction {
@@ -228,11 +230,47 @@ function localCloudflareRecord(): AccountRecord {
   };
 }
 
+// ─── The platform's own rows ─────────────────────────────────────────────────
+
 /**
- * The three accounts, always all three.
+ * One row the platform adds (desktop.md §10.4) — a membership, a role, a plan; Studio does not know
+ * which, and draws it in the platform's words.
+ *
+ * Its id is namespaced so no platform can shadow one of Studio's own rows by naming it `github`.
+ * `revoke` does nothing: whatever the row describes is not a credential this app holds, so there is
+ * nothing here to forget, and its verbs are the actions the platform offers with it.
+ */
+function platformAction(action: OfferedAction): AccountAction {
+  const verb: AccountAction = {
+    id: action.id,
+    label: action.label,
+    run: async () => {
+      await runOfferedAction(action);
+    },
+  };
+  if (action.primary) {
+    verb.variant = "accent";
+  }
+  return verb;
+}
+
+function platformRecord(entry: AccountEntry): AccountRecord {
+  return {
+    actions: (entry.actions ?? []).map((action) => platformAction(action)),
+    connected: entry.connected ?? false,
+    detail: entry.detail,
+    id: `platform:${entry.id}`,
+    label: entry.label,
+    revoke: () => {},
+  };
+}
+
+/**
+ * The three accounts, always all three — then any rows the platform adds.
  *
  * A disconnected account still gets a row: "you are not signed in to GitHub" is information, and a
- * list that hides what is absent cannot answer the question the section exists to answer.
+ * list that hides what is absent cannot answer the question the section exists to answer. The
+ * platform's rows are the platform's to include or leave out; Studio adds none of its own.
  */
 export function listAccounts(): AccountRecord[] {
   const githubToken = githubTokenStored();
@@ -260,6 +298,7 @@ export function listAccounts(): AccountRecord[] {
       revoke: clearAiProvider,
     },
     platformBrokersCf() ? brokeredCloudflareRecord() : localCloudflareRecord(),
+    ...getAccountEntries().map((entry) => platformRecord(entry)),
   ];
 }
 

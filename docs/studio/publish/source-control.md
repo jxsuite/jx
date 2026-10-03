@@ -64,6 +64,8 @@ Two kinds of change cannot be opened, and the panel says which. A **renamed** fi
 
 To record a commit without pushing, open the dropdown beside the button and choose **Commit (don't sync)**, or press :kbd[⌘Enter] / :kbd[Ctrl+Enter] in the message box. If nothing is staged, the commit takes all changed files. Either way, Studio folds any live [co-editing](/docs/studio/publish/collaboration) session into the files first, so a commit never misses the last few keystrokes a collaborator typed.
 
+If the commit fails, the message goes back into the box, so you can fix the problem and commit again without retyping it. A message you started typing while the commit was running is left alone.
+
 ![Jx Studio commit box: write a message and commit-and-sync straight from the Source Control panel](../../images/git-commit.png)
 
 ## Stay in sync

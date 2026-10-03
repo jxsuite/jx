@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"clear the page\")",
     "toMessagesArray()",
-    "setTokenCount(5522)",
+    "setTokenCount(5529)",
     "setContextWarning(false)",
-    "setTokenCount(5522)",
+    "setTokenCount(5529)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"d1\", \"delete_node\")",
@@ -31,9 +31,8 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "2f0616771407",
+        "hash": "5222a81f096f",
         "headings": [
-          "## Asking the user",
           "## Jx Document Format",
           "### Element Properties",
           "### Void Elements (cannot have children)",
@@ -67,12 +66,14 @@
           "### Navigation between pages",
           "### Page metadata",
           "### Multi-page workflow",
-          "## Current Document",
           "## Error Recovery",
           "### Common validation errors and their fixes:",
-          "### If you keep getting errors:"
+          "### If you keep getting errors:",
+          "## Current Mode",
+          "## Current Document",
+          "## Asking the user"
         ],
-        "length": 22054
+        "length": 22081
       },
       "tools": [
         "ask_user",
@@ -184,7 +185,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5522,
+    "tokenCount": 5529,
     "usage": null
   },
   "finalDocument": {
