@@ -5,7 +5,7 @@
  * that its basename is a name the manifest COULD produce, and `existsSync`. Nothing compares bytes,
  * and no CI job anywhere runs `bun run screenshots` — which is how two shots stayed red on main for
  * weeks under green CI, and why "screenshots come only from scripts/screenshots (never hand-taken)"
- * has been prose in CLAUDE.md and an honour system.
+ * has been prose in AGENTS.md and an honour system.
  *
  * This file mechanises it. `scripts/screenshots/capture.lock.json` is committed beside the
  * still-committed PNGs and records, per image, the bytes that were produced and the shot definition

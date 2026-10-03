@@ -57,7 +57,7 @@ const FENCE = /^\s*(```|~~~)/;
  *
  * A CHANGELOG is written by release-please and a fixture is an exact input: both are files whose
  * bytes belong to something other than a formatter. `vendor/` is the pinned Electrobun SDK, which
- * is a tracked path and therefore ignored by nothing implicitly (see CLAUDE.md).
+ * is a tracked path and therefore ignored by nothing implicitly (see packages/desktop/AGENTS.md).
  */
 const NEVER = [/(?:^|\/)CHANGELOG\.md$/, /(?:^|\/)_[a-z_]*fixtures?[a-z_]*\//, /^vendor\//];
 

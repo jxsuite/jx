@@ -98,7 +98,7 @@ describe("report", () => {
 describe("scanRepo — the real tree", () => {
   test("no tracked file lets a glob-scan result reach a comparison un-normalized", () => {
     // The gate proving itself against the codebase it actually protects, exactly as
-    // `check-coverage-manifest.ts` and the other repo-root `scripts/**` checks do (CLAUDE.md).
+    // `check-coverage-manifest.ts` and the other repo-root `scripts/**` checks do (AGENTS.md).
     const findings = scanRepo();
     if (findings.length > 0) {
       console.error(report(findings).lines.join("\n"));

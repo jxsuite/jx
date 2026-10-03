@@ -22,7 +22,7 @@ runs:
       with:
         # THE pin, in one place. Coverage instrumentation shifts between Bun versions and would
         # silently move the per-file coverageThreshold ratchet, so bumping this means
-        # re-baselining every packages/*/bunfig.toml in the same PR (CLAUDE.md, Testing &
+        # re-baselining every packages/*/bunfig.toml in the same PR (AGENTS.md, Testing &
         # Coverage Policy). It used to be copied across five workflows.
         bun-version: 1.4
     - if: inputs.install == 'true'

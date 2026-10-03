@@ -360,7 +360,7 @@ function checkReadmeBunTest(): void {
     if (/^\s*bun test\b/.test(line) && !line.includes("--isolate")) {
       fail(
         README,
-        `${i + 1}: use "bun test --isolate" (plain "bun test" is unsupported per CLAUDE.md).`,
+        `${i + 1}: use "bun test --isolate" (plain "bun test" is unsupported per AGENTS.md).`,
       );
     }
   }

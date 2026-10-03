@@ -1,6 +1,6 @@
 # Turns every Dependabot pull request over to GitHub's auto-merge, so a green `ci` merges it and a
 # red one leaves it sitting there. See .github/dependabot.yml for what opens these in the first
-# place, and CLAUDE.md ("Dependency Autopilot") for the policy this implements.
+# place, and .github/AGENTS.md ("Dependency Autopilot") for the policy this implements.
 #
 # THIS WORKFLOW DOES NOT MERGE ANYTHING. It asks GitHub to merge later, once the branch protection
 # on `main` is satisfied. That distinction is the entire safety property, and it is easy to lose:
@@ -81,7 +81,7 @@ jobs:
             *)
               echo "::error::\`ci\` is not a required status check on ${DEFAULT_BRANCH}, so"\
                    "auto-merge has nothing to wait for and this pull request would merge untested."\
-                   "Restore the branch ruleset before re-running. See CLAUDE.md, Dependency Autopilot."
+                   "Restore the branch ruleset before re-running. See .github/AGENTS.md, Dependency Autopilot."
               exit 1
               ;;
           esac
