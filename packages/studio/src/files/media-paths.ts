@@ -38,6 +38,8 @@
 
 import { encodeProjectPath, normalizeProjectPath, PUBLIC_DIR } from "@jxsuite/schema/asset-paths";
 import { contentMountFor, hostAssetDeclarations, projectLocales } from "../canvas/asset-refs";
+import { withVersion } from "../canvas/asset-resolve";
+import { versionOf } from "./asset-versions";
 import { loopbackAssetSrc } from "../canvas/canvas-origin";
 import { projectState } from "../store";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
@@ -126,10 +128,11 @@ export function previewFileSrc(path: string): string {
     return path;
   }
   /* In repo space nothing answers a site URL, so the site URL is the wrong question entirely: the
-     host serves the FILE, at its own path, under the declared base. */
+     host serves the FILE, at its own path, under the declared base — versioned when a listing
+     vouched for its bytes, so a host that recognizes the version can let the browser cache it. */
   const { space, fileBaseUrl } = hostAssetDeclarations();
   if (space === "repo") {
-    return `${fileBaseUrl}${encodeProjectPath(normalized)}`;
+    return withVersion(`${fileBaseUrl}${encodeProjectPath(normalized)}`, versionOf(normalized));
   }
   return loopbackAssetSrc(mediaSiteUrl(normalized));
 }

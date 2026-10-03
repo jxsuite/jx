@@ -157,6 +157,43 @@ describe("renderDocPreview", () => {
     expect(rendered!.tagName.toLowerCase()).toBe("section");
   });
 
+  /* The Library is where most versions are learned and the screen with the most images, so its
+     previews must use them exactly as the canvas does. */
+  test("a repo-space preview requests the media a listing vouched for by version", async () => {
+    const { beginListing, noteListing, resetAssetVersions } =
+      await import("../src/files/asset-versions");
+    // The host's file base is resolved against the page, so the page needs a real URL.
+    const { happyDOM } = globalThis as unknown as { happyDOM?: { setURL: (u: string) => void } };
+    happyDOM?.setURL("https://h.example/");
+    installMockPlatform(
+      { assetSpace: "repo", documentBaseUrl: "https://h.example/raw/" } as never,
+      {
+        "pages/index.json": JSON.stringify({
+          children: [
+            { attributes: { src: "/hero.png" }, tagName: "img" },
+            { attributes: { src: "/plain.png" }, tagName: "img" },
+          ],
+          tagName: "section",
+        }),
+      },
+    );
+    resetAssetVersions();
+    noteListing(
+      [{ name: "hero.png", path: "public/hero.png", type: "file", version: "abc" }],
+      beginListing(),
+    );
+    try {
+      const rendered = await renderDocPreview("pages/index.json");
+      const srcs = [...rendered!.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+      expect(srcs).toEqual([
+        "https://h.example/raw/public/hero.png?v=abc",
+        "https://h.example/raw/public/plain.png",
+      ]);
+    } finally {
+      resetAssetVersions();
+    }
+  });
+
   test("a file that cannot be parsed is null, not a Problem", async () => {
     installMockPlatform({}, { "pages/broken.json": "{ not json" });
     expect(await renderDocPreview("pages/broken.json")).toBeNull();

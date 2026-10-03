@@ -98,6 +98,81 @@ export interface AssetContext {
    * editing servers actually use, and why the two differ.
    */
   lanes: readonly AssetLane[];
+  /**
+   * Content versions by normalized project path, for repo-space URLs (`?v=<version>`, see
+   * {@link withVersion}). Only paths the backend vouches for appear; a path absent here resolves
+   * unversioned, exactly as before versions existed.
+   */
+  versions?: Readonly<Record<string, string>> | undefined;
+}
+
+/**
+ * `url` with `v=<version>` in its query — appended to an existing query, inserted before any
+ * `#fragment`, and replacing every `v` parameter the URL already had. The host reads ONE `v`, and
+ * it decodes the key to find it (`URLSearchParams.get("v")` returns the FIRST match), so when
+ * Studio appends its own, an authored `v` — `?v=2`, `?v`, or a percent-encoded `?%76=…` — is
+ * dropped by its DECODED name rather than left to shadow it.
+ *
+ * With no version the URL comes back EXACTLY as given, authored `v` and all: an unversioned
+ * reference keeps working precisely as it did before versions existed. That is safe because a host
+ * may answer a `v` immutably only when it is a version the host issued, with exactly the bytes it
+ * names (specs/studio.md §3.4), so an authored cache-buster like `?v=2` gets the ordinary
+ * revalidating response. A version that is not a non-empty string is no version.
+ *
+ * The version is opaque and equal versions mean identical bytes, so a host that recognizes it may
+ * answer the URL with an immutable cache lifetime (specs/studio.md §3.4).
+ *
+ * @param {string} url - A URL, absolute or relative
+ * @param {string | undefined} version - The file's content version, if any
+ * @returns {string} The versioned URL
+ */
+export function withVersion(url: string, version: string | undefined): string {
+  if (typeof version !== "string" || version === "") {
+    return url;
+  }
+  const hashAt = url.indexOf("#");
+  const fragment = hashAt === -1 ? "" : url.slice(hashAt);
+  const beforeHash = hashAt === -1 ? url : url.slice(0, hashAt);
+  const queryAt = beforeHash.indexOf("?");
+  const base = queryAt === -1 ? beforeHash : beforeHash.slice(0, queryAt);
+  const parts = queryAt === -1 ? [] : beforeHash.slice(queryAt + 1).split("&");
+  const kept = parts.filter((part) => part !== "" && !namesV(part));
+  kept.push(`v=${encodeURIComponent(version)}`);
+  return `${base}?${kept.join("&")}${fragment}`;
+}
+
+/** Whether one `key[=value]` query part's key decodes to `v`, the way `URLSearchParams` reads it. */
+function namesV(part: string): boolean {
+  const eq = part.indexOf("=");
+  const key = eq === -1 ? part : part.slice(0, eq);
+  if (key === "v") {
+    return true;
+  }
+  if (!key.includes("%")) {
+    return false;
+  }
+  try {
+    return decodeURIComponent(key) === "v";
+  } catch {
+    // A malformed escape decodes to itself under `URLSearchParams`, which is never a bare `v`.
+    return false;
+  }
+}
+
+/**
+ * The version `versions` holds for `path`, or undefined. Own keys only: the map is a plain object
+ * (and a structured clone of one inside the canvas iframe), so a path named `constructor` or
+ * `__proto__` would otherwise read a member of `Object.prototype` as its version.
+ */
+function ownVersion(
+  versions: Readonly<Record<string, string>> | undefined,
+  path: string,
+): string | undefined {
+  if (!versions || !Object.hasOwn(versions, path)) {
+    return undefined;
+  }
+  const version: unknown = versions[path];
+  return typeof version === "string" ? version : undefined;
 }
 
 /**
@@ -221,7 +296,10 @@ export function resolveAssetRef(value: string, ctx: AssetContext | null): string
       return null;
     }
     const { suffix } = splitRefSuffix(value);
-    return `${ctx.fileBaseUrl}${encodeProjectPath(path)}${suffix}`;
+    return withVersion(
+      `${ctx.fileBaseUrl}${encodeProjectPath(path)}${suffix}`,
+      ownVersion(ctx.versions, path),
+    );
   }
   const [mount] = ctx.mounts;
   return mount ? mountedRefFor(value, ctx.documentDir, mount) : null;

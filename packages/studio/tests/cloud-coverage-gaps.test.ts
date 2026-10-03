@@ -220,8 +220,12 @@ describe("session-event reconnect", () => {
   test("a dropped socket schedules a reconnect; unsubscribe stops the loop", () => {
     const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
     const realSetTimeout = globalThis.setTimeout;
+    const realRandom = Math.random;
     (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
     instances.length = 0;
+    /* The backoff is jittered (`@jxsuite/collab/reconnect`); pinning the jitter to its ceiling
+       makes every delay the full window, so the doubling and the reset read as exact numbers. */
+    Math.random = () => 1;
     const scheduled: { fn: () => void; ms: number }[] = [];
     globalThis.setTimeout = ((fn: () => void, ms: number) => {
       scheduled.push({ fn, ms });
@@ -239,20 +243,27 @@ describe("session-event reconnect", () => {
       scheduled[0]!.fn(); // Run the reconnect → a second socket with doubled backoff on file.
       expect(instances).toHaveLength(2);
       const second = instances[1] as unknown as MockWebSocket;
-      second.emit("open", {}); // Successful reconnect resets the backoff.
-      second.emit("close", {});
+      second.emit("close", {}); // The retry failed too: the second window is twice the first.
       expect(scheduled).toHaveLength(2);
-      expect(scheduled[1]!.ms).toBe(1000);
-
+      expect(scheduled[1]!.ms).toBe(2000);
       scheduled[1]!.fn();
+      expect(instances).toHaveLength(3);
       const third = instances[2] as unknown as MockWebSocket;
+      third.emit("open", {}); // Successful reconnect resets the backoff.
+      third.emit("close", {});
+      expect(scheduled).toHaveLength(3);
+      expect(scheduled[2]!.ms).toBe(1000);
+
+      scheduled[2]!.fn();
+      const fourth = instances[3] as unknown as MockWebSocket;
       unsubscribe?.();
-      expect(third.closed).toBeTrue();
-      third.emit("close", {}); // After unsubscribe, no further reconnects.
-      expect(scheduled).toHaveLength(2);
+      expect(fourth.closed).toBeTrue();
+      fourth.emit("close", {}); // After unsubscribe, no further reconnects.
+      expect(scheduled).toHaveLength(3);
     } finally {
       (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
       globalThis.setTimeout = realSetTimeout;
+      Math.random = realRandom;
     }
   });
 });

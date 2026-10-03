@@ -47,6 +47,7 @@ import { ensureDependenciesInstalled } from "../packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "../packages/jxsuite-update";
 import { autoSyncProjectOnOpen } from "../packages/pull-package-sync";
 import { markLocalMutation } from "./fs-events";
+import { notedListing, resetAssetVersions } from "./asset-versions";
 import { ensureIgnoreLayers, isIgnoredEntry, resetIgnoreCache } from "./gitignore";
 import { SETTINGS } from "../services/settings/definitions";
 import { readStoredSetting, setSetting } from "../services/settings/kernel";
@@ -78,6 +79,8 @@ import { runActiveReported, runReported } from "../commands/run-reported";
 import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
+// The pure half of the differ: order-insensitive equality with no Yjs behind it.
+import { deepEqual } from "@jxsuite/collab/diff-core";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import { invalidateUsages } from "../services/references";
 import {
@@ -123,7 +126,8 @@ export async function loadDirectory(dirPath: string) {
        ignore rules synchronously while it builds rows, and a repaint that beat the rules would draw
        a `node_modules` and then take it away again. Concurrent, because neither needs the other. */
     const [entries] = await Promise.all([
-      platform.listDirectory(dirPath),
+      // Noted: a listing is where Studio learns which files' bytes the backend vouches for.
+      notedListing(() => platform.listDirectory(dirPath)),
       ensureIgnoreLayers(dirPath),
     ]);
     projectState.dirs.set(dirPath, entries);
@@ -161,6 +165,7 @@ export async function loadProject() {
     void loadFormats();
     refreshExtensionUi(platform);
     resetIgnoreCache();
+    resetAssetVersions();
 
     setProjectState({
       dirs: new Map(),
@@ -241,6 +246,7 @@ export async function openProject({
     void loadFormats();
     refreshExtensionUi(platform);
     resetIgnoreCache();
+    resetAssetVersions();
 
     setProjectState({
       .../** @type {ProjectState} */ projectState,
@@ -2431,12 +2437,6 @@ export async function openFileInPane(paneId: string, path: string): Promise<void
   await openFileInTab(path, { focus: false, paneId, preview: true });
 }
 
-/**
- * Reload an already-open tab from disk without changing the active tab. Used to refresh after AI
- * assistant writes to a file.
- *
- * @param {string} path
- */
 /** Reload an open tab from disk when an external change arrives — but only if it is not dirty. */
 export function reloadCleanTab(path: string): void {
   // Co-edited docs never reload from disk: the shared Y.Doc is ahead of the provider's write-back
@@ -2452,25 +2452,77 @@ export function reloadCleanTab(path: string): void {
   }
 }
 
-export async function reloadFileInTab(path: string) {
+/**
+ * Re-read open tabs after the file-event stream reconnected (`FsSyncContext.onResyncContent`).
+ *
+ * The paths arrive already filtered to clean, non-collab tabs. Each reload is `onlyIfChanged`
+ * because a reconnect almost always changed nothing: an unconditional reload would replace every
+ * open document with an identical one, which is a repaint per tab and an undo boundary nobody
+ * made.
+ */
+export function reloadTabsIfChanged(paths: string[]): void {
+  for (const path of paths) {
+    void reloadFileInTab(path, { onlyIfChanged: true });
+  }
+}
+
+/**
+ * Reload an already-open tab from disk without changing the active tab. Used to refresh after AI
+ * assistant writes to a file, an external change, or a reconnect.
+ *
+ * With `onlyIfChanged`, a file whose parsed document (and frontmatter) equals what the tab already
+ * holds is left alone: no assignment, so no re-render and nothing for undo to see. A JSON file's
+ * layout is still taken from the new text, because a file reformatted on disk with the same content
+ * would otherwise be written back in its old layout on the next save — and the layout renders
+ * nothing.
+ *
+ * Whether to reload is decided about the tab as it was when the read STARTED, and the read is a
+ * round trip (a network one on cloud). So the decision is re-checked after every await and before
+ * anything is assigned: a tab that was clean and took an edit in the meantime, or that joined a
+ * co-editing session, keeps what it now holds. Otherwise the disk copy would land over the author's
+ * newest keystrokes and clear `dirty` — work lost without a trace — and a reconnect resync, which
+ * re-reads every clean tab at the moment the author comes back to the window, is exactly when those
+ * keystrokes arrive. A tab that was ALREADY dirty when the read started is the caller asking for it
+ * to be replaced (an AI write, a rename's reference rewrite), and keeps that meaning.
+ */
+export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: boolean } = {}) {
   for (const [, tab] of workspace.tabs.entries()) {
     if (tab.documentPath === path) {
       const platform = getPlatform();
+      const wasDirty = tab.doc.dirty;
+      const overtaken = () => (!wasDirty && tab.doc.dirty) || isCollabPath(path);
       try {
         const content = await platform.readFile(path);
         if (!content) {
           return;
         }
         await loadFormats();
+        // Everything below is synchronous except the format parse, which checks again after it.
+        if (overtaken()) {
+          return;
+        }
         if (formatForPath(path)) {
           const { document, frontmatter } = await parseSourceForPath(path, content);
+          if (overtaken()) {
+            return;
+          }
+          if (
+            opts.onlyIfChanged &&
+            deepEqual(document, tab.doc.document) &&
+            deepEqual(frontmatter, tab.doc.content.frontmatter)
+          ) {
+            return;
+          }
           tab.doc.document = document;
           tab.doc.content.frontmatter = frontmatter;
         } else if (path.endsWith(".json")) {
           // The file changed under the tab, so its layout is whatever the new text says.
           const parsed = parseJsonDocument(content);
-          tab.doc.document = parsed.document as JxMutableNode;
           tab.doc.layout = parsed.layout;
+          if (opts.onlyIfChanged && deepEqual(parsed.document, tab.doc.document)) {
+            return;
+          }
+          tab.doc.document = parsed.document as JxMutableNode;
         }
         tab.doc.dirty = false;
       } catch (error) {

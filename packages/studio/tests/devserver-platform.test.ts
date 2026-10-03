@@ -812,6 +812,29 @@ describe("file operations", () => {
     }
   });
 
+  test("subscribeFileEvents reports a reconnect resync on every EventSource open after the first", () => {
+    const original = (globalThis as { EventSource?: unknown }).EventSource;
+    (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+    try {
+      const p = createDevServerPlatform();
+      const reasons: string[] = [];
+      const stop =
+        p.subscribeFileEvents?.(() => {}, { onResync: (reason) => reasons.push(reason) }) ??
+        (() => {});
+      const es = FakeEventSource.last;
+      // EventSource reconnects on its own and fires `open` each time it does; the server replays
+      // Nothing it sent while the stream was down, so only the first open is gap-free.
+      es?.emit("open", "");
+      expect(reasons).toEqual([]);
+      es?.emit("open", "");
+      es?.emit("open", "");
+      expect(reasons).toEqual(["reconnect", "reconnect"]);
+      stop();
+    } finally {
+      (globalThis as { EventSource?: unknown }).EventSource = original;
+    }
+  });
+
   test("createDirectory is a no-op that resolves without fetching", async () => {
     const p = createDevServerPlatform();
     await p.createDirectory("anything");

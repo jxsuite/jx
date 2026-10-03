@@ -22,6 +22,7 @@ import {
   normalizeProjectPath,
   previewFileSrc,
 } from "../src/files/media-paths";
+import { beginListing, noteListing, resetAssetVersions } from "../src/files/asset-versions";
 
 const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
 
@@ -123,5 +124,46 @@ describe("previewFileSrc", () => {
     expect(previewFileSrc("content/posts/images/my photo.png")).toBe(
       "https://studio.example.com/p/o/r/main/raw/content/posts/images/my%20photo.png",
     );
+  });
+
+  /* A listing that vouched for the file's bytes versions its URL, so a host that recognizes the
+     version can let the browser keep the thumbnail. One it did not vouch for stays unversioned. */
+  test("in repo space a file a listing versioned carries ?v=", () => {
+    happyDOM.setURL("https://studio.example.com/");
+    installMockPlatform({
+      assetSpace: "repo",
+      canvasUrl: "https://studio.example.com/canvas.html",
+      documentBaseUrl: "https://studio.example.com/p/o/r/main/raw/",
+    } as never);
+    resetAssetVersions();
+    noteListing(
+      [{ name: "hero.jpg", path: "public/hero.jpg", type: "file", version: "abc123" }],
+      beginListing(),
+    );
+    try {
+      expect(previewFileSrc("./public/hero.jpg")).toBe(
+        "https://studio.example.com/p/o/r/main/raw/public/hero.jpg?v=abc123",
+      );
+      expect(previewFileSrc("public/logo.png")).toBe(
+        "https://studio.example.com/p/o/r/main/raw/public/logo.png",
+      );
+    } finally {
+      resetAssetVersions();
+    }
+  });
+
+  test("in site space the version is never added — that origin is not the versioning host", () => {
+    happyDOM.setURL("http://localhost:3000/");
+    installMockPlatform({} as never);
+    resetAssetVersions();
+    noteListing(
+      [{ name: "hero.jpg", path: "public/hero.jpg", type: "file", version: "abc123" }],
+      beginListing(),
+    );
+    try {
+      expect(previewFileSrc("public/hero.jpg")).not.toContain("v=");
+    } finally {
+      resetAssetVersions();
+    }
   });
 });
