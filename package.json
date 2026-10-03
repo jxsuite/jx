@@ -28,7 +28,7 @@
     "desktop:msix": "bun run --cwd packages/desktop build:msix",
     "desktop:release": "bun run --cwd packages/desktop build:release",
     "desktop:stable": "bun run --cwd packages/desktop build:stable",
-    "dev": "bun run server.js",
+    "dev": "bun run scripts/dev.ts",
     "catalog:verify": "bun scripts/check-extension-catalog.ts",
     "catalog:sync": "bun scripts/check-extension-catalog.ts --fix",
     "docs:check": "bun run docs:generate && bun scripts/docs/check-doc-refs.ts",

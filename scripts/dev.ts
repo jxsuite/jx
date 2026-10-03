@@ -1,18 +1,18 @@
 /**
- * Server.js — Jx development server
+ * The monorepo's development server: the runtime and every Studio entrypoint, rebuilt on change.
  *
- * Run with: bun run dev
+ * Run with: bun run dev (from the repository root; the build entrypoints below are root-relative).
  */
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createDevServer } from "@jxsuite/server";
-import { buildMonacoWorkers } from "./packages/studio/scripts/build-workers.ts";
+import { buildMonacoWorkers } from "../packages/studio/scripts/build-workers.ts";
 import {
   STUDIO_ENTRYPOINTS,
   forgetReleasePreload,
   studioBundleOptions,
-} from "./packages/studio/scripts/build-config.ts";
+} from "../packages/studio/scripts/build-config.ts";
 
 // The dev server rebuilds studio.js on change but not Monaco's workers, which monaco-setup.ts
 // Loads from packages/studio/dist/workers. Build them once at startup so a fresh checkout gets
@@ -60,7 +60,7 @@ await createDevServer({
     ...studioBuildEntries(),
   ],
   port: Number(process.env.JX_DEV_PORT ?? 3000),
-  root: resolve(import.meta.dir, "."),
+  root: resolve(import.meta.dir, ".."),
 });
 
 /**
@@ -76,7 +76,7 @@ await createDevServer({
  * fresh checkout the scan is therefore empty, which is the truth worth printing.
  */
 function exampleRoutes() {
-  const dist = resolve(import.meta.dir, "examples/dist");
+  const dist = resolve(import.meta.dir, "../examples/dist");
   if (!existsSync(dist)) {
     return [];
   }
