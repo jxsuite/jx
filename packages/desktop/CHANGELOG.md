@@ -1,5 +1,30 @@
 # Changelog
 
+## [5.4.0](https://github.com/jxsuite/jx/compare/desktop-v5.3.0...desktop-v5.4.0) (2026-10-03)
+
+
+### Features
+
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([21ba318](https://github.com/jxsuite/jx/commit/21ba31841464ecb488654811dd1906095059419d))
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([6081d0a](https://github.com/jxsuite/jx/commit/6081d0ab13dba0502bd3d1cd50325b6d6f52b7c0))
+
+
+### Bug Fixes
+
+* **ci:** publish to the Microsoft Store the official way, and unblock the snap review ([0d54199](https://github.com/jxsuite/jx/commit/0d54199c4e5fd31e18da724ae28e23f07c9df6a0))
+* **ci:** publish to the Microsoft Store the official way, and unblock the snap review ([27a93d6](https://github.com/jxsuite/jx/commit/27a93d6e710a19538ccc913a528d828c329cb998))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 2.6.0
+    * @jxsuite/server bumped to 4.4.1
+    * @jxsuite/studio bumped to 5.6.0
+  * devDependencies
+    * @jxsuite/server bumped to 4.4.1
+
 ## [5.3.0](https://github.com/jxsuite/jx/compare/desktop-v5.2.0...desktop-v5.3.0) (2026-10-01)
 
 

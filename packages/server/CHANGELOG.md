@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.4.1](https://github.com/jxsuite/jx/compare/server-v4.4.0...server-v4.4.1) (2026-10-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.1
+    * @jxsuite/collab bumped to 0.11.0
+    * @jxsuite/protocol bumped to 2.6.0
+
 ## [4.4.0](https://github.com/jxsuite/jx/compare/server-v4.3.0...server-v4.4.0) (2026-10-01)
 
 
