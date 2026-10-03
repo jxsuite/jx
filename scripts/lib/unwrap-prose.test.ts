@@ -225,7 +225,7 @@ describe("the committed tree", () => {
     "sites/jxsuite.com/pages/templates.md",
     "sites/jxsuite.com/pages/index.md",
     "README.md",
-    "CLAUDE.md",
+    "AGENTS.md",
   ];
 
   test("unwrapping moves whitespace and nothing else", () => {

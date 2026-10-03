@@ -14,7 +14,7 @@ describe("KIT_LOADERS", () => {
 
   test("each loader imports the namespace the eager table holds", async () => {
     /* Sequential on purpose: Bun 1.4.0 drops a file's coverage record when two dynamic imports of
-       it overlap (CLAUDE.md, coverage policy), and the eager table has already loaded each one. */
+       it overlap (AGENTS.md, coverage policy), and the eager table has already loaded each one. */
     for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
       const mod = await load();
       const eager = KIT_MODULES[specifier]!;

@@ -5,7 +5,7 @@
  *
  * - `scripts/build.ts` — the release build. Feeds the npm tarball, the desktop app bundle, and the
  *   cloud platform's static assets.
- * - The repo dev server (`server.js` → `@jxsuite/server`'s `builds` watcher) — rebuilds
+ * - The repo dev server (`scripts/dev.ts` → `@jxsuite/server`'s `builds` watcher) — rebuilds
  *   `packages/studio/dist` on every source change while you work.
  *
  * They used to disagree. The dev watcher had its own inline config with no Monaco de-duplication

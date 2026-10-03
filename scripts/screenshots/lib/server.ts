@@ -3,7 +3,7 @@
  *
  * **The server.** The runner SPAWNS ITS OWN. It used to adopt whatever answered on the manifest
  * URL, which made every capture a photograph of whatever `packages/studio/dist` that server
- * happened to have been started with — a bundle nobody in the run could name. `bun server.js`
+ * happened to have been started with — a bundle nobody in the run could name. `bun scripts/dev.ts`
  * rebuilds the studio bundles at startup, so a server the runner started is by construction serving
  * the working tree. Reuse survives as `--reuse-server`, for tuning shot definitions against an
  * editor's live server: opt-in, announced, and gated on {@link assertBundleFresh}, because a reused
@@ -133,8 +133,8 @@ export async function ensureDevServer(
     return { dispose: async () => {}, spawned: false, url };
   }
 
-  log(`[server] starting bun server.js at ${opts.repoRoot}`);
-  const proc = Bun.spawn(["bun", "server.js"], {
+  log(`[server] starting bun scripts/dev.ts at ${opts.repoRoot}`);
+  const proc = Bun.spawn(["bun", "scripts/dev.ts"], {
     cwd: opts.repoRoot,
     stderr: "pipe",
     stdout: "pipe",

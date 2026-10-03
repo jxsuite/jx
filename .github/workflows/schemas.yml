@@ -218,7 +218,7 @@ jobs:
           # `chore(schema)`, deliberately: release-please bumps no version for a `chore`, so
           # landing this on a release pull request cannot change what that pull request releases.
           # And no `<tag>` in the subject — a raw angle bracket there deletes a package from its
-          # own release (CLAUDE.md, and scripts/check-changelog-safety.ts blocks it anyway).
+          # own release (.github/AGENTS.md, and scripts/check-changelog-safety.ts blocks it anyway).
           git commit -m "chore(schema): regenerate stale schema builds" \
             -m "Written by .github/workflows/schemas.yml. Review the pointers in the comment, not the bytes."
           # FULLY QUALIFIED. `HEAD:<branch>` makes git guess the destination ref and fail with

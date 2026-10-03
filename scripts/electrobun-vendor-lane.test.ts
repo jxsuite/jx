@@ -165,7 +165,7 @@ describe("the push step", () => {
 
   test("writes a commit subject release-please can read: a chore, and no raw angle bracket", () => {
     /*
-     * A `<tag>` in a subject deletes the package from its own release (CLAUDE.md). The subject here
+     * A `<tag>` in a subject deletes the package from its own release (.github/AGENTS.md). The subject here
      * interpolates only a version, but the rule is cheap to hold and it is the one that cost a
      * release.
      */

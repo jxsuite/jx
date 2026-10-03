@@ -2451,7 +2451,7 @@ Every slice lands code, tests, a fragment written by `bun run spec:change <spec>
   - `persistWindow` starts at a user message.
 - **Conformance.** `gatewayConformanceCases` runs in `packages/ai`, `packages/server` and the platform, over shared upstream fixtures. `createMemoryHarnessHost` gives an inline-versus-suspend equivalence check.
 - **Worker and bundle.** The W1 to W3 gates run on every PR touching `packages/ai` or `packages/schema`.
-- **Coverage.** Each new `packages/ai` file is small, table-driven and held at 0.99. Type-only files are allowlisted. Deleted singletons leave the manifest cleanly. Command-invoking tests use `mock.module()` doubles (CLAUDE.md Bun 1.4.0 rule), and harness tests never overlap dynamic imports.
+- **Coverage.** Each new `packages/ai` file is small, table-driven and held at 0.99. Type-only files are allowlisted. Deleted singletons leave the manifest cleanly. Command-invoking tests use `mock.module()` doubles (AGENTS.md Bun 1.4.0 rule), and harness tests never overlap dynamic imports.
 - **Evals.** `runner.test.ts` and `parity.golden.test.ts` run in CI. The live evals on the flagged slices use `regressed: []`.
 
 ---

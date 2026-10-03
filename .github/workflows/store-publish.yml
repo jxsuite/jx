@@ -7,7 +7,7 @@
 # `microsoft/microsoft-store-apppublisher` action installs the Microsoft Store Developer CLI, and
 # `msstore publish` does the rest. It creates a submission from the last published one, uploads the
 # package, swaps it in, commits, and waits for the Store to accept the commit. Certification is not
-# waited for. CLAUDE.md's "Microsoft Store Publishing" section has the decisions and the one-time
+# waited for. packages/desktop/AGENTS.md's "Microsoft Store Publishing" section has the decisions and the one-time
 # setup, including the one that matters most: a pending submission is REPLACED, never preserved.
 #
 # Called from release-please.yml at the desktop release tag; `workflow_dispatch` retries or backfills
@@ -66,7 +66,7 @@ jobs:
             fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::warning::Microsoft Store credentials not configured (missing ${missing[*]}); skipping the Store submission. See CLAUDE.md, \"Microsoft Store Publishing\"."
+            echo "::warning::Microsoft Store credentials not configured (missing ${missing[*]}); skipping the Store submission. See packages/desktop/AGENTS.md, \"Microsoft Store Publishing\"."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"

@@ -1,8 +1,9 @@
 /**
- * `.github/workflows/store-publish.yml` is Microsoft's own publishing path (CLAUDE.md, "Microsoft
- * Store Publishing"): the Store CLI does the work, so what this repository owns is the wiring
- * around it. Each assertion below is one of those wiring decisions, and each would otherwise first
- * be tested by a real release, because the lane is `workflow_call`-only from release-please.yml.
+ * `.github/workflows/store-publish.yml` is Microsoft's own publishing path
+ * (packages/desktop/AGENTS.md, "Microsoft Store Publishing"): the Store CLI does the work, so what
+ * this repository owns is the wiring around it. Each assertion below is one of those wiring
+ * decisions, and each would otherwise first be tested by a real release, because the lane is
+ * `workflow_call`-only from release-please.yml.
  *
  * The one step with behaviour of its own, the credentials check, is lifted out of the YAML and run,
  * so what is tested is the text that ships.

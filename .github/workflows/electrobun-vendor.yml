@@ -148,7 +148,7 @@ jobs:
             # `chore(desktop)`, deliberately: release-please bumps no version for a `chore`, and
             # the pin this follows was already moved by whoever opened the pull request. No `<tag>`
             # in the subject — a raw angle bracket there deletes a package from its own release
-            # (CLAUDE.md; scripts/check-changelog-safety.ts blocks it anyway).
+            # (.github/AGENTS.md; scripts/check-changelog-safety.ts blocks it anyway).
             git commit -m "chore(desktop): move vendor/electrobun to v${VERSION}" \
               -m "Written by .github/workflows/electrobun-vendor.yml. The pin in packages/desktop/package.json names v${VERSION} and the vendored SDK sources must be the same release; run \`bun run electrobun:sync\` to reproduce."
           }

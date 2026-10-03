@@ -10,7 +10,7 @@
  * in test.yml's `changes` job, and `scripts/ci/**` is in `affected.ts`'s GLOBAL list, so putting it
  * there would make editing dependency policy run the full workspace matrix.
  *
- * The policy this guards is written up in CLAUDE.md, "Dependency Autopilot".
+ * The policy this guards is written up in .github/AGENTS.md, "Dependency Autopilot".
  */
 
 import { describe, expect, test } from "bun:test";
