@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.28-draft\
+**Version:** 0.1.30-draft\
 **Status:** Partial\
-**Updated:** 2026-10-01\
+**Updated:** 2026-10-04\
 **License:** MIT
 
 ---
@@ -215,6 +215,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.30-draft** (2026-10-04) — §2.5 the system prompt opens with SYSTEM_PROMPT_STATIC_PREFIX (role, reference sections, error recovery) in every state, then the current mode, document, project and files, with the closing instructions last.
+- **0.1.29-draft** (2026-10-04) — §2.1 action_required is a fourth managed probe state, answered 200 with detail and actions, whose primary action is offered rather than a connect flow; a bound project rides in the chat URL's project query.
 - **0.1.28-draft** (2026-10-01) — §2.5 prompt caching: the proxy client sends the conversation id as X-Jx-Ai-Session, a backend forwards only affinityKey(scope, id) as the upstream's sessionAffinity, and each provider gets only its own hint (prompt_cache_key to OpenAI, x-session-affinity to Workers AI and AI Gateway, nothing to any other host). §2.4: the gateway's runtime imports outside itself now include ../cache-hints.ts.
 - **0.1.27-draft** (2026-09-29) — Record how long the write ledger lasts (New Chat and leaving a project drop it) and require the file tools, `create_page` and `create_component` included, to refuse a path outside the project before writing.
 - **0.1.26-draft** (2026-09-29) — Census against the code: §2 marked Partial because Studio shows nothing for a failed model listing that carries no message, §3 marked Partial because its overview places the tool schemas and edit path in the ai package, §4 marked Partial because the link-local host guard misses most of fe80::/10 and the IPv4-mapped metadata address, and §2.2 now leads with Partial for the native Anthropic provider it already admits.
@@ -247,4 +249,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.28-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.30-draft — a stub, subject to expansion._

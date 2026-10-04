@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.5.6-draft\
+**Version:** 0.5.9-draft\
 **Status:** Partial\
-**Updated:** 2026-10-01\
+**Updated:** 2026-10-04\
 **License:** MIT
 
 ---
@@ -1178,6 +1178,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.5.9-draft** (2026-10-04) — §3.1 a backend that sets DirEntry.version may answer a documentBaseUrl request with an immutable cache lifetime only when ?v= is a version it issued and it returns exactly the bytes that version names, an older one included (the browser keeps that answer for good, so Studio keeps versions true); an unrecognized v and every unversioned URL keep the revalidating response. §10.1 the cloud adapter reports its event stream's first open as an "open" resync.
+- **0.5.8-draft** (2026-10-04) — §10.1 the cloud /events socket reconnects on jittered backoff with wake triggers and reports onResync: reconnect on every open after the first, commit on a committed git notice; the dev server's EventSource and the Chromium shell's RPC socket report reconnect the same way.
+- **0.5.7-draft** (2026-10-04) — §10.4 backend-directed access: an action-required refusal (HTTP 403, actions, heading, retry) reaches every adapter member intact, session refusals nobody caught are reported once and their actions offered, the AI and Cloudflare routes are told the bound project, AccountStatus carries platform account entries and notices, and the platform gains performAction.
 - **0.5.6-draft** (2026-10-01) — §3.1 an optional protocol route may be an adapter-internal optimisation with no interface member, filesRead the first; §10.1 the cloud adapter coalesces the reads issued in one tick into POST /files/read, chunked at 200 paths with four in flight, re-asking omitted paths and falling back to one GET per path on an older platform (a 404, a 405, a 403 read_only refusal of a viewer, or a 200 that is not a ReadFilesResult object).
 - **0.5.5-draft** (2026-10-01) — Snap Store package for Ubuntu: the Nix-built app tree with Canonical's Chromium build and the gnome runtime's hardware-accelerated graphics stack, in a strict snap (§9.6); the Nix package now ships only the desktop app's production dependencies, with every first-party extension declared and an install check that resolves the launcher (§9.3).
 - **0.5.4-draft** (2026-09-29) — Project creation adopts what it creates itself — opening a new window when a different project is already showing, leaving it untouched.
@@ -1245,4 +1248,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.5.6-draft_
+_Jx Studio Desktop Architecture Specification v0.5.9-draft_
