@@ -10,18 +10,29 @@
  * running one turn. A {@link ToolContext} carries those facts with the call instead, so the same
  * tool can run in a page, a Worker or an MCP server (specs/ai.md §3.7).
  *
- * @license MIT
  * @module @jxsuite/ai/tools
+ * @license MIT
  */
 
-/** A value that survives a JSON round trip unchanged. */
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+/**
+ * A value that survives a JSON round trip unchanged.
+ *
+ * The array and object members are named interfaces rather than inline types on purpose. Vue's
+ * `reactive()` unwraps a store's type member by member, and an inline recursive alias gives it a
+ * fresh type at every level, so a store holding one (chat-state's messages can carry a block's
+ * opaque data) fails to compile as "excessively deep". A named interface is the same type at every
+ * level, and the walk stops.
+ */
+export type JsonValue = null | boolean | number | string | JsonArray | JsonObject;
+
+/** A JSON array. */
+// oxlint-disable-next-line typescript/no-empty-interface, typescript/no-empty-object-type -- named, see JsonValue
+export interface JsonArray extends Array<JsonValue> {}
+
+/** A JSON object. */
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
 
 /** What a tool call answers. */
 export interface ToolResult {

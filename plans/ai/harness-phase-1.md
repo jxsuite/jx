@@ -23,6 +23,7 @@ prs:
   - jxsuite/jx#380
   - jxsuite/jx#381
   - jxsuite/jx#392
+  - jxsuite/jx#417
 ---
 
 # Jx harness core: the Phase 1 plan
@@ -54,7 +55,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
 | J1.7  | Honest turn outcomes                                | —           | merged jxsuite/jx#380 |
 | J1.8  | ToolContext                                         | —           | merged jxsuite/jx#381 |
 | J1.9  | Ledger reset and path containment                   | —           | merged jxsuite/jx#392 |
-| J1.10 | `./messages`                                        | —           | open                  |
+| J1.10 | `./messages`                                        | —           | merged jxsuite/jx#417 |
 | J1.11 | `./harness` behind `runAgentLoop`                   | —           | open                  |
 | J1.12 | Pair repair                                         | —           | open                  |
 | J1.13 | Per-actor lanes                                     | —           | open                  |
@@ -80,6 +81,7 @@ Phase 0 (hardening and drift) merged before the first slice: jxsuite/jx#370 and 
   - J1.8: `refusal` moved to J1.11, its first caller.
   - J1.9: containment is the file tools' `normalizeRelPath`, moved to the leaf `services/project-path.ts` (the media `normalizeProjectPath` the J1.9 section names is a different normaliser, and importing across the two tool modules would be a cycle). Close project is `setWorkspaceProject`, the one writer of the project root: leaving a root drops the ledger, adopting one from none keeps it.
   - J1.17: `upstreamErrorCode`, `wire`, `providers` and the quirks arrive with J1.18 and J1.19.
+  - J1.10: `toLiveMessages` carries no `result` rather than backfilling it: the reply is the outcome's one source, and Studio's `backfillToolResults` (with its `ask_user` and never-completed rules) stays the one backfill. `OpenAIWireOptions` and `Provenance.binding` wait for J1.24, their first caller; the default replay rule (openai-compat, unredacted) is built in. `toWireMessages` drops empty assistant turns, since the §2.2 rule binds every request. `JsonValue`'s array and object members became named interfaces, because Vue's `reactive()` cannot unwrap the inline recursive alias once a message can carry one.
 
 ---
 

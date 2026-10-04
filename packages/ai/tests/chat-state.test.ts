@@ -597,4 +597,23 @@ describe("chat-state toMessagesArray", () => {
     const assistant = msgs.find((m) => m.role === "assistant")!;
     expect(assistant).toEqual({ role: "assistant", content: "plain reply" });
   });
+
+  /* A saved session is restored without being checked. A corrupt message must not stop the send,
+     nor the count that sizes the next one. */
+  it("sends a restored message whose call list is not a list, and counts it", () => {
+    const chat = createChatState();
+    chat.messages.push({
+      id: "r1",
+      role: "assistant",
+      content: "kept",
+      reasoningContent: null,
+      toolCalls: {},
+      timestamp: 1,
+    } as unknown as (typeof chat.messages)[number]);
+
+    expect(chat.toMessagesArray()).toEqual([{ role: "assistant", content: "kept" }]);
+    chat.recordUsage({ type: "usage", inputTokens: 10, outputTokens: 5, reasoningTokens: 3 });
+    // Its reasoning was never sent, so the unreplayed reasoning leaves the context.
+    expect(chat.usage?.contextTokens).toBe(12);
+  });
 });

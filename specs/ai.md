@@ -13,7 +13,7 @@
 
 ## 1. Overview
 
-`@jxsuite/ai` is the assistant that edits a Jx project from natural-language instructions inside Studio. It generates and edits pages and components on the canvas while the user watches. It ships **no account and no hosted model**: the user connects their own provider, and Studio talks to it through the dev/desktop server's AI proxy (`/__studio/ai/*`, see `@jxsuite/server` §4). The package itself (`@jxsuite/ai`) is a provider-agnostic streaming tool-call client. It depends on `@jxsuite/protocol`, and through it on `@jxsuite/schema`, for the wire's problem documents; only its reactive chat store uses `@vue/reactivity`. Its leaves — `./streaming-client`, `./tools` and `./gateway` (§2.4) — are **Worker-safe**: they import no `node:*`, no `@vue/reactivity` and no DOM, and `packages/ai/tests/worker-safety.test.ts` and the `typecheck:ai-worker` gate hold them to it, because the platform's Worker imports them. The root entry is not Worker-safe, since it re-exports the chat store.
+`@jxsuite/ai` is the assistant that edits a Jx project from natural-language instructions inside Studio. It generates and edits pages and components on the canvas while the user watches. It ships **no account and no hosted model**: the user connects their own provider, and Studio talks to it through the dev/desktop server's AI proxy (`/__studio/ai/*`, see `@jxsuite/server` §4). The package itself (`@jxsuite/ai`) is a provider-agnostic streaming tool-call client. It depends on `@jxsuite/protocol`, and through it on `@jxsuite/schema`, for the wire's problem documents; only its reactive chat store uses `@vue/reactivity`. Its leaves — `./streaming-client`, `./tools`, `./messages` (§2.3) and `./gateway` (§2.4) — are **Worker-safe**: they import no `node:*`, no `@vue/reactivity` and no DOM, and `packages/ai/tests/worker-safety.test.ts` and the `typecheck:ai-worker` gate hold them to it, because the platform's Worker imports them. The root entry is not Worker-safe, since it re-exports the chat store.
 
 ## 2. Provider Contract
 
@@ -57,16 +57,48 @@ Brokered credentials are the platform's to hold and refresh; the client never se
 
 ### 2.2 The request is the history the provider will accept
 
-> **Status: Partial.** The history rule ships: `toMessagesArray` in `packages/ai/src/chat-state.ts`; the `reasoning` frame in `packages/ai/src/streaming-client.ts` and `packages/ai/src/gateway/normalize.ts` (the normalizer `packages/server/src/ai-api.ts` runs, §2.4). The open part is the native Anthropic provider, in the marker at the end of this section.
+> **Status: Partial.** The history rule ships: `toOpenAIMessages` in `packages/ai/src/messages/openai.ts` (§2.3), which chat-state's `toMessagesArray` delegates to; the `reasoning` frame in `packages/ai/src/streaming-client.ts` and `packages/ai/src/gateway/normalize.ts` (the normalizer `packages/server/src/ai-api.ts` runs, §2.4). The open part is the native Anthropic provider, in the marker at the end of this section.
 
 The conversation Studio displays and the array it puts on the wire are not the same object, and two of the differences are contractual rather than cosmetic:
 
 - **An assistant turn carrying neither text nor tool calls MUST NOT be sent.** The store appends an empty assistant message the moment a turn begins, so that message is the answer being generated _by the request that would carry it_ — a turn which has not happened yet. Most providers read the trailing `{"role":"assistant","content":""}` as an empty prefill and ignore it; DeepSeek's thinking mode instead answers `400 The reasoning_content in the thinking mode must be passed back to the API`, because a thinking-mode assistant turn owes it one. That failed the FIRST request of every conversation, before any history existed to be malformed.
 - **A turn's reasoning MUST be replayed when the provider streamed one.** Thinking models emit a chain-of-thought beside the answer (`reasoning_content`, or `reasoning` at OpenRouter). DeepSeek requires the reasoning of all previous turns back on any request carrying `tools` — which is every request the agent loop makes, including turns that called no tool — and ignores the field on requests carrying none. So a client MUST keep it on the message, persist it with the session, and echo it back; a provider that never sends one is never sent one, which is what makes replaying it safe everywhere.
 
-Both halves are one rule: **what the provider streamed is what it is owed back, and nothing else.** A normalizing proxy is therefore not free to drop the frames it cannot render — `reasoning` is a member of the `StreamEvent` union precisely so a backend that only understands `delta` cannot silently strip the turn's other half and leave the next round unanswerable.
+Both halves are one rule: **what the provider streamed is what it is owed back, and nothing else.** Every OpenAI-compatible request is built by one projection, `toOpenAIMessages(toChatMessages(messages))` (§2.3); no caller serializes a transcript into a request itself. A normalizing proxy is therefore not free to drop the frames it cannot render — `reasoning` is a member of the `StreamEvent` union precisely so a backend that only understands `delta` cannot silently strip the turn's other half and leave the next round unanswerable.
 
 > **Status: Partial.** The **Anthropic provider is not yet implemented** (planned). Its client **yields** a single `error` event carrying `code: "NOT_IMPLEMENTED"` and a "use OpenAI" message — it does not throw, so a caller that wraps `streamChat` in `try`/`catch` never sees it (`packages/ai/src/streaming-client.ts`). That frame carries no `problem`, so a conforming reader must tolerate an `error` event without an RFC 9457 document. Only the OpenAI-compatible path ships.
+
+### 2.3 The neutral conversation model
+
+> **Status: Implemented.** `packages/ai/src/messages/` (`@jxsuite/ai/messages`); `packages/ai/tests/messages.test.ts` holds it to the frozen v1 corpus (`packages/ai/tests/fixtures/v1/transcripts/`), and `packages/studio/tests/ai-tool-specs.test.ts` round-trips every tool Studio offers.
+
+A conversation is described in no provider's words. Each provider describes a turn differently: OpenAI's chat completions put a turn's text, its reasoning and its tool calls in three fields of one message, while Anthropic's thinking blocks carry a signature that must come back byte for byte and its tool results ride on a user message. A transcript stored in one provider's shape cannot be sent to another without guessing, so the conversation has one neutral shape and each provider's adapter projects it onto that provider's wire.
+
+**A message is a list of blocks.** A `ChatMessage` has an `id`, a `role` (`user`, `assistant`, `tool` or `system`), its `blocks` in order, a `timestamp`, and optional `meta`. There are five kinds of block:
+
+- `text`: what the model or the person wrote.
+- `reasoning`: a thinking model's chain of thought (§2.2). Its `text` is empty when the provider sent only a redacted payload. It may carry an opaque `signature` and an opaque `redacted` payload, both replayed unchanged and never merged into the text, and a `provenance` naming the provider family and model that produced it.
+- `tool_call`: an `id`, a `name` and `argumentsText`, the arguments exactly as streamed. That text is the only record of them: it may not parse (a call cut off mid-arguments), and nothing on the way to the wire repairs it.
+- `tool_result`: the `callId` it answers, its `content` (for a Jx tool, the serialized result), and `isError`, true when the content parses as a result whose `success` is false and false otherwise, including when it does not parse.
+- `opaque`: provider data with no neutral word, kept for the one `family` it came from.
+
+**`meta` never reaches a provider.** It records what a message is (whether the harness, the model or the person wrote it, a synthetic message's kind, the model and family, whether it was cut off) and a host's own facts under reverse-DNS keys. What a request carries is each message's role and blocks alone (`toWireMessages`), without ids, timestamps, meta, or an assistant turn holding neither text nor a tool call (§2.2).
+
+**The v1 shape stays readable and writable.** Chat-state and every saved session hold the v1 message (`LiveMessage`: `content`, `reasoningContent`, `toolCalls`, `toolCallId`), and `toChatMessages` and `toLiveMessages` convert between the two. The conversion keeps every field a message's role uses (its text for every role, its reasoning and tool calls for an assistant, the call id for a `tool` reply), with one exception: a tool call's `result` is the transcript's copy of an outcome its `tool` reply already carries, so it is rebuilt from the reply by a host that renders it rather than carried. An empty call list says nothing and is not kept. A saved session is restored without being checked, so a v1 value of the wrong type (a `null` reasoning field, a call list that is not a list, text that is not a string) is read as absent: it is never turned into text sent to the model, and it never stops the send. A v1 message gains a `blocks` field only when its v1 fields cannot describe its blocks exactly (signed, redacted or provider-bound reasoning, several reasoning or text blocks, opaque data, text and calls interleaved, or several results in one reply), and its v1 fields are still written beside them, so a reader that predates blocks keeps working.
+
+**The OpenAI-compatible projection** (`toOpenAIMessages`) is the request every v1 client sent, stated once:
+
+1. An assistant turn with no text and no tool call is not sent (§2.2).
+2. An assistant turn's `content` is `null` when it made calls and wrote nothing, and otherwise its text.
+3. `reasoning_content` is the concatenated text of the turn's replayable reasoning blocks, and is absent when that is empty. A block is replayable when it came from an OpenAI-compatible provider (its own provenance, else its message's `meta.family`, else the v1 default, which is OpenAI-compatible) and it is not redacted, so reasoning another family signed is never sent here.
+4. `tool_calls` are the turn's `tool_call` blocks, in order, with their arguments as streamed.
+5. A `tool` message is one `{ role: "tool", tool_call_id, content }` entry per result it carries.
+6. A user message's text is sent byte for byte, attached context included.
+7. A `system` message is `{ role: "system", content }`.
+
+**Tools have a neutral form too.** A `ToolSpec` is a tool's `name`, optional `title`, `description`, `inputSchema` and optional `strict` flag. `toOpenAITools(fromOpenAITools(registry.listForLLM()))` serializes byte for byte as `listForLLM()` does: the same members in the same order, the schema kept by reference so one built with live getters still serializes as it stands that round, and the title left out, since OpenAI has no field for it.
+
+`./messages` is Worker-safe (§1): it imports nothing at runtime outside itself.
 
 ### 2.4 One gateway implementation
 
