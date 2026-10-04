@@ -11,6 +11,7 @@
 
 import { reactive } from "@vue/reactivity";
 
+import { nextMessageId } from "./message-id.ts";
 import { toChatMessages } from "./messages/convert.ts";
 import { toOpenAIMessages } from "./messages/openai.ts";
 import type { LiveMessage, LiveToolCall, OpenAIMessage, Role } from "./messages/types.ts";
@@ -72,13 +73,8 @@ export interface ChatStore {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-let _idCounter = 0;
-
-/** @returns {string} */
-function uid() {
-  _idCounter += 1;
-  return `msg_${Date.now()}_${_idCounter}`;
-}
+/** A fresh message id, from the counter the harness shares. */
+const uid = nextMessageId;
 
 /** A token count a budget can use: a finite, non-negative number. */
 function isCount(value: unknown): value is number {
