@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.2.28\
+**Version:** 0.2.29\
 **Status:** Implemented\
-**Updated:** 2026-10-01\
+**Updated:** 2026-10-04\
 **License:** MIT
 
 ---
@@ -342,6 +342,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.29** (2026-10-04) — §4.1 the files listing may carry an optional opaque content version per entry; the dev server sets none.
 - **0.2.28** (2026-10-01) — §4.1 the AI proxy derives a prompt-cache affinity from the client's X-Jx-Ai-Session header under the local scope (ai.md §2.5).
 - **0.2.27** (2026-10-01) — §4.1 the reference server deliberately does not serve the optional batch read (POST /__studio/files/read): it exists for backends whose reads cross a network.
 - **0.2.26** (2026-09-29) — The Studio route count is no longer stated: the STUDIO_ROUTES table is the count, and the written figure had drifted from 60 to 71.
@@ -384,4 +385,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.2.28_
+_`@jxsuite/server` Specification v0.2.29_
