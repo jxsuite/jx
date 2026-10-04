@@ -253,62 +253,10 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
    */
   test("hand tools are the tier table, projected tools are the declarations, and the two are disjoint", async () => {
     const { AI_TOOL_TIERS } = await import("../src/services/ai-system-prompt");
-    const { createToolRegistry } = await import("@jxsuite/ai");
-    const { registerAiTools } = await import("../src/services/ai-tools");
-    const { registerProjectTools } = await import("../src/services/ai-project-tools");
-    const { registerAskTool } = await import("../src/services/ai-ask");
-    const { registerImportTools } = await import("../src/services/ai-import-tools");
-    const { composeToolRegistries, createCommandToolRegistry } =
-      await import("../src/services/ai-command-tools");
     const { appCommandSet } = await import("../src/commands/app-commands");
-    const { createCommandRegistry } = await import("../src/commands/registry");
-    const { makeContext } = await import("../src/commands/context");
-    const { setActiveRegistry } = await import("../src/commands/active-registry");
-    const { setExtensionCatalog } = await import("../src/format/format-host");
-    const { setProjectState } = await import("../src/store");
+    const { withEveryTool } = await import("./harness/every-tool");
 
-    /* A project with an enabled extension and a catalogue behind it, so the two derived enums
-       (`enable_extension`'s catalogue, `disable_extension`'s enabled set) are non-empty: a record
-       whose required enum is empty is withheld from the round, and this test is about the full
-       set the declarations project, not about that rule. */
-    setExtensionCatalog([
-      { name: "@jxsuite/parser", sections: [{ key: "content" }], source: "first-party" },
-    ]);
-    setProjectState({
-      dirs: new Map(),
-      expanded: new Set(),
-      projectConfig: { extensions: ["@jxsuite/parser"] },
-    } as never);
-
-    const hand = createToolRegistry();
-    registerAskTool(hand);
-    registerImportTools(hand, { getTab: () => null });
-    registerAiTools(hand, { getTab: () => null, validate: async () => [] });
-    registerProjectTools(hand, {
-      adoptProject: async () => {},
-      findOpenTab: () => null,
-      getTab: () => null,
-      reloadTab: async () => {},
-      validate: async () => [],
-    });
-
-    /* A permissive context — everything open, a spliceable selection on the canvas — so every
-       projected record's gate holds and the view lists them all. */
-    const registry = createCommandRegistry({
-      getContext: () =>
-        makeContext({
-          document: { open: true },
-          editor: { kind: "canvas" },
-          project: { isMultilingual: true, isRepo: true, isSite: true, open: true },
-          selection: { count: 1, paths: [["children", 0]] },
-        }),
-    });
-    registry.registerAll(appCommandSet());
-    setActiveRegistry(registry);
-    try {
-      const commands = createCommandToolRegistry({ getTab: () => null, validate: async () => [] });
-      const composite = composeToolRegistries(hand, commands);
-
+    await withEveryTool(({ hand, commands, composite }) => {
       const handNames = new Set(hand.list().map((t) => t.name));
       const tiered = new Set(AI_TOOL_TIERS.map((t) => t.name));
       expect([...handNames].toSorted()).toEqual([...tiered].toSorted());
@@ -323,11 +271,7 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
       // `open_document` crossed from hand to record and `set_canvas_mode` was projected (#334).
       expect(handNames.size).toBe(18);
       expect(projectedNames.size).toBe(11);
-    } finally {
-      setActiveRegistry(null);
-      setProjectState(null);
-      setExtensionCatalog([]);
-    }
+    });
   });
 
   test("the command-projected blurbs render under every workflow heading, and only when passed", () => {
