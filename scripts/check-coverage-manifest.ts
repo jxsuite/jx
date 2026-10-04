@@ -80,6 +80,8 @@ export const ALLOWLIST = new Set([
   "src/core-types.ts",
   // The @jxsuite/ai neutral conversation model (ChatMessage, Block, LiveMessage, ...): types only.
   "src/messages/types.ts",
+  // The @jxsuite/ai turn engine's contract (TurnInput, HarnessEvent, TurnOutcome, ...): types only.
+  "src/harness/types.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

@@ -156,6 +156,11 @@ export interface LiveMessage {
   meta?: MessageMeta;
 }
 
+/** One part of a system prompt. A request's parts are joined in order, with nothing between. */
+export interface SystemBlock {
+  readonly text: string;
+}
+
 /** A tool as a provider is told about it. */
 export interface ToolSpec {
   readonly name: string;
