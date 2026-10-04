@@ -10,6 +10,7 @@
  */
 
 import { createChatState, createProxyStreamingClient, createToolRegistry } from "@jxsuite/ai";
+import { createTurnLock } from "@jxsuite/ai/harness";
 import { createSessionFacts } from "@jxsuite/ai/tools";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
@@ -233,14 +234,17 @@ export function createDocumentAssistant() {
   let controller: AbortController | null = null;
 
   /**
-   * Whether a turn is in flight: true from the moment a send is accepted until its loop has ended.
+   * One window runs one turn. The lock is what decides it: a send is accepted only when it can take
+   * the lock, and holds it until its loop has ended.
    *
    * Not the chat's `status`, which belongs to the token stream: it reads idle while a round's tools
    * run, while a question waits on the author and during an import. Guarding on it let a second
    * send start a second turn beside the first, and let the composer offer Send in the middle of
-   * one. One window runs one turn, and this is the fact that says whether it is running.
+   * one. `turnActive` is the lock's reactive reading, for the panel's effects.
    */
+  const turnLock = createTurnLock();
   const turnActive = shallowRef(false);
+  let turnCount = 0;
 
   /** Settles when the turn in flight has ended, finally included; already settled when none is. */
   let turnEnded: Promise<void> = Promise.resolve();
@@ -287,7 +291,7 @@ export function createDocumentAssistant() {
   }
 
   async function sendMessage(text: string) {
-    if (!text.trim() || turnActive.value || chatState.status === "streaming") {
+    if (!text.trim() || turnLock.active !== null || chatState.status === "streaming") {
       return;
     }
 
@@ -320,6 +324,10 @@ export function createDocumentAssistant() {
        resolved inside the first request, on the armed signal. */
     controller = new AbortController();
     const { signal } = controller;
+    /* Taken here rather than at the guard so nothing above can leave it held. Everything since the
+       guard is synchronous, so no other send can have taken it in between: it is free. */
+    turnCount += 1;
+    const releaseTurn = turnLock.acquire(`send:${turnCount}`)!;
     turnActive.value = true;
     let settleTurnEnded!: () => void;
     turnEnded = new Promise<void>((settle) => {
@@ -363,6 +371,7 @@ export function createDocumentAssistant() {
       chatState.setError(error instanceof Error ? error.message : String(error));
     } finally {
       controller = null;
+      releaseTurn();
       turnActive.value = false;
       // Persist again once the stream settled so the completed reply (or the state
       // After an error/abort cleanup) survives a reload without another send.

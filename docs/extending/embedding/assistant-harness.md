@@ -1,15 +1,21 @@
 ---
 title: "Writing assistant tools"
-description: "How an assistant tool receives its call context, how a host passes it through registries, and the neutral conversation a host keeps and sends."
+description: "How an assistant tool receives its call context, how a host runs a turn with the Jx harness, and the neutral conversation it keeps and sends."
 spec:
   - ai.md#3.7 # a tool call carries its context
   - ai.md#2.3 # the neutral conversation model
+  - ai.md#3.8 # the turn engine
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
   - packages/ai/src/messages/index.ts
   - packages/ai/src/messages/convert.ts
   - packages/ai/src/messages/openai.ts
+  - packages/ai/src/harness/index.ts
+  - packages/ai/src/harness/run.ts
+  - packages/ai/src/harness/lock.ts
+  - packages/ai/src/harness/model.ts
+  - packages/ai/src/harness/policy.ts
   - packages/studio/src/services/tool-executor.ts
 ---
 
@@ -101,3 +107,32 @@ const body = {
 ```
 
 `fromOpenAITools` reads a registry's tool list into neutral `ToolSpec`s, and `toOpenAITools` writes them back byte for byte, so a host can keep its tools in the neutral form without changing what an OpenAI-compatible provider receives. Like the rest of the module, both run in a Worker as well as in a page.
+
+## Running a turn
+
+`runTurn` from `@jxsuite/ai/harness` runs one user turn to its end: it streams a round from the model, runs the tool calls the model made, feeds their results back, and repeats until the model stops calling tools or the turn runs out of work rounds. It is the loop Studio's own assistant runs, so a turn you run is held to the same rules: a stopped round runs nothing, a turn that changed something before running out of rounds ends on a message saying what it changed, and a reply with neither text nor a tool call is reported rather than left blank.
+
+Give it the conversation so far, the system prompt, a model function and your tool registry. For an OpenAI-compatible backend, `fromStreamingClient` makes the model function from a streaming client:
+
+```ts
+import { createProxyStreamingClient } from "@jxsuite/ai";
+import { fromStreamingClient, runTurn } from "@jxsuite/ai/harness";
+
+const turn = runTurn({
+  history, // ChatMessage[], ending with the user's message
+  system: [{ text: systemPrompt }],
+  model: fromStreamingClient(createProxyStreamingClient({ chatUrl })),
+  tools: registry,
+  signal, // abort it to stop the turn
+  onEvent: (event) => render(event),
+});
+const outcome = await turn.outcome;
+```
+
+Every step of the turn reaches `onEvent` as it happens, in order: the round starting, each piece of text, each tool call and its result, and finally `turn_end`. Apply them to your own transcript there, or iterate the run (`for await (const event of turn)`) to read them later; every reader sees the whole turn. The outcome says how the turn ended (`complete`, `cap_partial`, `cap_failed`, `error`, `cancelled` or `empty`), which message to show the turn's changes under, and every message the turn added.
+
+To keep two turns from running at once, pass the same `createTurnLock()` to each: a turn started while another holds the lock throws `LaneBusyError` straight away, before it sends anything.
+
+:::doc-warning
+A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply. Providers refuse a request like that. Before you send the conversation again, answer each unanswered call with a failed result of your own, as Studio does before every send.
+:::
