@@ -420,3 +420,96 @@ export function createToolRegistry() {
     },
   };
 }
+
+// ─── Invocation ──────────────────────────────────────────────────────────────
+
+/** A call a model made: its id, the tool, and the arguments exactly as streamed. */
+export interface ToolCall {
+  readonly callId: string;
+  readonly name: string;
+  /** Raw, and possibly not JSON: a call cut off mid-arguments still arrives. */
+  readonly argumentsText: string;
+}
+
+/** What invoking a call produced. `executed` is false when the registry was never reached. */
+export interface InvokeOutcome {
+  readonly status: "done";
+  readonly result: ToolResult;
+  readonly executed: boolean;
+}
+
+/**
+ * A result as JSON would carry it: the serialized bytes are unchanged, and `data` becomes plain
+ * JSON, so the result survives any transport that serializes it.
+ *
+ * @param {ToolResult} result
+ * @returns {ToolResult}
+ */
+export function normalizeToolResult(result: ToolResult): ToolResult {
+  // oxlint-disable-next-line unicorn/prefer-structured-clone -- the JSON round trip is the point
+  return JSON.parse(JSON.stringify(result)) as ToolResult;
+}
+
+/**
+ * A call's arguments as the object a tool takes.
+ *
+ * An empty string is no arguments. JSON that parses to something other than an object (`null`, an
+ * array, a number) is refused with its own sentence rather than reaching the registry, where a
+ * validator reading a property of `null` threw a message about the validator.
+ */
+function parseArguments(text: string): object {
+  if (!text) {
+    return {};
+  }
+  const parsed = JSON.parse(text) as unknown;
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    const type = parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed;
+    throw new TypeError(`arguments must be a JSON object, got ${type}`);
+  }
+  return parsed;
+}
+
+/**
+ * Run one model call through a registry: parse its arguments, execute it with its context, and
+ * return the result as JSON would carry it. Never throws: a failure is a result the model reads.
+ *
+ * Arguments that do not parse answer `Failed to parse arguments: <reason>`, with the same prefix
+ * for a non-object, so the model reads both as one kind of mistake. The registry keeps its own
+ * texts for an unknown tool, failed validation, a gate and a tool that threw. A registry that
+ * itself throws is answered with the parse prefix too, as the agent loop always answered it, and a
+ * result JSON cannot carry is answered as one that cannot be serialized.
+ *
+ * @param {ToolRegistry} registry
+ * @param {ToolCall} call
+ * @param {ToolContext} ctx - The call's context, forwarded to the tool unchanged
+ * @returns {Promise<InvokeOutcome>}
+ */
+export async function invokeTool(
+  registry: ToolRegistry,
+  call: ToolCall,
+  ctx: ToolContext,
+): Promise<InvokeOutcome> {
+  let executed = false;
+  let result: ToolResult;
+  try {
+    const args = parseArguments(call.argumentsText);
+    executed = true;
+    result = await registry.execute(call.name, args, ctx);
+  } catch (error) {
+    result = toolError(`Failed to parse arguments: ${(error as Error).message}`);
+  }
+  try {
+    return { status: "done", result: normalizeToolResult(result), executed };
+  } catch (error) {
+    /* A result JSON cannot carry (a cycle, a BigInt) cannot be sent back to the model either. It
+       used to throw out of the turn; the model is told instead, and the turn goes on. */
+    const reason = (error as Error).message;
+    return {
+      status: "done",
+      result: toolError(
+        `Tool "${call.name}" returned a result that cannot be serialized: ${reason}`,
+      ),
+      executed,
+    };
+  }
+}

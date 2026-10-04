@@ -34,6 +34,7 @@ export type {
   ProviderFamily,
   ReasoningBlock,
   Role,
+  SystemBlock,
   TextBlock,
   ToolCallBlock,
   ToolResultBlock,

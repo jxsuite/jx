@@ -1,12 +1,12 @@
 /**
  * The Worker-safety gate for @jxsuite/ai.
  *
- * `./streaming-client`, `./tools`, `./gateway` and `./messages` are the subpaths a Worker backend
- * (the `ai/chat` route on Cloudflare, for one) imports. Nothing structural keeps them loadable
- * there: one import of `./chat-state`, `node:path` or `@jxsuite/schema` and a Worker bundle either
- * fails or quietly ships Studio's reactivity engine. This file bundles each Worker-safe entry the
- * way a Worker build resolves it and fails on any module in the graph that the policy below
- * forbids.
+ * `./streaming-client`, `./tools`, `./gateway`, `./messages` and `./harness` are the subpaths a
+ * Worker backend (the `ai/chat` route on Cloudflare, for one) imports. Nothing structural keeps
+ * them loadable there: one import of `./chat-state`, `node:path` or `@jxsuite/schema` and a Worker
+ * bundle either fails or quietly ships Studio's reactivity engine. This file bundles each
+ * Worker-safe entry the way a Worker build resolves it and fails on any module in the graph that
+ * the policy below forbids.
  *
  * It is one half of the gate. A bundle graph only sees what is IMPORTED; a global such as
  * `Bun.file` compiles to no import at all. `tsconfig.worker.json` is the other half (bare ES2023
@@ -40,6 +40,7 @@ const REPO_ROOT = resolve(PKG_DIR, "../..");
  */
 const WORKER_SAFE_ENTRIES: Readonly<Record<string, string>> = {
   "./gateway": "./src/gateway/index.ts",
+  "./harness": "./src/harness/index.ts",
   "./messages": "./src/messages/index.ts",
   "./streaming-client": "./src/streaming-client.ts",
   "./tools": "./src/tools.ts",
@@ -69,10 +70,12 @@ const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; wh
  * Worker graph is a diff someone reads. Note what is NOT here: streaming-client's only import
  * outside this package is `import type { ProblemDetails } from "@jxsuite/protocol"`, which is
  * erased, so @jxsuite/protocol contributes no module at runtime. `./messages` imports nothing
- * outside itself at runtime; its `types.ts` is type-only and erased like the rest. `cache-hints.ts`
- * is in both graphs on purpose: it is the prompt-cache hint table both upstream callers share, and
- * it needs nothing but `crypto.subtle` and `URL`. The gateway is the one entry that imports
- * protocol at runtime, and only its two problem modules (for `problemDetails` and
+ * outside itself at runtime; its `types.ts` is type-only and erased like the rest. `./harness`
+ * reaches `./tools`, two `./messages` modules and `message-id.ts` (the id counter it shares with
+ * chat-state): the graph that proves the harness depends on the tools, not the reverse.
+ * `cache-hints.ts` is in both graphs on purpose: it is the prompt-cache hint table both upstream
+ * callers share, and it needs nothing but `crypto.subtle` and `URL`. The gateway is the one entry
+ * that imports protocol at runtime, and only its two problem modules (for `problemDetails` and
  * `PROBLEM_MEDIA_TYPE`), never the root barrel, which would bring the route table too. Its
  * type-only imports (`gateway/types.ts`, and the frame types it borrows from streaming-client) are
  * erased the same way. When a change adds a module on purpose, confirm it passes FORBIDDEN
@@ -90,6 +93,17 @@ const FROZEN_GRAPHS: Readonly<Record<string, readonly string[]>> = {
     "packages/ai/src/gateway/upstream-error.ts",
     "packages/protocol/src/problem.ts",
     "packages/protocol/src/problems.ts",
+  ],
+  "./harness": [
+    "packages/ai/src/harness/index.ts",
+    "packages/ai/src/harness/lock.ts",
+    "packages/ai/src/harness/model.ts",
+    "packages/ai/src/harness/policy.ts",
+    "packages/ai/src/harness/run.ts",
+    "packages/ai/src/message-id.ts",
+    "packages/ai/src/messages/convert.ts",
+    "packages/ai/src/messages/openai.ts",
+    "packages/ai/src/tools.ts",
   ],
   "./messages": [
     "packages/ai/src/messages/convert.ts",

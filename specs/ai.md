@@ -13,7 +13,7 @@
 
 ## 1. Overview
 
-`@jxsuite/ai` is the assistant that edits a Jx project from natural-language instructions inside Studio. It generates and edits pages and components on the canvas while the user watches. It ships **no account and no hosted model**: the user connects their own provider, and Studio talks to it through the dev/desktop server's AI proxy (`/__studio/ai/*`, see `@jxsuite/server` §4). The package itself (`@jxsuite/ai`) is a provider-agnostic streaming tool-call client. It depends on `@jxsuite/protocol`, and through it on `@jxsuite/schema`, for the wire's problem documents; only its reactive chat store uses `@vue/reactivity`. Its leaves — `./streaming-client`, `./tools`, `./messages` (§2.3) and `./gateway` (§2.4) — are **Worker-safe**: they import no `node:*`, no `@vue/reactivity` and no DOM, and `packages/ai/tests/worker-safety.test.ts` and the `typecheck:ai-worker` gate hold them to it, because the platform's Worker imports them. The root entry is not Worker-safe, since it re-exports the chat store.
+`@jxsuite/ai` is the assistant that edits a Jx project from natural-language instructions inside Studio. It generates and edits pages and components on the canvas while the user watches. It ships **no account and no hosted model**: the user connects their own provider, and Studio talks to it through the dev/desktop server's AI proxy (`/__studio/ai/*`, see `@jxsuite/server` §4). The package itself (`@jxsuite/ai`) is a provider-agnostic streaming tool-call client. It depends on `@jxsuite/protocol`, and through it on `@jxsuite/schema`, for the wire's problem documents; only its reactive chat store uses `@vue/reactivity`. Its leaves — `./streaming-client`, `./tools`, `./messages` (§2.3), `./gateway` (§2.4) and `./harness` (§3.8) — are **Worker-safe**: they import no `node:*`, no `@vue/reactivity` and no DOM, and `packages/ai/tests/worker-safety.test.ts` and the `typecheck:ai-worker` gate hold them to it, because the platform's Worker imports them. The root entry is not Worker-safe, since it re-exports the chat store.
 
 ## 2. Provider Contract
 
@@ -225,6 +225,41 @@ A tool is handed everything it needs to know about the call it serves as its sec
 **What a conversation remembers is a session fact.** A fact a tool must keep across turns, such as an import having already run, is set on `ctx.session` and read back from it; the host decides how long the facts last. In Studio they last until New Chat: every turn of a chat sees the same set, and opening another chat from Chat History keeps them, which is how the one-import guard they replaced has always behaved. They are not saved with the conversation, so a reload starts with none.
 
 A registry that wraps another (the availability gate, the union with the command tools) forwards the context unchanged, so the leaf tool always receives the one the host built. A definition declares `interactive` when its call suspends the turn on a person rather than doing work, which is how a host knows the round spends no work budget (§3.4).
+
+### 3.8 The turn engine
+
+> **Status: Implemented.** `packages/ai/src/harness/` (`@jxsuite/ai/harness`) and `invokeTool` in `packages/ai/src/tools.ts`; Studio's adapter is `packages/studio/src/services/tool-executor.ts` with `services/harness/`. `packages/ai/tests/harness.test.ts` holds the contract below, and Studio's recorded agent traces (`packages/studio/tests/fixtures/agent-traces/`) hold the adapter to the loop it replaced, call for call.
+
+One turn of the assistant (stream a round, run the calls it made, feed the results back, until the model stops calling tools) is one engine, `runTurn`, that any host can run: a Studio window, a Worker, a headless test. The rules of §2 and §3.2 to §3.4 are the engine's, so a host cannot run a turn that breaks them. Seven properties are normative.
+
+**A host hears every step, synchronously and in order.** `runTurn(input)` starts the turn at once and returns a `TurnRun`. Every step is a `HarnessEvent` carrying `v: 1`, the turn's id and a `seq` that increases by one from zero, and the host's `onEvent` is called with each before the engine takes its next step, so a host that keeps its own transcript applies the turn as it happens. The events of a turn follow one grammar:
+
+- `turn_start`, then rounds, then exactly one `turn_end`, after which nothing is emitted.
+- A round is `round_start`; the streamed `text`, `reasoning`, `tool_call_start`, `tool_call_delta`, `tool_call_end` and `usage`; then `round_end`.
+- After a round that made calls, each call in stream order is `tool_start`, its `tool_progress` and `write`s, then exactly one `tool_result`. A call that never ran (the turn stopped first) has none.
+
+The same events can also be iterated from the run, by any number of readers, each from the start of the turn whenever it begins.
+
+**A turn ends one of six ways**, each a `TurnOutcome`:
+
+- `complete`: the model stopped calling tools.
+- `cap_partial`: the work budget ran out after something was applied. The turn ends on a message from the harness saying what (§3.2).
+- `cap_failed`: the work budget ran out with nothing applied.
+- `error`: the provider sent an error frame with a message. The round's message is dropped. A frame with no message is not a failure, as it never was.
+- `cancelled`: the turn was stopped.
+- `empty`: the model answered with neither text nor a tool call, and nothing earlier in the turn was drawn. The round's message is dropped.
+
+Something the host supplied that throws is not a provider failure: when the model function, the registry's listing, a hook or `onEvent` throws, the turn ends by rejecting `outcome` rather than with an outcome, because the failure is the host's.
+
+**A turn stopped between calls leaves calls unanswered.** The calls after a Stop never run, so they have no reply in the messages the turn appended, and a provider refuses a request that repeats a call without its reply. A host that sends the conversation again seals those calls first, as Studio does before every send.
+
+**The anchor is the last message the turn drew.** `anchorMessageId` is the last assistant message of the turn with text or a call, the cap message included (§3.2). The outcome also carries every message the turn appended in its final form, the writes the turn's ledger recorded, and the provider's last and total usage.
+
+**The system prompt is fixed for the turn; the tools are listed each round.** A turn's `system` does not change between its rounds. The tools are read from the registry at the start of every round, so a call that opens a project makes the project's tools available in the very next round. The model function is called exactly once per round.
+
+**One turn holds a lock at a time, and Stop is armed before anything else.** The run's signal exists before `runTurn` returns, aborted by `cancel` and by the host's signal with the host's reason, and each call's signal is linked to it only while the call runs (§3.7). A turn started on a `TurnLock` another turn holds throws `LaneBusyError` synchronously. The lock is released before `turn_end` is heard, so a host that starts its next turn on that event is not refused.
+
+**A call reaches a registry one way.** `invokeTool` parses the call's arguments (an empty string is no arguments), executes it with its context, and returns the result as JSON would carry it. It never throws: arguments that do not parse, or parse to something other than an object, are answered `Failed to parse arguments: <reason>`, a result JSON cannot carry (a cycle, a `BigInt`) is answered as one that cannot be serialized, and the registry keeps its own texts for an unknown tool, failed validation, a gate and a tool that threw.
 
 ## 4. Security & Trust
 

@@ -13,7 +13,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 
 const STUDIO_DIR = resolve(import.meta.dir, "..");
@@ -111,5 +112,81 @@ describe("the rule fires on every way of writing the import", () => {
     ["another package's gateway", `import { x } from "@jxsuite/other/gateway";`],
   ])("but not %s", (_label, source) => {
     expect(forbiddenImports(source)).toEqual([]);
+  });
+});
+
+/*
+ * How much of @jxsuite/ai the page ships, as a ratchet.
+ *
+ * Studio reaches the turn engine (`./harness`) and the conversation model (`./messages`) beside the
+ * chat store and the tools, and each is free to grow. This bundles the WHOLE export surface of
+ * every subpath Studio imports at runtime (`export * as`, so nothing is shaken out), minified, and
+ * counts the bytes that come from @jxsuite/ai's own sources. It is an upper bound on what the page
+ * can ship, not the tree-shaken page itself, so a new export Studio never uses still counts: that is
+ * the point, since it would be shipped to every other consumer too. Above the ceiling is a red X;
+ * well below it means the ceiling should come down to meet it, so the next growth is noticed.
+ * Raising it needs the same written justification as lowering a coverage threshold.
+ */
+describe("the size of @jxsuite/ai in the page", () => {
+  /** Minified bytes from packages/ai/src in a bundle of every subpath Studio imports at runtime. */
+  const CEILING = 22_500;
+
+  /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
+  function runtimeSubpaths(): string[] {
+    const found = new Set<string>();
+    const pattern =
+      /^(?:import|export)\s+(?!type\b)[^;]*?from\s+["'](@jxsuite\/ai(?:\/[\w-]+)?)["']/gm;
+    for (const file of sources(SRC)) {
+      for (const match of readFileSync(file, "utf8").matchAll(pattern)) {
+        found.add(match[1]!);
+      }
+    }
+    return [...found].toSorted();
+  }
+
+  it("stays under its ceiling, and close enough to it that growth is noticed", async () => {
+    const subpaths = runtimeSubpaths();
+    // Non-vacuity: the subpaths the assistant runs on are among them.
+    expect(subpaths).toEqual(expect.arrayContaining(["@jxsuite/ai/harness", "@jxsuite/ai/tools"]));
+
+    const dir = mkdtempSync(join(tmpdir(), "jx-ai-size-"));
+    try {
+      const entry = join(dir, "entry.ts");
+      writeFileSync(
+        entry,
+        subpaths
+          .map(
+            (spec, i) =>
+              `export * as m${i} from ${JSON.stringify(Bun.resolveSync(spec, STUDIO_DIR))};`,
+          )
+          .join("\n"),
+      );
+      const build = await Bun.build({
+        entrypoints: [entry],
+        metafile: true,
+        minify: true,
+        target: "browser",
+      });
+      expect(build.success).toBe(true);
+      let bytes = 0;
+      for (const output of Object.values(build.metafile?.outputs ?? {})) {
+        for (const [input, { bytesInOutput }] of Object.entries(output.inputs)) {
+          if (/(?:^|\/)ai\/src\//.test(input)) {
+            bytes += bytesInOutput;
+          }
+        }
+      }
+      expect(bytes).toBeGreaterThan(0);
+      expect(
+        bytes,
+        `@jxsuite/ai ships ${bytes} minified bytes, over ${CEILING}`,
+      ).toBeLessThanOrEqual(CEILING);
+      expect(
+        bytes,
+        `@jxsuite/ai ships ${bytes} minified bytes: lower CEILING to just above it`,
+      ).toBeGreaterThan(CEILING * 0.9);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
   });
 });
