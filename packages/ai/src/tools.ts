@@ -1,17 +1,18 @@
 /**
  * Tools.js — Tool registry infrastructure
  *
- * Provider-agnostic base classes for defining and registering tools that an LLM
- * can call. Tools have JSON Schema parameter definitions and execute functions.
- * The registry validates arguments before execution.
+ * Provider-agnostic base classes for defining and registering tools that an LLM can call. Tools
+ * have JSON Schema parameter definitions and execute functions. The registry validates arguments
+ * before execution.
  *
  * Every call carries a {@link ToolContext}: its own signal, its call id, who it acts for, the turn's
  * write ledger and the session's facts (specs/ai.md §3.7). A caller that has none gets a detached
- * one, so a tool run outside a turn (a test, a command) records into nothing and cannot be stopped.
+ * one, so a tool run outside a turn (a test, a command) records into nothing and cannot be
+ * stopped.
  *
- * @docs extending/embedding/assistant-harness
- * @license MIT
  * @module @jxsuite/ai/tools
+ * @license MIT
+ * @docs extending/embedding/assistant-harness
  */
 
 import type {
@@ -26,6 +27,8 @@ import type {
 export type {
   Actor,
   AiWrite,
+  JsonArray,
+  JsonObject,
   JsonValue,
   SessionFacts,
   ToolContext,

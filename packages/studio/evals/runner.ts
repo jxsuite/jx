@@ -313,7 +313,7 @@ export async function runTrial(
 
   const transcript = chatState.toMessagesArray();
   const toolCalls = transcript.reduce(
-    (n, m) => n + (Array.isArray(m.tool_calls) ? m.tool_calls.length : 0),
+    (n, m) => n + (m.role === "assistant" ? (m.tool_calls?.length ?? 0) : 0),
     0,
   );
   const rounds = transcript.filter((m) => m.role === "assistant").length;

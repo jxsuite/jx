@@ -78,6 +78,8 @@ export const ALLOWLIST = new Set([
   "src/gateway/types.ts",
   // The @jxsuite/ai tool-call shapes (ToolContext, WriteLedger, Actor, ...): types only.
   "src/core-types.ts",
+  // The @jxsuite/ai neutral conversation model (ChatMessage, Block, LiveMessage, ...): types only.
+  "src/messages/types.ts",
 ]);
 
 /** Per-file totals as lcov records them: `FNF`/`FNH` for functions, `LF`/`LH` for lines. */

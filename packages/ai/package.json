@@ -18,7 +18,8 @@
     "./streaming-client": "./src/streaming-client.ts",
     "./tools": "./src/tools.ts",
     "./chat-state": "./src/chat-state.ts",
-    "./gateway": "./src/gateway/index.ts"
+    "./gateway": "./src/gateway/index.ts",
+    "./messages": "./src/messages/index.ts"
   },
   "publishConfig": {
     "provenance": true

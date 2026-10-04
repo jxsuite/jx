@@ -1,11 +1,15 @@
 ---
 title: "Writing assistant tools"
-description: "How an assistant tool receives its call context (signal, call id, write ledger, session facts) and how a host builds one and passes it through registries."
+description: "How an assistant tool receives its call context, how a host passes it through registries, and the neutral conversation a host keeps and sends."
 spec:
   - ai.md#3.7 # a tool call carries its context
+  - ai.md#2.3 # the neutral conversation model
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
+  - packages/ai/src/messages/index.ts
+  - packages/ai/src/messages/convert.ts
+  - packages/ai/src/messages/openai.ts
   - packages/studio/src/services/tool-executor.ts
 ---
 
@@ -73,3 +77,27 @@ Create one ledger per turn with `createLedger`, and one set of session facts per
 :::doc-note
 If you write a registry that wraps another, for example to gate tools on application state, forward the context unchanged: `execute(name, args, ctx)` must call `inner.execute(name, args, ctx)`. A wrapper that drops it hands the tool a detached context, and the tool's writes and its Stop go nowhere.
 :::
+
+## The conversation
+
+A host keeps the conversation in `@jxsuite/ai/messages`' neutral shape rather than in one provider's words. A `ChatMessage` is a role and a list of blocks: `text`, `reasoning` (a thinking model's chain of thought, with any signature the provider needs back), `tool_call` (with its arguments exactly as streamed), `tool_result`, and `opaque` provider data. Its `meta` records facts about the message, such as which model wrote it, and is never sent to a provider.
+
+Chat-state and Studio's saved sessions hold the older single-shape message, `LiveMessage`, with `content`, `reasoningContent` and `toolCalls` fields. Convert between the two with `toChatMessages` and `toLiveMessages`. The conversion keeps every field a message's role uses except a tool call's `result`, which is a copy of what the call's `tool` reply already says, so rebuild it from the reply if you render it. A field holding the wrong type, as a damaged saved session can, is read as absent rather than sent.
+
+To send the conversation to an OpenAI-compatible provider, project it with `toOpenAIMessages`. It is the function Studio's own requests are built with, so it already leaves out the empty assistant turn a reply starts as, and sends a thinking model's reasoning back only when an OpenAI-compatible provider produced it:
+
+```ts
+import {
+  toChatMessages,
+  toOpenAIMessages,
+  toOpenAITools,
+  fromOpenAITools,
+} from "@jxsuite/ai/messages";
+
+const body = {
+  messages: toOpenAIMessages(toChatMessages(chatState.messages)),
+  tools: toOpenAITools(fromOpenAITools(registry.listForLLM())),
+};
+```
+
+`fromOpenAITools` reads a registry's tool list into neutral `ToolSpec`s, and `toOpenAITools` writes them back byte for byte, so a host can keep its tools in the neutral form without changing what an OpenAI-compatible provider receives. Like the rest of the module, both run in a Worker as well as in a page.
