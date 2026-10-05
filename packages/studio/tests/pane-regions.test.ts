@@ -86,7 +86,6 @@ describe("paneRegion", () => {
     for (const part of [
       "context",
       "zoom",
-      "jump",
       "frontmatter",
       "editor",
       "library",
@@ -373,7 +372,7 @@ describe("the singleton guard", () => {
     expect(await checkPaneSingletons()).toEqual([]);
   }, 30_000);
 
-  test("the fourth rule's residue is three entries, and each names what it is", () => {
+  test("the fourth rule's residue is two entries, and each names what it is", () => {
     /* Rules 1 and 2 are lists of names, rule 3 is a list of files, and each was written after a
        failure the next one walked straight past. This is the sentence all four were reaching for:
        a function that has been told which pane it is about does not get to consult the focus.
@@ -384,16 +383,11 @@ describe("the singleton guard", () => {
        through `pushProjectStylesToCanvas()` — a real two-pane defect in `style/live-preview.ts`
        that no body scan could ever have named.
 
-       The THIRD arrived with the `disabledReason`/`isEnabled` widening (§18.4's preset menu asked a
-       registry — which resolves its context from the focus — about a pane it had been handed by
-       name). It is `panels/jump-bar.ts`, and it is real debt of the same shape: `segmentTpl`
-       renders every crumb's enablement from the registry, so an unfocused pane's address states the
-       FOCUSED pane's answers. No crumb is visibly wrong today; `selection.*` is the one that will
-       be, and the fix is the per-pane predicate the preset menu took, which the selection crumbs do
-       not have yet. */
+       A third, `panels/jump-bar.ts`, arrived with the `disabledReason`/`isEnabled` widening and
+       left when the address bar stopped being drawn per pane: it is the status bar's one trail
+       now, about the focused pane by design, so the focus read IS its subject. */
     expect(ALLOWED_FOCUS_IN_PANE_SCOPE).toEqual({
       "src/panels/editors.ts": 1,
-      "src/panels/jump-bar.ts": 1,
       "src/settings/css-vars-editor.ts": 1,
     });
   });

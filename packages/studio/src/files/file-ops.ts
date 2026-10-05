@@ -27,7 +27,6 @@ import { loadMediaUsages } from "./media-usage";
 import { showConfirmDialog } from "../ui/layers";
 import { locateDocument } from "../services/code-services";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { noteDocumentSaved } from "../surfaces/statusbar";
 import { notify } from "../services/notify";
 import { validateComponentSlots } from "../services/cem-export";
 import { reportPopoverProblems } from "../services/popover-report";
@@ -157,8 +156,8 @@ export async function openFile() {
       } else {
         throw noFormatError(name);
       }
-      // Opening a file is stated permanently by the tab strip and the status bar's DOCUMENT
-      // Field; it does not need a message that erases itself.
+      // Opening a file is stated permanently by the tab strip and the status bar's breadcrumb
+      // Trail; it does not need a message that erases itself.
     };
 
     if ("showOpenFilePicker" in window) {
@@ -197,10 +196,9 @@ export async function openFile() {
 /**
  * Record a successful write, and raise the slot-validation warning component documents can carry.
  *
- * The success half no longer notifies at ALL. "Saved" is ambient state: the status bar's DOCUMENT
- * field says "Saved 2m ago" for as long as it is true, which is strictly more information than a
- * message that said it once and erased itself — and it is the field a reader looks at to ask the
- * question in the first place.
+ * The success half no longer notifies at ALL. "Saved" is ambient state: the tab strip's dirty
+ * marker and the Command Bar's Save state it for as long as it is true, which is strictly more
+ * information than a message that said it once and erased itself.
  *
  * The warning half became a PROBLEM. A component whose slots do not line up is a thing to fix, and
  * it was previously shown for six seconds in the same grey as the word "Saved".
@@ -229,7 +227,6 @@ export function setDocumentSavedListener(
 }
 
 function reportSaved(tab: Tab) {
-  noteDocumentSaved(tab.documentPath);
   const doc = tab.doc.document;
   _onDocumentSaved(tab.documentPath, doc);
   const warning =

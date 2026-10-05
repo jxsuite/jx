@@ -26,7 +26,7 @@ code:
 
 # Documents and panes
 
-Every document you open in Jx Studio belongs to a **pane**. A pane is one editor over one document: the strip of open documents along the top, the [jump bar](/docs/studio/interface#the-jump-bar) naming where you are, and the context bar saying which editor and view you're in all describe the pane you're working in, and the document itself fills the rest. You can have one pane or two.
+Every document you open in Jx Studio belongs to a **pane**. A pane is one editor over one document: the strip of open documents along the top and the context bar saying which editor and view you're in describe the pane you're working in, and the document itself fills the rest. The [jump bar](/docs/studio/interface#the-jump-bar) at the foot of the window names where you are in the pane you're focused on. You can have one pane or two.
 
 ![A pane's strip of open documents, one of them showing the unsaved-changes dot](../../images/tab-strip.png)
 
@@ -58,8 +58,8 @@ A single click from the file tree or the palette opens a document in **preview**
 
 Jx Studio does **not** auto-save. Edits live in the open document until you save:
 
-- A **●** marks unsaved changes, the status bar reads **Unsaved changes**, and the **Save** button in the Command Bar lights up.
-- Save with :kbd[⌘S] or the **Save** button. The status bar then says **Saved**, and how long ago, for as long as that stays true.
+- A **●** marks unsaved changes, and the **Save** button in the Command Bar lights up.
+- Save with :kbd[⌘S] or the **Save** button, and the **●** clears.
 
 Closing a document with unsaved changes asks first, and the question has three answers: **Save** writes the file and then closes, **Close Without Saving** throws the edits away, and **Cancel** leaves the tab where it was. A save that fails leaves the tab open and still unsaved, with the reason in [Problems](/docs/studio/interface/problems-and-progress). The close never outruns the write. :kbd[⌘W] and the tab's **×** ask the same question. Studio skips it only when a collaborator is still in the document, because the shared session keeps the edits.
 
@@ -103,7 +103,7 @@ The new one carries a small **↳** marker, and hovering it names the document y
 
 ## Two panes
 
-:kbd[⌘\] puts the open document in a **second pane** beside the first. Both are real: each has its own strip of documents, its own jump bar, its own context bar and its own editing surface, and either can be a live canvas. Watch the JSON while you edit visually, keep a layout on screen while you edit the page it wraps, or put the same page at two breakpoints side by side.
+:kbd[⌘\] puts the open document in a **second pane** beside the first. Both are real: each has its own strip of documents, its own context bar and its own editing surface, and either can be a live canvas. Watch the JSON while you edit visually, keep a layout on screen while you edit the page it wraps, or put the same page at two breakpoints side by side.
 
 **Any document can be split.** The tab moves across as it is, so a page you were designing arrives still in Design rather than reopening as Code, and the side pane offers every editor and every view the document supports.
 
@@ -134,11 +134,11 @@ A preset that this document cannot supply is not offered, and it says why: **Lay
 
 ## The jump bar
 
-Under the strip, one line names where you are (`◈ project › file › the element you have selected`), and every segment is a button that takes you to that step. A segment whose parent has other children carries a **⌄** listing them, so you can move to a sibling element with a click, without hunting through the Outline. The full behaviour is in **[The workspace](/docs/studio/interface#the-jump-bar)**.
+In the middle of the status bar, along the foot of the window, a breadcrumb trail names where you are in the focused pane (`file › the elements above your selection › the element you have selected`), and every crumb is a button that selects that step. A crumb whose parent has other children carries a **⌃** listing them, so you can move to a sibling element with a click, without hunting through the Outline. The full behaviour is in **[The workspace](/docs/studio/interface#the-jump-bar)**.
 
 ## The pane context bar
 
-Under the jump bar, a labelled row states three things about the document in that pane, and only those three:
+Under the strip, a labelled row states three things about the document in that pane, and only those three:
 
 - **Editor** is which editor is open on it: **Canvas**, **Code**, **Grid**, **Diff**, **Entry**, **Library** or **Project Styles**. It offers only the editors this file actually supports, so it never holds an entry that cannot be picked, and a document with one editor prints its name as text, with no dropdown to open. Those are the same names the [status bar](/docs/studio/interface#status-bar) prints, read from one list.
 - **View**, for the Canvas editor, offers **Edit │ Design** with a **Preview** toggle beside them. See [Modes and views](/docs/studio/interface/modes).

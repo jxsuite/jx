@@ -92,13 +92,12 @@ describe("what the mount announces", () => {
     const surface = mountPaneGridSurface(host(), rows("primary"), SPLIT, rec.actions);
     await surface.ready;
 
-    /* The CELL first, then its five boxes: the runtime creates a row depth-first, so the outermost
+    /* The CELL first, then its four boxes: the runtime creates a row depth-first, so the outermost
        box is reported before anything inside it. `panels/pane-grid.ts` relies on that — it builds
        the record on `pane` and fills it in on the rest. */
     expect(rec.parts).toEqual([
       "primary:pane:div",
       "primary:strip:div",
-      "primary:jump:div",
       "primary:chrome:div",
       "primary:stage:div",
       "primary:dropZone:div",
@@ -127,7 +126,6 @@ describe("what the mount announces", () => {
     expect(rec.parts).toEqual([
       "secondary:pane:div",
       "secondary:strip:div",
-      "secondary:jump:div",
       "secondary:chrome:div",
       "secondary:stage:div",
       "secondary:dropZone:div",

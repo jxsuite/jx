@@ -75,9 +75,7 @@ void mock.module("monaco-editor/editor", () => ({
 
 const renderStatusbarMock = mock(() => {});
 void mock.module("../src/surfaces/statusbar.ts", () => ({
-  forgetSavedTimes: mock(() => {}),
   mountStatusbar: mock(() => {}),
-  noteDocumentSaved: mock(() => {}),
   renderStatusbar: renderStatusbarMock,
   unmountStatusbar: mock(() => {}),
 }));

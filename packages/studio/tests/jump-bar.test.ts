@@ -1,5 +1,5 @@
 /**
- * The jump bar — one address, every step of it a command.
+ * The jump bar — one address, every step of it a command, in the status bar's DOCUMENT field.
  *
  * The bar's contract is what it CANNOT do as much as what it can: it has no click handler that
  * names behaviour, it never renders a step it invented, it never leaves a hole in the chain, and it
@@ -20,6 +20,7 @@ import {
   PRIMARY_PANE,
   SECONDARY_PANE,
   closeAllTabs,
+  focusPane,
   openTab,
   splitRight,
 } from "../src/workspace/workspace";
@@ -27,7 +28,8 @@ import { setPaneDerivation } from "../src/workspace/pane-derive";
 import { setProjectState } from "../src/store";
 import { initLayers } from "../src/ui/layers";
 import {
-  applyJumpBarOffset,
+  JUMP_BAR_REGION,
+  aboveOpener,
   attachJumpBarHost,
   crumbSiblings,
   documentLabel,
@@ -76,13 +78,12 @@ function stub(id: string, title: string, level: AnyCommand["level"]): AnyCommand
 }
 
 /** Every id the bar can name. Pass a subset to prove what an absent record does. */
-const BAR_IDS = ["project.openRecent", "palette.openFiles", "selection.set"] as const;
+const BAR_IDS = ["palette.openFiles", "selection.set"] as const;
 
 function buildRegistry(ids: readonly string[] = BAR_IDS) {
   const registry = createCommandRegistry({ getContext: () => ctx });
   registry.registerAll(
     [
-      stub("project.openRecent", "Open Recent…", "project"),
       stub("palette.openFiles", "Go to File…", "application"),
       stub("selection.set", "Select Element", "document"),
     ].filter((command) => ids.includes(command.id)),
@@ -107,13 +108,14 @@ afterEach(async () => {
 });
 
 /**
- * Mount the primary pane's bar and let its document settle.
+ * Mount the bar and let its document settle.
  *
  * A mounted surface takes more turns than a lit render did: the mount resolves, then the keyed
  * `$map` reconciles, then the `$switch` inside each step does. Three is what that costs.
  */
 async function paint(into: HTMLElement = host): Promise<void> {
-  mountJumpBar(into);
+  attachJumpBarHost(into);
+  mountJumpBar();
   await flush(3);
 }
 
@@ -130,7 +132,7 @@ const menuRows = () =>
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 describe("documentLabel", () => {
-  test("strips the project root, which is already field one", () => {
+  test("strips the project root, which the PROJECT field to its left already names", () => {
     resetStudioState({ name: "Site", projectRoot: "/home/k/site" });
     expect(documentLabel("/home/k/site/pages/index.json")).toBe("pages/index.json");
   });
@@ -236,18 +238,16 @@ describe("jumpSegments", () => {
     expect(jumpSegments(null)).toEqual([]);
   });
 
-  test("project › file, and the file segment is the file picker", () => {
+  test("the address starts at the file, and the file segment is the file picker", () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "/p/pages/index.json" });
+    // No project segment: the status bar's PROJECT field sits directly to the left and names it.
     expect(
       jumpSegments(tab).map((segment) => [segment.kind, segment.label, segment.command]),
-    ).toEqual([
-      ["project", "My Site", "project.openRecent"],
-      ["file", "pages/index.json", "palette.openFiles"],
-    ]);
+    ).toEqual([["file", "pages/index.json", "palette.openFiles"]]);
   });
 
-  test("with no project open the address starts at the file", () => {
+  test("with no project open the address still starts at the file", () => {
     const tab = resetWorkspaceWithTab();
     expect(jumpSegments(tab)[0]!.kind).toBe("file");
   });
@@ -260,7 +260,7 @@ describe("jumpSegments", () => {
     });
     tab.session.selection = [["children", 0, "children", 0]];
     const segments = jumpSegments(tab);
-    expect(segments.map((segment) => segment.kind)).toEqual(["project", "file", "node", "node"]);
+    expect(segments.map((segment) => segment.kind)).toEqual(["file", "node", "node"]);
     // An ancestor prints its compact tag; the LEAF prints the Outline's label, which is where an
     // An author's `$id` shows up there — the one fact the status bar used to add beside it.
     expect(segments.at(-2)!.label).toBe("ul");
@@ -290,7 +290,6 @@ describe("jumpSegments", () => {
     const tab = resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
     const segments = jumpSegments(tab);
     expect(segments.map((segment) => [segment.kind, segment.label, segment.command])).toEqual([
-      ["project", "My Site", "project.openRecent"],
       ["file", "index.json", "palette.openFiles"],
     ]);
     expect(segments.some((segment) => segment.args)).toBe(false);
@@ -341,10 +340,9 @@ describe("the rendered bar", () => {
     // Assignment away, and re-mounting would cost a frame of blank chrome.
     expect(bar()!.hasAttribute("hidden")).toBe(true);
     expect(crumbs()).toEqual([]);
-    expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("0px");
   });
 
-  test("prints one crumb per segment, separated, and reserves its own height", async () => {
+  test("prints one crumb per segment, separated, the leaf last", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab(
       { children: [{ children: [{ tagName: "li" }], tagName: "ul" }], tagName: "div" },
@@ -353,18 +351,17 @@ describe("the rendered bar", () => {
     tab.session.selection = [["children", 0, "children", 0]];
     await paint();
     expect(bar()!.hasAttribute("hidden")).toBe(false);
-    expect(crumbs()).toEqual(["My Site", "index.json", "ul", "li"]);
-    expect(kinds()).toEqual(["project", "file", "node", "node"]);
-    expect(host.querySelectorAll('[part="separator"]')).toHaveLength(3);
-    expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("24px");
+    expect(crumbs()).toEqual(["index.json", "ul", "li"]);
+    expect(kinds()).toEqual(["file", "node", "node"]);
+    expect(host.querySelectorAll('[part="separator"]')).toHaveLength(2);
   });
 
-  /* THE BAR ASKS ABOUT ITS OWN PANE. `jumpSegments` takes the derivation as an argument — the
-     tests above prove it turns Open into Keep — and the per-pane projection is where the argument
-     comes from. Passing `null` there compiles, keeps every `jumpSegments` test green, and draws a
-     following pane's address bar as an ordinary one: Open Files where Keep This Document belongs,
-     and no way to stop the follow from the one control that is always on screen. */
-  test("a derived pane's bar reads ITS pane's derivation, not the app's", async () => {
+  /* THE BAR ASKS ABOUT THE FOCUSED PANE. `jumpSegments` takes the derivation as an argument — the
+     tests above prove it turns Open into Keep — and the focused-pane projection is where the
+     argument comes from. Passing `null` there compiles, keeps every `jumpSegments` test green, and
+     draws a following pane's address as an ordinary one: Open Files where Keep This Document
+     belongs, and no way to stop the follow from the one control that is always on screen. */
+  test("the bar addresses the FOCUSED pane, with that pane's derivation", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab({ children: [], tagName: "div" }, { documentPath: "/p/index.json" });
     openTab({ document: { tagName: "div" }, documentPath: "/p/side.json", id: "side" });
@@ -385,32 +382,28 @@ describe("the rendered bar", () => {
     registry.registerAll([stub("pane.pin", "Keep This Document", "document")]);
     setActiveRegistry(registry);
 
-    const sideHost = document.createElement("div");
-    document.body.append(sideHost);
     /* Read off the crumb's TITLE, which is `${command.title} — requires …` or `${command.title}`:
        the verb is the observable, and the bar deliberately carries no `data-command` for a test to
        read instead. */
-    const fileCrumbTitle = (into: HTMLElement) =>
-      [...into.querySelectorAll('[part="crumb"]')]
+    const fileCrumbTitle = () =>
+      [...host.querySelectorAll('[part="crumb"]')]
         .map((el) => el.getAttribute("title") ?? "")
         .find((title) => title.includes("index.json"));
-    try {
-      await paint();
-      attachJumpBarHost(SECONDARY_PANE, sideHost);
-      await flush(3);
-      expect(fileCrumbTitle(sideHost)).toContain("Keep This Document");
-      // …and the pane that owns the document still offers Open.
-      expect(fileCrumbTitle(host)).not.toContain("Keep This Document");
-    } finally {
-      attachJumpBarHost(SECONDARY_PANE, null);
-      sideHost.remove();
-    }
+    focusPane(SECONDARY_PANE);
+    await paint();
+    expect(fileCrumbTitle()).toContain("Keep This Document");
+    // Focus moves, and the one bar follows it: the pane that owns the document still offers Open.
+    focusPane(PRIMARY_PANE);
+    await flush(3);
+    expect(fileCrumbTitle()).not.toContain("Keep This Document");
   });
 
   test("the bar is one addressable region, not a CSS selector the camera has to know", async () => {
     resetWorkspaceWithTab();
     await paint();
-    expect(host.querySelector('[data-jx-region="pane.primary/jump"]')).not.toBeNull();
+    // The status bar's DOCUMENT field: the trail took the place of the path, view and save word.
+    expect(JUMP_BAR_REGION).toBe("statusbar/document");
+    expect(host.querySelector('[data-jx-region="statusbar/document"]')).not.toBeNull();
   });
 
   test("a crumb click RUNS its command with its args — there is no bespoke handler", async () => {
@@ -423,9 +416,9 @@ describe("the rendered bar", () => {
     await paint();
     const buttons = [...host.querySelectorAll('button[part="crumb"]')] as HTMLElement[];
     buttons[0]!.click();
-    buttons[2]!.click();
+    buttons[1]!.click();
     expect(ran).toEqual([
-      { args: {}, id: "project.openRecent" },
+      { args: {}, id: "palette.openFiles" },
       { args: { path: ["children", 0] }, id: "selection.set" },
     ]);
   });
@@ -435,18 +428,22 @@ describe("the rendered bar", () => {
     resetWorkspaceWithTab();
     await paint();
     expect(host.querySelector('button[part="crumb"]')!.getAttribute("title")).toContain(
-      "Open Recent…",
+      "Go to File…",
     );
   });
 
   test("a step whose command is unregistered becomes a READOUT — the chain keeps no hole", async () => {
-    setActiveRegistry(buildRegistry(["project.openRecent"]));
+    setActiveRegistry(buildRegistry(["palette.openFiles"]));
     resetStudioState({ name: "My Site", projectRoot: "/p" });
-    resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
+    const tab = resetWorkspaceWithTab(
+      { children: [{ tagName: "p" }], tagName: "div" },
+      { documentPath: "/p/index.json" },
+    );
+    tab.session.selection = [["children", 0]];
     await paint();
-    // Both steps are still there; only the file step lost its button. The status bar drops an item
+    // Both steps are still there; only the node step lost its button. The status bar drops an item
     // With no command — an address may not, because a gap in it is a lie about containment.
-    expect(crumbs()).toEqual(["My Site", "index.json"]);
+    expect(crumbs()).toEqual(["index.json", "p"]);
     expect(host.querySelectorAll('button[part="crumb"]')).toHaveLength(1);
     expect(host.querySelectorAll('span[part="crumb"]')).toHaveLength(1);
   });
@@ -456,16 +453,16 @@ describe("the rendered bar", () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
     await paint();
-    expect(crumbs()).toEqual(["My Site", "index.json"]);
+    expect(crumbs()).toEqual(["index.json"]);
     expect(host.querySelectorAll("button")).toHaveLength(0);
   });
 
   test("a disabled command renders a disabled crumb carrying the record's own `requires`", async () => {
     const registry = createCommandRegistry({ getContext: () => ctx });
     registry.register({
-      ...stub("project.openRecent", "Open Recent…", "project"),
+      ...stub("palette.openFiles", "Go to File…", "application"),
       enablement: () => false,
-      requires: "a recent project",
+      requires: "an open project",
     });
     setActiveRegistry(registry);
     resetStudioState({ name: "My Site", projectRoot: "/p" });
@@ -473,7 +470,7 @@ describe("the rendered bar", () => {
     await paint();
     const button = host.querySelector('button[part="crumb"]') as HTMLButtonElement;
     expect(button.hasAttribute("disabled")).toBe(true);
-    expect(button.title).toContain("requires a recent project");
+    expect(button.title).toContain("requires an open project");
   });
 
   test("the leaf is marked as where you are, and is still a control", async () => {
@@ -507,7 +504,7 @@ describe("a segment's alternatives", () => {
 
   test("a chevron appears only where there is more than one place to go", async () => {
     await openFirstMenu();
-    // Project, file and `ul` have no alternatives; only the leaf `li` does.
+    // The file and `ul` have no alternatives; only the leaf `li` does.
     expect(host.querySelectorAll('[part="alternatives"]')).toHaveLength(1);
   });
 
@@ -526,6 +523,16 @@ describe("a segment's alternatives", () => {
     expect(ran).toEqual([{ args: { path: ["children", 0, "children", 1] }, id: "selection.set" }]);
     // Choosing dismisses: a menu left open over the surface it just moved is a second answer.
     expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
+  });
+
+  test("the menu hangs ABOVE its chevron — the bar is the window's floor", async () => {
+    await openFirstMenu();
+    expect(document.querySelector("#layer-popover jx-menu")).not.toBeNull();
+    const anchor = document.createElement("button");
+    anchor.getBoundingClientRect = () => ({ left: 120.4, top: 976 }) as DOMRect;
+    expect(aboveOpener(anchor, { height: 200 } as DOMRect)).toEqual({ x: 120, y: 776 });
+    // A menu taller than the room above it is pinned to the top edge rather than cut off there.
+    expect(aboveOpener(anchor, { height: 2000 } as DOMRect)).toEqual({ x: 120, y: 0 });
   });
 
   test("opening a second menu closes the first", async () => {
@@ -570,10 +577,10 @@ describe("mountJumpBar", () => {
       { documentPath: "/p/index.json" },
     );
     await paint();
-    expect(crumbs()).toEqual(["My Site", "index.json"]);
+    expect(crumbs()).toEqual(["index.json"]);
     tab.session.selection = [["children", 0]];
     await flush(3);
-    expect(crumbs()).toEqual(["My Site", "index.json", "p"]);
+    expect(crumbs()).toEqual(["index.json", "p"]);
   });
 
   test("repaints when a takeover editor opens", async () => {
@@ -586,15 +593,36 @@ describe("mountJumpBar", () => {
 
   test("is idempotent — a second mount replaces the effect rather than stacking one", async () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
-    mountJumpBar(host);
-    mountJumpBar(host);
+    attachJumpBarHost(host);
+    mountJumpBar();
+    mountJumpBar();
     await flush(3);
     tab.session.selection = [["children", 0]];
     await flush(3);
     expect(host.querySelectorAll('nav[part="bar"]')).toHaveLength(1);
   });
 
-  test("unmount stops the repaint and gives the height back", async () => {
+  test("re-attaching the same host keeps the painted bar", async () => {
+    resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
+    await paint();
+    const painted = bar();
+    attachJumpBarHost(host);
+    await flush(3);
+    expect(bar()).toBe(painted);
+  });
+
+  test("a host taken away before its document finished mounting stays empty", async () => {
+    // The status bar re-hands its slot when its own document re-mounts, which can land inside the
+    // Mount's await. The late mount must take itself down rather than paint into a dead slot.
+    resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
+    attachJumpBarHost(host);
+    attachJumpBarHost(null);
+    await flush(3);
+    expect(bar()).toBeNull();
+    expect(host.childElementCount).toBe(0);
+  });
+
+  test("unmount stops the repaint and empties the host", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab(
       { children: [{ tagName: "p" }], tagName: "div" },
@@ -602,7 +630,6 @@ describe("mountJumpBar", () => {
     );
     await paint();
     unmountJumpBar();
-    expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("0px");
     // The host is empty, so nothing is left to repaint into.
     tab.session.selection = [["children", 0]];
     await flush(3);
@@ -617,10 +644,15 @@ describe("mountJumpBar", () => {
     }).not.toThrow();
   });
 
-  test("the offset is one projection, and it can be written directly", () => {
-    applyJumpBarOffset(24);
-    expect(document.documentElement.style.getPropertyValue("--jump-bar-h")).toBe("24px");
-    applyJumpBarOffset(0);
+  test("the effect may start before the host arrives, and paints the moment it does", async () => {
+    resetStudioState({ name: "My Site", projectRoot: "/p" });
+    resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
+    mountJumpBar();
+    await flush();
+    expect(crumbs()).toEqual([]);
+    attachJumpBarHost(host);
+    await flush(3);
+    expect(crumbs()).toEqual(["index.json"]);
   });
 });
 
@@ -660,36 +692,24 @@ describe("the bar is wired to the app, not to a stub", () => {
     expect(source).not.toContain("lit-html");
   });
 
-  test("the bootstrap mounts the bar into a cell the shell actually has", async () => {
+  test("the bootstrap mounts the bar, and the status bar hands it a slot", async () => {
     // `app-commands-composition.test.ts` guards the projection; this guards the other half — a
     // Surface nothing mounts is exactly as unreachable as a command nothing registers.
-    //
-    // There is no `#jump-bar`. The bar is a PER-PANE surface, so its host is built by the pane's
-    // Cell rather than declared as a row of the application grid — a `<div id>` can only ever be
-    // One pane's bar, which is exactly the bug the grid exists to end.
-    const bootstrap = readFileSync(
-      join(resolve(import.meta.dir, "..", "src"), "studio.ts"),
-      "utf8",
+    const src = (...parts: string[]) =>
+      readFileSync(join(resolve(import.meta.dir, "..", "src"), ...parts), "utf8");
+    // The trail is the status bar's DOCUMENT field, so the status bar owns its lifecycle: the
+    // Bootstrap mounts the status bar, and the status bar mounts and unmounts the trail.
+    expect(src("studio.ts")).toContain("mountStatusbar();");
+    expect(src("surfaces", "statusbar.ts")).toContain("mountJumpBar();");
+    expect(src("surfaces", "statusbar.ts")).toContain("unmountJumpBar();");
+    // The status bar's document draws the empty slot, and its flow hands that slot over.
+    expect(src("surfaces", "statusbar.json")).toContain('"part": "trail"');
+    expect(src("surfaces", "statusbar.ts")).toContain(
+      "attachJumpBarHost(statusbarEl.querySelector<HTMLElement>('[part=\"trail\"]'))",
     );
-    expect(bootstrap).toContain("mountJumpBar(primaryCell");
-    /* The cell is a Jx DOCUMENT now, so the host is a `part` the document draws and the bar is
-       handed that element as it is CREATED — `surfaces/pane-grid.ts` reports the node, and
-       `panels/pane-grid.ts` passes it on. Two files, because the markup and the flow are two
-       files; the class the template used to carry is gone from both. */
-    const doc = readFileSync(
-      join(resolve(import.meta.dir, "..", "src"), "surfaces", "pane-grid.json"),
-      "utf8",
-    );
-    expect(doc).toContain('"part": "jump"');
-    expect(doc).not.toContain('"class"');
-    const grid = readFileSync(
-      join(resolve(import.meta.dir, "..", "src"), "panels", "pane-grid.ts"),
-      "utf8",
-    );
-    expect(grid).toContain("attachJumpBarHost(paneId, element)");
-    /* And the FRAME really has a pane grid and no bar of its own. Asserted against the rendered
-       tree rather than index.html's text: the frame is src/shell/tree.ts now, and the document
-       carries an empty body. */
+    /* And no pane draws a bar of its own any more: the pane grid's cells have no jump box, and
+       the frame has no `#jump-bar` row. */
+    expect(src("surfaces", "pane-grid.json")).not.toContain('"part": "jump"');
     const frame = document.createElement("div");
     await mountShellTree(frame);
     expect(frame.querySelector("#pane-grid")).not.toBeNull();

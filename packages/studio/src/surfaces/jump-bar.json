@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioJumpBar",
-  "$description": "The jump bar: one pane's address, outermost step first, every step a command the adapter has already resolved against the registry. A step is a button when its command can run and a readout when it cannot — an address with a hole in it is a lie about containment, so a step never disappears. A step with more than one place to go carries the chevron that opens its siblings; one alternative is not a choice and draws no control. Nothing here decides what the bar says, which step is where you are, or what a chevron opens.",
+  "$description": "The jump bar: the focused pane's address as a breadcrumb trail, the document first and the selected element last, every step a command the adapter has already resolved against the registry. It is the status bar's DOCUMENT field, mounted into the slot `surfaces/statusbar.json` leaves for it. A step is a button when its command can run and a readout when it cannot — an address with a hole in it is a lie about containment, so a step never disappears. A step with more than one place to go carries the chevron that opens its siblings, upward, because the bar is the window's floor; one alternative is not a choice and draws no control. Nothing here decides what the bar says, which step is where you are, or what a chevron opens.",
   "tagName": "nav",
   "attributes": {
     "part": "bar",
@@ -10,22 +10,18 @@
     "hidden": "${state.empty ? '' : null}"
   },
   "style": {
-    "$description": "The `.jump-bar` rules the bar used to take from `styles/shell.css`, brought here and re-valued onto the kit's own layer. It scrolls rather than wraps — a deep selection must not push the stage down by a second line — and the overflow is taken at the START, because the leaf is the part being read. The height is the one number this file shares with its adapter: the stage's `--jump-bar-h` offset must be the box this rule draws.",
+    "$description": "A field of the status bar, so it takes the bar's own row, font and colour rather than drawing a band of its own. It scrolls rather than wraps, because a deep selection must not grow the status bar a second line.",
     "display": "flex",
     "alignItems": "center",
     "gap": "1px",
-    "height": "24px",
-    "padding": "0 var(--jx-space-3)",
+    "flex": "1",
+    "height": "100%",
+    "padding": "0 var(--jx-space-2)",
     "minWidth": "0",
     "overflowX": "auto",
     "scrollbarWidth": "none",
     "whiteSpace": "nowrap",
     "boxSizing": "border-box",
-    "fontFamily": "var(--jx-font-sans)",
-    "fontSize": "var(--jx-text-xs)",
-    "color": "var(--jx-fg-dim)",
-    "background": "var(--jx-bg-panel)",
-    "borderBottom": "1px solid var(--jx-border)",
     "&[hidden]": {
       "display": "none"
     },
@@ -44,7 +40,7 @@
       "opacity": "0.6"
     },
     "& [part=\"crumb\"]": {
-      "maxWidth": "28ch",
+      "maxWidth": "32ch",
       "overflow": "hidden",
       "margin": "0",
       "padding": "0 var(--jx-space-2)",
@@ -74,7 +70,8 @@
     },
     "& [part=\"crumb\"][aria-current]": {
       "$description": "Where you ARE is stated by weight, not by taking the control away: the leaf still selects, which is how a stray click in the canvas is undone without leaving the bar.",
-      "color": "var(--jx-fg)"
+      "color": "var(--jx-fg)",
+      "fontWeight": "600"
     },
     "& span[part=\"crumb\"]": {
       "$description": "A step with no runnable command is a readout, not a dead button. No hover, no pointer, no promise.",
@@ -213,7 +210,7 @@
                   "aria-label": "${$map.item.altsLabel}",
                   "title": "${$map.item.altsLabel}"
                 },
-                "textContent": "⌄",
+                "textContent": "⌃",
                 "onclick": {
                   "$prototype": "Function",
                   "body": [
