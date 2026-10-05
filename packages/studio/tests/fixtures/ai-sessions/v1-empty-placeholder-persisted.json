@@ -46,7 +46,7 @@
       { "role": "user", "content": "Are you there?" },
       { "role": "assistant", "content": "Yes." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }

@@ -347,7 +347,7 @@
       { "role": "user", "content": "Carry on" },
       { "role": "assistant", "content": "Picking up where we left off." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }

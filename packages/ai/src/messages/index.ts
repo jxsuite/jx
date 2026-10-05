@@ -5,6 +5,8 @@
  * tool calls, tool results, and provider data with no neutral word. Chat-state and saved sessions
  * keep the v1 shape ({@link LiveMessage}); `toChatMessages` and `toLiveMessages` convert between
  * the two, and `toOpenAIMessages` is the OpenAI-compatible projection every request is built with.
+ * `repairToolPairs` puts every tool call back beside its reply before a request carries it
+ * (specs/ai.md §3.4).
  *
  * Worker-safe: it imports nothing at runtime outside itself (`tests/worker-safety.test.ts`,
  * `tsconfig.worker.json`).
@@ -15,6 +17,8 @@
 
 export { isEmptyAssistant, toChatMessages, toLiveMessages, toWireMessages } from "./convert.ts";
 export { fromOpenAITools, toOpenAIMessages, toOpenAITools } from "./openai.ts";
+export { SEAL_CUT_OFF, SEAL_RELOADED, isSealContent, repairToolPairs } from "./repair.ts";
+export type { RepairReport } from "./repair.ts";
 
 export type {
   Block,

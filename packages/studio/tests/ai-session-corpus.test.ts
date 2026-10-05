@@ -12,8 +12,8 @@
  * - `sessions`: the index as `listSessions` returns it;
  * - `restored`: the chat-state messages the restore pushed, tool-call records and all;
  * - `wire`: `toMessagesArray()` of the restored transcript, i.e. what the next send would carry;
- * - `repair` (and `repairedWire` when it changed anything): what the send path's
- *   `pruneOrphanToolMessages` does to the restored transcript before that send;
+ * - `repair` (and `repairedWire` when it changed anything): how many messages the send path's
+ *   `pruneOrphanToolMessages` drops, moves and seals in the restored transcript before that send;
  * - `storage`: the snapshot after the load, or `"unchanged"` when the load wrote nothing.
  *
  * `saved-by-current-build.json` is different in one way: its `storage` is ALSO a golden, written by
@@ -358,8 +358,8 @@ function observeRestore(data: SessionFixture): JsonObject {
   };
   const after = snapshot();
   const repair = pruneOrphanToolMessages(chatState);
-  observed.repair = { dropped: repair.dropped, sealed: repair.sealed };
-  if (repair.dropped + repair.sealed > 0) {
+  observed.repair = { dropped: repair.dropped, moved: repair.moved, sealed: repair.sealed };
+  if (repair.dropped + repair.moved + repair.sealed > 0) {
     observed.repairedWire = plain(chatState.toMessagesArray());
   }
   observed.storage = after;
@@ -610,7 +610,7 @@ describe("the @jxsuite/ai transcript corpus agrees with Studio's repair", () => 
         chat.messages.push(msg as unknown as (typeof chat.messages)[number]);
       }
     }
-    expect(pruneOrphanToolMessages(chat)).toEqual({ dropped: 0, sealed: 1 });
+    expect(pruneOrphanToolMessages(chat)).toEqual({ dropped: 0, moved: 0, sealed: 1 });
     expect(firstDifference(transcript.messages, plain(chat.messages))).toBeNull();
   });
 });

@@ -98,7 +98,10 @@ export interface TurnLock {
 
 /** Everything one turn runs with. */
 export interface TurnInput {
-  /** The conversation before this turn's reply: it ends with the message the turn answers. */
+  /**
+   * The conversation before this turn's reply: it ends with the message the turn answers. The turn
+   * repairs its tool-call pairing before the first request (`transcript_repaired`).
+   */
   readonly history: readonly ChatMessage[];
   /** Fixed for the turn. */
   readonly system: readonly SystemBlock[];
@@ -158,6 +161,18 @@ interface EventBase {
 export type HarnessEvent = EventBase &
   (
     | { readonly type: "turn_start" }
+    | {
+        /**
+         * The history broke a tool call's pairing with its reply, and the turn repaired it before
+         * its first request (`repairToolPairs`, specs/ai.md §3.4). Heard right after `turn_start`,
+         * and only when the repair changed something. Each list is in transcript order: the calls
+         * given a seal, and the ids of the `tool` messages dropped and moved.
+         */
+        readonly type: "transcript_repaired";
+        readonly sealed: readonly string[];
+        readonly dropped: readonly string[];
+        readonly moved: readonly string[];
+      }
     | {
         readonly type: "round_start";
         readonly round: number;

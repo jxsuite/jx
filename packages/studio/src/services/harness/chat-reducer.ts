@@ -46,7 +46,9 @@ function applyOutcome(chat: ChatStore, outcome: TurnOutcome): void {
  * Round one answers into the placeholder `sendMessage` already pushed, so only a later round opens
  * a message. A round that failed, or a turn that drew nothing, is never finished: its error row
  * removes the partial. `turn_start`, `tool_start` and `write` change nothing here; the ledger
- * records writes itself.
+ * records writes itself. Nor does `transcript_repaired`: the send path ran the same repair on the
+ * chat store before the turn began (`pruneOrphanToolMessages`), so the store is already the history
+ * the engine repaired.
  *
  * @param {ChatStore} chat
  * @param {HarnessEvent} event

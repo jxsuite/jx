@@ -6,6 +6,7 @@
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
 import type { ToolCallRecord } from "@jxsuite/ai/chat-state";
+import { SEAL_CUT_OFF } from "@jxsuite/ai/messages";
 import type { ToolResult } from "@jxsuite/ai/tools";
 import type { PersistedMessage } from "../src/services/ai-session-store";
 import { UNANSWERED_TOOL_RESULT } from "../src/services/context-manager";
@@ -130,6 +131,24 @@ describe("backfillToolResults", () => {
     const [question, ordinary] = recordsOf(restored);
     expect(question!.result).toBeNull();
     expect(ordinary!.result).toEqual(JSON.parse(UNANSWERED_TOOL_RESULT));
+  });
+
+  /* A question whose arguments were cut off mid-stream gets the other seal, which is no more an
+     answer than the first; an ordinary call keeps the seal it got as its outcome. */
+  test("a question sealed as cut off stays unanswered too", () => {
+    const cutOff = JSON.stringify({ success: false, error: SEAL_CUT_OFF });
+    const restored = backfillToolResults([
+      {
+        content: "",
+        role: "assistant",
+        toolCalls: [call("q1", "ask_user", { arguments: '{"question":"Ke' }), call("c1")],
+      },
+      { content: cutOff, role: "tool", toolCallId: "q1" },
+      { content: cutOff, role: "tool", toolCallId: "c1" },
+    ]);
+    const [question, ordinary] = recordsOf(restored);
+    expect(question!.result).toBeNull();
+    expect(ordinary!.result).toEqual({ success: false, error: SEAL_CUT_OFF });
   });
 
   /* After a restore nothing is in flight. An ordinary call no reply answers is one a Stop ended
