@@ -142,9 +142,9 @@ If a panel is showing a yellow **New changes** strip, that's Studio waiting: som
 
 ## What the status bar does instead
 
-The status bar along the bottom carries **ambient state only**, three fields in scope order: your project, then the document, then the selection. It's the project name and branch, how many people are editing alongside you, the document's path and save state. Every item is clickable and runs a command: the peer count opens what's happening in this document, the problem count opens the list.
+The status bar along the bottom carries **ambient state only**, three fields in scope order: your project, then the document, then the selection. It's the project name and branch, how many people are editing alongside you, and the [jump bar](/docs/studio/interface#the-jump-bar): a breadcrumb trail from the open file down to the element you have selected. Every item is clickable and runs a command: the peer count opens what's happening in this document, the problem count opens the list, and a crumb selects its element.
 
-The selection field carries what an address can't state: **3 selected** when more than one element is picked, or the style rule the Style panel is editing. Where you are (the element and the chain above it) is the [jump bar](/docs/studio/interface#the-jump-bar)'s job, one line above the pane, and it names the _primary_ element, the one the Inspector and the block action bar are pointed at. The count is what stops that address reading as though it described everything you have selected.
+The selection field carries what a trail can't state: **3 selected** when more than one element is picked, or the style rule the Style panel is editing. The trail names the _primary_ element, the one the Inspector and the block action bar are pointed at, and the count is what stops it reading as though it described everything you have selected.
 
 **No message ever flashes past down there.** Outcomes go to toasts and Problems, which are readable for as long as you need and can be acted on; the status bar answers "where am I and what state is this in?", which stays true until something changes it.
 

@@ -13,14 +13,14 @@
  * belongs to `surfaces/canvas-stage.json`; the pod to `surfaces/pane-context.json`. So the
  * renderer, which is the one module that knows which element scrolls in which mode, hands the
  * scroller here, and this module writes its width onto the cell as {@link STAGE_SCROLLBAR_VAR}. The
- * pod's margin adds it by cascade. It is the seam `--jump-bar-h` and `--pane-context-h` already
- * use, run the other way: there each bar owns its answer and the stage reads it; here the stage
- * owns its scroller and the chrome reads the answer.
+ * pod's margin adds it by cascade. It is the seam `--pane-context-h` already uses, run the other
+ * way: there the bar owns its answer and the stage reads it; here the stage owns its scroller and
+ * the chrome reads the answer.
  *
- * **On the CELL, never on `:root`**, for the reason `panels/jump-bar.ts` gives at the same seam:
- * two panes have two stages, and one document-level number would push the other pane's pod in by a
- * scrollbar it does not have. A stage outside any cell writes the root, which only happens in a
- * test fixture.
+ * **On the CELL, never on `:root`**, for the reason `panels/pane-context.ts` gives at the same
+ * seam: two panes have two stages, and one document-level number would push the other pane's pod in
+ * by a scrollbar it does not have. A stage outside any cell writes the root, which only happens in
+ * a test fixture.
  *
  * **Edit only, and 0 everywhere else by construction.** `canvas-render.ts` tracks the scroller from
  * the Edit branch and releases it at every teardown (a mode transition, a full reset, the pane's

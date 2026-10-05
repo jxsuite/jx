@@ -1,67 +1,79 @@
 /// <reference lib="dom" />
 /**
- * The jump bar — the pane's address, and every place you can go from it.
+ * The jump bar — the focused pane's address, as a breadcrumb trail along the foot of the window.
  *
- * **The two half-breadcrumbs this replaces.** Studio grew two trails, neither of which could say
+ * **Where it lives, and why it moved.** The trail is the status bar's DOCUMENT field: the file,
+ * then every ancestor of the selected element, leaf last, each one a button that selects it. That
+ * is the pattern the Gutenberg block editor taught a generation of authors, and it is where they
+ * look for it. It used to be a 10px row across the top of every pane, between the tab strip and the
+ * context bar, and in that position it read as part of the tab strip rather than as a control: the
+ * address was on screen and authors reported it missing. It also cost every pane 24px of stage
+ * height. At the foot it costs nothing, because the status bar's row is already there, and the
+ * field it replaced (the file path, a view name the context bar already prints, and a save word the
+ * tab strip's dirty marker and the Command Bar's Save button already state) was the bar's least
+ * useful content.
+ *
+ * **One bar, for the focused pane.** The status bar is one row for the whole window, so the trail
+ * addresses the pane that has focus, which is the pane the Inspector, the Outline and the keyboard
+ * already address. Clicking into the other pane re-points it.
+ *
+ * **The two half-breadcrumbs this replaced.** Studio grew two trails, neither of which could say
  * where you were:
  *
  * 1. `panels/pane-context.ts`'s `navTpl()` (the old `#tab-bar` breadcrumb, `tab-bar.ts:129-185`) — a
  *    `Back` button plus one span per `session.documentStack` frame. It appeared ONLY while you were
- *    inside a sub-document, printed the frame's file basename (which is the SAME basename for a
- *    `$map` template, so it read `index.json › index.json`), and knew nothing about the project
- *    above it or the selection below it. It is deleted, and so is the stack it walked: nothing ever
- *    pushed a frame, so it could only ever draw its empty branch.
- * 2. `surfaces/statusbar.ts`'s selection field — a clickable ancestor trail, `selection.set` per
- *    crumb. It appeared ONLY while something was selected, and knew nothing about the document it
- *    was inside.
+ *    inside a sub-document and knew nothing about the selection below it. It is deleted, and so is
+ *    the stack it walked: nothing ever pushed a frame, so it could only ever draw its empty
+ *    branch.
+ * 2. `surfaces/statusbar.ts`'s selection field — a clickable ancestor trail that appeared ONLY while
+ *    something was selected and knew nothing about the document it was inside.
  *
- * Between them they never rendered at the same time as each other and never rendered the whole
- * address, so neither one was a place to look. **This bar is the whole chain**, always:
+ * This bar is the whole chain, always:
  *
  * ```text
- * ◈ Site › pages/blog/[slug].json › article › h1 ⌄
- *   project        file              selection ancestors
+ * Jx Suite ⑂ main ‖ pages/blog/[slug].json › article › header › h1 ⌃ ‖ 3 selected
+ * PROJECT field     ‖ this bar: file, then the selection's ancestors    ‖ SELECTION field
  * ```
  *
- * **The status bar keeps only what an address cannot say.** `studio.md` §16.2 gives the bar AMBIENT
- * STATE, and an ancestor trail in a second place is exactly the duplication the shell redesign
- * exists to remove — three breadcrumbs would be worse than the two we started with. So the trail
- * moves here whole, and `statusbar/selection` keeps the two facts this bar cannot state: HOW MANY
- * things are selected (a count is not a path) and which Stylebook rule the Style panel is editing
- * (a selector is not a node).
+ * The project is not a step of the trail: the PROJECT field directly to its left already names it,
+ * with the same `project.openRecent` command, and two adjacent buttons saying one thing is the
+ * duplication studio-ui-guidelines.md §12.2's chrome budget forbids. `statusbar/selection` keeps
+ * the two facts a trail cannot state: HOW MANY things are selected (a count is not a path) and
+ * which Stylebook rule the Style panel is editing (a selector is not a node).
  *
  * **Every interactive item is a command, resolved from the registry.** There is no click handler in
  * this file that names behaviour: a segment names a command id and its args, and the registry
- * supplies the title, the chord, the enablement and the run. Three ids carry the whole bar —
- * `project.openRecent`, `palette.openFiles` and `selection.set` — and this file declares none of
- * them. It did declare a fourth, `document.setStackLevel`, for the sub-document stack; the stack
- * had no way in and both are gone.
+ * supplies the title, the chord, the enablement and the run. Two ids carry the whole bar —
+ * `palette.openFiles` (or `pane.pin` in a derived pane) and `selection.set` — and this file
+ * declares none of them.
  *
  * **A segment whose command the registry does not have becomes a readout, it does not disappear.**
- * That is the one place this bar deliberately differs from the status bar, where an unavailable
- * item vanishes. An address with a hole in it is a lie about containment; a readout is merely a
- * step you cannot take.
+ * That is the one place this bar deliberately differs from the status bar's own items, where an
+ * unavailable item vanishes. An address with a hole in it is a lie about containment; a readout is
+ * merely a step you cannot take.
  *
  * **This file is the FLOW; the markup is a document.** `surfaces/jump-bar.json` owns the bar's
- * structure, its ARIA and every value in its style, and `surfaces/jump-bar.ts` mounts one per pane
- * (studio-ui-guidelines.md §6, §9.3). What stays here is the part that is a decision: which pane
- * this bar is about, what its address is, which of its steps the registry can run, and what a
- * chevron opens — and the chevron opens the KIT MENU, `surfaces/menu.ts`, because a list of
- * commands is what that surface already is (studio-ui-guidelines.md §12.5).
+ * structure, its ARIA and every value in its style, and `surfaces/jump-bar.ts` mounts it into the
+ * host the status bar's document leaves for it (studio-ui-guidelines.md §6, §9.3). What stays here
+ * is the part that is a decision: which pane this bar is about, what its address is, which of its
+ * steps the registry can run, and what a chevron opens — and the chevron opens the KIT MENU,
+ * `surfaces/menu.ts`, because a list of commands is what that surface already is
+ * (studio-ui-guidelines.md §12.5).
+ *
+ * @docs studio/interface
  */
 
 import { displayTagName } from "@jxsuite/schema/guards";
 import { childList, getNodeAtPath, nodeLabel, pathsEqual, projectState } from "../store";
 import { effect, effectScope } from "../reactivity";
-import { PRIMARY_PANE, workspace } from "../workspace/workspace";
+import { activePane, workspace } from "../workspace/workspace";
 import { derivationOfPane, tabOfPane } from "../canvas/canvas-surface";
-import { paneRegion } from "../ui/regions";
 import { primarySelection } from "../tabs/selection";
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { openMenu } from "../surfaces/menu";
+import { rectOf } from "../utils/geometry";
 import { mountJumpBarSurface } from "../surfaces/jump-bar";
-import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import type { CommandArgs, CommandRegistry } from "../commands/registry";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { JxPath } from "../state";
@@ -71,11 +83,17 @@ import type { Tab } from "../tabs/tab";
 import type { PaneDerivation } from "../workspace/workspace";
 import type { EffectScope } from "@vue/reactivity";
 
-/** The CSS variable the stage is offset by while the jump bar is on screen. */
-export const JUMP_BAR_VAR = "--jump-bar-h";
+/**
+ * The region the trail stamps on itself. It is the status bar's DOCUMENT field: the document, and
+ * where in it you are.
+ */
+export const JUMP_BAR_REGION = "statusbar/document";
 
-/** The bar's height. Declared here because the offset projection and the document must agree. */
-const JUMP_BAR_HEIGHT = 24;
+/**
+ * How a segment's alternatives hang from its chevron: ABOVE it, leading edges aligned. The bar sits
+ * on the window's floor, so the kit menu's default (below the opener) would open off screen.
+ */
+const ABOVE_OPENER = "block-start span-inline-end";
 
 // ─── The model ───────────────────────────────────────────────────────────────
 
@@ -84,7 +102,7 @@ const JUMP_BAR_HEIGHT = 24;
  * step of the address without matching its rendered text, which is derived (the shot contract's R1,
  * `scripts/screenshots/README.md`).
  */
-export type JumpSegmentKind = "project" | "file" | "editor" | "node";
+export type JumpSegmentKind = "file" | "editor" | "node";
 
 /** One alternative in a segment's dropdown. Each is a command, exactly like the segment itself. */
 export interface JumpChoice {
@@ -111,12 +129,12 @@ export interface JumpSegment {
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
 /**
- * The document's path with the project root taken off — the root is the segment before it.
+ * The document's path with the project root taken off — the root is the PROJECT field to its left.
  *
  * Lives here rather than in `statusbar.ts`, where it started: the jump bar is the surface whose
- * whole job is naming the containment chain, and the status bar's DOCUMENT field is a second reader
- * of the same fact. Having the reader own it also kept `mock.module("surfaces/statusbar")` — which
- * six bootstrap tests do — from deciding whether the jump bar can name a file.
+ * whole job is naming the containment chain. Having the reader own it also keeps
+ * `mock.module("surfaces/statusbar")` — which six bootstrap tests do — from deciding whether the
+ * jump bar can name a file.
  */
 export function documentLabel(path: string | null): string {
   if (!path) {
@@ -235,22 +253,12 @@ export function jumpSegments(
   if (!tab) {
     return [];
   }
-  const segments: JumpSegment[] = [];
-  const project = projectState;
-  if (project) {
-    segments.push({
-      choices: [],
-      command: "project.openRecent",
-      kind: "project",
-      label: project.name,
-      title: project.projectRoot,
-    });
-  }
-
-  // ONE document per tab. This used to walk `session.documentStack` and emit a `subdocument`
-  // Segment per frame, each one a `document.setStackLevel` you could click back to — but nothing
-  // In `src/` ever pushed a frame, so the loop had exactly one iteration in the shipped app and the
-  // Address it drew was always this line. A tab holds a document; drilling in opens another tab.
+  // ONE document per tab, and no project segment before it: the status bar's PROJECT field sits
+  // Directly to the left of this trail and already names the project, with the same
+  // `project.openRecent` command. The document segment used to follow a `subdocument` segment per
+  // `session.documentStack` frame, each one a `document.setStackLevel` you could click back to —
+  // But nothing in `src/` ever pushed a frame. A tab holds a document; drilling in opens another
+  // Tab.
   /* In a DERIVED pane the leading verb is Keep, not Open.
      The address is still the document — a lens draws the source pane's, a companion its own — but
      the question an author has about a pane that is following something is "can I stop it
@@ -258,13 +266,15 @@ export function jumpSegments(
      lens: `projectStep` already renders a step whose command is disabled as a disabled button with
      `disabledReason` in the tooltip, so the sentence explaining why Code, Diff and breakpoint views
      cannot be pinned arrives for free. */
-  segments.push({
-    choices: [],
-    command: derived ? "pane.pin" : "palette.openFiles",
-    kind: "file",
-    label: documentLabel(tab.documentPath),
-    title: tab.documentPath ?? "Not saved to disk yet",
-  });
+  const segments: JumpSegment[] = [
+    {
+      choices: [],
+      command: derived ? "pane.pin" : "palette.openFiles",
+      kind: "file",
+      label: documentLabel(tab.documentPath),
+      title: tab.documentPath ?? "Not saved to disk yet",
+    },
+  ];
 
   // A logic editor is the leaf of the address, and it has no selection under it: the Monaco buffer
   // And the formula workspace are editing a definition, not a node of the document tree.
@@ -377,8 +387,8 @@ function projectStep(
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
-/** One pane's bar: the document mounted in its cell, and the address it last drew. */
-interface PaneBar {
+/** The bar: the document mounted in the status bar's slot, and the address it last drew. */
+interface Bar {
   host: HTMLElement;
   surface: JumpBarSurface;
   /** The segments behind the projection, by key — what `run` and `choose` resolve against. */
@@ -386,14 +396,13 @@ interface PaneBar {
 }
 
 /**
- * Where each pane's bar is mounted. One entry per drawn cell.
+ * Where the bar is mounted, once the status bar has a slot for it.
  *
- * A Map rather than a `let _host`, because the bar addresses a PANE: it prints where you are, and
- * with two panes on screen there are two answers. `panels/pane-grid.ts` attaches a cell's
- * `.pane-jump` as the cell is built and detaches it as the cell is disposed, which is the same
- * hand-over `panels/frontmatter-panel.ts` takes from the stage.
+ * ONE bar, not one per pane: the status bar is one row for the window, so the trail addresses the
+ * focused pane. `surfaces/statusbar.ts` attaches its `trail` slot when its document mounts and
+ * detaches it when it is disposed.
  */
-const _bars = new Map<string, PaneBar>();
+let _bar: Bar | null = null;
 
 let _scope: EffectScope | null = null;
 
@@ -414,6 +423,9 @@ export function dismissJumpMenu(): void {
  * nothing here draws a panel: `surfaces/menu.ts` owns the roving caret, typeahead, Escape and light
  * dismissal, because a list of commands is what that surface already is: a second one is the defect
  * studio-ui-guidelines.md §12.5 names.
+ *
+ * The menu hangs ABOVE the chevron. The bar is the window's floor, so there is nothing below it;
+ * `place` is the same answer in coordinates, for an engine that cannot anchor a popover.
  */
 function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
   const registry = activeRegistry();
@@ -442,6 +454,8 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
       }
     },
     opener: anchor,
+    placement: ABOVE_OPENER,
+    ...(anchor ? { place: (box: DOMRect) => aboveOpener(anchor, box) } : {}),
     region: "jump-bar",
     rows,
   });
@@ -449,33 +463,17 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
 }
 
 /**
- * Keep the stage clear of the bar.
- *
- * The same one-projection-one-variable shape `pane-context.ts` uses for its own band, and for the
- * same reason: the stage's offset is the SUM of the two, so a pane with no tab open (no bar) costs
- * the welcome screen no dead band.
- *
- * **The variable is written on the PANE, not on `:root`** — when there is a pane to write it on.
- * Two cells have two bars and two stages, and one document-level number would offset both by
- * whichever pane painted last: a side pane showing a document would push the primary's welcome
- * screen down by 24px, and closing the last tab in one pane would lift the other's document under
- * its own bar. `.pane-stage` reads it from its cell by cascade. A host outside a cell (the tests,
- * and the bare offset callers) still writes the root, which is exactly what it meant before.
- *
- * @param {number} height Bar height in px. `0` when the pane has no address to print.
- * @param {HTMLElement | null} [host] The bar's host. Its cell takes the variable when it has one.
+ * The menu's corner when it hangs above `anchor`: its bottom on the anchor's top, leading edges
+ * aligned.
  */
-export function applyJumpBarOffset(height: number, host?: HTMLElement | null): void {
-  const target = host?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
-  target.style.setProperty(JUMP_BAR_VAR, `${height}px`);
+export function aboveOpener(anchor: HTMLElement, box: DOMRect): { x: number; y: number } {
+  const rect = rectOf(anchor);
+  return { x: Math.round(rect.left), y: Math.max(0, Math.round(rect.top - box.height)) };
 }
 
-/**
- * The address one pane's document should be showing, and the segments behind it.
- *
- * @param {string} paneId
- */
-function projectPane(paneId: string): { steps: ProjectedStep[]; segments: JumpSegment[] } {
+/** The address of the focused pane, and the segments behind it. */
+function projectFocused(): { steps: ProjectedStep[]; segments: JumpSegment[] } {
+  const paneId = activePane().id;
   const segments = jumpSegments(tabOfPane(paneId), derivationOfPane(paneId));
   const registry = activeRegistry();
   return {
@@ -486,65 +484,52 @@ function projectPane(paneId: string): { steps: ProjectedStep[]; segments: JumpSe
   };
 }
 
-/**
- * Paint one pane's bar. Exported because the bootstrap paints once before mounting the effect.
- *
- * @param {string} [paneId] Defaults to every attached pane — what "render the jump bar" means when
- *   the caller is a lifecycle rather than a pane.
- */
-export function renderJumpBar(paneId?: string): void {
-  if (_bars.size === 0) {
+/** Paint the bar. Exported because the bootstrap paints once before mounting the effect. */
+export function renderJumpBar(): void {
+  if (!_bar) {
     return;
   }
   // The address changed, so an open menu is describing a place that may no longer be on the bar.
   // Repaints happen only when tracked state moves, so this cannot close a menu you are reading.
   dismissJumpMenu();
-  for (const [id, bar] of _bars) {
-    if (paneId !== undefined && id !== paneId) {
-      continue;
-    }
-    const { segments, steps } = projectPane(id);
-    bar.segments = new Map(steps.map((step, i) => [step.key, segments[i]!]));
-    bar.surface.update(steps);
-    applyJumpBarOffset(steps.length === 0 ? 0 : JUMP_BAR_HEIGHT, bar.host);
-  }
+  const { segments, steps } = projectFocused();
+  _bar.segments = new Map(steps.map((step, i) => [step.key, segments[i]!]));
+  _bar.surface.update(steps);
 }
 
 /**
- * Give a pane's bar somewhere to paint, or take it away.
+ * Give the bar somewhere to paint, or take it away.
  *
- * Called by `panels/pane-grid.ts` as a cell is built and as it is disposed. Detaching disposes the
- * mount first: a cell being removed still has this bar's document in it, and the runtime that owns
- * that DOM is about to be unreachable.
+ * Called by `surfaces/statusbar.ts` as its document mounts and as it is disposed. Detaching
+ * disposes the mount first: the slot being removed still has this bar's document in it, and the
+ * runtime that owns that DOM is about to be unreachable.
  *
- * @param {string} paneId
  * @param {HTMLElement | null} host
  */
-export function attachJumpBarHost(paneId: string, host: HTMLElement | null): void {
-  const previous = _bars.get(paneId);
-  if (previous?.host === host) {
+export function attachJumpBarHost(host: HTMLElement | null): void {
+  if (_bar?.host === host) {
     return;
   }
-  if (previous) {
-    previous.surface.dispose();
-    applyJumpBarOffset(0, previous.host);
-    _bars.delete(paneId);
+  if (_bar) {
+    dismissJumpMenu();
+    _bar.surface.dispose();
+    _bar = null;
   }
   if (!host) {
     return;
   }
-  const bar: PaneBar = {
+  _bar = {
     host,
     segments: new Map(),
-    surface: mountJumpBarSurface(host, paneRegion(paneId, "jump"), {
+    surface: mountJumpBarSurface(host, JUMP_BAR_REGION, {
       choose: (key, anchor) => {
-        const segment = _bars.get(paneId)?.segments.get(key);
+        const segment = _bar?.segments.get(key);
         if (segment) {
           openChoices(segment, anchor);
         }
       },
       run: (key) => {
-        const segment = _bars.get(paneId)?.segments.get(key);
+        const segment = _bar?.segments.get(key);
         const registry = activeRegistry();
         if (segment?.command && registry) {
           void runReported(registry, segment.command, segment.args, "Jump Bar");
@@ -552,22 +537,18 @@ export function attachJumpBarHost(paneId: string, host: HTMLElement | null): voi
       },
     }),
   };
-  _bars.set(paneId, bar);
-  renderJumpBar(paneId);
+  renderJumpBar();
 }
 
 /**
- * Subscribe the bar to the state it renders. Idempotent.
+ * Subscribe the bar to the state it renders. Idempotent: a second call replaces the effect.
  *
- * `host` is the PRIMARY pane's, the same bargain `panels/tab-strip.ts`'s `mount` makes: the
- * bootstrap holds the primary's cell and hands it over, and every other pane's host arrives from
- * the grid through {@link attachJumpBarHost}.
- *
- * @param {HTMLElement} host
+ * Called by `surfaces/statusbar.ts`'s `mountStatusbar`, which owns the bar's lifecycle because the
+ * trail is its DOCUMENT field. The host arrives separately ({@link attachJumpBarHost}), and either
+ * may come first: the effect paints whatever host is attached, and attaching paints at once.
  */
-export function mountJumpBar(host: HTMLElement): void {
-  unmountJumpBar();
-  attachJumpBarHost(PRIMARY_PANE, host);
+export function mountJumpBar(): void {
+  _scope?.stop();
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
@@ -575,14 +556,11 @@ export function mountJumpBar(host: HTMLElement): void {
       // Reading it here is what repaints the bar from a skeleton into the real thing.
       void activeRegistry();
       void projectState?.name;
-      /* EVERY pane's tab, not the focused one's. Two bars print two addresses, and the side pane's
-         has to repaint when its own document moves — an effect that tracked `activeTab` alone left
-         the unfocused bar frozen on whatever it last said. */
-      for (const pane of workspace.panes) {
-        const tab = tabOfPane(pane.id);
-        if (!tab) {
-          continue;
-        }
+      // The FOCUSED pane's tab: clicking into the other pane re-points the trail.
+      void workspace.activePaneId;
+      void workspace.panes.length;
+      const tab = tabOfPane(activePane().id);
+      if (tab) {
         void tab.doc.document;
         void tab.documentPath;
         void tab.session.selection.map((path) => path.join("/")).join("|");
@@ -594,21 +572,17 @@ export function mountJumpBar(host: HTMLElement): void {
   });
 }
 
+/** Stop the effect and take the bar down. */
 export function unmountJumpBar(): void {
   dismissJumpMenu();
   _scope?.stop();
   _scope = null;
-  for (const bar of _bars.values()) {
-    bar.surface.dispose();
-    applyJumpBarOffset(0, bar.host);
-  }
-  _bars.clear();
-  applyJumpBarOffset(0);
+  attachJumpBarHost(null);
 }
 
 // ─── This bar contributes no commands ────────────────────────────────────────
 // It declared one, `document.setStackLevel` — "leave a sub-document by naming the level you want to
 // Be at". Its `enablement` read `session.documentStack.length > 0`, a stack nothing could ever push
 // To, so the command was permanently disabled and its palette entry permanently unreachable. Every
-// Id the bar renders now belongs to the surface that owns the behaviour: `project.openRecent`,
-// `palette.openFiles`, `selection.set`.
+// Id the bar renders now belongs to the surface that owns the behaviour: `palette.openFiles`,
+// `pane.pin`, `selection.set`.

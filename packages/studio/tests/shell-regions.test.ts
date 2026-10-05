@@ -236,7 +236,7 @@ describe("statusbar/selection", () => {
     await flush();
     expect(resolveRegion("statusbar/selection")).toBeNull();
 
-    // A BATCH: since the jump bar took the ancestor trail, a single selection leaves this field
+    // A BATCH: since the DOCUMENT field's trail names the ancestors, a single selection leaves this field
     // Empty (`statusbar.test.ts` states why), and the COUNT is what still renders it.
     tab.session.selection = [
       ["children", 0],
@@ -257,12 +257,12 @@ describe("statusbar/selection", () => {
     await flush();
     await flush();
     // Transient messages left the bar entirely for the toast host, so the only thing that can
-    // Appear beside the selection is another FIELD — and each is addressable on its own. With no
-    // Registry composed, every COMMAND item is absent and only the readouts survive, which is the
-    // Honest skeleton the bar paints before the bootstrap runs.
+    // Appear beside the selection is another FIELD — and each is addressable on its own. The
+    // DOCUMENT field is the jump bar's breadcrumb trail, mounted into the slot this bar leaves it.
+    await flush(3);
     const document_ = resolveRegion("statusbar/document");
     expect(document_).not.toBeNull();
-    expect(document_!.textContent).toContain("Saved");
+    expect(document_!.textContent).toContain("index.json");
     expect(resolveRegion("statusbar")!.contains(document_)).toBe(true);
     expect(resolveRegion("statusbar/selection")).toBeNull();
   });

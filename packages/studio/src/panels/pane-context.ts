@@ -303,10 +303,9 @@ export function unmount() {
  * welcome screen (no tab, no bar) does not open under a 28px gap nothing explains, and a read-only
  * banner does not sit on top of the document it is warning you about.
  *
- * **On the PANE, not on `:root`**, for the reason `panels/jump-bar.ts` gives at the same seam: two
- * cells have two bands of different heights, and a single document-level number offsets both stages
- * by whichever pane painted last. A host outside a cell writes the root, which is what it meant
- * when the shell had one bar.
+ * **On the PANE, not on `:root`**: two cells have two bands of different heights, and a single
+ * document-level number offsets both stages by whichever pane painted last. A host outside a cell
+ * writes the root, which is what it meant when the shell had one bar.
  *
  * @param {number} height Band height in px. `0` when the pane has no chrome.
  * @param {HTMLElement | null} [host] The bar's host. Its cell takes the variable when it has one.
@@ -409,7 +408,8 @@ export function dismissPresetMenu(): void {
  *
  * The leading slot existed to push the three axes right. It is where §18.4's preset menu goes
  * because the menu is about THIS PANE and the bar is the pane's own chrome; the alternative homes
- * (the tab strip, the jump bar) are about a document and an address respectively.
+ * (the tab strip, the status bar's breadcrumb trail) are about a document and an address
+ * respectively.
  *
  * **There is no `pane.showDerivePresets`.** §13.5, quoted verbatim in `canvas/canvas-render.ts`:
  * opening a menu to press an item names a CONTROL; the item is the command. Every row here runs
@@ -625,9 +625,9 @@ export function presetRows(paneId: string): PresetRow[] {
  * the stage and the zoom pod still has something to zoom. Suppressing them while the dock was open
  * removed the controls for the very document the reader could still see.
  *
- * **There is no breadcrumb either.** The address is the jump bar's job — `panels/jump-bar.ts`, one
- * row above — and the Logic tab's own header carries the Close. This bar drew a second Back and a
- * second trail beside both of them.
+ * **There is no breadcrumb either.** The address is the jump bar's job — `panels/jump-bar.ts`, the
+ * status bar's trail — and the Logic tab's own header carries the Close. This bar drew a second
+ * Back and a second trail beside both of them.
  */
 function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView {
   /* A LENS suppresses the two axes that WRITE. Editor kind and Canvas view both land in
