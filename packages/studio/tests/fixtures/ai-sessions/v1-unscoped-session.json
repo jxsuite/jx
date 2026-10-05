@@ -61,7 +61,7 @@
       { "role": "user", "content": "Start a portfolio site" },
       { "role": "assistant", "content": "Let's pick a starter first." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }

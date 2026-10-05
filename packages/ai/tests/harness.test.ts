@@ -17,6 +17,7 @@ import {
 import type { HarnessEvent, ModelFn, ModelRequest, TurnInput } from "../src/harness/index.ts";
 import { createLedger, createToolDefinition, createToolRegistry } from "../src/tools.ts";
 import type { ToolContext, ToolRegistry, ToolResult } from "../src/tools.ts";
+import { SEAL_RELOADED } from "../src/messages/index.ts";
 import type { ChatMessage } from "../src/messages/index.ts";
 import type { StreamEvent, StreamingClient } from "../src/streaming-client.ts";
 
@@ -293,6 +294,58 @@ describe("the event grammar", () => {
     await Promise.resolve();
     release();
     expect(await reading).toEqual(["turn_start", "round_start", "text", "round_end", "turn_end"]);
+  });
+});
+
+describe("the history is repaired at turn start", () => {
+  const call = (id: string, callId: string): ChatMessage => ({
+    id,
+    role: "assistant",
+    blocks: [{ type: "tool_call", id: callId, name: "probe", argumentsText: "{}" }],
+    timestamp: 7,
+  });
+  const reply = (id: string, callId: string): ChatMessage => ({
+    id,
+    role: "tool",
+    blocks: [{ type: "tool_result", callId, isError: false, content: '{"success":true}' }],
+    timestamp: 8,
+  });
+
+  test("an unanswered call is sealed before the first request, and the turn says so", async () => {
+    const { model, requests } = scripted([textRound("Carrying on.")]);
+    const history = [USER, call("a0", "c0"), reply("r_orphan", "gone"), USER];
+    const { events } = await run({ model, history });
+    expect(types(events).slice(0, 3)).toEqual(["turn_start", "transcript_repaired", "round_start"]);
+    expect(events[1]).toMatchObject({
+      seq: 1,
+      sealed: ["c0"],
+      dropped: ["r_orphan"],
+      moved: [],
+    });
+    expect(requests[0]!.messages.map((m) => m.id)).toEqual(["u1", "a0", "sealed_c0_0", "u1"]);
+    expect(requests[0]!.messages[2]).toMatchObject({
+      role: "tool",
+      blocks: [
+        {
+          type: "tool_result",
+          callId: "c0",
+          isError: true,
+          content: JSON.stringify({ success: false, error: SEAL_RELOADED }),
+        },
+      ],
+      timestamp: 7,
+    });
+  });
+
+  test("a well-formed history is sent as it is, and no repair is heard", async () => {
+    const { model, requests } = scripted([textRound("Done.")]);
+    const history = [USER, call("a0", "c0"), reply("r0", "c0"), USER];
+    const { events } = await run({ model, history });
+    expect(types(events)).not.toContain("transcript_repaired");
+    expect(requests[0]!.messages).toEqual(history);
+    for (const [index, message] of requests[0]!.messages.entries()) {
+      expect(message).toBe(history[index]!);
+    }
   });
 });
 

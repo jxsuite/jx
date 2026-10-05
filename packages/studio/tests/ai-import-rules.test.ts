@@ -129,7 +129,7 @@ describe("the rule fires on every way of writing the import", () => {
  */
 describe("the size of @jxsuite/ai in the page", () => {
   /** Minified bytes from packages/ai/src in a bundle of every subpath Studio imports at runtime. */
-  const CEILING = 22_500;
+  const CEILING = 24_900;
 
   /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
   function runtimeSubpaths(): string[] {

@@ -42,7 +42,7 @@
       { "role": "user", "content": "From the future" },
       { "role": "assistant", "content": "Read as v1." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }

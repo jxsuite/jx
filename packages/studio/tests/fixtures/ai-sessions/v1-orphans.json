@@ -154,7 +154,7 @@
         "content": "{\"success\":true,\"summary\":\"Added a as child 1 of the root.\"}"
       }
     ],
-    "repair": { "dropped": 1, "sealed": 1 },
+    "repair": { "dropped": 1, "moved": 0, "sealed": 1 },
     "repairedWire": [
       { "role": "assistant", "content": "Continuing." },
       { "role": "user", "content": "Add two links" },

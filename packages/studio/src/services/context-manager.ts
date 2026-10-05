@@ -1,17 +1,23 @@
 /**
  * Context-manager.js — Token budget management for the AI assistant
  *
- * Estimates token usage and trims conversation history before each send to keep the
- * context window within safe limits (specs/ai.md §2 and §2.1).
+ * Estimates token usage and trims conversation history before each send to keep the context window
+ * within safe limits (specs/ai.md §2 and §2.1).
  *
- * Strategy (MVP): keep the system prompt + the most recent messages, dropping the oldest
- * messages when the estimated total exceeds the configured token budget. Dropped messages
- * are replaced with a single summary note so the model knows history was truncated.
+ * Strategy (MVP): keep the system prompt + the most recent messages, dropping the oldest messages
+ * when the estimated total exceeds the configured token budget. Dropped messages are replaced with
+ * a single summary note so the model knows history was truncated.
  *
  * @license MIT
  */
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
+import {
+  SEAL_RELOADED,
+  repairToolPairs,
+  toChatMessages,
+  toLiveMessages,
+} from "@jxsuite/ai/messages";
 import { modelContextWindow } from "./ai-models";
 
 /** Shape of a single entry returned by `chatState.toMessagesArray()`. */
@@ -273,91 +279,56 @@ export function trimContext(
 // ─── Orphaned tool calls ────────────────────────────────────────────────────
 
 /**
- * What a synthesized result says, so a reader and the model see the same reason. Exported so a
- * restore can tell a seal from a reply (services/tool-outcomes.ts).
+ * What a seal says for a call that was not cut off, so a reader and the model see the same reason.
+ * Exported so a restore can name the outcome of an ordinary call nothing answered
+ * (services/tool-outcomes.ts); `isSealContent` tells any seal from a reply.
  */
-export const UNANSWERED_TOOL_RESULT = JSON.stringify({
-  success: false,
-  error:
-    "This tool call was never completed — the session was reloaded or the history was trimmed.",
-});
+export const UNANSWERED_TOOL_RESULT = JSON.stringify({ success: false, error: SEAL_RELOADED });
 
 /**
  * Repair tool-call pairing in place, and report how many messages it touched.
  *
  * `toMessagesArray()` serializes the array verbatim: an assistant message with `tool_calls` becomes
  * a `tool_calls` request, and a `tool` message becomes a reply carrying `tool_call_id`. Providers
- * require the two to come in pairs, and **three ordinary things break the pairing**:
+ * require each reply directly after the request that made the call, and **four ordinary things
+ * break that**:
  *
  * 1. `saveSession` persists `msgs.slice(-MAX_PERSIST_MESSAGES)` and `restoreChat` pushes the result
  *    back, so a session longer than the cap can be restored starting mid-pair.
  * 2. {@link trimContext} splices from the front for the token budget, with no more regard for pairs.
  * 3. A turn that stopped while a tool was still running — which `ask_user` makes routine, because its
  *    tool is _designed_ to be outstanding — leaves a request with no reply.
+ * 4. A transcript written before one window ran one turn can hold a reply after a later message.
  *
  * Each of those produced a 400 on the NEXT send, from a conversation the user could see was fine.
- * So the repair belongs on the send path, after trimming, rather than at any one of the three
- * sites: a request with no reply gets a synthesized failure (keeping the assistant's text, which
- * dropping the message would lose), and a reply with no request is dropped.
+ * So the repair belongs on the send path, after trimming, rather than at any one of the sites. It
+ * is `repairToolPairs` (`@jxsuite/ai/messages`, specs/ai.md §3.4), the same repair the turn engine
+ * runs at turn start, applied to the chat store: pairing is per request rather than by call id
+ * across the transcript, because a provider may reuse `call_0` every round; a reply away from its
+ * request is moved back beside it; a request with no reply is sealed with a synthesized failure
+ * (keeping the assistant's text, which dropping the message would lose) that says whether the call
+ * was cut off mid-arguments; and a reply with no request is dropped.
+ *
+ * The store is rebuilt with one `splice`, and only when something changed. Every message the repair
+ * kept is the store's own object, which the streaming turn and the panel hold by identity, and the
+ * array itself is never reassigned.
  *
  * @param {ReturnType<typeof createChatState>} chatState
- * @returns {{ sealed: number; dropped: number }}
+ * @returns {{ dropped: number; moved: number; sealed: number }}
  */
 export function pruneOrphanToolMessages(chatState: ReturnType<typeof createChatState>): {
-  sealed: number;
   dropped: number;
+  moved: number;
+  sealed: number;
 } {
-  const { messages } = chatState;
-
-  const requested = new Set<string>();
-  const answered = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role === "assistant" && msg.toolCalls) {
-      for (const call of msg.toolCalls) {
-        requested.add(call.id);
-      }
-    } else if (msg.role === "tool" && msg.toolCallId) {
-      answered.add(msg.toolCallId);
-    }
+  const live = chatState.messages;
+  const neutral = toChatMessages(live);
+  const { messages, sealed, dropped, moved } = repairToolPairs(neutral);
+  if (sealed.length + dropped.length + moved.length === 0) {
+    return { dropped: 0, moved: 0, sealed: 0 };
   }
-
-  // Replies with no request, and replies with no id at all — neither can be serialized into a
-  // Well-formed pair, and a reply is the half that carries no author text worth keeping.
-  let dropped = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]!;
-    if (msg.role === "tool" && (!msg.toolCallId || !requested.has(msg.toolCallId))) {
-      messages.splice(i, 1);
-      dropped += 1;
-    }
-  }
-
-  /* Requests with no reply. Walk backwards so each insertion is past the indices still to visit,
-     and seal immediately after the requesting message — `toMessagesArray` emits in array order, so
-     that is the only position the pair is adjacent in. */
-  let sealed = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]!;
-    if (msg.role !== "assistant" || !msg.toolCalls) {
-      continue;
-    }
-    const missing = msg.toolCalls.filter((call) => !answered.has(call.id));
-    if (missing.length === 0) {
-      continue;
-    }
-    messages.splice(
-      i + 1,
-      0,
-      ...missing.map((call, n) => ({
-        content: UNANSWERED_TOOL_RESULT,
-        id: `sealed_${call.id}_${n}`,
-        role: "tool" as const,
-        timestamp: msg.timestamp,
-        toolCallId: call.id,
-      })),
-    );
-    sealed += missing.length;
-  }
-
-  return { dropped, sealed };
+  const liveOf = new Map(neutral.map((message, index) => [message, live[index]!]));
+  const next = messages.map((message) => liveOf.get(message) ?? toLiveMessages([message])[0]!);
+  live.splice(0, live.length, ...next);
+  return { dropped: dropped.length, moved: moved.length, sealed: sealed.length };
 }
