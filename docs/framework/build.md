@@ -118,6 +118,8 @@ The page also emits a `modulepreload` hint for each of them, and for each compon
 <link rel="modulepreload" href="/components/site-counter.js" />
 ```
 
+The import map is written into `<head>`, ahead of those hints and every module script. Browsers refuse an import map that arrives after a module load or preload has started, and Firefox enforces it strictly: a map placed later is dropped, and every component module fails on the bare `@vue/reactivity` specifier.
+
 An import map says where a bare specifier lives; it does not ask for it. Without the hints the browser only discovers `/assets/vue-reactivity.js` after fetching **and parsing** a component module: three round trips deep on a slow connection, one after another. The hints name only what the page actually loads.
 
 The trailing-slash entries cover package _subpaths_. A component or a `$src` sidecar rarely imports only `lit-html`. It imports `lit-html/directives/class-map.js` too, and an import map with only exact keys cannot resolve that. The build scans its own output for those imports, bundles each one it finds to `/assets/lit-html/…`, and repeats until nothing new turns up; which subpaths exist is a property of the third-party code your pages use, so the set is discovered rather than listed. Each one shares the single copy of the package core the exact key already points at, because two copies of lit on one page break in ways a size budget would not notice.
