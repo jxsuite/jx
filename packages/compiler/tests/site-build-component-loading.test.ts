@@ -75,6 +75,21 @@ describe("buildSite — component modules are named after their tagName", () => 
     expect(html).not.toContain('rel="stylesheet"');
   });
 
+  it("declares the import map in <head>, before any modulepreload or module script", () => {
+    const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
+    const map = html.indexOf('<script type="importmap">');
+    /*
+     * The HTML spec rejects an import map that arrives after a module load or preload has started,
+     * and Firefox enforces it: every component module then died on the bare `@vue/reactivity`
+     * specifier. Chromium tolerates the late map, which is why this shipped.
+     */
+    expect(map).toBeGreaterThan(-1);
+    expect(map).toBeLessThan(html.indexOf("</head>"));
+    expect(map).toBeLessThan(html.indexOf('rel="modulepreload"'));
+    expect(map).toBeLessThan(html.indexOf('<script type="module"'));
+    expect(html.split('<script type="importmap">')).toHaveLength(2);
+  });
+
   it("preloads the runtime and component modules the import map only names", () => {
     const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
     const head = html.slice(0, html.indexOf("</head>"));
