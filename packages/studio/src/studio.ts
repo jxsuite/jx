@@ -94,7 +94,6 @@ import { runInsertZoneAction } from "./editor/insert-zone-action";
 import { canvasSlashHandler } from "./editor/canvas-slash-bridge";
 import { makeCanvasContextMenuHandler } from "./editor/canvas-context-menu";
 import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
-import { mountJumpBar } from "./panels/jump-bar";
 import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
 import { createLiveSurfaceSaver } from "./services/live-surfaces";
@@ -916,11 +915,9 @@ registerRenderer("seoModal", renderSeoModal);
 registerRenderer("chatPanel", () => chatPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
 renderStatusbar();
+// The status bar mounts the jump bar too: the focused pane's breadcrumb trail is its DOCUMENT
+// Field, and the only breadcrumb in the shell.
 mountStatusbar();
-// The jump bar, in the pane's own grid cell above the context bar. It renders the whole address
-// — project › file › node › node — and it is the only breadcrumb in the shell: the pane context
-// Bar drew a second one, and it named a sub-document stack nothing could push onto.
-mountJumpBar(primaryCell?.jump ?? document.createElement("div"));
 mountActivityBar();
 
 /* The background-click deselect moved into `editor/shortcuts.ts`'s `installStageGestures`, beside

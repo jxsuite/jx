@@ -1,5 +1,6 @@
 /**
- * The status bar — three fields, in scope order, every interactive item a command.
+ * The status bar — three fields, in scope order, every interactive item a command. The middle one,
+ * DOCUMENT, is a slot the jump bar's breadcrumb trail is mounted into (`tests/jump-bar.test.ts`).
  *
  * The bar's contract is what it CANNOT do as much as what it can: it holds no transient message, it
  * has no click handler of its own, and it renders no item whose command the registry does not
@@ -11,20 +12,17 @@ import { initShellRefs, setProjectState, statusbarEl } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import {
   aheadBehindLabel,
-  forgetSavedTimes,
   mountStatusbar,
-  noteDocumentSaved,
   renderStatusbar,
   unmountStatusbar,
-  viewLabel,
 } from "../src/surfaces/statusbar";
+import { unmountJumpBar } from "../src/panels/jump-bar";
 import { resetProjectShell, shell } from "../src/shell";
 import { readFileSync } from "node:fs";
 import { setActiveRegistry } from "../src/commands/active-registry";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import { notify, resetNotifications } from "../src/services/notify";
-import { pinClock, unpinClock } from "../src/services/clock";
 import { collabState } from "../src/collab/collab-state";
 import type { CommandContext } from "../src/commands/context";
 import type { AnyCommand } from "../src/commands/registry";
@@ -63,7 +61,6 @@ function buildRegistry(ids?: readonly string[]) {
     // Roster and Problems is off the rail.
     stub("view.setBottomTab", "Show Bottom Dock Tab", "application"),
     stub("palette.openFiles", "Go to File…", "application"),
-    stub("file.save", "Save", "document"),
     stub("selection.set", "Select Element", "document"),
     stub("collab.showStatus", "Collaborate: What is happening in this document?", "document"),
   ];
@@ -78,7 +75,6 @@ beforeEach(() => {
   setProjectState(null as never);
   resetProjectShell();
   resetNotifications();
-  forgetSavedTimes();
   ran.length = 0;
   ctx = makeContext();
   setActiveRegistry(buildRegistry());
@@ -86,9 +82,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   unmountStatusbar();
+  unmountJumpBar();
   setActiveRegistry(null);
   resetNotifications();
-  unpinClock();
   await flush();
 });
 
@@ -97,6 +93,8 @@ async function render(): Promise<void> {
   renderStatusbar();
   await flush();
   await flush();
+  // The jump bar mounts its own document into the DOCUMENT slot once this one exists.
+  await flush(3);
 }
 
 /** Every item the bar shows — buttons and readouts — in order. */
@@ -105,6 +103,9 @@ const items = () =>
     e.textContent?.trim(),
   );
 const field = (name: string) => statusbarEl.querySelector(`[data-jx-region="statusbar/${name}"]`);
+const slot = () => statusbarEl.querySelector<HTMLElement>('[part="trail"]');
+const crumbs = () =>
+  [...statusbarEl.querySelectorAll('[part="crumb"]')].map((e) => e.textContent?.trim());
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -119,30 +120,6 @@ describe("aheadBehindLabel", () => {
     expect(aheadBehindLabel(2, 3)).toBe(" ↑2 ↓3");
   });
 });
-
-describe("viewLabel", () => {
-  test("a canvas pane reports its EFFECTIVE view, not its mode string", () => {
-    expect(viewLabel("canvas", "edit")).toBe("Edit");
-    expect(viewLabel("canvas", "design")).toBe("Design");
-    expect(viewLabel("canvas", "preview")).toBe("Preview");
-  });
-
-  test("every other editor kind is named by its kind", () => {
-    expect(viewLabel("code", "design")).toBe("Code");
-    expect(viewLabel("grid", "design")).toBe("Grid");
-    expect(viewLabel("diff", "design")).toBe("Diff");
-    expect(viewLabel("library", "design")).toBe("Library");
-    // One label map in commands/context.ts: the status bar and the pane context bar cannot print
-    // Different words for the same editor kind. The wire value is still `stylebook`.
-    expect(viewLabel("config", "design")).toBe("Project Styles");
-  });
-
-  test("no editor means no label", () => {
-    expect(viewLabel("none", "design")).toBe("");
-  });
-});
-
-// ─── PROJECT ─────────────────────────────────────────────────────────────────
 
 describe("the PROJECT field", () => {
   test("with no project it offers the one command that fixes that", async () => {
@@ -272,76 +249,54 @@ describe("the PROJECT field", () => {
 // ─── DOCUMENT ────────────────────────────────────────────────────────────────
 
 describe("the DOCUMENT field", () => {
-  test("does not exist with no document open", async () => {
+  test("is a hidden slot with no document open", async () => {
     await render();
-    expect(field("document")).toBeNull();
+    expect(slot()).not.toBeNull();
+    expect(slot()!.hasAttribute("hidden")).toBe(true);
   });
 
-  test("names the path, and the path is Go to File…", async () => {
+  test("is the jump bar's trail: the path first, and the path is Go to File…", async () => {
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab(undefined, { documentPath: "/p/pages/index.json" });
     await render();
+    expect(slot()!.hasAttribute("hidden")).toBe(false);
+    expect(field("document")?.tagName).toBe("NAV");
     const button = field("document")?.querySelector("button") as HTMLButtonElement;
     expect(button.textContent?.trim()).toBe("pages/index.json");
     button.click();
     expect(ran.at(-1)!.id).toBe("palette.openFiles");
   });
 
-  test("reports the EFFECTIVE view, so it cannot disagree with the Command Bar again", async () => {
-    resetWorkspaceWithTab();
+  test("names every ancestor of the selection, and each one selects it", async () => {
+    const tab = resetWorkspaceWithTab({
+      children: [{ children: [{ tagName: "li" }], tagName: "ul" }],
+      tagName: "div",
+    });
+    tab.session.selection = [["children", 0, "children", 0]];
+    await render();
+    expect(crumbs()).toEqual(["/project/index.json", "ul", "li"]);
+    const ul = [...statusbarEl.querySelectorAll<HTMLElement>('button[part="crumb"]')][1]!;
+    ul.click();
+    expect(ran.at(-1)).toEqual({ args: { path: ["children", 0] }, id: "selection.set" });
+  });
+
+  test("states no view and no save word — the context bar and the tab strip own those", async () => {
+    const tab = resetWorkspaceWithTab();
+    tab.doc.dirty = true;
     ctx = makeContext({ canvas: { view: "preview" }, editor: { kind: "canvas" } });
     await render();
-    expect(items()).toContain("Preview");
-    // The old bar printed "Content Mode" off `tab.doc.mode` while the toolbar printed "Design".
-    expect(items()).not.toContain("Content Mode");
+    for (const word of ["Preview", "Unsaved changes", "Saved", "Read-only"]) {
+      expect(statusbarEl.textContent).not.toContain(word);
+    }
   });
 
-  test("the save state is worded, and while dirty it IS the save command", async () => {
-    const tab = resetWorkspaceWithTab();
-    tab.doc.dirty = true;
-    await render();
-    expect(items()).toContain("Unsaved changes");
-    const save = [...statusbarEl.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Unsaved changes",
-    )!;
-    save.click();
-    expect(ran.at(-1)!.id).toBe("file.save");
-  });
-
-  test("a clean document with no recorded write says only Saved", async () => {
+  test("unmounting the bar takes the trail down with it", async () => {
     resetWorkspaceWithTab();
     await render();
-    expect(items()).toContain("Saved");
-  });
-
-  test("a recorded write is worded relative to the clock seam", async () => {
-    resetStudioState({ name: "Site", projectRoot: "/p" });
-    resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
-    pinClock(1_000_000);
-    noteDocumentSaved("/p/index.json");
-    pinClock(1_000_000 + 120_000);
-    await render();
-    expect(items()).toContain("Saved 2m ago");
-  });
-
-  test("noteDocumentSaved ignores an absent path, and forgetSavedTimes clears the record", async () => {
-    resetStudioState({ name: "Site", projectRoot: "/p" });
-    resetWorkspaceWithTab(undefined, { documentPath: "/p/index.json" });
-    noteDocumentSaved(null);
-    pinClock(2_000_000);
-    noteDocumentSaved("/p/index.json");
-    forgetSavedTimes();
-    await render();
-    expect(items()).toContain("Saved");
-  });
-
-  test("a read-only collab guest is told so, in words", async () => {
-    const tab = resetWorkspaceWithTab();
-    tab.doc.dirty = true;
-    collabState(tab).readOnly = true;
-    await render();
-    expect(items()).toContain("Read-only");
-    expect(items()).not.toContain("Unsaved changes");
+    expect(crumbs()).toEqual(["/project/index.json"]);
+    unmountStatusbar();
+    await flush();
+    expect(crumbs()).toEqual([]);
   });
 });
 
@@ -354,7 +309,7 @@ describe("the SELECTION field", () => {
     expect(field("selection")).toBeNull();
   });
 
-  test("holds NO ancestor trail — the address is the jump bar's, and one copy is the point", async () => {
+  test("holds NO ancestor trail — the trail is the DOCUMENT field's, and one copy is the point", async () => {
     const tab = resetWorkspaceWithTab({
       children: [{ children: [{ tagName: "li", textContent: "Item" }], tagName: "ul" }],
       tagName: "div",
@@ -362,8 +317,8 @@ describe("the SELECTION field", () => {
     ctx = makeContext({ document: { open: true } });
     tab.session.selection = [["children", 0, "children", 0]];
     await render();
-    // A single selection leaves the field empty: the jump bar's leaf segment states it, with its
-    // Ancestors, and the bar that carries ambient state has nothing left to add.
+    // A single selection leaves the field empty: the trail's leaf states it, with its ancestors,
+    // One field to the left.
     expect(field("selection")).toBeNull();
     expect(statusbarEl.querySelectorAll(".sb-sep")).toHaveLength(0);
     expect(items()).not.toContain("ul");
@@ -437,17 +392,16 @@ describe("items are a rendering of the registry", () => {
   test("a disabled command renders disabled, with its own requires sentence", async () => {
     const registry = createCommandRegistry({ getContext: () => ctx });
     registry.register({
-      ...stub("file.save", "Save", "document"),
+      ...stub("project.openRecent", "Open Recent…", "project"),
       enablement: () => false,
-      requires: "a writable target",
+      requires: "a recent project",
     });
     setActiveRegistry(registry);
-    const tab = resetWorkspaceWithTab();
-    tab.doc.dirty = true;
+    resetStudioState({ name: "Site", projectRoot: "/p" });
     await render();
-    const save = statusbarEl.querySelector("button") as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    expect(save.title).toContain("a writable target");
+    const recent = field("project")?.querySelector("button") as HTMLButtonElement;
+    expect(recent.disabled).toBe(true);
+    expect(recent.title).toContain("a recent project");
   });
 });
 

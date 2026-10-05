@@ -388,9 +388,7 @@ describe("the bootstrap's saveDocument hook", () => {
       },
     }));
     void mock.module("../src/surfaces/statusbar.ts", () => ({
-      forgetSavedTimes: mock(() => {}),
       mountStatusbar: mock(() => {}),
-      noteDocumentSaved: mock(() => {}),
       renderStatusbar: mock(() => {}),
       unmountStatusbar: mock(() => {}),
     }));
