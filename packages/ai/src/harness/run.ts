@@ -16,6 +16,9 @@
  * - **A turn that drew nothing says so** (§3.2), as an `empty` outcome, rather than ending silent.
  * - **Stop is checked between calls and after the round** (§2), so a Stop that lands mid-call stops
  *   the calls after it, and one that lands during the last call opens no further round.
+ * - **The history is repaired before it is sent** (§3.4). Every tool call is put back beside its
+ *   reply, and a call with none is sealed, so a history a restore, a trim or a Stop broke does not
+ *   get the turn's first request refused.
  *
  * @module @jxsuite/ai/harness
  * @license MIT
@@ -24,6 +27,7 @@
 import { nextMessageId } from "../message-id.ts";
 import { isEmptyAssistant } from "../messages/convert.ts";
 import { fromOpenAITools } from "../messages/openai.ts";
+import { repairToolPairs } from "../messages/repair.ts";
 import type { Block, ChatMessage } from "../messages/types.ts";
 import {
   createLedger,
@@ -183,7 +187,11 @@ export function runTurn(input: TurnInput): TurnRun {
     queue.push(event);
   };
 
-  const { history } = input;
+  /* Every call beside its reply before anything reads the history (specs/ai.md §3.4): a provider
+     refuses a request that repeats a call without its reply, and a history can arrive broken (a
+     restore, a trim, a turn stopped between calls). */
+  const repair = repairToolPairs(input.history);
+  const history = repair.messages;
   /* Whether the turn has drawn anything before its first round: an assistant message after the
      message it answers (or anywhere, when there is none) with text or a call. */
   const answered = history.findLastIndex((message) => message.role === "user");
@@ -223,6 +231,10 @@ export function runTurn(input: TurnInput): TurnRun {
     };
 
     emit({ type: "turn_start" });
+    const { sealed, dropped, moved } = repair;
+    if (sealed.length + dropped.length + moved.length > 0) {
+      emit({ type: "transcript_repaired", sealed, dropped, moved });
+    }
     for (let round = 1; round <= policy.maxRounds && workRounds < policy.maxWorkRounds; round++) {
       rounds = round;
       const messageId =

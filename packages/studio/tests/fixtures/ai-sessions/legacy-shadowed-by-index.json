@@ -60,7 +60,7 @@
       { "role": "user", "content": "Current" },
       { "role": "assistant", "content": "From the index." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }

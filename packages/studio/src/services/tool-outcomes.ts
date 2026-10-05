@@ -4,27 +4,29 @@
  * A tool call's outcome is recorded twice while a turn runs: as the `result` on its
  * `ToolCallRecord`, which the chip renders, and as the `tool` message that answers it, which the
  * provider reads. The second is the one that must survive, because it is the one the wire carries,
- * and it is the one that always did: until the turn became accountable (specs/ai.md §3.2) the first was never populated for a
- * finished call (the loop looked for the record after closing the stream), so every persisted
- * `result` was `null`: every restored chip rendered as still pending, and an answered question as
- * one still open (specs/ai.md §3.4).
+ * and it is the one that always did: until the turn became accountable (specs/ai.md §3.2) the first
+ * was never populated for a finished call (the loop looked for the record after closing the
+ * stream), so every persisted `result` was `null`: every restored chip rendered as still pending,
+ * and an answered question as one still open (specs/ai.md §3.4).
  *
  * So the tool message is the single source. A save strips `result` from every record, which keeps
  * the payload free of a second, disagreeing copy; a restore backfills each record from the reply
- * that answers it. A question nothing answered keeps no result, which is what makes it render
- * inert rather than as one still waiting; an ordinary call nothing answered never completed, and
- * says so.
+ * that answers it. A question nothing answered keeps no result, which is what makes it render inert
+ * rather than as one still waiting; an ordinary call nothing answered never completed, and says
+ * so.
  *
  * **A seal is not an answer.** When a question was left open, the send path seals its request with
  * a synthesized failure so the wire stays well-formed (`pruneOrphanToolMessages`). For an ordinary
  * call that failure IS the outcome to show: it never completed. For a question it is the absence of
  * an answer, so a restore leaves it without a result, and the chip draws the inert "still open when
- * the session was reloaded" card rather than a failure.
+ * the session was reloaded" card rather than a failure. Either seal counts, the one for a call that
+ * was cut off mid-arguments as well (`isSealContent`).
  *
- * @docs studio/ai/chat
  * @license MIT
+ * @docs studio/ai/chat
  */
 
+import { isSealContent } from "@jxsuite/ai/messages";
 import type { ToolResult } from "@jxsuite/ai/tools";
 import type { PersistedMessage } from "./ai-session-store";
 import { UNANSWERED_TOOL_RESULT } from "./context-manager";
@@ -114,7 +116,7 @@ export function backfillToolResults(messages: readonly PersistedMessage[]): Pers
       const result = parseToolResult(reply.content);
       if (typeof reply.toolCallId === "string" && result && !replies.has(reply.toolCallId)) {
         replies.set(reply.toolCallId, result);
-        if (reply.content === UNANSWERED_TOOL_RESULT) {
+        if (isSealContent(reply.content)) {
           sealed.add(reply.toolCallId);
         }
       }

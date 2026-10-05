@@ -151,7 +151,7 @@
       },
       { "role": "assistant", "content": "The title is red; there is no tenth child." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }

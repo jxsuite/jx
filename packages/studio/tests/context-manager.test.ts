@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createChatState } from "@jxsuite/ai";
 import type { Message } from "@jxsuite/ai/chat-state";
+import { SEAL_CUT_OFF, isSealContent } from "@jxsuite/ai/messages";
 
 /**
  * The catalogue's reported windows, doubled.
@@ -15,7 +16,8 @@ void mock.module("../src/services/ai-models", () => ({
   proxyActionOffer: () => null,
 }));
 
-const { pruneOrphanToolMessages, trimContext } = await import("../src/services/context-manager");
+const { UNANSWERED_TOOL_RESULT, pruneOrphanToolMessages, trimContext } =
+  await import("../src/services/context-manager");
 
 beforeEach(() => {
   reportedWindows = {};
@@ -386,7 +388,7 @@ describe("context-manager — pruneOrphanToolMessages", () => {
     const cs = createChatState({ model: "gpt-4" });
     pushMessages(cs, [{ role: "user", content: "Read it" }, ...pair("call_1")]);
 
-    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, sealed: 0 });
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, moved: 0, sealed: 0 });
     expect(cs.messages.length).toBe(3);
   });
 
@@ -401,7 +403,7 @@ describe("context-manager — pruneOrphanToolMessages", () => {
       },
     ]);
 
-    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, sealed: 1 });
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, moved: 0, sealed: 1 });
     expect(cs.messages.length).toBe(3);
     // Sealed IMMEDIATELY after its request — the only position toMessagesArray emits as a pair.
     expect(cs.messages[2]!.role).toBe("tool");
@@ -418,7 +420,7 @@ describe("context-manager — pruneOrphanToolMessages", () => {
       { role: "user", content: "Carry on" },
     ]);
 
-    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, sealed: 0 });
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, moved: 0, sealed: 0 });
     expect(cs.messages.length).toBe(1);
     expect(cs.messages[0]!.role).toBe("user");
   });
@@ -427,7 +429,7 @@ describe("context-manager — pruneOrphanToolMessages", () => {
     const cs = createChatState({ model: "gpt-4" });
     pushMessages(cs, [{ role: "tool", content: "{}" }]);
 
-    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, sealed: 0 });
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, moved: 0, sealed: 0 });
     expect(cs.messages.length).toBe(0);
   });
 
@@ -445,7 +447,7 @@ describe("context-manager — pruneOrphanToolMessages", () => {
       { role: "tool", content: '{"success":true}', toolCallId: "call_b" },
     ]);
 
-    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, sealed: 1 });
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, moved: 0, sealed: 1 });
     expect(cs.messages.map((m) => m.toolCallId)).toEqual([undefined, "call_a", "call_b"]);
   });
 
@@ -461,7 +463,7 @@ describe("context-manager — pruneOrphanToolMessages", () => {
       },
     ]);
 
-    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, sealed: 1 });
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, moved: 0, sealed: 1 });
 
     // The property that matters: every tool reply follows the assistant request that declared it.
     const wire = cs.toMessagesArray() as {
@@ -481,5 +483,74 @@ describe("context-manager — pruneOrphanToolMessages", () => {
       }
     }
     expect(open.size).toBe(0);
+  });
+
+  test("a reply a later message separated from its request is moved back, objects kept", () => {
+    const cs = createChatState({ model: "gpt-4" });
+    // A transcript from before one window ran one turn: the reply landed after the next user message.
+    pushMessages(cs, [
+      { role: "user", content: "Read it" },
+      {
+        role: "assistant",
+        content: "Reading",
+        toolCalls: [{ id: "call_1", name: "read_file", arguments: "{}" }],
+      },
+      { role: "user", content: "And then?" },
+      { role: "tool", content: '{"success":true}', toolCallId: "call_1" },
+    ]);
+    const [user, request, next, reply] = cs.messages;
+
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, moved: 1, sealed: 0 });
+    // The store's own objects, in the order the wire needs: the reply directly after its request.
+    expect(cs.messages).toHaveLength(4);
+    expect(cs.messages[0]).toBe(user!);
+    expect(cs.messages[1]).toBe(request!);
+    expect(cs.messages[2]).toBe(reply!);
+    expect(cs.messages[3]).toBe(next!);
+  });
+
+  test("a call id reused in a later round pairs per request: the later unanswered one is sealed", () => {
+    const cs = createChatState({ model: "gpt-4" });
+    // A provider that numbers its calls afresh each round, and a Stop before round two's call ran.
+    pushMessages(cs, [
+      { role: "user", content: "Read both" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "call_0", name: "read_file", arguments: '{"path":"a"}' }],
+      },
+      { role: "tool", content: '{"success":true}', toolCallId: "call_0" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "call_0", name: "read_file", arguments: '{"path":"b"}' }],
+      },
+    ]);
+
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, moved: 0, sealed: 1 });
+    expect(cs.messages).toHaveLength(5);
+    expect(cs.messages[4]).toMatchObject({
+      content: UNANSWERED_TOOL_RESULT,
+      id: "sealed_call_0_0",
+      role: "tool",
+      timestamp: cs.messages[3]!.timestamp,
+      toolCallId: "call_0",
+    });
+    expect(cs.messages[4]!.blocks).toBeUndefined();
+  });
+
+  test("a call whose arguments were cut off is sealed saying so", () => {
+    const cs = createChatState({ model: "gpt-4" });
+    pushMessages(cs, [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "call_cut", name: "write_file", arguments: '{"path":"/a.json","con' }],
+      },
+    ]);
+
+    expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 0, moved: 0, sealed: 1 });
+    expect(JSON.parse(cs.messages[1]!.content)).toEqual({ success: false, error: SEAL_CUT_OFF });
+    expect(isSealContent(cs.messages[1]!.content)).toBe(true);
   });
 });

@@ -75,7 +75,7 @@
       { "role": "user", "content": "Question for A" },
       { "role": "assistant", "content": "Answer for A" }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": "unchanged"
   }
 }
