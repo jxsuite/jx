@@ -11,6 +11,7 @@ code:
   - packages/ai/src/messages/index.ts
   - packages/ai/src/messages/convert.ts
   - packages/ai/src/messages/openai.ts
+  - packages/ai/src/messages/repair.ts
   - packages/ai/src/harness/index.ts
   - packages/ai/src/harness/run.ts
   - packages/ai/src/harness/lock.ts
@@ -133,6 +134,6 @@ Every step of the turn reaches `onEvent` as it happens, in order: the round star
 
 To keep two turns from running at once, pass the same `createTurnLock()` to each: a turn started while another holds the lock throws `LaneBusyError` straight away, before it sends anything.
 
-:::doc-warning
-A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply. Providers refuse a request like that. Before you send the conversation again, answer each unanswered call with a failed result of your own, as Studio does before every send.
+:::doc-note
+A turn stopped between two tool calls never runs the second one, so the messages it appended end with a call that has no reply, and providers refuse a request like that. You do not have to fix it yourself: the next turn answers each such call with a failed result before it sends anything, and reports a `transcript_repaired` event when it does. If you keep your own transcript, call `repairToolPairs` from `@jxsuite/ai/messages` on it to apply the same repair, as Studio does before every send.
 :::

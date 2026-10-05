@@ -174,7 +174,7 @@
       { "role": "user", "content": "q26" },
       { "role": "assistant", "content": "a26" }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": {
       "jx-ai-chat-session:/proj/demo:s_T_1": [
         { "id": "m03", "role": "user", "content": "q02", "timestamp": 1767225603000 },

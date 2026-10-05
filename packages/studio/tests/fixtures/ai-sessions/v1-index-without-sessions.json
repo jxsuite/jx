@@ -29,7 +29,7 @@
       { "role": "user", "content": "Migrate me" },
       { "role": "assistant", "content": "Migrated." }
     ],
-    "repair": { "dropped": 0, "sealed": 0 },
+    "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
     "storage": {
       "jx-ai-chat-session:/proj/demo:s_T_1": [
         { "id": "leg_1", "role": "user", "content": "Migrate me", "timestamp": 1767225601000 },
