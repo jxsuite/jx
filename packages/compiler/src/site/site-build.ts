@@ -2246,17 +2246,25 @@ function injectComponentScripts(
     .map((href) => `<link rel="modulepreload" href="${href}">`)
     .join("\n  ");
 
-  const result = intoHead([preloads, styleBlock]);
+  /*
+   * The import map goes in <head>, AHEAD of the hints. The HTML spec rejects an import map that
+   * arrives after a module load or preload has started, and Firefox enforces it: with the map at
+   * the end of <body>, the `modulepreload` links above had already started, so the map was
+   * dropped ("Import maps are not allowed after a module load or preload has started") and every
+   * component module died on `@vue/reactivity` being a bare specifier nothing remapped. That took
+   * down the theme toggle, site search and every interactive component, in Firefox only.
+   *
+   * A map already present (islands, a page template) is already in <head> and is left where it is;
+   * the hints are inserted at `</head>`, behind it.
+   */
+  const hasImportMap = html.includes('<script type="importmap">');
+  const result = intoHead([hasImportMap ? "" : importMap, preloads, styleBlock]);
 
   const moduleScripts = jsTags
     .map((tag: string) => `<script type="module" src="/components/${tag}.js"></script>`)
     .join("\n  ");
 
-  // Check if an import map already exists (from islands etc.)
-  const hasImportMap = result.includes('<script type="importmap">');
-  const injection = (hasImportMap ? "" : `${importMap}\n  `) + moduleScripts;
-
-  return result.replace("</body>", `  ${injection}\n</body>`);
+  return result.replace("</body>", `  ${moduleScripts}\n</body>`);
 }
 
 /**
