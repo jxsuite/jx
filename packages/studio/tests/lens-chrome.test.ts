@@ -1135,10 +1135,10 @@ describe("what a lens does NOT draw", () => {
   test("the jump bar's leading verb becomes Keep, and a lens refuses it", () => {
     const page = lensGrid();
     const derived = derivationOfPane(SECONDARY_PANE);
-    const [, file] = jumpSegments(page, derived);
+    const [file] = jumpSegments(page, derived);
     expect(file).toMatchObject({ command: "pane.pin", kind: "file" });
     // An ordinary pane still offers Open.
-    const [, ordinary] = jumpSegments(page, null);
+    const [ordinary] = jumpSegments(page, null);
     expect(ordinary).toMatchObject({ command: "palette.openFiles" });
   });
 

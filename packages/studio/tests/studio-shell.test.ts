@@ -136,9 +136,7 @@ void mock.module("../src/panels/bottom-dock.ts", () => ({
 }));
 
 void mock.module("../src/surfaces/statusbar.ts", () => ({
-  forgetSavedTimes: mock(() => {}),
   mountStatusbar: mock(() => {}),
-  noteDocumentSaved: mock(() => {}),
   renderStatusbar: renderStatusbarMock,
   unmountStatusbar: mock(() => {}),
 }));

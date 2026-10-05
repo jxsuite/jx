@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioStatusbar",
-  "$description": "The status bar: ambient state in the shell's level order, PROJECT then DOCUMENT then SELECTION. The adapter hands in `fields`, each with its region and its items; an item with a command is a button that runs it through `run`, and an item without one is a readout. Nothing here decides what the bar says.",
+  "$description": "The status bar: ambient state in the shell's level order, PROJECT then DOCUMENT then SELECTION. The adapter hands in the fields either side of the DOCUMENT field (`leading` and `trailing`), each with its region and its items; an item with a command is a button that runs it through `run`, and an item without one is a readout. The DOCUMENT field between them is the `trail` slot, an empty box `panels/jump-bar.ts` mounts the breadcrumb trail into. Nothing here decides what the bar says.",
   "tagName": "div",
   "attributes": { "part": "bar" },
   "style": {
@@ -17,7 +17,17 @@
       "padding": "0 var(--jx-space-3)"
     },
     "& > [part=\"field\"]:last-child": { "overflow": "hidden" },
-    "& > [part=\"field\"] + [part=\"field\"]": { "borderLeft": "1px solid var(--jx-border)" },
+    "& > :not([hidden]) ~ :not([hidden])": {
+      "$description": "A rule between fields rather than a run of \"|\" characters: the boundary between PROJECT, DOCUMENT and SELECTION is structural. Every visible field after a visible field draws one, so a hidden DOCUMENT slot leaves no doubled rule behind.",
+      "borderLeft": "1px solid var(--jx-border)"
+    },
+    "& > [part=\"trail\"]": {
+      "$description": "The DOCUMENT field, filled by `panels/jump-bar.ts`. It takes the width the other two fields leave, so a deep trail scrolls inside it instead of pushing the SELECTION field off the bar.",
+      "display": "flex",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& > [part=\"trail\"][hidden]": { "display": "none" },
     "& [part=\"item\"], & [part=\"state\"]": {
       "maxWidth": "32ch",
       "overflow": "hidden",
@@ -43,7 +53,65 @@
   "children": [
     {
       "$prototype": "Array",
-      "items": { "$ref": "#/state/fields" },
+      "items": { "$ref": "#/state/leading" },
+      "key": { "$ref": "$map/item/id" },
+      "map": {
+        "tagName": "div",
+        "attributes": { "part": "field", "data-jx-region": "${$map.item.region}" },
+        "children": [
+          {
+            "$prototype": "Array",
+            "items": { "$ref": "$map/item/items" },
+            "key": { "$ref": "$map/item/key" },
+            "map": {
+              "tagName": "span",
+              "attributes": { "part": "slot" },
+              "style": { "display": "contents" },
+              "$switch": { "$ref": "$map/item/kind" },
+              "cases": {
+                "button": {
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "item",
+                    "type": "button",
+                    "title": "${$map.item.title}",
+                    "disabled": { "$ref": "$map/item/disabled" }
+                  },
+                  "textContent": "${$map.item.label}",
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": { "$ref": "#/state/run" },
+                        "value": [{ "$ref": "$map/item/key" }]
+                      }
+                    ]
+                  }
+                },
+                "state": {
+                  "tagName": "span",
+                  "attributes": { "part": "state", "title": "${$map.item.title}" },
+                  "textContent": "${$map.item.label}"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "$description": "The DOCUMENT field's slot. Empty by design: the jump bar is handed this box and mounts its own document into it, so nothing here may ever render a child. `aria-live=\"off\"` because the bar's host is the app's polite status region, and a trail that changes on every click in the canvas would be read aloud on every click; the trail is a `nav` a reader visits, not news.",
+      "tagName": "div",
+      "attributes": {
+        "part": "trail",
+        "aria-live": "off",
+        "hidden": "${state.hasDocument ? null : ''}"
+      }
+    },
+    {
+      "$prototype": "Array",
+      "items": { "$ref": "#/state/trailing" },
       "key": { "$ref": "$map/item/id" },
       "map": {
         "tagName": "div",

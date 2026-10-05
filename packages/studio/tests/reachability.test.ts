@@ -265,7 +265,6 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "(`services/live-preview.ts`), which cannot disagree with the render; this is the " +
       "parent-side fallback nothing falls back to",
   },
-  "surfaces/statusbar.ts": { forgetSavedTimes: TEST_RESET },
   "panels/style-panel.ts": {
     resetAffectedDisclosure:
       "test reset, with a caveat worth keeping: `_showAffected` is deliberately module-global " +

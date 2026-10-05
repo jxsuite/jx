@@ -35,7 +35,7 @@ The labelled rail on the far left, and the panel it opens beside it. The rail is
 
 The center of the window holds one editor pane, or two side by side when :kbd[⌘\] gives the open document a pane of its own, so you can keep a page on screen while you work on its source, its layout or the same page at another size. A pane renders your page or component live, exactly as it will look in production, and you select, edit and rearrange elements directly on it. See **[The canvas](/docs/studio/interface/canvas)**, **[Edit mode](/docs/studio/editing)** and **[Design mode](/docs/studio/design)**.
 
-Above the pane sits its strip of open documents, then the **[jump bar](/docs/studio/interface#the-jump-bar)**, reading `◈ project › file › element` with every segment a button, so you always know where you are and can step anywhere along the chain. Under those, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
+Above the pane sits its strip of open documents. Under that, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
 
 ## The Inspector
 
@@ -47,7 +47,7 @@ The dock on the right, in four tabs: **Content** (the selected element's setting
 
 ## The status bar
 
-The thin strip along the bottom says what is true right now and nothing else: the **project** (name, branch, problem count), the **document** (path, view, and whether it has unsaved changes), and a **selection** count when you have more than one element picked. Almost every item is a button. Where you are is the jump bar's job, one line above the pane.
+The thin strip along the bottom says what is true right now and nothing else: the **project** (name, branch, problem count), then the **[jump bar](/docs/studio/interface#the-jump-bar)**, a breadcrumb trail reading `file › parent › element` for whatever you have selected, and a **selection** count when you have more than one element picked. Every crumb is a button, so you always know where you are and can select any element above it with one click. Almost every other item is a button too.
 
 ## Next
 
