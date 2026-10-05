@@ -4,19 +4,18 @@
  *
  * `jump-bar.json` is the markup, the ARIA and the style; `panels/jump-bar.ts` is the flow — which
  * pane this bar is about, what its address is, which of its steps the registry can actually run,
- * and what a chevron opens. This module is the seam between them: one scope per pane, one document
- * mounted into that pane's cell, and an `update()` that ASSIGNS rather than re-mounts.
+ * and what a chevron opens. This module is the seam between them: one scope, one document mounted
+ * into the slot the status bar leaves for it, and an `update()` that ASSIGNS rather than
+ * re-mounts.
  *
- * **One mount per pane, not one per bar.** Two cells draw two addresses, so `attachJumpBarHost`
- * hands this module a host per pane and gets a handle back. The scope is reactive, so a repaint is
- * an assignment to `segments` and the keyed `$map` reconciles: a step whose key survives keeps its
- * node, and the chevron the reader is aiming at does not move under them.
+ * The scope is reactive, so a repaint is an assignment to `segments` and the keyed `$map`
+ * reconciles: a step whose key survives keeps its node, and the chevron the reader is aiming at
+ * does not move under them.
  *
- * **The bar hides rather than un-mounts when a pane has no address.** A pane with no tab open has
- * no address to print, and the document's own `hidden` is what takes it off the screen — the mount
- * stays, because the next tab open is one assignment away and re-mounting would cost a frame of
- * blank chrome. The stage's `--jump-bar-h` offset is written by the flow, which is the one number
- * this surface and its stylesheet-free document share.
+ * **The bar hides rather than un-mounts when there is no address.** With no tab open there is
+ * nothing to print, and the document's own `hidden` takes it off the screen — the mount stays,
+ * because the next tab open is one assignment away and re-mounting would cost a frame of blank
+ * chrome.
  *
  * @docs studio/interface
  */
@@ -81,13 +80,13 @@ interface JumpBarScope extends Record<string, unknown>, JumpBarActions {
 }
 
 /**
- * Mount one pane's bar into the host its cell built for it.
+ * Mount the bar into the slot the status bar built for it.
  *
- * The host is CLEARED first: a cell hands the bar a slot of its own, and whatever was in it belongs
- * to a pane this bar is no longer drawing.
+ * The host is CLEARED first: the slot is the bar's own, and whatever was in it belongs to a mount
+ * this bar is no longer drawing.
  *
- * @param {HTMLElement} host The cell's slot for the bar.
- * @param {string} region The `data-jx-region` the bar stamps on itself — `pane.<id>/jump`.
+ * @param {HTMLElement} host The status bar's slot for the bar.
+ * @param {string} region The `data-jx-region` the bar stamps on itself — `statusbar/document`.
  * @param {JumpBarActions} actions What a press does. Read once, when the scope is made.
  * @returns {JumpBarSurface}
  */

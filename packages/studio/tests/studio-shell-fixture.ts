@@ -102,9 +102,7 @@ export async function bootStudio(opts: {
   }));
 
   void mock.module("../src/surfaces/statusbar.ts", () => ({
-    forgetSavedTimes: mock(() => {}),
     mountStatusbar: mock(() => {}),
-    noteDocumentSaved: mock(() => {}),
     renderStatusbar: mock(() => {}),
     unmountStatusbar: mock(() => {}),
   }));

@@ -4,7 +4,7 @@
  * Three refusals and one no-op that nothing else exercised:
  *
  * - `attachJumpBarHost` handed the host it already has must keep the painted bar rather than tear it
- *   down and build it again — the pane grid re-runs its `ref()` on every cell repaint.
+ *   down and build it again — the status bar re-hands its slot whenever its document re-mounts.
  * - The rename field's "you typed the name it already has" case, which has to CLEAR a standing
  *   refusal instead of reporting the entry as colliding with itself.
  * - `document.openSeo` over no document, which refuses by name rather than opening an empty modal.
@@ -20,9 +20,8 @@ import {
   settle,
 } from "./signals-panel-fixture";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { PRIMARY_PANE, activeTab, closeAllTabs } from "../src/workspace/workspace";
+import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { attachJumpBarHost, renderJumpBar, unmountJumpBar } from "../src/panels/jump-bar";
-import { PANE_SELECTOR } from "../src/surfaces/pane-grid";
 import { seoCommands } from "../src/panels/seo-modal";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -45,27 +44,14 @@ afterEach(() => {
 // ─── The jump bar's host handover ─────────────────────────────────────────────
 
 describe("attachJumpBarHost", () => {
-  /**
-   * A host inside a pane cell, which is where the grid puts it.
-   *
-   * The offset variable is written on the host's CELL when it has one, so a bar that is taken away
-   * has to give its own cell's band back — not the root's, which the other pane is reading. The
-   * cell is `surfaces/pane-grid.json`'s `[part="pane"]` and carries no class, so the fixture builds
-   * one the same way; `jb-pane` is only this suite's own handle for cleaning up.
-   */
+  /** A host the way the status bar draws it: an empty `trail` slot. */
   function makeHost(id: string): HTMLElement {
-    const pane = document.createElement("div");
-    pane.setAttribute("part", "pane");
-    pane.className = "jb-pane";
     const el = document.createElement("div");
+    el.setAttribute("part", "trail");
+    el.className = "jb-slot";
     el.id = id;
-    pane.append(el);
-    document.body.append(pane);
+    document.body.append(el);
     return el;
-  }
-
-  function bandOf(el: HTMLElement): string {
-    return el.closest<HTMLElement>(PANE_SELECTOR)!.style.getPropertyValue("--jump-bar-h");
   }
 
   /* Parts, not classes: the bar is `src/surfaces/jump-bar.json` now, and a document emits none. */
@@ -80,54 +66,51 @@ describe("attachJumpBarHost", () => {
   });
 
   afterEach(() => {
-    for (const el of document.querySelectorAll(".jb-pane")) {
+    attachJumpBarHost(null);
+    for (const el of document.querySelectorAll(".jb-slot")) {
       el.remove();
     }
   });
 
   test("handed the host it already has, it keeps the painted bar node for node", async () => {
     const host = makeHost("jb-host-a");
-    attachJumpBarHost(PRIMARY_PANE, host);
+    attachJumpBarHost(host);
     await flush(3);
     const painted = host.querySelector('nav[part="bar"]');
-    expect(crumbsIn(host)).toEqual(["My Site", "index.json"]);
+    expect(crumbsIn(host)).toEqual(["index.json"]);
 
-    attachJumpBarHost(PRIMARY_PANE, host);
+    attachJumpBarHost(host);
     await flush(3);
     // The SAME element, not an equal one: the grid re-runs its `ref()` on every cell repaint, so a
     // Re-attach that blanked the host and painted it again would throw the bar's DOM away on every
     // Unrelated repaint of the pane.
     expect(host.querySelector('nav[part="bar"]')).toBe(painted);
-    expect(crumbsIn(host)).toEqual(["My Site", "index.json"]);
-    expect(bandOf(host)).toBe("24px");
+    expect(crumbsIn(host)).toEqual(["index.json"]);
   });
 
   test("handed a DIFFERENT host, it blanks the old one and paints the new", async () => {
     const first = makeHost("jb-host-a");
     const second = makeHost("jb-host-b");
-    attachJumpBarHost(PRIMARY_PANE, first);
+    attachJumpBarHost(first);
     await flush(3);
-    expect(crumbsIn(first)).toEqual(["My Site", "index.json"]);
+    expect(crumbsIn(first)).toEqual(["index.json"]);
 
-    attachJumpBarHost(PRIMARY_PANE, second);
+    attachJumpBarHost(second);
     await flush(3);
-    // The cell being disposed still holds this bar's DOM, and the lit part that owns it is about to
-    // Be unreachable — so the handover blanks it and gives its band back.
+    // The slot being disposed still holds this bar's DOM, and the runtime that owns it is about to
+    // Be unreachable — so the handover blanks it.
     expect(first.querySelector('nav[part="bar"]')).toBeNull();
-    expect(bandOf(first)).toBe("0px");
-    expect(crumbsIn(second)).toEqual(["My Site", "index.json"]);
-    expect(bandOf(second)).toBe("24px");
+    expect(crumbsIn(second)).toEqual(["index.json"]);
   });
 
-  test("handed null, it detaches the pane and never paints it again", async () => {
+  test("handed null, it detaches and never paints that host again", async () => {
     const host = makeHost("jb-host-a");
-    attachJumpBarHost(PRIMARY_PANE, host);
+    attachJumpBarHost(host);
     await flush(3);
-    expect(crumbsIn(host)).toEqual(["My Site", "index.json"]);
+    expect(crumbsIn(host)).toEqual(["index.json"]);
 
-    attachJumpBarHost(PRIMARY_PANE, null);
+    attachJumpBarHost(null);
     expect(host.querySelector('nav[part="bar"]')).toBeNull();
-    expect(bandOf(host)).toBe("0px");
     // Detached means forgotten: a later repaint has no host to find.
     renderJumpBar();
     expect(host.querySelector('nav[part="bar"]')).toBeNull();

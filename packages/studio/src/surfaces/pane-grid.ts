@@ -35,10 +35,10 @@ registerSurface("pane-grid", paneGridDoc as unknown as JxDocument);
 /**
  * The `part` a pane's CELL carries.
  *
- * `panels/jump-bar.ts` and `panels/pane-context.ts` both write a `--*-h` custom property onto the
- * cell so the stage can read it back by cascade, and each is handed a box inside the cell rather
- * than the cell itself — so both resolve it with {@link PANE_SELECTOR}. It replaces a `.pane`
- * class: a converted surface emits none, and a `part` is the hook a document offers instead.
+ * `panels/pane-context.ts` writes a `--*-h` custom property onto the cell so the stage can read it
+ * back by cascade, and it is handed a box inside the cell rather than the cell itself — so it
+ * resolves the cell with {@link PANE_SELECTOR}. It replaces a `.pane` class: a converted surface
+ * emits none, and a `part` is the hook a document offers instead.
  */
 export const PANE_PART = "pane";
 
@@ -63,13 +63,12 @@ export const PANE_SELECTOR = `[part="${PANE_PART}"]`;
  */
 export const STAGE_SELECTOR = `[part="${STAGE_PART}"]`;
 
-/** The six boxes a cell is made of, in the order the document draws them. */
-export type PaneCellPart = "pane" | "strip" | "jump" | "chrome" | "stage" | "dropZone";
+/** The five boxes a cell is made of, in the order the document draws them. */
+export type PaneCellPart = "pane" | "strip" | "chrome" | "stage" | "dropZone";
 
 const CELL_PARTS: ReadonlyMap<string, PaneCellPart> = new Map([
   ["pane", "pane"],
   ["strip", "strip"],
-  ["jump", "jump"],
   ["chrome", "chrome"],
   ["pane-stage", "stage"],
   ["drop-zone", "dropZone"],
@@ -234,7 +233,7 @@ export function mountPaneGridSurface(
   const ready = mountSurface("pane-grid", scope, host, {
     /* No `instanceof` narrowing and no "is there a pane" guard, and both absences are structural.
        `pane-grid.json` draws no text and no `textContent`, so every node the runtime reports here
-       is an element; and the six cell parts exist only inside the repeater's rows, so a `$map`
+       is an element; and the five cell parts exist only inside the repeater's rows, so a `$map`
        scope is always there to name the pane. A guard on either would be a branch the document
        cannot reach — which is a line no test could ever cover, which is a claim nothing checks. */
     onNodeCreated: (element, _path, def, state) => {
