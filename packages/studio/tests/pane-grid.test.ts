@@ -73,10 +73,10 @@ describe("the cell", () => {
     const cell = cellForPane(PRIMARY_PANE);
     expect(cell).not.toBeNull();
     expect(cell!.root.isConnected).toBe(true);
-    // Complete: the five surfaces are children of the root that was appended, not added after.
+    // Complete: the four surfaces are children of the root that was appended, not added after. A
+    // Pane has no address bar of its own: that is the status bar's breadcrumb trail now.
     expect([...cell!.root.children]).toEqual([
       cell!.strip,
-      cell!.jump,
       cell!.chrome,
       cell!.stage,
       cell!.dropZone,
@@ -105,7 +105,7 @@ describe("the cell", () => {
     const cell = cellForPane(PRIMARY_PANE)!;
     const classed = [...grid().querySelectorAll("*")].filter((el) => el.className !== "");
     expect(classed.map((el) => `${el.nodeName.toLowerCase()}.${el.className}`)).toEqual([]);
-    for (const el of [cell.root, cell.strip, cell.jump, cell.chrome, cell.stage, cell.dropZone]) {
+    for (const el of [cell.root, cell.strip, cell.chrome, cell.stage, cell.dropZone]) {
       expect(el.className).toBe("");
     }
   });
@@ -268,13 +268,7 @@ describe("the second cell", () => {
 
     const side = cellForPane(SECONDARY_PANE)!;
     expect(side.root.isConnected).toBe(true);
-    expect([...side.root.children]).toEqual([
-      side.strip,
-      side.jump,
-      side.chrome,
-      side.stage,
-      side.dropZone,
-    ]);
+    expect([...side.root.children]).toEqual([side.strip, side.chrome, side.stage, side.dropZone]);
     expect(resolveRegion("pane.secondary")).toBe(side.stage);
     expect(resolveRegion("pane.secondary/tabs")).toBe(side.strip);
     // Its own surface record, registered against its own stage.
@@ -564,9 +558,9 @@ describe("the second cell", () => {
        there at all. Delete that loop and the pane's bars go on standing, its surface record goes on
        naming a stage nothing can reach, and every frame under it outlives the pane.
 
-       Three witnesses, one per step: `panels/jump-bar.ts` and `panels/pane-context.ts` each write
-       their `--*-h` back to `0px` through the host they still hold, and `disposePaneSurface` clears
-       the record the canvas hosts resolve through. The marker is the fourth: nothing emptied the
+       Two witnesses, one per step: `panels/pane-context.ts` writes its `--pane-context-h` back to
+       `0px` through the host it still holds, and `disposePaneSurface` clears the record the canvas
+       hosts resolve through. The marker is the third: nothing emptied the
        stage on the way past, which is what `releaseCanvasHosts` needs in order to find the frames
        inside it. */
     await split();
@@ -582,7 +576,6 @@ describe("the second cell", () => {
     await flush();
 
     expect(surfaceForPane(SECONDARY_PANE).wrap).toBeNull();
-    expect(side.root.style.getPropertyValue("--jump-bar-h")).toBe("0px");
     expect(side.root.style.getPropertyValue("--pane-context-h")).toBe("0px");
     // The stage kept its children through the teardown, which is what `releaseCanvasHosts` needs.
     expect(marker.parentElement).toBe(side.stage);
@@ -610,8 +603,8 @@ describe("a pointer in a cell moves the keyboard into it", () => {
 
   test("every surface in the side cell focuses it — not only its tab strip", async () => {
     /* `panels/tab-strip.ts`'s strip row was the ONLY thing in the app that moved
-       `workspace.activePaneId` by pointer. Clicking the side pane's canvas, its context bar, its
-       jump bar or anything drawn into its stage left the keyboard in the primary, so the
+       `workspace.activePaneId` by pointer. Clicking the side pane's canvas, its context bar or
+       anything drawn into its stage left the keyboard in the primary, so the
        Inspector, the block action bar, the overlay effect and every keyboard command went on
        answering for a document the person was not looking at. */
     await split();
@@ -619,7 +612,6 @@ describe("a pointer in a cell moves the keyboard into it", () => {
     for (const [name, el] of [
       ["stage", side.stage],
       ["chrome", side.chrome],
-      ["jump", side.jump],
       ["root", side.root],
     ] as const) {
       focusPane(PRIMARY_PANE);

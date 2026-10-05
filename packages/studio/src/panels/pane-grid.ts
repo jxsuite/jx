@@ -5,27 +5,28 @@
  * `workspace.panes` has been a real data model since the shell redesign's chrome phase: an ordered
  * list, a focused id, a split, an unsplit. Nothing drew it. `index.html` declared ONE each of
  * `#tab-strip`, `#jump-bar`, `#pane-chrome` and `#canvas-wrap` as flat siblings in `#app`'s grid —
- * four surfaces that belong to a PANE, laid out as rows and columns of the APPLICATION — so the
- * shell could model two panes and had somewhere to put exactly one. §18.3's stage handover was the
+ * surfaces that belong to a PANE, laid out as rows and columns of the APPLICATION — so the shell
+ * could model two panes and had somewhere to put exactly one. §18.3's stage handover was the
  * workaround: one stage, taken by whichever pane had focus, releasing the loser's artboards on the
  * way past. This module is what that scaffolding was standing in for, and the handover is deleted
  * with it.
  *
  * **The document owns the frame; this module owns the decisions.** `surfaces/pane-grid.json` is the
- * cells, the five boxes inside each one, the splitter between two of them and every rule that lays
+ * cells, the four boxes inside each one, the splitter between two of them and every rule that lays
  * them out; `surfaces/pane-grid.ts` is the mount. What is left here is the flow: which panes there
  * are, what a cell's stage is furnished with, in what ORDER a departing cell is taken apart, and
  * what the grid's own tracks are. Everything a cell CONTAINS still arrives through the module that
  * owns it — `canvas/canvas-render.ts` is the render root of the stage and this document puts
- * nothing inside it, `panels/jump-bar.ts` and `panels/pane-context.ts` are handed the jump and
- * chrome boxes, `panels/tab-strip.ts` is handed the strip, and this module makes the fifth — the
- * right-edge drop zone — a pragmatic target itself.
+ * nothing inside it, `panels/pane-context.ts` is handed the chrome box, `panels/tab-strip.ts` is
+ * handed the strip, and this module makes the fourth — the right-edge drop zone — a pragmatic
+ * target itself. (The jump bar had a box here too, until it moved to the status bar: a pane's
+ * address is now the focused pane's breadcrumb trail along the foot of the window.)
  *
  * **Three properties survived the conversion, and each is structural rather than remembered:**
  *
  * 1. _A pane is complete before it is published._ The runtime builds a `$map` row inside its own
- *    effect scope and inserts it afterwards, so the five `cellPart` calls below — the surface
- *    record, the gestures, the two bars' mounts, the pane-focus listener, the drop zone's own
+ *    effect scope and inserts it afterwards, so the `cellPart` calls below — the surface record,
+ *    the gestures, the context bar's mount, the pane-focus listener, the drop zone's own
  *    registration — all happen while the cell is still detached. There is no frame in which a cell
  *    exists with no stage inside it.
  * 2. _A pane's node is never re-parented._ The repeater is keyed on the pane id and the runtime's
@@ -81,7 +82,6 @@ import { releaseCanvasHosts } from "../canvas/iframe-host";
 import { installStageGestures } from "../editor/shortcuts";
 import { scheduleCanvasRender } from "../canvas/canvas-render";
 import { paneRegion, paneStripRegion } from "../ui/regions";
-import { attachJumpBarHost } from "./jump-bar";
 import { attachPaneChromeHost } from "./pane-context";
 import { MAX_PANES, focusPane, workspace } from "../workspace/workspace";
 import { mountPaneGridSurface } from "../surfaces/pane-grid";
@@ -89,12 +89,11 @@ import type { EffectScope } from "@vue/reactivity";
 import type { CanvasSurface } from "../canvas/canvas-surface";
 import type { PaneCellPart, PaneGridRow, PaneGridSurface } from "../surfaces/pane-grid";
 
-/** One drawn pane: its root and the five surfaces inside it. */
+/** One drawn pane: its root and the four surfaces inside it. */
 export interface PaneCell {
   paneId: string;
   root: HTMLElement;
   strip: HTMLElement;
-  jump: HTMLElement;
   chrome: HTMLElement;
   stage: HTMLElement;
   dropZone: HTMLElement;
@@ -162,7 +161,6 @@ function cellState(paneId: string): CellState {
   const cell: CellState = {
     chrome: null as unknown as HTMLElement,
     dropZone: null as unknown as HTMLElement,
-    jump: null as unknown as HTMLElement,
     paneId,
     releaseDropZone: null,
     releaseGestures: null,
@@ -283,15 +281,15 @@ function attachDropZone(paneId: string, element: HTMLElement): () => void {
 }
 
 /**
- * One of a cell's six boxes has been created. Fill the record in, and wire what belongs to it.
+ * One of a cell's five boxes has been created. Fill the record in, and wire what belongs to it.
  *
- * The two bars are HANDED their host rather than resolving a region, the same way
- * `panels/frontmatter-panel.ts` is handed the stage. They cannot resolve one the way the tab strip
+ * The context bar is HANDED its host rather than resolving a region, the same way
+ * `panels/frontmatter-panel.ts` is handed the stage. It cannot resolve one the way the tab strip
  * does: the strip's host carries `pane.<id>/tabs` and nothing inside it re-stamps that id, while
- * the jump bar and the context bar both stamp `pane.<id>/jump` and `pane.<id>/context` on markup
- * they render INSIDE their two boxes — so a region on the wrapper as well would put the same id on
- * two nested elements, and `resolveRegion` takes the LAST match. Sixty shots crop
- * `pane.primary/context`; a second, larger element carrying it is a silently widened crop.
+ * the context bar stamps `pane.<id>/context` on markup it renders INSIDE its box — so a region on
+ * the wrapper as well would put the same id on two nested elements, and `resolveRegion` takes the
+ * LAST match. Sixty shots crop `pane.primary/context`; a second, larger element carrying it is a
+ * silently widened crop.
  */
 function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): void {
   const cell = cellState(paneId);
@@ -302,11 +300,6 @@ function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): voi
   }
   if (part === "strip") {
     cell.strip = element;
-    return;
-  }
-  if (part === "jump") {
-    cell.jump = element;
-    attachJumpBarHost(paneId, element);
     return;
   }
   if (part === "chrome") {
@@ -333,7 +326,7 @@ function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): voi
  *
  * The order is the document's own, and each step needs the one before it:
  *
- * - The two bars go first, each disposing a mount whose DOM is inside this cell — the runtime that
+ * - The context bar goes first, disposing a mount whose DOM is inside this cell — the runtime that
  *   owns it is about to be unreachable.
  * - `releaseCanvasHosts` goes before `disposePaneSurface` and while `stage` still CONTAINS its
  *   frames, which is the whole reason it can find them. A frame released later is noticed only by
@@ -345,7 +338,6 @@ function cellPart(paneId: string, part: PaneCellPart, element: HTMLElement): voi
 function disposeCell(cell: CellState): void {
   cell.releaseDropZone?.();
   cell.releaseDropZone = null;
-  attachJumpBarHost(cell.paneId, null);
   attachPaneChromeHost(cell.paneId, null);
   cell.releaseGestures?.();
   cell.releaseGestures = null;

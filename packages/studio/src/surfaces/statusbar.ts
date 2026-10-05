@@ -1,68 +1,60 @@
 /// <reference lib="dom" />
 /**
- * The status bar — ambient state, in scope order, and nothing else.
+ * The status bar — ambient state, in scope order, and the breadcrumb trail between it.
  *
  * What this replaces: a bar built by `innerHTML` string concatenation with a three-character
  * escaper, carrying whatever the last of 78 `statusMessage()` calls had said, for three seconds.
  * Transient messages have left entirely for the toast host (`ui/layers.ts`) and the Problems list
  * (`services/notify.ts`); what remains here is state that is TRUE for as long as it is shown.
  *
- * **Three fixed fields, in the shell's own left-to-right level order** (§16.2), so the bar restates
- * the containment model on every glance:
+ * **Three fields, in the shell's own left-to-right level order** (§16.2), so the bar restates the
+ * containment model on every glance:
  *
  * ```text
- * PROJECT                        ‖ DOCUMENT                       ‖ SELECTION
- * name · branch ↑n↓n · problems  ‖ path · view · save state       ‖ count · style rule
+ * PROJECT                        ‖ DOCUMENT                           ‖ SELECTION
+ * name · branch ↑n↓n · problems  ‖ file › ancestor › … › element ⌃     ‖ count · style rule
  * ```
  *
- * The SELECTION field held an ancestor breadcrumb until the jump bar landed. The trail is an
- * ADDRESS, not ambient state, and it now lives once — in the jump bar (`panels/jump-bar.ts`), which
- * merged it with the pane context bar's document-stack chain. What is left here is the count and
- * the Stylebook's rule, neither of which is a path.
+ * **The DOCUMENT field is the jump bar** (`panels/jump-bar.ts`): the focused pane's address, every
+ * step a button that selects it. This module renders the fields either side of it and leaves the
+ * middle as an empty `trail` slot, which the jump bar is handed once this document has mounted. The
+ * field used to hold the file path, the view name and a save word; the trail's first step is the
+ * same file path with the same `palette.openFiles` command, the view is the pane context bar's (a
+ * second copy at 11px is the chrome duplication studio-ui-guidelines.md §12.2's budget exists to
+ * prevent), and unsaved changes are stated by the tab strip's dirty marker and the Command Bar's
+ * Save. A trail of ancestors is worth more on this row than any of the three.
  *
  * `statusbar/project`, `statusbar/document` and `statusbar/selection` are three placements the
  * level × placement matrix already declares, each admitting exactly one level — so the bar's
  * mixedness is structural rather than an exemption.
  *
- * **The effective view, not a mode string.** The bar used to print "Content Mode" from
- * `tab.doc.mode` while the Command Bar printed "Design" from `canvasMode` — two surfaces reading
- * two fields to answer one question. Both now read `registry.context()`, which is the same record
- * every `when` predicate reads, so they cannot disagree again.
- *
  * **Every interactive item is a command.** There are no click handlers in this file: an item names
  * a command id, and renders as a button only when the registry has that command and its `when`
  * holds. That is what let an item with no command yet — the peers count, before the `Collaborate:`
  * family was registered — sit in the template and start rendering the day its command arrived, with
- * no edit here. The three readouts that are NOT buttons are marked: the view name (its control is
- * the pane context bar; a second mode picker in 24px would be the chrome duplication
- * studio-ui-guidelines.md §12.2's budget exists to prevent), the save wording once a document IS
- * saved, and the stylebook selector.
+ * no edit here. The one readout that is NOT a button is the stylebook selector.
  *
  * The bar is the `statusbar` surface (`surfaces/statusbar.json`): this module is the projection —
- * three fields of items, each item a button with a command or a readout without — and the surface
- * draws it. The scope is reactive, so one effect recomputes the projection from the state the bar
+ * fields of items, each item a button with a command or a readout without — and the surface draws
+ * it. The scope is reactive, so one effect recomputes the projection from the state the bar
  * renders; nothing repaints.
  *
  * @docs studio/interface
  */
 
 import { projectState, statusbarEl } from "../store";
-import { documentLabel } from "../panels/jump-bar";
+import { attachJumpBarHost, mountJumpBar, unmountJumpBar } from "../panels/jump-bar";
 import { shell } from "../shell";
 import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
-import { EDITOR_KIND_LABELS } from "../commands/context";
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { deployStatusItem } from "../publish/deploy-checklist";
 import { collabState } from "../collab/collab-state";
 import { problemCount, problems } from "../services/notify";
-import { now } from "../services/clock";
-import { relativeTime } from "../panels/ai-chat/sessions-view";
 import { mountSurface, registerSurface } from "../ui/surface";
 import statusbarDoc from "./statusbar.json";
 import type { CommandRegistry } from "../commands/registry";
-import type { EditorKind } from "../commands/context";
 import type { EffectScope } from "@vue/reactivity";
 import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
@@ -70,28 +62,6 @@ import type { SurfaceHandle } from "../ui/surface";
 registerSurface("statusbar", statusbarDoc as unknown as JxDocument);
 
 let _scope: EffectScope | null = null;
-
-/**
- * Document path → when it was last written, from the {@link now} seam.
- *
- * Kept here rather than on the `Tab` record for one reason: a save time is something the STATUS BAR
- * observes, not something a document is. `files/file-ops.ts` reports it after a successful write —
- * the same place the old `statusMessage("Saved …")` was raised from, so the fact has not moved, it
- * has only stopped being a message that erases itself.
- */
-const _savedAt = new Map<string, number>();
-
-/** Record a successful write. Called by the save path; keyed by document path. */
-export function noteDocumentSaved(path: string | null | undefined): void {
-  if (path) {
-    _savedAt.set(path, now());
-  }
-}
-
-/** Forget every recorded save. Project close and the tests both want a clean slate. */
-export function forgetSavedTimes(): void {
-  _savedAt.clear();
-}
 
 // ─── Items ───────────────────────────────────────────────────────────────────
 
@@ -248,81 +218,18 @@ function projectField_(registry: CommandRegistry | null): ProjectedField | null 
   ]);
 }
 
-// ─── DOCUMENT ────────────────────────────────────────────────────────────────
-
-/**
- * What the pane is showing, in the words the pane context bar uses.
- *
- * Derived from the command context — `editor.kind` and `canvas.view` — so it is the SAME two facts
- * the Command Bar, the keyboard scope stack and every `when` predicate read.
- */
-export function viewLabel(kind: EditorKind, view: string): string {
-  if (kind === "none") {
-    return "";
-  }
-  if (kind !== "canvas") {
-    return EDITOR_KIND_LABELS[kind];
-  }
-  return view.charAt(0).toUpperCase() + view.slice(1);
-}
-
-/**
- * The save state, in words.
- *
- * A dot glyph said one bit and required a legend nobody has. These four sentences say which of the
- * four states the document is in, and the one that needs an action IS the action: "Unsaved changes"
- * renders as the `file.save` button.
- */
-function saveItem(dirty: boolean, readOnly: boolean, savedAt: number | undefined): StatusItem {
-  if (readOnly) {
-    return { command: null, label: "Read-only", title: "A collaborator owns this session's file" };
-  }
-  if (dirty) {
-    return { command: "file.save", label: "Unsaved changes" };
-  }
-  return savedAt === undefined
-    ? { command: null, label: "Saved" }
-    : { command: null, label: `Saved ${relativeTime(savedAt)}` };
-}
-
-function documentField(registry: CommandRegistry | null): ProjectedField | null {
-  const tab = activeTab.value;
-  if (!tab) {
-    return null;
-  }
-  const ctx = registry?.context() ?? null;
-  const view = ctx ? viewLabel(ctx.editor.kind, ctx.canvas.view) : "";
-  const collab = collabState(tab);
-  const savedAt = tab.documentPath === null ? undefined : _savedAt.get(tab.documentPath);
-  return projectField(registry, "document", [
-    {
-      command: "palette.openFiles",
-      label: documentLabel(tab.documentPath),
-      title: tab.documentPath ?? "Not saved to disk yet",
-    },
-    view
-      ? { command: null, label: view, title: "The pane's view — change it on the pane context bar" }
-      : null,
-    saveItem(tab.doc.dirty, collab.readOnly, savedAt),
-  ]);
-}
-
 // ─── SELECTION ───────────────────────────────────────────────────────────────
 
 /**
  * What is selected — the COUNT, and nothing that is an address.
  *
- * This field used to carry a clickable ancestor trail, one `selection.set` per crumb. That trail
- * has moved whole to the jump bar (`panels/jump-bar.ts`), which is the jump bar's entire reason to
- * exist: Studio had two half-breadcrumbs — that one, and the pane context bar's document-stack
- * chain — and neither ever rendered the whole address. Leaving a copy here would have made three.
+ * The ancestor trail is the DOCUMENT field to its left (`panels/jump-bar.ts`). What is left here is
+ * what a trail CANNOT say, and both are ambient state in the §16.2 sense: how many things are
+ * selected (a count is not a path, and the jump bar names only the primary), and which style rule
+ * the Stylebook is editing (a CSS selector is not a node in this document).
  *
- * What is left is what the jump bar CANNOT say, and both are ambient state in the §16.2 sense: how
- * many things are selected (a count is not a path, and the jump bar names only the primary), and
- * which style rule the Stylebook is editing (a CSS selector is not a node in this document).
- *
- * A single selection therefore leaves this field empty. That is deliberate — the jump bar's leaf
- * segment states it permanently, with its ancestors, and a second copy at 11px says nothing new.
+ * A single selection therefore leaves this field empty. That is deliberate — the trail's leaf
+ * states it permanently, with its ancestors, one field to the left.
  */
 function selectionField(registry: CommandRegistry | null): ProjectedField | null {
   const paths = activeTab.value?.session.selection ?? [];
@@ -334,7 +241,7 @@ function selectionField(registry: CommandRegistry | null): ProjectedField | null
           {
             command: null,
             label: `${paths.length} selected`,
-            title: `${paths.length} elements are selected; the jump bar names the primary`,
+            title: `${paths.length} elements are selected; the trail names the primary`,
           },
         ])
       : null;
@@ -354,16 +261,18 @@ function selectionField(registry: CommandRegistry | null): ProjectedField | null
 
 // ─── The bar ─────────────────────────────────────────────────────────────────
 
-/** The whole bar, as data. There is no second variant for the empty states. */
-function projectBar(): ProjectedField[] {
-  const registry = activeRegistry();
-  return [projectField_(registry), documentField(registry), selectionField(registry)].filter(
-    (field): field is ProjectedField => field !== null,
-  );
+/** Drop the absent fields. */
+function present(fields: readonly (ProjectedField | null)[]): ProjectedField[] {
+  return fields.filter((field): field is ProjectedField => field !== null);
 }
 
 interface StatusbarScope extends Record<string, unknown> {
-  fields: ProjectedField[];
+  /** The fields before the DOCUMENT slot: PROJECT. */
+  leading: ProjectedField[];
+  /** Whether the DOCUMENT slot has a trail to show. */
+  hasDocument: boolean;
+  /** The fields after it: SELECTION. */
+  trailing: ProjectedField[];
   run: (key: string) => void;
 }
 
@@ -374,26 +283,40 @@ let _handle: SurfaceHandle | null = null;
 /** The reactive scope the surface reads, made once. */
 function state(): StatusbarScope {
   _state ??= reactive({
-    fields: [],
+    hasDocument: false,
+    leading: [],
     run: (key: string) => {
-      const item = _state?.fields.flatMap((field) => field.items).find((i) => i.key === key);
+      const item = [...(_state?.leading ?? []), ...(_state?.trailing ?? [])]
+        .flatMap((field) => field.items)
+        .find((i) => i.key === key);
       const registry = activeRegistry();
       if (item?.command && registry) {
         void runReported(registry, item.command, item.args as never, "Status Bar");
       }
     },
+    trailing: [],
   }) as StatusbarScope;
   return _state;
 }
 
-/** Mount the surface into the bar's host, once. */
+/**
+ * Mount the surface into the bar's host, once, and hand its DOCUMENT slot to the jump bar.
+ *
+ * The slot is a box this document draws empty; the jump bar mounts its own document into it, which
+ * is the same hand-over the pane grid gives the tab strip and the context bar.
+ */
 function ensureMounted(): void {
   if (_mount || !statusbarEl) {
     return;
   }
-  _mount = mountSurface("statusbar", state(), statusbarEl);
-  void _mount.then((handle) => {
+  const mount = mountSurface("statusbar", state(), statusbarEl);
+  _mount = mount;
+  void mount.then((handle) => {
+    if (_mount !== mount) {
+      return;
+    }
     _handle = handle;
+    attachJumpBarHost(statusbarEl.querySelector<HTMLElement>('[part="trail"]'));
   });
 }
 
@@ -402,13 +325,23 @@ function ensureMounted(): void {
  * mounting the effect.
  */
 export function renderStatusbar(): void {
-  state().fields = projectBar();
+  const registry = activeRegistry();
+  const scope = state();
+  scope.leading = present([projectField_(registry)]);
+  scope.hasDocument = activeTab.value !== null;
+  scope.trailing = present([selectionField(registry)]);
   ensureMounted();
 }
 
-/** Subscribe the bar to the state it renders. Idempotent. */
+/**
+ * Subscribe the bar to the state it renders, and its DOCUMENT field's trail with it. Idempotent.
+ *
+ * The trail is this bar's field, so this bar owns its lifecycle: the jump bar's effect starts here
+ * and stops in {@link unmountStatusbar}, and its host arrives from {@link ensureMounted}.
+ */
 export function mountStatusbar(): void {
   unmountStatusbar();
+  mountJumpBar();
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
@@ -420,15 +353,8 @@ export function mountStatusbar(): void {
       void problems.length;
       const tab = activeTab.value;
       if (tab) {
-        void tab.doc.document;
-        void tab.doc.dirty;
-        void tab.doc.mode;
-        void tab.documentPath;
-        void tab.session.selection.map((path) => path.join("/")).join("|");
-        void tab.session.ui.canvasMode;
-        void tab.session.ui.preview;
+        void tab.session.selection.length;
         void collabState(tab).peers.length;
-        void collabState(tab).readOnly;
       }
       renderStatusbar();
     });
@@ -440,6 +366,7 @@ export function unmountStatusbar(): void {
   _scope = null;
   const pending = _mount;
   _mount = null;
+  unmountJumpBar();
   if (_handle) {
     _handle.dispose();
     _handle = null;

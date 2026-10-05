@@ -345,19 +345,15 @@ const FOCUS_SCOPE_SCAN = ["src/**/*.ts"];
  *   result to all specimen canvases — so two panes each showing a stylebook get the focused
  *   document's effective style. Real debt, in `src/style/live-preview.ts` rather than here; the fix
  *   is a per-host post and it is a workstream of its own.
- * - **`src/panels/jump-bar.ts`** — the entry the `disabledReason`/`isEnabled` widening bought, and it
- *   is real debt rather than a false positive. `jumpBarTemplate(paneId)` draws the address of a
- *   NAMED pane and `segmentTpl` renders each crumb disabled-or-not from the registry, so the
- *   unfocused pane's crumbs state the FOCUSED pane's enablement. Today no crumb is visibly wrong —
- *   `pane.pin` scans the grid, `palette.openFiles` and `project.openRecent` are app-level — but
- *   `selection.*` is not, and the shape is the one §18.4's preset menu shipped broken. The fix is
- *   the same one the preset menu took: a pure per-pane predicate per verb, which for the selection
- *   crumbs does not exist yet. It is a workstream, not a line, and it is written down here rather
- *   than left to be rediscovered.
+ *
+ * `src/panels/jump-bar.ts` held an entry here while the address bar was drawn once PER PANE: each
+ * pane's crumbs took their enablement from the registry, which resolves its context from the focus,
+ * so an unfocused pane's address stated the FOCUSED pane's answers. The bar is one breadcrumb trail
+ * in the status bar now and addresses the focused pane by design, so the read and the subject agree
+ * and the entry is gone.
  */
 export const ALLOWED_FOCUS_IN_PANE_SCOPE: Readonly<Record<string, number>> = {
   "src/panels/editors.ts": 1,
-  "src/panels/jump-bar.ts": 1,
   "src/settings/css-vars-editor.ts": 1,
 };
 

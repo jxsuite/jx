@@ -89,7 +89,7 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 2.2 Type Scale
 
-> **Status: Partial.** The scale is the kit's `--jx-text-xs`/`sm`/`md`/`lg` (10/11/12/14px, `ui.md` §4), and the 12px base, the 10px row labels and the 1.5 line height hold. `jx-field` labels and `jx-accordion-item` headers draw at `--jx-text-md` (12px), not the 11px this table assigns, because Studio stamps no `data-density="compact"`; the breadcrumbs draw at 10px, because the jump bar sets `--jx-text-xs` on its root and every crumb inherits it (`packages/studio/src/surfaces/jump-bar.json`); and no 1.7 content-mode line height exists.
+> **Status: Partial.** The scale is the kit's `--jx-text-xs`/`sm`/`md`/`lg` (10/11/12/14px, `ui.md` §4), and the 12px base, the 10px row labels and the 1.5 line height hold. `jx-field` labels and `jx-accordion-item` headers draw at `--jx-text-md` (12px), not the 11px this table assigns, because Studio stamps no `data-density="compact"`; and no 1.7 content-mode line height exists.
 
 | Size     | Usage                                                               |
 | -------- | ------------------------------------------------------------------- |
@@ -134,7 +134,7 @@ Use CSS custom properties from `:root` — never hardcode color values.
 - Panel widths: `--panel-w-left: 240px`, `--panel-w-right: 280px`, `--panel-w-chat: 320px`
 - Activity bar: 48px wide, icon tabs (48x48px each)
 - Toolbar height: 36px
-- Status bar height: 24px — `role="status"` + `aria-live="polite"`, the app's one status channel
+- Status bar height: 24px — `role="status"` + `aria-live="polite"`, the app's one status channel. Its centre field is the jump bar's breadcrumb trail (`studio.md` §16.2), whose slot sets `aria-live="off"` so a selection change is not read aloud
 - A collapsed column sets its width variable to `0px` and `display: none`s the region and its resize handle. The assistant column starts collapsed; every column's state round-trips through `localStorage` in both directions (a remembered "open" must reopen a default-closed column)
 
 ### 3.2 Panel Structure
