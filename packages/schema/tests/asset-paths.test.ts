@@ -176,6 +176,49 @@ describe("asset mounts", () => {
     });
   });
 
+  describe("a mount's filter", () => {
+    const notes: AssetMount = {
+      dir: "/repo/notes",
+      filter: (path) => !path.startsWith("internal/") && !path.endsWith(".md"),
+      urlPrefix: "/content/notes",
+    };
+
+    test("a refused file has no URL, and a refused URL has no file", () => {
+      expect(assetUrlFor([notes], "/repo/notes/pics/a.png")).toBe("/content/notes/pics/a.png");
+      expect(assetUrlFor([notes], "/repo/notes/internal/a.png")).toBeNull();
+      expect(assetUrlFor([notes], "/repo/notes/a.md")).toBeNull();
+      expect(resolveAssetUrl([notes], "/content/notes/pics/a.png")).toBe("/repo/notes/pics/a.png");
+      expect(resolveAssetUrl([notes], "/content/notes/internal/a.png")).toBeNull();
+      expect(resolveAssetUrl([notes], "/content/notes/a.md")).toBeNull();
+    });
+
+    test("is asked with the path relative to the mount directory, decoded and /-separated", () => {
+      const asked: string[] = [];
+      const spy: AssetMount = {
+        dir: "/repo/notes",
+        filter: (path) => {
+          asked.push(path);
+          return true;
+        },
+        urlPrefix: "/content/notes",
+      };
+      assetUrlFor([spy], "/repo/notes/my pics/a b.png");
+      resolveAssetUrl([spy], "/content/notes/my%20pics/a%20b.png");
+      expect(asked).toEqual(["my pics/a b.png", "my pics/a b.png"]);
+    });
+
+    test("a mount without one serves everything under it, as before", () => {
+      expect(assetUrlFor([docs], "/repo/docs/internal/a.md")).toBe("/content/docs/internal/a.md");
+      expect(resolveAssetUrl([docs], "/content/docs/internal/a.md")).toBe(
+        "/repo/docs/internal/a.md",
+      );
+    });
+
+    test("traversal is still refused before the filter is asked", () => {
+      expect(resolveAssetUrl([{ ...notes, filter: () => true }], "/content/notes/../x")).toBeNull();
+    });
+  });
+
   describe("collectAssetUrls", () => {
     test("finds refs in attributes, srcsets, and css url()", () => {
       const html = `<img src="/content/docs/images/a.png" srcset="/content/docs/images/b.png 2x">
