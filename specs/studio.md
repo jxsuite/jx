@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.13.17-draft\
+**Version:** 0.13.20-draft\
 **Status:** Partial\
-**Updated:** 2026-10-04\
+**Updated:** 2026-10-06\
 **License:** MIT
 
 ---
@@ -1933,6 +1933,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.13.20-draft** (2026-10-06) — §6.2 the button-group row is a single-select radiogroup whose buttons bind checked and never toggle, so the document is the only writer of the drawn choice.
+- **0.13.19-draft** (2026-10-06) — §16.2 The status bar's DOCUMENT field is now the jump bar: a breadcrumb trail of the focused pane's address (file › ancestors › element), every step a button, replacing the path, view and save readouts; §18.3 pane cells no longer draw a per-pane jump bar.
+- **0.13.18-draft** (2026-10-06) — §11.1 Bundle Layout: the repo dev server moved from the root server.js to scripts/dev.ts.
 - **0.13.17-draft** (2026-10-04) — §3.4 a listing entry may carry an opaque content version; repo-space media a listing vouched for is requested with a `?v=` query naming that version, the version map is forgotten on every file event before the echo filter and on Studio's own mutations, a listing begun before a forget cannot restore it, a gap in the event stream (a reconnect, or the stream's first open) forgets every version at once and ignores listings begun before it, an authored v (matched by its decoded name) is replaced when Studio appends a version and left untouched otherwise, a host may answer a versioned URL immutably only when v is a version it issued and it returns exactly the bytes that version names, the Library's document previews use the map too, and the canvas iframe receives the media versions as one assetVersions message rather than on every render. §9.2 a new "open" resync reason forgets the content versions and re-lists the loaded tree.
 - **0.13.16-draft** (2026-10-04) — §9.2 a file-event resync: a reconnect drops the derived caches and re-reads the .gitignore rules, every loaded listing and the clean non-collab open tabs that hold a parsed document (left untouched when unchanged, and never over an edit made during the read); a listing overtaken by a newer change is read again rather than applied; a commit re-lists the loaded directories.
 - **0.13.15-draft** (2026-10-04) — §15 Preferences Accounts draws rows the platform adds, with the actions it offers, re-read on every open.
@@ -2091,4 +2094,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.13.17-draft_
+_`@jxsuite/studio` Specification v0.13.20-draft_
