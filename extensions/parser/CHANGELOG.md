@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.0.0](https://github.com/jxsuite/jx/compare/parser-v1.8.2...parser-v2.0.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **parser:** three defaults change for a content type that declares none of the new options. Callouts are on: a blockquote that begins with a GitHub alert marker renders as a callout, and alerts set to false keeps the blockquote. A README.md in a subfolder has its folder's id, so a path-based URL moves from /x/sub/README/ to /x/sub/. A dollar-brace sequence in Markdown text is kept as written instead of being evaluated as a template, as are image descriptions and callout titles.
+
+### Features
+
+* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e720c6](https://github.com/jxsuite/jx/commit/6e720c6ec9b3540721c4453d0c02b11414f9efce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 0.4.12
+    * @jxsuite/schema bumped to 3.0.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 4.0.3
+
 ## [1.8.2](https://github.com/jxsuite/jx/compare/parser-v1.8.1...parser-v1.8.2) (2026-09-29)
 
 
