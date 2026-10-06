@@ -151,14 +151,15 @@ const EXTRA_EDGES: ExtraEdge[] = [
     why: "vendor/electrobun is the Electrobun SDK's sources, and packages/desktop's tsconfig `paths` resolve `electrobun/*` into them — so moving the submodule (or the .gitmodules entry that places it) changes what that package typechecks against. Desktop is the only workspace that imports the SDK, so this is an edge rather than a GLOBAL: without it an unclassified path would fail open into the whole matrix.",
   },
   {
-    patterns: ["extensions/feed/src/**", "extensions/parser/src/**"],
+    patterns: ["extensions/feed/src/**", "extensions/parser/src/**", "extensions/search/src/**"],
     seeds: ["packages/compiler", "packages/server"],
     evidence: [
       "packages/compiler/tests/feed-integration.test.ts",
       "packages/compiler/tests/sitemap-lastmod.test.ts",
+      "packages/compiler/tests/vault-content.test.ts",
       "packages/server/tests/refactor-apply.test.ts",
     ],
-    why: "Two compiler tests build a real project that loads @jxsuite/parser (and, for feeds, @jxsuite/feed), so a change to either extension's src can break a compiler test. The sitemap one spans three packages by construction: the parser carries an entry's timestamp, the compiler lifts it onto the route, and the sitemap prints it. The refactor engine reads the parser's class descriptors by absolute path to drive its write-back capabilities against the real Csv and Markdown declarations, which is the one thing the parity suite cannot do — it stages starters into a temp directory, where a bare @jxsuite/parser resolves to the PUBLISHED package. Server is already a dependent of compiler, so this seed is redundant today and is named anyway: it is the edge that is actually asserted, and a later narrowing of the compiler seed must not silently un-gate it.",
+    why: "Three compiler tests build a real project that loads @jxsuite/parser (and, for feeds and search, @jxsuite/feed and @jxsuite/search), so a change to any of the three extensions' src can break a compiler test. The vault one builds a documentation vault through the parser's filters, routes, links and callouts and checks the sitemap and the search index it feeds, so it needs `@jxsuite/search` as well. The sitemap one spans three packages by construction: the parser carries an entry's timestamp, the compiler lifts it onto the route, and the sitemap prints it. The refactor engine reads the parser's class descriptors by absolute path to drive its write-back capabilities against the real Csv and Markdown declarations, which is the one thing the parity suite cannot do — it stages starters into a temp directory, where a bare @jxsuite/parser resolves to the PUBLISHED package. Server is already a dependent of compiler, so this seed is redundant today and is named anyway: it is the edge that is actually asserted, and a later narrowing of the compiler seed must not silently un-gate it.",
   },
   {
     patterns: ["packages/starters/sites/portfolio/**", "packages/starters/sites/real-estate/**"],
