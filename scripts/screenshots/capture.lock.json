@@ -91,9 +91,9 @@
       "width": 480
     },
     "docs/images/blog-content-type.png": {
-      "bytes": 235200,
-      "capturedAt": "2026-10-06T03:19:01Z",
-      "capturedBy": "screenshots@ci/37408165688",
+      "bytes": 244281,
+      "capturedAt": "2026-10-06T04:49:39Z",
+      "capturedBy": "screenshots@ci/37415319349",
       "definition": "eeca0896e884b752bea1c159f0aa6852eb8533b9936c60b0c7321035c6bb20c0",
       "height": 1262,
       "runtime": {
@@ -101,7 +101,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "079e92e3232063c8bca30ab4ee428ee086122c5b5f4454dff8ae64caba88131f",
+      "sha256": "2e68024e155a18d4c89a0be678adc1d7f9d025f1b2acb2efb8ca49a5139c1d9f",
       "shot": "blog-content-type",
       "width": 2688
     },
@@ -181,9 +181,9 @@
       "width": 3840
     },
     "docs/images/blog-schema-fields.png": {
-      "bytes": 235200,
-      "capturedAt": "2026-10-06T03:19:03Z",
-      "capturedBy": "screenshots@ci/37408165688",
+      "bytes": 218152,
+      "capturedAt": "2026-10-06T04:49:41Z",
+      "capturedBy": "screenshots@ci/37415319349",
       "definition": "a2b0db07ced1ccc831d61b8a7a1a37c5c71594ab0f58575878ecc04fa014c647",
       "height": 1262,
       "runtime": {
@@ -191,7 +191,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "079e92e3232063c8bca30ab4ee428ee086122c5b5f4454dff8ae64caba88131f",
+      "sha256": "949996b9f47bdc8a2992f34a19af58d64a3ce5ee358c1a53ad7239d3f559f1bb",
       "shot": "blog-schema-fields",
       "width": 2688
     },
@@ -226,9 +226,9 @@
       "width": 2688
     },
     "docs/images/content-type-builder.png": {
-      "bytes": 335878,
-      "capturedAt": "2026-10-06T03:19:20Z",
-      "capturedBy": "screenshots@ci/37408165688",
+      "bytes": 313759,
+      "capturedAt": "2026-10-06T04:49:57Z",
+      "capturedBy": "screenshots@ci/37415319349",
       "definition": "212e0865cb8cff7e4202ecb00ce40357059b8119aacc89064a6f1ba014823f8a",
       "height": 1822,
       "runtime": {
@@ -236,7 +236,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "9bf63dd9a605aa679ed8c6eafb0cbdfae03f68402d57f96838a7a6a3bb7a5d4c",
+      "sha256": "0ba220b59218dd97376cf8b113000cdc3dd4abd9a5b746bb4e8527599a254812",
       "shot": "content-type-builder-shot",
       "width": 2688
     },
