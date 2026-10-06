@@ -260,17 +260,18 @@ describe("parser contribution fixture", () => {
     });
     // The per-entry form schema comes from the fragment's additionalProperties.
     expect(Object.keys(contribution.entrySchema.properties ?? {})).toEqual([
+      // Studio draws a type's options in this order: the four every type has, then the vault options.
       "$elements",
-      "alerts",
-      "exclude",
       "format",
-      "idField",
-      "indexRoute",
-      "links",
-      "route",
       "schema",
       "source",
+      "exclude",
       "where",
+      "idField",
+      "route",
+      "indexRoute",
+      "links",
+      "alerts",
     ]);
   });
 });

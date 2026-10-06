@@ -138,17 +138,18 @@ describe("buildExtensionsPayload", () => {
       };
       expect(entrySchema.type).toBe("object");
       expect(Object.keys(entrySchema.additionalProperties.properties)).toEqual([
+        // Studio draws a type's options in this order: the four every type has, then the vault options.
         "$elements",
-        "alerts",
-        "exclude",
         "format",
-        "idField",
-        "indexRoute",
-        "links",
-        "route",
         "schema",
         "source",
+        "exclude",
         "where",
+        "idField",
+        "route",
+        "indexRoute",
+        "links",
+        "alerts",
       ]);
     } finally {
       rmSync(root, { force: true, recursive: true });
