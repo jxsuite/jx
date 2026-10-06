@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.7.0](https://github.com/jxsuite/jx/compare/studio-v5.6.0...studio-v5.7.0) (2026-10-06)
+
+
+### Features
+
+* **studio:** breadcrumb trail in the status bar ([30498e2](https://github.com/jxsuite/jx/commit/30498e2d48ca106c91457070ddef1ed03e1fbc10))
+* **studio:** breadcrumb trail in the status bar ([944bec8](https://github.com/jxsuite/jx/commit/944bec87f5a55fed6e0b8694f5c5d436a06a5d32))
+
+
+### Bug Fixes
+
+* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([d0c8020](https://github.com/jxsuite/jx/commit/d0c80200868d23fc1b13ca0c9492320e1dd6b522))
+* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([4c04653](https://github.com/jxsuite/jx/commit/4c04653a3fb793488e9db10dc368934bb79cf8e4))
+* **studio:** one writer per action button's drawn state ([#425](https://github.com/jxsuite/jx/issues/425)) ([53fbaa5](https://github.com/jxsuite/jx/commit/53fbaa5be60baf0c892b5766442f5d7c61bf28a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.2
+
 ## [5.6.0](https://github.com/jxsuite/jx/compare/studio-v5.5.0...studio-v5.6.0) (2026-10-03)
 
 

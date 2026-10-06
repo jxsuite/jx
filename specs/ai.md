@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.30-draft\
+**Version:** 0.1.33-draft\
 **Status:** Partial\
-**Updated:** 2026-10-04\
+**Updated:** 2026-10-06\
 **License:** MIT
 
 ---
@@ -282,6 +282,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.33-draft** (2026-10-06) — §3.4 the send path repairs tool-call pairs per request: a separated reply moves back to its request, a reused call id pairs with the right round, and a seal says when a call was cut off; §3.8 the turn engine runs the same repair at turn start and reports transcript_repaired.
+- **0.1.32-draft** (2026-10-06) — §3.8 the turn engine: runTurn and its synchronous event stream, the six outcomes, the anchor, a system prompt fixed per turn with tools listed each round, the turn lock, the calls a Stop leaves unanswered, and invokeTool; §1 names ./harness Worker-safe.
+- **0.1.31-draft** (2026-10-06) — §2.3 the neutral conversation model: messages as typed blocks, meta never sent, a lossless v1 conversion, the OpenAI-compatible projection stated once, and ToolSpec; §2.2 names the projection; §1 names ./messages Worker-safe.
 - **0.1.30-draft** (2026-10-04) — §2.5 the system prompt opens with SYSTEM_PROMPT_STATIC_PREFIX (role, reference sections, error recovery) in every state, then the current mode, document, project and files, with the closing instructions last.
 - **0.1.29-draft** (2026-10-04) — §2.1 action_required is a fourth managed probe state, answered 200 with detail and actions, whose primary action is offered rather than a connect flow; a bound project rides in the chat URL's project query.
 - **0.1.28-draft** (2026-10-01) — §2.5 prompt caching: the proxy client sends the conversation id as X-Jx-Ai-Session, a backend forwards only affinityKey(scope, id) as the upstream's sessionAffinity, and each provider gets only its own hint (prompt_cache_key to OpenAI, x-session-affinity to Workers AI and AI Gateway, nothing to any other host). §2.4: the gateway's runtime imports outside itself now include ../cache-hints.ts.
@@ -316,4 +319,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.30-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.33-draft — a stub, subject to expansion._

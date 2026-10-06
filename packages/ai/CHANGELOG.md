@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.39.2](https://github.com/jxsuite/jx/compare/ai-v0.39.1...ai-v0.39.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([d0c8020](https://github.com/jxsuite/jx/commit/d0c80200868d23fc1b13ca0c9492320e1dd6b522))
+* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([4c04653](https://github.com/jxsuite/jx/commit/4c04653a3fb793488e9db10dc368934bb79cf8e4))
+
 ## [0.39.1](https://github.com/jxsuite/jx/compare/ai-v0.39.0...ai-v0.39.1) (2026-10-03)
 
 
