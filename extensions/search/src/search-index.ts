@@ -137,11 +137,21 @@ export const SearchIndex = {
          */
         const locale =
           i18n === null ? undefined : (canonicalizeLocale(entry._meta?.locale) ?? undefined);
-        const url = entryUrl(
-          `${localeUrlPrefix(locale, i18n)}${collection.basePath}`,
-          entry.id,
-          trailingSlash,
-        );
+        /*
+         * An entry of a content type with a `route` carries its URL (`_meta.url`), stamped by the
+         * loader from the template its page and its links were generated from, so the index cannot
+         * point at a URL the site does not have. Only an entry with none is placed by the
+         * collection's `basePath` + id, the older, flat rule.
+         */
+        const stamped = entry._meta?.url;
+        const url =
+          typeof stamped === "string" && stamped.startsWith("/")
+            ? stamped
+            : entryUrl(
+                `${localeUrlPrefix(locale, i18n)}${collection.basePath}`,
+                entry.id,
+                trailingSlash,
+              );
         const title = typeof data.title === "string" ? data.title : entry.id;
         const description = typeof data.description === "string" ? data.description : "";
         const children = entry.$children as (JxElement | string)[] | undefined;
