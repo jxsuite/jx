@@ -159,7 +159,7 @@ describe("links that are left exactly as written", () => {
     }
   });
 
-  it("assets and anything that is not an entry", () => {
+  it("assets and anything that is not an entry, when the collection publishes none", () => {
     for (const href of [
       "img/diagram.png",
       "../files/guide.pdf",
@@ -278,5 +278,119 @@ describe("links that have no page", () => {
     const before = JSON.stringify(nodes);
     rewriteLinks(nodes, "A.md", INDEX, () => {});
     expect(JSON.stringify(nodes)).toBe(before);
+  });
+});
+
+describe("fragments", () => {
+  it("collapses a run of hyphens the way the heading id does, in either spelling", () => {
+    // `## Foo - Bar` has the id `foo-bar`; GitHub would link it as `#foo---bar`.
+    expect(run("#foo---bar").href).toBe("#foo-bar");
+    expect(run("#Foo%20-%20Bar").href).toBe("#foo-bar");
+    expect(run("../Linux/Swap%20Configuration.md#foo---bar").href).toBe(
+      "/kb/linux/swap-configuration/#foo-bar",
+    );
+  });
+
+  it("leaves a fragment with nothing to slugify as written", () => {
+    expect(run("#???").href).toBe("#???");
+  });
+});
+
+describe("a link whose text was made inert", () => {
+  it("keeps the words of a link that has no page, as the same escaped text", () => {
+    const link: JxElement = {
+      attributes: { href: "Nope.md" },
+      innerHTML: "see &#36;{y}",
+      tagName: "a",
+    };
+    const nodes: (JxElement | string)[] = ["a ", link, " b"];
+    rewriteLinks(nodes, "A.md", INDEX, () => {});
+    expect(nodes).toEqual(["a ", { innerHTML: "see &#36;{y}", tagName: "span" }, " b"]);
+  });
+});
+
+describe("a raw HTML block", () => {
+  it("is a nested list, and the links in it are rewritten", () => {
+    const nested = [
+      {
+        attributes: { href: "../Linux/Swap%20Configuration.md" },
+        tagName: "a",
+        textContent: "swap",
+      },
+    ];
+    const tree = [nested] as never;
+    rewriteLinks(tree, "Frappe/X.md", INDEX, () => {});
+    expect((nested[0] as JxElement).attributes?.href).toBe("/kb/linux/swap-configuration/");
+  });
+});
+
+describe("links to something that is not an entry", () => {
+  const published = makeIndex(
+    { "Frappe/Bench Operations.md": { route: "/kb/frappe/bench-operations" } },
+    {
+      asset: (path) =>
+        ({
+          "files/report.pdf": { url: "/content/kb/files/report.pdf" },
+          "internal/plan.pdf": { unpublished: 'excluded by "internal/**"' },
+        })[path],
+      excludesDir: (path) => path === "internal",
+      isDirectory: (path) => ["Empty", "internal", "Frappe"].includes(path),
+      indexes: new Map([["Frappe", "Frappe/Bench Operations.md"]]),
+    },
+  );
+
+  it("an attachment follows the asset mount, keeping its query and fragment as written", () => {
+    expect(run("../files/report.pdf", "Frappe/Bench Operations.md", published).href).toBe(
+      "/content/kb/files/report.pdf",
+    );
+    expect(
+      run("../files/report.pdf?v=2#page=3", "Frappe/Bench Operations.md", published).href,
+    ).toBe("/content/kb/files/report.pdf?v=2#page=3");
+  });
+
+  it("an attachment the collection does not publish is a broken link", () => {
+    const out = run("../internal/plan.pdf", "Frappe/Bench Operations.md", published);
+    expect(out.unlinked).toBe(true);
+    expect(out.problems).toEqual([
+      { href: "../internal/plan.pdf", reason: 'is not published (excluded by "internal/**")' },
+    ]);
+  });
+
+  it("a folder with no README or index is a broken link, and an excluded one says so", () => {
+    expect(run("../Empty/", "Frappe/Bench Operations.md", published).problems[0]!.reason).toBe(
+      "is a folder with no README.md or index.md",
+    );
+    expect(run("../Empty", "Frappe/Bench Operations.md", published).problems[0]!.reason).toBe(
+      "is a folder with no README.md or index.md",
+    );
+    expect(run("../internal/", "Frappe/Bench Operations.md", published).problems[0]!.reason).toBe(
+      "is not published (its folder is excluded)",
+    );
+  });
+
+  it("a folder that has an index is still that index's page, and an unknown path is left alone", () => {
+    expect(run("../Frappe/", "Frappe/Bench Operations.md", published).href).toBe(
+      "/kb/frappe/bench-operations/",
+    );
+    const out = run("../nowhere/thing.png", "Frappe/Bench Operations.md", published);
+    expect(out.href).toBe("../nowhere/thing.png");
+    expect(out.problems).toEqual([]);
+  });
+});
+
+describe("a name written in another Unicode form", () => {
+  it("finds a file whose name is composed when the link is decomposed, and the reverse", () => {
+    const composed = makeIndex({ "Caf\u00E9/Menu.md": { route: "/kb/menu" } });
+    expect(run("Cafe\u0301/Menu.md", "A.md", composed).href).toBe("/kb/menu/");
+    const decomposed = makeIndex({ "Cafe\u0301/Menu.md": { route: "/kb/menu" } });
+    expect(run("Caf%C3%A9/Menu.md", "A.md", decomposed).href).toBe("/kb/menu/");
+  });
+
+  it("finds a directory index the same way", () => {
+    const index = makeIndex(
+      { "Caf\u00E9/README.md": { route: "/kb/cafe" } },
+      { indexes: new Map([["Caf\u00E9", "Caf\u00E9/README.md"]]) },
+    );
+    expect(run("Cafe\u0301/", "A.md", index).href).toBe("/kb/cafe/");
   });
 });

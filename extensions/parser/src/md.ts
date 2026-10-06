@@ -167,11 +167,11 @@ function extractExcerpt(tree: MdastNode) {
  * Derive an entry slug from a file path. Without a source root (or for files directly at the root),
  * the slug is the basename — the historical behavior every flat collection relies on. Files in
  * subdirectories of the root get path-based slugs with POSIX separators and a trailing `/index` or
- * `/README` stripped, so `studio/canvas.md`, `studio/canvas/index.md` and `studio/canvas/README.md`
- * all yield `studio/canvas`: the file a folder shows (on GitHub, in Obsidian) is that folder's
- * entry. Case and spaces in names are kept as written, so `Linux/Swap Configuration.md` is the id
- * `Linux/Swap Configuration`; a collection that wants URL-friendly ids sets `idField` or slugifies
- * in its `route`.
+ * `/README` (either case, as the link and route rules read them) stripped, so `studio/canvas.md`,
+ * `studio/canvas/index.md` and `studio/canvas/README.md` all yield `studio/canvas`: the file a
+ * folder shows (on GitHub, in Obsidian) is that folder's entry. Case and spaces in names are kept
+ * as written, so `Linux/Swap Configuration.md` is the id `Linux/Swap Configuration`; a collection
+ * that wants URL-friendly ids sets `idField` or slugifies in its `route`.
  *
  * @param {string} filePath - Absolute path to the markdown file
  * @param {string} [sourceRoot] - Resolved content-source root directory
@@ -182,7 +182,7 @@ function deriveSlug(filePath: string, sourceRoot?: string): string {
     const rel = relative(sourceRoot, filePath).split("\\").join("/");
     if (rel && !rel.startsWith("..") && rel.includes("/")) {
       let slug = rel.slice(0, rel.length - extname(rel).length);
-      if (slug.endsWith("/index") || /\/readme$/i.test(slug)) {
+      if (/\/(?:index|readme)$/i.test(slug)) {
         slug = slug.slice(0, slug.lastIndexOf("/"));
       }
       return slug;
@@ -204,6 +204,8 @@ function deriveSlug(filePath: string, sourceRoot?: string): string {
  * @param {string} [config.sourceRoot] - Content-source root; files below it get path-based slugs
  * @param {unknown} [config.alerts] - The content type's `alerts` option: alert type → element name,
  *   or `false` to leave `> [!NOTE]` blockquotes as written. Absent means the built-in callouts.
+ * @param {(type: string) => void} [config.onUnknownAlert] - Told of each `[!type]` marker whose
+ *   type is not enabled, which stays a blockquote.
  * @returns {MarkdownFileResult}
  */
 export function processMarkdown(
@@ -214,6 +216,7 @@ export function processMarkdown(
     directiveOptions?: unknown;
     sourceRoot?: string;
     alerts?: unknown;
+    onUnknownAlert?: (type: string) => void;
   } = {},
 ) {
   let processor = (unified as unknown as () => UnifiedProcessor)()
@@ -233,7 +236,7 @@ export function processMarkdown(
   // Callouts first, so the excerpt and word count read the alert's own text, not its `[!NOTE]` marker.
   const alerts = normalizeAlerts(config.alerts);
   if (alerts) {
-    transformAlerts(tree as unknown as MdastNode, alerts);
+    transformAlerts(tree as unknown as MdastNode, alerts, config.onUnknownAlert);
   }
 
   const vfileData = vfile.data as Record<string, unknown>;

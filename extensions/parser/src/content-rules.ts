@@ -85,9 +85,18 @@ export function expandBraces(pattern: string): string[] {
   return [pattern];
 }
 
+/**
+ * The most `*` runs one path segment may carry. A regular expression has no possessive quantifier,
+ * so each further run multiplies the work a non-matching name costs (`*a*a*a*a*a*a*a*a*b` against
+ * sixty letters took twenty seconds). No real pattern needs more than a couple, and a limit that
+ * names the pattern is kinder than a build that appears to hang.
+ */
+const MAX_STAR_RUNS = 4;
+
 /** One path segment of a glob as a regular-expression source (`*`, `?`, `[...]`, escapes). */
 function segmentToRegExp(segment: string): string {
   let out = "";
+  let stars = 0;
   for (let i = 0; i < segment.length; i++) {
     const ch = segment[i]!;
     if (ch === "\\" && i + 1 < segment.length) {
@@ -97,21 +106,27 @@ function segmentToRegExp(segment: string): string {
       while (segment[i + 1] === "*") {
         i += 1;
       }
+      stars += 1;
+      if (stars > MAX_STAR_RUNS) {
+        throw new TypeError(`more than ${MAX_STAR_RUNS} "*" wildcards in one path segment`);
+      }
       out += "[^/]*";
     } else if (ch === "?") {
       out += "[^/]";
     } else if (ch === "[") {
       const close = segment.indexOf("]", i + 2);
-      if (close === -1) {
+      let body = close === -1 ? "" : segment.slice(i + 1, close);
+      let negate = false;
+      if (body.startsWith("!") || body.startsWith("^")) {
+        negate = true;
+        body = body.slice(1);
+      }
+      if (close === -1 || body === "") {
+        // No closing bracket, or nothing inside one: the bracket is an ordinary character.
         out += String.raw`\[`;
       } else {
-        let body = segment.slice(i + 1, close);
-        let negate = false;
-        if (body.startsWith("!") || body.startsWith("^")) {
-          negate = true;
-          body = body.slice(1);
-        }
-        out += `[${negate ? "^" : ""}${body.replaceAll("\\", String.raw`\\`)}]`;
+        // A negated class must not match "/", or `a[!x]b` would reach across directories.
+        out += `[${negate ? "^/" : ""}${body.replaceAll("\\", String.raw`\\`)}]`;
         i = close;
       }
     } else {
@@ -140,17 +155,56 @@ function cleanPattern(pattern: string): string {
  * default, because the same glob must behave identically in a vault, a checkout and CI.
  */
 export function globToRegExp(pattern: string): RegExp {
-  const segments = cleanPattern(pattern).split("/");
+  // Adjacent `**` segments mean what one does, and each extra one would multiply the matching work.
+  const segments = cleanPattern(pattern)
+    .split("/")
+    .filter((segment, i, all) => !(segment === "**" && all[i - 1] === "**"));
   let source = "";
-  for (const [i, segment] of segments.entries()) {
-    const last = i === segments.length - 1;
-    if (segment === "**") {
-      source += last ? ".+" : "(?:[^/]+/)*";
-    } else {
-      source += segmentToRegExp(segment) + (last ? "" : "/");
+  try {
+    for (const [i, segment] of segments.entries()) {
+      const last = i === segments.length - 1;
+      if (segment === "**") {
+        source += last ? ".+" : "(?:[^/]+/)*";
+      } else {
+        source += segmentToRegExp(segment) + (last ? "" : "/");
+      }
+    }
+    return new RegExp(`^${source}$`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new TypeError(`invalid glob "${pattern}": ${reason}`, { cause: error });
+  }
+}
+
+/** Whether a pattern has a `{` that is never closed (a typo that would otherwise match nothing). */
+function hasUnclosedBrace(pattern: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "\\") {
+      i += 1;
+    } else if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}" && depth > 0) {
+      depth -= 1;
     }
   }
-  return new RegExp(`^${source}$`);
+  return depth > 0;
+}
+
+/**
+ * Whether a pattern is a bare name that could be a folder: no wildcard and a last segment with no
+ * extension (`internal`, `.obsidian`, `Clients/Acme`, but not `STYLE.md`). Such a pattern names the
+ * folder as well as a file of that name, the way `.gitignore` reads it, so `exclude: ["internal"]`
+ * does what it says instead of excluding nothing.
+ */
+function mayNameDirectory(pattern: string): boolean {
+  const cleaned = cleanPattern(pattern);
+  if (cleaned === "" || /[*?[\\]/.test(cleaned) || cleaned.endsWith("**")) {
+    return false;
+  }
+  const last = cleaned.slice(cleaned.lastIndexOf("/") + 1);
+  return !last.slice(1).includes(".");
 }
 
 /**
@@ -181,6 +235,14 @@ export function compileExclude(patterns?: readonly string[]): ExcludeMatcher {
         `"exclude" pattern "${pattern}": negated patterns are not supported, list what to exclude instead`,
       );
     }
+    if (/^(?:\.\/)?\.\.(?:\/|$)/.test(pattern)) {
+      throw new TypeError(
+        `"exclude" pattern "${pattern}": patterns are relative to the source directory and cannot climb out of it`,
+      );
+    }
+    if (hasUnclosedBrace(pattern)) {
+      throw new TypeError(`"exclude" pattern "${pattern}": a "{" is never closed`);
+    }
     for (const expanded of expandBraces(pattern)) {
       files.push({ pattern, re: globToRegExp(expanded) });
       const cleaned = cleanPattern(expanded);
@@ -188,6 +250,10 @@ export function compileExclude(patterns?: readonly string[]): ExcludeMatcher {
         everything = true;
       } else if (cleaned.endsWith("/**")) {
         dirs.push(globToRegExp(cleaned.slice(0, -"/**".length)));
+      } else if (mayNameDirectory(expanded)) {
+        // A bare name excludes the folder of that name too (see mayNameDirectory).
+        files.push({ pattern, re: globToRegExp(`${cleaned}/**`) });
+        dirs.push(globToRegExp(cleaned));
       }
     }
   }
@@ -268,7 +334,8 @@ function sameValue(actual: unknown, expected: unknown): boolean {
 
 /** Read a frontmatter field: a literal key first, then a dotted path into nested data. */
 export function readField(data: Record<string, unknown>, key: string): unknown {
-  if (key in data) {
+  // Own properties only: `constructor` and `toString` are not frontmatter, whatever `in` says.
+  if (Object.hasOwn(data, key)) {
     return data[key];
   }
   if (!key.includes(".")) {
@@ -276,7 +343,7 @@ export function readField(data: Record<string, unknown>, key: string): unknown {
   }
   let current: unknown = data;
   for (const part of key.split(".")) {
-    if (!isPlainObject(current)) {
+    if (!isPlainObject(current) || !Object.hasOwn(current, part)) {
       return undefined;
     }
     current = current[part];

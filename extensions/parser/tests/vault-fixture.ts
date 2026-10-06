@@ -208,9 +208,15 @@ export function writeVault(root: string): void {
 }
 
 /**
- * The documents a `publish: true`, not-`draft` rule keeps, in the order a sorted depth-first walk
- * visits them (entries sorted by name within each directory, so `Gravity Forms/` precedes
- * `README.md` beside it).
+ * The document that loses the one duplicate route: it is published and not a draft, but it claims
+ * the route of `Linux/Swap Configuration.md`, so it has no page and is not in the collection.
+ */
+export const DUPLICATE_ROUTE_PATH = "Linux/Swap Notes Archive.md";
+
+/**
+ * The documents the `kb` type publishes: `publish: true`, not `draft`, and holding a route of their
+ * own, in the order a sorted depth-first walk visits them (entries sorted by name within each
+ * directory, so `Gravity Forms/` precedes `README.md` beside it).
  */
 export const PUBLISHED_PATHS = [
   "Frappe/Bench Operations.md",
@@ -220,7 +226,6 @@ export const PUBLISHED_PATHS = [
   "Git & Dev Tools/README.md",
   "Linux/README.md",
   "Linux/Swap Configuration.md",
-  "Linux/Swap Notes Archive.md",
   "Linux/sudo-rs and update-alternatives.md",
   "WordPress/Docket Cache.md",
   "WordPress/Gravity Forms/README.md",

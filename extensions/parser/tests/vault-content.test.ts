@@ -7,6 +7,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { assetUrlFor, resolveAssetUrl } from "@jxsuite/schema/asset-paths";
 import type { JxElement, ProjectConfig } from "@jxsuite/schema/types";
 import { buildExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
@@ -19,7 +20,13 @@ import { ContentEntry } from "../src/content.ts";
 import { Content } from "../src/content-loader.ts";
 import type { ContentSection } from "../src/content-loader.ts";
 import type { ContentLoaderEntry } from "../src/types.ts";
-import { KB_TYPE, PUBLISHED_PATHS, VAULT_FILES, writeVault } from "./vault-fixture.ts";
+import {
+  DUPLICATE_ROUTE_PATH,
+  KB_TYPE,
+  PUBLISHED_PATHS,
+  VAULT_FILES,
+  writeVault,
+} from "./vault-fixture.ts";
 
 const TMP = mkdtempSync(join(tmpdir(), "jx-parser-vault-"));
 const VAULT = join(TMP, "vault");
@@ -269,15 +276,29 @@ describe("routes", () => {
     const { kb } = Object.fromEntries(await loadVault());
     const dup = warnings.find((w) => w.includes("two entries at /kb/linux/swap-configuration"));
     expect(dup).toContain("Linux/Swap Configuration.md");
-    expect(dup).toContain("Linux/Swap Notes Archive.md");
+    expect(dup).toContain(DUPLICATE_ROUTE_PATH);
     expect(dup).toContain("Only Linux/Swap Configuration.md is routed");
     expect(byPath(kb!, "Linux/Swap Configuration.md")._meta?.route).toBe(
       "/kb/linux/swap-configuration",
     );
-    expect(byPath(kb!, "Linux/Swap Notes Archive.md")._meta?.route).toBeUndefined();
   });
 
-  it("an entry the template cannot render has no route, and the build says why", async () => {
+  it("an entry with no route of its own is not in the collection, so no consumer can invent one", async () => {
+    captureWarnings();
+    const { kb } = Object.fromEntries(await loadVault());
+    // The loser of the duplicate route is published and not a draft, and still has no page.
+    expect(kb!.some((e) => e._meta?.path === DUPLICATE_ROUTE_PATH)).toBe(false);
+    expect(
+      kb!.every((e) => typeof e._meta?.route === "string" && typeof e._meta?.url === "string"),
+    ).toBe(true);
+    // Without a route template nothing is dropped: the collection is whatever was loaded.
+    const flat = Object.fromEntries(
+      await loadVault({ indexRoute: undefined, route: undefined }),
+    ).kb!;
+    expect(flat.some((e) => e._meta?.path === DUPLICATE_ROUTE_PATH)).toBe(true);
+  });
+
+  it("an entry the template cannot render has no route, is left out, and the build says why", async () => {
     const warnings = captureWarnings();
     const { kb } = Object.fromEntries(
       await loadVault({
@@ -286,8 +307,36 @@ describe("routes", () => {
         route: "/kb/{category:slug}/{nickname}/",
       }),
     );
-    expect(byPath(kb!, "Frappe/README.md")._meta?.route).toBeUndefined();
+    expect(kb).toEqual([]);
     expect(warnings.some((w) => w.includes('field "nickname"'))).toBe(true);
+  });
+
+  it("names a reason once, with a count and examples, when most entries share it", async () => {
+    const warnings = captureWarnings();
+    await loadVault({
+      idField: undefined,
+      indexRoute: undefined,
+      route: "/kb/{category:slug}/{nickname}/",
+    });
+    const routeWarnings = warnings.filter((w) => w.startsWith("Content routes:"));
+    expect(routeWarnings).toHaveLength(1);
+    expect(routeWarnings[0]).toMatch(
+      /Content routes: "kb": \d+ entries have no route: field "nickname"/,
+    );
+    expect(routeWarnings[0]).toContain("for example");
+  });
+
+  it("lists a few unrouted entries one by one", async () => {
+    const warnings = captureWarnings();
+    await loadVault({
+      idField: undefined,
+      indexRoute: undefined,
+      route: "/kb/{nickname}/",
+      where: { slug: "frappe" },
+    });
+    expect(warnings.filter((w) => w.startsWith("Content routes:"))).toEqual([
+      expect.stringContaining('(Frappe/README.md) has no route: field "nickname"'),
+    ]);
   });
 
   it("a malformed route template is a build error naming the content type", async () => {
@@ -367,15 +416,20 @@ describe("links between entries", () => {
     ).toBe(true);
   });
 
-  it("leaves external, mailto, tel, absolute, asset and fragment links exactly as written", async () => {
+  it("leaves external, mailto, tel, absolute and fragment links exactly as written", async () => {
     captureWarnings();
     const entry = await bench();
     expect(href(entry, "site")).toBe("https://example.com/guide.md");
     expect(href(entry, "mail")).toBe("mailto:support@example.com");
     expect(href(entry, "phone")).toBe("tel:+15555550100");
     expect(href(entry, "absolute")).toBe("/already/absolute/");
-    expect(href(entry, "asset")).toBe("assets/diagram.png");
-    expect(href(entry, "pdf")).toBe("assets/guide.pdf");
+  });
+
+  it("publishes a link to an attachment at the collection's asset URL, like an image", async () => {
+    captureWarnings();
+    const entry = await bench();
+    expect(href(entry, "asset")).toBe("/content/kb/Frappe/assets/diagram.png");
+    expect(href(entry, "pdf")).toBe("/content/kb/Frappe/assets/guide.pdf");
   });
 
   it("images keep working: the relative src is remapped onto the collection mount", async () => {
@@ -582,8 +636,8 @@ describe("$paths for a routed type", () => {
     expect(rows).toContainEqual({ path: "frappe/bench-operations" });
     expect(rows).toContainEqual({ path: "git-and-dev-tools/git-cheatsheet" });
     expect(rows).toContainEqual({ path: "wordpress/gravity-forms" });
-    // One entry lost the duplicate route; every other published entry has one.
-    expect(rows).toHaveLength(PUBLISHED_PATHS.length - 1);
+    // One entry lost the duplicate route and is not in the collection; every other has one.
+    expect(rows).toHaveLength(PUBLISHED_PATHS.length);
   });
 
   it("[category]/[slug] pages get named parameters, and section pages their own", async () => {
@@ -728,5 +782,500 @@ describe("the loaded collection is the filtered one", () => {
     ]) {
       expect(VAULT_FILES[hidden]).toBeDefined();
     }
+  });
+});
+
+// ─── Hardening: what a reviewer could make the loader do wrong ───────────────
+
+let sandboxCounter = 0;
+
+/**
+ * Load a small vault written for one test: `files` are relative paths under a fresh directory, and
+ * the `kb` type is `overrides` over a Markdown directory source with a route. Returns the entries
+ * and the warnings the load printed.
+ */
+async function loadFiles(
+  files: Record<string, string>,
+  overrides: Record<string, unknown> = {},
+  projectConfig: ProjectConfig = {},
+) {
+  sandboxCounter += 1;
+  const dir = join(TMP, `sandbox-${sandboxCounter}`);
+  for (const [rel, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, rel)), { recursive: true });
+    writeFileSync(join(dir, rel), text);
+  }
+  const warnings = captureWarnings();
+  const section = {
+    kb: {
+      format: "Markdown",
+      route: "/kb/{id:slug}/",
+      source: `./sandbox-${sandboxCounter}`,
+      ...overrides,
+    },
+  } as unknown as ContentSection;
+  const data = await Content.projectData(section, {
+    projectConfig,
+    registry: await registry(),
+    root: TMP,
+  });
+  return { dir, entries: data.get("kb")!, section, warnings };
+}
+
+const note = (title: string, body = "", extra = "") =>
+  `---\ntitle: ${title}\n${extra}---\n\n${body}\n`;
+
+describe("option names", () => {
+  it("an option that is one typo from a real one is a build error, so a filter cannot fail open", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(loadFiles({ "a.md": note("A") }, { excludes: ["internal/**"] })).rejects.toThrow(
+      /Content type "kb": unknown option "excludes", did you mean "exclude"\?/,
+    );
+    for (const [typo, want] of [
+      ["exlude", "exclude"],
+      ["wher", "where"],
+      ["idfield", "idField"],
+      ["routes", "route"],
+      ["link", "links"],
+      ["alert", "alerts"],
+      ["indexroute", "indexRoute"],
+    ] as const) {
+      // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+      await expect(loadFiles({ "a.md": note("A") }, { [typo]: "x" })).rejects.toThrow(
+        new RegExp(`unknown option "${typo}", did you mean "${want}"`),
+      );
+    }
+  });
+
+  it("a key that resembles nothing is ignored, and said so", async () => {
+    const { warnings, entries } = await loadFiles({ "a.md": note("A") }, { flavour: "mild" });
+    expect(entries).toHaveLength(1);
+    expect(
+      warnings.some((w) => w.includes('Content type "kb": ignores the unknown option "flavour"')),
+    ).toBe(true);
+  });
+
+  it("every documented option, and $comment, is accepted silently", async () => {
+    const { warnings } = await loadFiles(
+      { "a.md": note("A", "", "slug: a\n") },
+      {
+        $comment: "notes",
+        alerts: { NOTE: true },
+        exclude: ["x/**"],
+        idField: "slug",
+        indexRoute: "/kb/{dir:slug}/",
+        links: "warn",
+        schema: { properties: {}, type: "object" },
+        where: { title: "A" },
+      },
+    );
+    expect(warnings.filter((w) => w.includes("unknown option"))).toEqual([]);
+  });
+});
+
+describe("a file that cannot be read", () => {
+  it("names the file and says how to move on", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(
+      loadFiles({
+        "good.md": note("Good"),
+        "Templates/Note.md": "---\ntitle: [unclosed\npublish: false\n---\n\nbody\n",
+      }),
+    ).rejects.toThrow(
+      /Content type "kb": cannot read "Templates\/Note\.md": .*Fix the file, or add it to "exclude"/,
+    );
+  });
+
+  it("is no problem when the folder is excluded", async () => {
+    const { entries } = await loadFiles(
+      { "good.md": note("Good"), "Templates/Note.md": "---\ntitle: [unclosed\n---\n" },
+      { exclude: ["Templates"] },
+    );
+    expect(entries.map((e) => e._meta?.path)).toEqual(["good.md"]);
+  });
+});
+
+describe("a filter that removes everything", () => {
+  it("where says so, with the field it failed on", async () => {
+    const { entries, warnings } = await loadFiles(
+      { "a.md": note("A", "", "publish: true\n"), "b.md": note("B", "", "publish: true\n") },
+      { where: { publish: "true" } },
+    );
+    expect(entries).toEqual([]);
+    const warning = warnings.find((w) => w.includes('"where" left out all 2 entries'));
+    expect(warning).toContain('failed on "publish"');
+  });
+
+  it("is silent when the source is simply empty", async () => {
+    const { warnings } = await loadFiles({ "readme.txt": "not a document" }, { where: { x: 1 } });
+    expect(warnings.filter((w) => w.includes('"where" left out'))).toEqual([]);
+  });
+
+  it("exclude says so when nothing is left to load", async () => {
+    const { entries, warnings } = await loadFiles(
+      { "a.md": note("A"), "b/c.md": note("C") },
+      { exclude: ["**/*.md"] },
+    );
+    expect(entries).toEqual([]);
+    expect(warnings.some((w) => w.includes("no file was loaded") && w.includes('"exclude"'))).toBe(
+      true,
+    );
+  });
+
+  it("a bare folder name in exclude excludes the folder", async () => {
+    const { entries } = await loadFiles(
+      { "a.md": note("A"), "internal/x.md": note("X"), "internal/deep/y.md": note("Y") },
+      { exclude: ["internal"] },
+    );
+    expect(entries.map((e) => e._meta?.path)).toEqual(["a.md"]);
+  });
+});
+
+describe("what the asset mount serves", () => {
+  const files = {
+    ".env": "SECRET=1",
+    ".git/config": "[core]",
+    "a.md": note(
+      "A",
+      [
+        "![ok](pics/ok.png)",
+        "![excluded](internal/secret.png)",
+        "![hidden](.git/config)",
+        "![dot](.env)",
+        "![doc](internal/plan.md)",
+        "![draft](notes/draft.md)",
+      ].join("\n\n"),
+      "publish: true\n",
+    ),
+    "internal/plan.md": note("Plan", "", "publish: true\n"),
+    "internal/secret.png": "SECRET",
+    "notes/draft.md": note("Draft", "", "publish: false\n"),
+    "pics/ok.png": "PNG",
+  };
+  const options = { exclude: ["internal/**"], where: { publish: true } };
+
+  it("a type that declares the vault options does not serve what they leave out", async () => {
+    const { entries, warnings, section, dir } = await loadFiles(files, options);
+    const srcs = find(entries[0]!.$children, (el) => el.tagName === "img").map(
+      (el) => el.attributes?.src,
+    );
+    expect(srcs).toEqual([
+      "/content/kb/pics/ok.png",
+      "internal/secret.png",
+      ".git/config",
+      ".env",
+      "internal/plan.md",
+      "notes/draft.md",
+    ]);
+    const refused = warnings.filter((w) => w.includes("which the collection does not publish"));
+    expect(refused).toHaveLength(5);
+    expect(refused.join("\n")).toContain('"internal/secret.png"');
+    // The mount itself says the same to every host that serves or copies through it.
+    const [mount] = Content.assets(section, { root: TMP });
+    expect(mount!.dir).toBe(resolve(dir));
+    const { filter: serves } = mount!;
+    expect(serves!("pics/ok.png")).toBe(true);
+    for (const path of ["internal/secret.png", ".git/config", ".env", "a.md", "notes/draft.md"]) {
+      expect(serves!(path)).toBe(false);
+    }
+    expect(resolveAssetUrl([mount!], "/content/kb/internal/secret.png")).toBeNull();
+    expect(resolveAssetUrl([mount!], "/content/kb/pics/ok.png")).toBe(`${dir}/pics/ok.png`);
+    expect(assetUrlFor([mount!], `${dir}/.env`)).toBeNull();
+  });
+
+  it("reaches an image in a raw HTML block, which is a nested list of nodes", async () => {
+    const { entries } = await loadFiles(
+      {
+        "a.md": note(
+          "A",
+          '<div>\n<img src="pics/ok.png"> <img src=".env">\n</div>',
+          "publish: true\n",
+        ),
+        ".env": "SECRET=1",
+        "pics/ok.png": "PNG",
+      },
+      { where: { publish: true } },
+    );
+    const srcs = (entries[0]!.$children as unknown[])
+      .flat(Number.POSITIVE_INFINITY)
+      .flatMap((n) => find([n as JxElement], (el) => el.tagName === "img"))
+      .map((el) => el.attributes?.src);
+    expect(srcs).toEqual(["/content/kb/pics/ok.png", ".env"]);
+  });
+
+  it("an unfiltered type keeps today's behavior: the whole directory is served", async () => {
+    const { section, warnings } = await loadFiles(files, {
+      exclude: undefined,
+      route: undefined,
+      where: undefined,
+    });
+    const [mount] = Content.assets(section, { root: TMP });
+    expect(mount!.filter).toBeUndefined();
+    expect(warnings.filter((w) => w.includes("does not publish"))).toEqual([]);
+  });
+
+  it("a malformed exclude serves nothing until the load fails on it", () => {
+    const [mount] = Content.assets(
+      { kb: { exclude: ["!x"], format: "Markdown", source: "./sandbox-1" } },
+      { root: TMP },
+    );
+    const { filter: serves } = mount!;
+    expect(serves!("anything.png")).toBe(false);
+  });
+});
+
+describe("links to files that are not entries", () => {
+  const files = {
+    "a.md": note(
+      "A",
+      "[pdf](files/report.pdf), [secret](internal/plan.pdf), [empty](Empty/), [gone](nowhere/x.png), [folder](sub/)",
+    ),
+    "Empty/keep.txt": "x",
+    "files/report.pdf": "%PDF",
+    "internal/plan.pdf": "%PDF",
+    "sub/README.md": note("Sub"),
+  };
+
+  it("publishes an attachment at its mount URL and refuses one the collection excludes", async () => {
+    const { entries, warnings } = await loadFiles(files, { exclude: ["internal/**"] });
+    const a = byPath(entries, "a.md");
+    expect(links(a).find((l) => l.text === "pdf")?.href).toBe("/content/kb/files/report.pdf");
+    expect(links(a).find((l) => l.text === "gone")?.href).toBe("nowhere/x.png");
+    expect(links(a).find((l) => l.text === "folder")?.href).toBe("/kb/sub/");
+    for (const text of ["secret", "empty"]) {
+      expect(links(a).some((l) => l.text === text)).toBe(false);
+    }
+    const joined = warnings.filter((w) => w.startsWith("Content links:")).join("\n");
+    expect(joined).toContain(
+      'links to "internal/plan.pdf", which is not published (excluded by "internal/**")',
+    );
+    expect(joined).toContain('links to "Empty/", which is a folder with no README.md or index.md');
+  });
+});
+
+describe("ids that become directories", () => {
+  it("an idField that would climb out of the output keeps the path id, and says so", async () => {
+    const { entries, warnings } = await loadFiles(
+      {
+        "a.md": note("A", "", "slug: ../../../escaped\n"),
+        "b.md": note("B", "", "slug: fine\n"),
+        "c.md": note("C", "", "slug: a\\b\n"),
+      },
+      { idField: "slug", route: undefined },
+    );
+    expect(entries.map((e) => e.id)).toEqual(["a", "fine", "c"]);
+    expect(warnings.filter((w) => w.includes('has a "slug" that'))).toEqual([
+      expect.stringContaining('"kb/a" has a "slug" that contains a "." or ".." segment'),
+      expect.stringContaining('"kb/c" has a "slug" that contains a backslash'),
+    ]);
+  });
+
+  it("$paths with a field never hands a page an escaping value", async () => {
+    const { entries } = await loadFiles(
+      { "a.md": note("A", "", "slug: ../../x\n"), "b.md": note("B", "", "slug: ok\n") },
+      { route: undefined },
+    );
+    const warnings = captureWarnings();
+    const data = new Map([["kb", entries]]);
+    const rows = await Content.resolvePaths(
+      { contentType: "kb", field: "slug", param: "slug" },
+      { data, root: TMP },
+    );
+    expect(rows.map((r) => r.slug)).toEqual(["ok"]);
+    expect(warnings.some((w) => w.includes('"slug" of "a" contains a "." or ".." segment'))).toBe(
+      true,
+    );
+  });
+});
+
+describe("a folder with a README and an index", () => {
+  it("the index keeps the folder's id and the README keeps the one it had before", async () => {
+    const { entries, warnings } = await loadFiles(
+      {
+        "Foo/README.md": note("Readme"),
+        "Foo/index.md": note("Index"),
+        "Bar/README.md": note("Bar readme"),
+        "Foo/Sub/README.md": note("Sub"),
+        "Foo/Sub/Index.md": note("Sub index"),
+      },
+      { route: undefined },
+    );
+    const ids = Object.fromEntries(entries.map((e) => [e._meta?.path, e.id]));
+    expect(ids["Foo/index.md"]).toBe("Foo");
+    expect(ids["Foo/README.md"]).toBe("Foo/README");
+    expect(ids["Bar/README.md"]).toBe("Bar");
+    // A capitalised Index.md is the folder's index like any other.
+    expect(ids["Foo/Sub/Index.md"]).toBe("Foo/Sub");
+    expect(ids["Foo/Sub/README.md"]).toBe("Foo/Sub/README");
+    expect(warnings.filter((w) => w.includes("two entries with the id"))).toEqual([]);
+    expect(warnings.filter((w) => w.includes("keeps the id")).length).toBe(2);
+  });
+
+  it("links to the folder resolve to the index, which is the entry that has the id", async () => {
+    const { entries } = await loadFiles(
+      {
+        "Foo/README.md": note("Readme", "[home](../)"),
+        "Foo/index.md": note("Index"),
+        "top.md": note("Top", "[foo](Foo/)"),
+      },
+      { route: "/kb/{id:slug}/" },
+    );
+    expect(links(byPath(entries, "top.md")).find((l) => l.text === "foo")?.href).toBe("/kb/foo/");
+    expect(byPath(entries, "Foo/index.md")._meta?.route).toBe("/kb/foo");
+    expect(byPath(entries, "Foo/README.md")._meta?.route).toBe("/kb/foo/readme");
+  });
+});
+
+describe("the page patterns of the project", () => {
+  const loadEntries = async () => {
+    const loaded = await loadFiles({
+      "A/B/C/Deep.md": note("Deep"),
+      "A/Mid.md": note("Mid"),
+      "Top.md": note("Top"),
+    });
+    return loaded.entries;
+  };
+  const resolveWith = async (
+    patterns: string[] | undefined,
+    urlPattern: string,
+    params: string[],
+  ) => {
+    const data = new Map([["kb", await loadEntries()]]);
+    const warnings = captureWarnings();
+    const rows = await Content.resolvePaths(
+      { contentType: "kb" },
+      { data, params, root: TMP, urlPattern, ...(patterns === undefined ? {} : { patterns }) },
+    );
+    return { rows, warnings };
+  };
+
+  it("reports once the routes that no page of the project produces", async () => {
+    const { warnings } = await resolveWith(["/kb/:category/:slug"], "/kb/:category/:slug", [
+      "category",
+      "slug",
+    ]);
+    const unserved = warnings.filter((w) => w.includes("no dynamic page produces"));
+    expect(unserved).toHaveLength(1);
+    expect(unserved[0]).toContain("2 routed entries have a route");
+    expect(unserved[0]).toContain("/kb/top");
+    expect(unserved[0]).toContain("/kb/a/b/c/deep");
+  });
+
+  it("reports a content type once per build, however many pages ask", async () => {
+    const data = new Map([["kb", await loadEntries()]]);
+    const warnings = captureWarnings();
+    for (let page = 0; page < 3; page++) {
+      await Content.resolvePaths(
+        { contentType: "kb" },
+        { data, params: ["a", "b"], patterns: ["/kb/:a/:b"], root: TMP, urlPattern: "/kb/:a/:b" },
+      );
+    }
+    expect(warnings.filter((w) => w.includes("no dynamic page produces"))).toHaveLength(1);
+  });
+
+  it("is quiet when other pages of the project serve the rest", async () => {
+    const { rows, warnings } = await resolveWith(
+      ["/kb/:category/:slug", "/kb/:slug", "/kb/*"],
+      "/kb/:category/:slug",
+      ["category", "slug"],
+    );
+    expect(rows).toHaveLength(1);
+    expect(warnings.filter((w) => w.includes("no dynamic page produces"))).toEqual([]);
+  });
+
+  it("without the list it says nothing, and a single catch-all serves everything", async () => {
+    const noPatterns = await resolveWith(undefined, "/docs/:slug", ["slug"]);
+    expect(noPatterns.warnings).toEqual([expect.stringContaining("no entry route fits")]);
+    const all = await resolveWith(["/kb/*"], "/kb/*", ["path"]);
+    expect(all.rows).toHaveLength(3);
+    expect(all.warnings).toEqual([]);
+  });
+
+  it("reads a localized project's patterns without their locale prefix", async () => {
+    const data = new Map([["kb", await loadEntries()]]);
+    const warnings = captureWarnings();
+    await Content.resolvePaths(
+      { contentType: "kb" },
+      {
+        data,
+        locale: "fr",
+        params: ["path"],
+        patterns: ["/fr/kb/*"],
+        projectConfig: { i18n: { defaultLocale: "en", locales: ["en", "fr"] } },
+        root: TMP,
+        urlPattern: "/fr/kb/*",
+      },
+    );
+    expect(warnings.filter((w) => w.includes("no dynamic page produces"))).toEqual([]);
+  });
+});
+
+describe("broken links in bulk", () => {
+  it("names the first screenful and counts the rest", async () => {
+    const body = Array.from({ length: 30 }, (_, i) => `[l${i}](Missing${i}.md)`).join(" ");
+    const { warnings } = await loadFiles({ "a.md": note("A", body) });
+    const lines = warnings.filter((w) => w.startsWith("Content links:"));
+    expect(lines).toHaveLength(26);
+    expect(lines.at(-1)).toContain("and 5 more broken links");
+  });
+
+  it("error mode still lists every one", async () => {
+    const body = Array.from({ length: 30 }, (_, i) => `[l${i}](Missing${i}.md)`).join(" ");
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(loadFiles({ "a.md": note("A", body) }, { links: "error" })).rejects.toThrow(
+      /has 30 broken links[\s\S]*Missing29\.md/,
+    );
+  });
+});
+
+describe("callouts of an unknown type", () => {
+  it("are reported with the file, and the fix", async () => {
+    const { warnings, entries } = await loadFiles({
+      "a.md": note("A", "> [!info]\n> hello\n\n> [!NOTE]\n> fine\n"),
+    });
+    const callout = warnings.filter((w) => w.startsWith("Content callouts:"));
+    expect(callout).toEqual([
+      expect.stringContaining('"a.md" has a [!info] callout, but "info" is not an enabled type'),
+    ]);
+    expect(callout[0]).toContain('"alerts": { "INFO": true }');
+    expect(find(entries[0]!.$children, (el) => el.tagName === "blockquote")).toHaveLength(1);
+  });
+
+  it("is quiet once the type is enabled", async () => {
+    const { warnings } = await loadFiles(
+      { "a.md": note("A", "> [!info]\n> hello\n") },
+      { alerts: { INFO: true } },
+    );
+    expect(warnings.filter((w) => w.startsWith("Content callouts:"))).toEqual([]);
+  });
+});
+
+describe("file names", () => {
+  it("an .MD file is a document, and a capitalised Index.md is its folder's", async () => {
+    const { entries } = await loadFiles(
+      { "Shout.MD": note("Shout"), "Dir/Index.md": note("Dir index") },
+      { route: undefined },
+    );
+    expect(entries.map((e) => e.id).toSorted()).toEqual(["Dir", "Shout"]);
+  });
+});
+
+describe("a file saved with Windows line endings", () => {
+  it("publishes its callouts, its frontmatter and its title without carriage returns", async () => {
+    const crlf = (text: string) => text.replaceAll("\n", "\r\n");
+    const { entries, warnings } = await loadFiles(
+      {
+        "Win.md": crlf(
+          "---\ntitle: Win\nslug: win\n---\n\n> [!NOTE]\n> Back up first.\n\n> [!WARNING] Careful\n> Drops the site.\n",
+        ),
+      },
+      { route: undefined },
+    );
+    const [noteBox, warningBox] = find(entries[0]!.$children, (el) => el.tagName === "div");
+    expect(noteBox!.className).toBe("jx-alert jx-alert-note");
+    expect(warningBox!.className).toBe("jx-alert jx-alert-warning");
+    expect(JSON.stringify(entries[0]!.$children)).not.toContain(String.raw`\r`);
+    expect(entries[0]!.data.title).toBe("Win");
+    expect(warnings.filter((w) => w.startsWith("Content callouts:"))).toEqual([]);
   });
 });

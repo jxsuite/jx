@@ -277,3 +277,64 @@ describe("inlineText", () => {
     ).toBe("a b c");
   });
 });
+
+describe("Windows line endings", () => {
+  it("recognises a bare marker followed by a CRLF line end", () => {
+    const [el] = render("> [!NOTE]\r\n> crlf body\r\n");
+    expect(el!.className).toBe("jx-alert jx-alert-note");
+    const [title, body] = kids(el!) as JxElement[];
+    expect(title).toEqual({ className: "jx-alert-title", tagName: "p", textContent: "Note" });
+    expect(body).toEqual({ tagName: "p", textContent: "crlf body" });
+  });
+
+  it("a titled callout's title has no trailing carriage return", () => {
+    const [el] = render("> [!TIP] Titled\r\n> Body text.\r\n");
+    const [title, body] = kids(el!) as JxElement[];
+    expect(title!.textContent).toBe("Titled");
+    expect(body!.textContent).toBe("Body text.");
+  });
+
+  it("maps to a component with a clean data-title", () => {
+    const [el] = render("> [!WARNING] Careful\r\n> Drops the site.\r\n", {
+      WARNING: "doc-warning",
+    });
+    expect(el!.attributes).toEqual({ "data-alert": "warning", "data-title": "Careful" });
+  });
+
+  it("is the same document as the LF spelling", () => {
+    const lf = render("> [!NOTE]\n> same\n\n> [!TIP] T\n> x\n");
+    const crlf = render("> [!NOTE]\r\n> same\r\n\r\n> [!TIP] T\r\n> x\r\n");
+    expect(crlf).toEqual(lf);
+  });
+});
+
+describe("a marker of a type nobody enabled", () => {
+  const heard = (source: string, alerts?: unknown) => {
+    const types: string[] = [];
+    processMarkdown(source, "/x/entry.md", {
+      ...(alerts === undefined ? {} : { alerts }),
+      onUnknownAlert: (type) => types.push(type),
+    });
+    return types;
+  };
+
+  it("is reported, and stays a blockquote with its text intact", () => {
+    expect(heard("> [!info]\n> body\n")).toEqual(["info"]);
+    const [quote] = render("> [!info]\n> body\n");
+    expect(quote!.tagName).toBe("blockquote");
+    expect(JSON.stringify(quote)).toContain("[!info]");
+  });
+
+  it("is not reported for a type that is enabled, or one switched off on purpose", () => {
+    expect(heard("> [!info]\n> body\n", { INFO: true })).toEqual([]);
+    expect(heard("> [!NOTE]\n> body\n", { NOTE: false })).toEqual([]);
+    expect(heard("> [!NOTE]\n> body\n", false)).toEqual([]);
+  });
+
+  it("finds one nested in an ordinary quotation, and ignores text that is no marker", () => {
+    expect(heard("> quote\n>\n> > [!faq]\n> > q\n")).toEqual(["faq"]);
+    expect(heard("> [!info]x\n> body\n")).toEqual([]);
+    expect(heard("> not a marker [!info]\n")).toEqual([]);
+    expect(heard("> [!info] inline\n")).toEqual(["info"]);
+  });
+});

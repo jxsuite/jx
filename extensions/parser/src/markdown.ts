@@ -38,6 +38,8 @@ export interface MarkdownLoadOptions {
    * alerts (`> [!NOTE]`) as plain blockquotes. Absent renders the built-in callout markup.
    */
   alerts?: unknown;
+  /** Told of each `[!type]` marker whose type is not enabled (it stays a blockquote). */
+  onUnknownAlert?: (type: string) => void;
 }
 
 /** Options for {@link Markdown.discover}. */
@@ -91,7 +93,11 @@ export class Markdown {
     if (extname(resolved)) {
       return existsSync(resolved) ? [resolved] : [];
     }
-    return walkFiles(resolved, (name) => name.endsWith(".md"), compileExclude(options.exclude));
+    return walkFiles(
+      resolved,
+      (name) => name.toLowerCase().endsWith(".md"),
+      compileExclude(options.exclude),
+    );
   }
 
   /** Load one markdown file into a content entry (frontmatter → data, body preserved). */
@@ -109,6 +115,7 @@ export class Markdown {
       }),
       ...(options.sourceRoot !== undefined && { sourceRoot: options.sourceRoot }),
       ...(options.alerts !== undefined && { alerts: options.alerts }),
+      ...(options.onUnknownAlert !== undefined && { onUnknownAlert: options.onUnknownAlert }),
     });
     const _meta: ContentLoaderEntry["_meta"] = {};
     /*

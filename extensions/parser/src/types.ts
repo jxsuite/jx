@@ -41,9 +41,9 @@ export interface ContentTypeDef {
   links?: "warn" | "error" | "ignore";
   /**
    * GitHub alert type → custom element, `true` for the built-in markup, `false` to leave it a
-   * blockquote.
+   * blockquote. `false` for the whole option turns callouts off, `true` is the default.
    */
-  alerts?: Record<string, string | boolean | null>;
+  alerts?: Record<string, string | boolean | null> | boolean;
   [key: string]: unknown;
 }
 

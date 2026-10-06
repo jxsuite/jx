@@ -19,7 +19,15 @@
  * template.
  *
  * It runs last, after heading ids and the table of contents are built from the text, because those
- * read `textContent`. Attribute values are not touched: an entity cannot be written into one.
+ * read `textContent`.
+ *
+ * **Attribute values are different, and the rule is stated rather than hidden.** An entity cannot
+ * be written into an attribute (the serializer would escape its `&`), and a link's `href` or an
+ * image's `src` may legitimately name a template, so those two are left to the page author. The
+ * attributes that carry prose are made inert instead: `alt` and `title` (an image's description, a
+ * link's tooltip) and `data-title` (a callout's title), by writing a zero-width space between the
+ * `$` and the `{`. A note that says "set `${HOME}`" in an image description would otherwise become
+ * a binding whose evaluation throws in every visitor's browser, and the page would stop hydrating.
  *
  * Pure: no `node:` imports.
  *
@@ -30,6 +38,12 @@
 
 import type { JxElement } from "@jxsuite/schema/types";
 
+/**
+ * A content tree. A raw HTML block arrives as a nested array of nodes, so the shape is recursive
+ * and every walk over it has to descend into arrays as well as into `children`.
+ */
+export type ContentNodes = (JxElement | string | ContentNodes)[];
+
 /** HTML-escape text, and spell `${` as `&#36;{` so nothing downstream reads it as a template. */
 export function escapeTemplateText(text: string): string {
   return text
@@ -39,17 +53,29 @@ export function escapeTemplateText(text: string): string {
     .replaceAll("${", "&#36;{");
 }
 
+/** The attributes whose value is prose, so a `${` in one is text and never a binding. */
+const PROSE_ATTRIBUTES = ["alt", "title", "data-title"] as const;
+
+/** `${` spelled so an attribute value is not read as a template: a zero-width space splits it. */
+export function neutralizeTemplateAttribute(value: string): string {
+  return value.replaceAll("${", "$\u200B{");
+}
+
 /**
  * Make every `${` in a content tree plain text, in place.
  *
- * @param {(JxElement | string)[]} nodes - An entry's `$children`
+ * @param {ContentNodes} nodes - An entry's `$children`
  */
-export function makeTemplatesInert(nodes: (JxElement | string)[]): void {
+export function makeTemplatesInert(nodes: ContentNodes): void {
   for (const [i, node] of nodes.entries()) {
     if (typeof node === "string") {
       if (node.includes("${")) {
         nodes[i] = { innerHTML: escapeTemplateText(node), tagName: "span" };
       }
+      continue;
+    }
+    if (Array.isArray(node)) {
+      makeTemplatesInert(node);
       continue;
     }
     if (typeof node !== "object" || node === null) {
@@ -59,8 +85,17 @@ export function makeTemplatesInert(nodes: (JxElement | string)[]): void {
       node.innerHTML = escapeTemplateText(node.textContent);
       delete node.textContent;
     }
+    const { attributes } = node;
+    if (attributes) {
+      for (const name of PROSE_ATTRIBUTES) {
+        const value = attributes[name];
+        if (typeof value === "string" && value.includes("${")) {
+          attributes[name] = neutralizeTemplateAttribute(value);
+        }
+      }
+    }
     if (Array.isArray(node.children)) {
-      makeTemplatesInert(node.children as (JxElement | string)[]);
+      makeTemplatesInert(node.children as ContentNodes);
     }
   }
 }

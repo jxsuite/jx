@@ -40,6 +40,14 @@ describe("highlightFence", () => {
     expect(highlightFence("# Title", "md")).not.toBeNull();
   });
 
+  test("reads the language in any case, as an author types it", () => {
+    for (const info of ["SQL", "Python", "BASH", "Ts"]) {
+      expect(highlightFence("x", info)).not.toBeNull();
+    }
+    const [pre] = processMarkdown("```SQL\nSELECT 1;\n```\n", "/x/a.md").$children as JxElement[];
+    expect(((pre!.children as JxElement[])[0] as JxElement).className).toContain("shiki");
+  });
+
   test("returns null for unknown languages", () => {
     expect(highlightFence("PRINT 1", "cobol")).toBeNull();
     expect(highlightFence("x", "not-a-language")).toBeNull();

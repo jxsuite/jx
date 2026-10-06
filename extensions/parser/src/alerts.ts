@@ -47,6 +47,8 @@ export type AlertsConfig = Record<string, string | boolean | null> | false;
 export interface AlertSettings {
   /** Type → element tag name, or `null` to render the built-in markup. */
   types: Map<string, string | null>;
+  /** Types the option switched off on purpose, so an unknown-type report can skip them. */
+  disabled: Set<string>;
 }
 
 /** A tag name an author could mean: HTML elements and custom elements alike. */
@@ -65,8 +67,9 @@ export function normalizeAlerts(config?: unknown, where = "alerts"): AlertSettin
   const types = new Map<string, string | null>(
     Object.keys(DEFAULT_ALERT_TITLES).map((type) => [type, null]),
   );
+  const disabled = new Set<string>();
   if (config === undefined || config === true) {
-    return { types };
+    return { disabled, types };
   }
   if (typeof config !== "object" || config === null || Array.isArray(config)) {
     throw new TypeError(
@@ -80,6 +83,7 @@ export function normalizeAlerts(config?: unknown, where = "alerts"): AlertSettin
     }
     if (element === false || element === null) {
       types.delete(key);
+      disabled.add(key);
     } else if (element === true) {
       types.set(key, null);
     } else if (typeof element === "string" && TAG_NAME.test(element)) {
@@ -90,7 +94,7 @@ export function normalizeAlerts(config?: unknown, where = "alerts"): AlertSettin
       );
     }
   }
-  return { types };
+  return { disabled, types };
 }
 
 /** The shape an alert takes after the rewrite. */
@@ -123,6 +127,32 @@ function textNode(value: string): MdastNode {
   return { type: "text", value };
 }
 
+/** A line end in either of its spellings: a file saved on Windows keeps `\r\n` in its text nodes. */
+const LINE_END = /\r?\n/;
+
+/**
+ * The `[!TYPE]` marker at the start of a paragraph, or null when there is none.
+ *
+ * `rest` is the text after the marker in that first text node. A marker must be followed by
+ * whitespace or the end of the node (`[!NOTE]x` is not one), and the whitespace may be a carriage
+ * return, which is what a CRLF file puts there.
+ */
+function markerOf(paragraph: MdastNode): { type: string; rest: string } | null {
+  const [first] = paragraph.children ?? [];
+  if (first?.type !== "text" || typeof first.value !== "string") {
+    return null;
+  }
+  const match = MARKER.exec(first.value);
+  if (!match) {
+    return null;
+  }
+  const rest = first.value.slice(match[0].length);
+  if (rest !== "" && !/^[ \t\r\n]/.test(rest)) {
+    return null;
+  }
+  return { rest, type: match[1]!.toLowerCase() };
+}
+
 /**
  * Split the first paragraph of a blockquote into the title line and the rest, or null when the
  * blockquote is not an alert of a configured type.
@@ -135,22 +165,12 @@ function splitMarker(
   paragraph: MdastNode,
   settings: AlertSettings,
 ): { type: string; title: MdastNode[]; body: MdastNode[] } | null {
-  const [first, ...siblings] = paragraph.children ?? [];
-  if (first?.type !== "text" || typeof first.value !== "string") {
+  const marker = markerOf(paragraph);
+  if (!marker || !settings.types.has(marker.type)) {
     return null;
   }
-  const match = MARKER.exec(first.value);
-  if (!match) {
-    return null;
-  }
-  const type = match[1]!.toLowerCase();
-  if (!settings.types.has(type)) {
-    return null;
-  }
-  const rest = first.value.slice(match[0].length);
-  if (rest !== "" && !/^[ \t\n]/.test(rest)) {
-    return null;
-  }
+  const { type, rest } = marker;
+  const [, ...siblings] = paragraph.children ?? [];
 
   const title: MdastNode[] = [];
   const body: MdastNode[] = [];
@@ -159,13 +179,13 @@ function splitMarker(
     if (inTitle && node.type === "break") {
       inTitle = false;
     } else if (inTitle && node.type === "text" && typeof node.value === "string") {
-      const newline = node.value.indexOf("\n");
-      if (newline === -1) {
+      const lineEnd = LINE_END.exec(node.value);
+      if (lineEnd === null) {
         title.push(node);
       } else {
-        title.push(textNode(node.value.slice(0, newline)));
+        title.push(textNode(node.value.slice(0, lineEnd.index)));
         inTitle = false;
-        body.push(textNode(node.value.slice(newline + 1)));
+        body.push(textNode(node.value.slice(lineEnd.index + lineEnd[0].length)));
       }
     } else {
       (inTitle ? title : body).push(node);
@@ -190,11 +210,17 @@ function splitMarker(
  *
  * A blockquote that is not an alert, or is of a type the settings do not know, is left alone and
  * its children are still searched, so a callout nested inside an ordinary quotation is found.
+ * `onUnknown` hears each well-formed `[!type]` marker whose type is not enabled.
  *
  * @param {MdastNode} tree
  * @param {AlertSettings} settings
+ * @param {(type: string) => void} [onUnknown]
  */
-export function transformAlerts(tree: MdastNode, settings: AlertSettings): void {
+export function transformAlerts(
+  tree: MdastNode,
+  settings: AlertSettings,
+  onUnknown?: (type: string) => void,
+): void {
   const { children } = tree;
   if (!children) {
     return;
@@ -216,10 +242,16 @@ export function transformAlerts(tree: MdastNode, settings: AlertSettings): void 
           type: ALERT_NODE,
         };
         children[i] = alert;
-        transformAlerts(alert, settings);
+        transformAlerts(alert, settings, onUnknown);
         continue;
       }
+      // A well-formed marker of a type nobody switched on: it stays a blockquote, and the author
+      // Is told, because the literal `[!info]` on the page is otherwise the only clue.
+      const unknown = paragraph?.type === "paragraph" ? markerOf(paragraph) : null;
+      if (unknown && !settings.disabled.has(unknown.type)) {
+        onUnknown?.(unknown.type);
+      }
     }
-    transformAlerts(child, settings);
+    transformAlerts(child, settings, onUnknown);
   }
 }

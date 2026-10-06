@@ -7,7 +7,11 @@
 
 import { describe, expect, it } from "bun:test";
 import type { JxElement } from "@jxsuite/schema/types";
-import { escapeTemplateText, makeTemplatesInert } from "../src/inert.ts";
+import {
+  escapeTemplateText,
+  makeTemplatesInert,
+  neutralizeTemplateAttribute,
+} from "../src/inert.ts";
 import { processMarkdown } from "../src/md.ts";
 
 const render = (source: string) =>
@@ -122,5 +126,64 @@ describe("through processMarkdown", () => {
   it("a link's own text is covered, though its href is not rewritten", () => {
     const out = render("[see ${x}](https://example.com/a)\n");
     expect(hasTemplate(out)).toBe(false);
+  });
+});
+
+describe("attributes that carry prose", () => {
+  it("alt, title and data-title keep a ${ from being read as a template", () => {
+    const nodes: (JxElement | string)[] = [
+      {
+        attributes: { alt: "set ${HOME}", src: "a.png", title: "tip ${x}" },
+        tagName: "img",
+      },
+      { attributes: { "data-title": "Use ${HOME}" }, tagName: "doc-note" },
+    ];
+    makeTemplatesInert(nodes);
+    const [img, note] = nodes as JxElement[];
+    expect(img!.attributes?.alt).toBe("set $\u200B{HOME}");
+    expect(img!.attributes?.title).toBe("tip $\u200B{x}");
+    expect(note!.attributes?.["data-title"]).toBe("Use $\u200B{HOME}");
+    expect(JSON.stringify(nodes)).not.toContain("${");
+  });
+
+  it("neutralizeTemplateAttribute leaves text with no ${ exactly alone", () => {
+    expect(neutralizeTemplateAttribute("a $5 {b}")).toBe("a $5 {b}");
+    expect(neutralizeTemplateAttribute("${a}${b}")).toBe("$\u200B{a}$\u200B{b}");
+  });
+
+  it("href and src are the page author's to template, and are not touched", () => {
+    const nodes: (JxElement | string)[] = [
+      { attributes: { href: "${state.base}/x" }, tagName: "a", textContent: "x" },
+      { attributes: { src: "${state.cdn}/a.png" }, tagName: "img" },
+    ];
+    makeTemplatesInert(nodes);
+    expect(JSON.stringify(nodes)).toContain("${state.base}/x");
+    expect(JSON.stringify(nodes)).toContain("${state.cdn}/a.png");
+  });
+
+  it("through processMarkdown: an image description and a callout title", () => {
+    const [p, note] = processMarkdown(
+      '![diagram of ${HOME}](x.png "t ${y}")\n\n> [!NOTE] Use ${HOME}\n> body\n',
+      "/x/a.md",
+      { alerts: { NOTE: "doc-note" } },
+    ).$children as JxElement[];
+    const img = (p!.children as JxElement[])[0]!;
+    expect(img.attributes?.alt).toContain("$\u200B{");
+    expect(img.attributes?.title).toContain("$\u200B{");
+    expect(note!.attributes?.["data-title"]).toBe("Use $\u200B{HOME}");
+  });
+});
+
+describe("a raw HTML block", () => {
+  it("is a nested list of nodes, and its text is made inert too", () => {
+    const out = render('<div class="a">\n<b>${y}</b>\n</div>\n');
+    expect(hasTemplate(out)).toBe(false);
+    expect(visible(out.flat() as (JxElement | string)[])).toContain("${y}");
+  });
+
+  it("makeTemplatesInert descends into a nested array", () => {
+    const nodes = [[{ tagName: "b", textContent: "${x}" }, "and ${y}"]] as never;
+    makeTemplatesInert(nodes);
+    expect(JSON.stringify(nodes)).not.toContain("${");
   });
 });

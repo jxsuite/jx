@@ -213,16 +213,59 @@ function resolveName(name: string, subject: RouteSubject): string | null {
 }
 
 /**
+ * Why a path value could climb out of the output directory, or `null` when it cannot.
+ *
+ * A page is written to disk at a path under `dist/`, built from a route or from a value a `$paths`
+ * source hands to a page, and either can come from frontmatter. A segment that is `.` or `..` would
+ * climb out of the output directory, and a backslash or a NUL is a separator or a terminator on
+ * some platform. Every value that becomes a path goes through here.
+ *
+ * @param {string} path - A `/`-separated path
+ * @returns {string | null} A reason, or null when the path stays where it is put
+ */
+export function traversalReason(path: string): string | null {
+  if (path.includes("\0")) {
+    return "contains a NUL character";
+  }
+  for (const segment of path.split("/")) {
+    if (segment === "." || segment === "..") {
+      return 'contains a "." or ".." segment';
+    }
+    if (segment.includes("\\")) {
+      return "contains a backslash";
+    }
+  }
+  return null;
+}
+
+/**
+ * Why a path cannot be a route, or `null` when it can: {@link traversalReason}, plus an unencoded
+ * `?`, `#` or `%`, which everything downstream (the sitemap writer among them) would read as a
+ * query, a fragment or an escape rather than as part of a name.
+ *
+ * @param {string} path - A `/`-separated path
+ * @returns {string | null}
+ */
+export function unsafePathReason(path: string): string | null {
+  const traversal = traversalReason(path);
+  if (traversal !== null) {
+    return traversal;
+  }
+  return /[?#%]/.test(path)
+    ? 'contains a "?", "#" or "%", which a URL path cannot carry unescaped'
+    : null;
+}
+
+/**
  * Normalize a rendered route to the one form it is stored in: a leading `/`, no doubled or trailing
  * slash. The trailing slash a template ends with is style; whether the built URL carries one is the
  * site's `build.trailingSlash` setting, applied where the URL is written.
  *
- * Returns null when a segment is `.` or `..` or contains a backslash: a route is written to disk as
- * a path under `dist/`, so a frontmatter value must never be able to climb out of it.
+ * Returns null when {@link unsafePathReason} finds a reason the path cannot be a route.
  */
 export function normalizeRoute(path: string): string | null {
   const segments = path.split("/").filter((segment) => segment !== "");
-  if (segments.some((segment) => segment === "." || segment === ".." || segment.includes("\\"))) {
+  if (unsafePathReason(segments.join("/")) !== null) {
     return null;
   }
   return `/${segments.join("/")}`;
@@ -263,7 +306,7 @@ export function renderRoute(spec: RouteSpec, subject: RouteSubject): RenderedRou
   }
   const route = normalizeRoute(out);
   if (route === null) {
-    return { error: `the route "${out}" contains a "." or ".." segment` };
+    return { error: `the route "${out}" ${unsafePathReason(out) ?? "is not a path"}` };
   }
   return { route };
 }

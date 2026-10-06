@@ -87,11 +87,13 @@ function getHighlighter(): HighlighterCore {
  * unknown languages (callers keep the plain-text fallback).
  *
  * @param {string} code
- * @param {string} lang - Fence info string (grammar name or registered alias)
+ * @param {string} info - Fence info string (grammar name or registered alias, any case)
  * @returns {(JxElement | string)[] | null}
  */
-export function highlightFence(code: string, lang: string): (JxElement | string)[] | null {
+export function highlightFence(code: string, info: string): (JxElement | string)[] | null {
   const h = getHighlighter();
+  // Grammar names and aliases are lower case; an author's fence is whatever they typed (```SQL).
+  const lang = info.toLowerCase();
   if (!h.getLoadedLanguages().includes(lang)) {
     return null;
   }

@@ -145,6 +145,16 @@ const load = async (
 ) => await loadContentSection(section as unknown as ContentSection, TMP, registry, projectConfig);
 
 describe("native JSON sources", () => {
+  it("a JSON file that does not parse is reported by its path", async () => {
+    captureWarnings();
+    write("broken/ok.json", JSON.stringify({ id: "ok" }));
+    write("broken/sub/bad.json", "{ not json");
+    // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+    await expect(load({ broken: { format: "json", source: "./broken" } })).rejects.toThrow(
+      /Content type "broken": cannot read "sub\/bad\.json"/,
+    );
+  });
+
   it("exclude skips files in a JSON directory before they are read", async () => {
     captureWarnings();
     const data = await load({

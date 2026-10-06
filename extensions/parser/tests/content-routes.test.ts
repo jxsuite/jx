@@ -16,6 +16,8 @@ import {
   routeParams,
   slugifyPath,
   slugifySegment,
+  traversalReason,
+  unsafePathReason,
 } from "../src/content-routes.ts";
 
 describe("slugifySegment", () => {
@@ -237,6 +239,26 @@ describe("renderRoute", () => {
     expect(out).toEqual({ error: expect.stringContaining('contains a "." or ".." segment') });
   });
 
+  it("refuses a value a URL path cannot carry, naming why", () => {
+    const t = parseRouteConfig("/kb/{title:raw}", undefined, "kb")!;
+    for (const [title, why] of [
+      ["C# Notes", '"?", "#" or "%"'],
+      ["Why? Because", '"?", "#" or "%"'],
+      ["100% done", '"?", "#" or "%"'],
+      [String.raw`a\b`, "backslash"],
+      ["a\0b", "NUL"],
+    ] as const) {
+      expect(renderRoute(t, subject("A.md", { title }))).toEqual({
+        error: expect.stringContaining(why),
+      });
+    }
+    // The slug transform makes any of them a plain segment.
+    const slugged = parseRouteConfig("/kb/{title:slug}", undefined, "kb")!;
+    expect(renderRoute(slugged, subject("A.md", { title: "C# Notes? 100%" }))).toEqual({
+      route: "/kb/c-notes-100",
+    });
+  });
+
   it("a slug transform turns a hostile value into a harmless one", () => {
     const t = parseRouteConfig("/kb/{slug:slug}", undefined, "kb")!;
     expect(renderRoute(t, subject("A.md", { slug: "../../etc" }))).toEqual({ route: "/kb/etc" });
@@ -307,5 +329,23 @@ describe("routeHref", () => {
     expect(routeHref("/", "never")).toBe("/");
     expect(routeHref("/", "always", "/fr")).toBe("/fr/");
     expect(routeHref("/", "never", "/fr")).toBe("/fr");
+  });
+});
+
+describe("traversalReason", () => {
+  it("passes ordinary paths and names what would climb out", () => {
+    expect(traversalReason("a/b c/d")).toBeNull();
+    expect(traversalReason("100%/C#?")).toBeNull();
+    expect(traversalReason("..")).toContain("..");
+    expect(traversalReason("a/../b")).toContain("..");
+    expect(traversalReason("./a")).toContain(".");
+    expect(traversalReason(String.raw`a\b`)).toContain("backslash");
+    expect(traversalReason("a\0")).toContain("NUL");
+  });
+
+  it("unsafePathReason adds what a URL cannot carry", () => {
+    expect(unsafePathReason("a/b")).toBeNull();
+    expect(unsafePathReason("a/b?")).toContain("?");
+    expect(unsafePathReason("..")).toContain("..");
   });
 });

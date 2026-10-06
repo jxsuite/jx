@@ -142,6 +142,70 @@ describe("compileExclude", () => {
     expect(() => compileExclude([42 as unknown as string])).toThrow(/non-empty strings/);
     expect(() => compileExclude(["!keep.md"])).toThrow(/negated patterns are not supported/);
   });
+
+  it("names the pattern an invalid class came from", () => {
+    expect(() => compileExclude(["[z-a].md"])).toThrow(/invalid glob "\[z-a\]\.md"/);
+    expect(() => globToRegExp("a/[z-a]")).toThrow(/invalid glob "a\/\[z-a\]"/);
+  });
+
+  it("refuses a pattern that could never match or never closes", () => {
+    expect(() => compileExclude(["../x/**"])).toThrow(/cannot climb out of it/);
+    expect(() => compileExclude(["./../x"])).toThrow(/cannot climb out of it/);
+    expect(() => compileExclude(["..."])).not.toThrow();
+    expect(() => compileExclude(["{a,b"])).toThrow(/"\{" is never closed/);
+    expect(() => compileExclude([String.raw`\{a,b`])).not.toThrow();
+    expect(() => compileExclude(["}x{a,b}"])).not.toThrow();
+  });
+
+  it("a bare name excludes the folder of that name as well as a file", () => {
+    const m = compileExclude(["internal", ".obsidian", "Clients/Acme", "STYLE.md"]);
+    expect(m.excludedBy("internal/x.md")).toBe("internal");
+    expect(m.excludedBy("internal/deep/x.md")).toBe("internal");
+    expect(m.excludedBy("internal")).toBe("internal");
+    expect(m.excludedBy(".obsidian/app.json")).toBe(".obsidian");
+    expect(m.excludedBy("Clients/Acme/notes.md")).toBe("Clients/Acme");
+    expect(m.excludesDir("internal")).toBe(true);
+    expect(m.excludesDir("Clients/Acme")).toBe(true);
+    expect(m.excludesDir("Frappe")).toBe(false);
+    // A name with an extension is a file and nothing else.
+    expect(m.excludedBy("STYLE.md")).toBe("STYLE.md");
+    expect(m.excludesDir("STYLE.md")).toBe(false);
+    expect(m.excludedBy("other/internal/x.md")).toBeUndefined();
+  });
+
+  it("limits the wildcards in one segment, so a pattern cannot make a build hang", () => {
+    expect(() => compileExclude(["*a*a*a*a*a*b"])).toThrow(
+      /invalid glob "\*a\*a\*a\*a\*a\*b": more than 4 "\*" wildcards/,
+    );
+    const started = performance.now();
+    const m = compileExclude(["*a*a*a*b"]);
+    expect(m.excludedBy(`${"a".repeat(60)}c`)).toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("repeated ** segments mean what one does", () => {
+    const m = compileExclude(["a/**/**/**/**/**/**/**/**/b.md"]);
+    expect(m.excludedBy("a/b.md")).toBeDefined();
+    expect(m.excludedBy("a/x/y/z/b.md")).toBeDefined();
+    expect(m.excludedBy("c/b.md")).toBeUndefined();
+    const started = performance.now();
+    m.excludedBy(`a/${"x/".repeat(24)}nope.md`);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
+describe("globToRegExp classes", () => {
+  it("a negated class never matches a slash", () => {
+    expect(globToRegExp("a[!x]b").test("a/b")).toBe(false);
+    expect(globToRegExp("a[!x]b").test("ayb")).toBe(true);
+    expect(globToRegExp("a[^x]b").test("a/b")).toBe(false);
+  });
+
+  it("an empty class is an ordinary bracket", () => {
+    expect(globToRegExp("a[!]b").test("a[!]b")).toBe(true);
+    expect(globToRegExp("a[!]b").test("a/b")).toBe(false);
+    expect(globToRegExp("a[]b").test("a[]b")).toBe(true);
+  });
 });
 
 describe("readField", () => {
@@ -153,6 +217,15 @@ describe("readField", () => {
     expect(readField(data, "a.x.c")).toBeUndefined();
     expect(readField(data, "missing")).toBeUndefined();
     expect(readField(data, "list.0")).toBeUndefined();
+  });
+
+  it("never reads what every object inherits", () => {
+    expect(readField(data, "constructor")).toBeUndefined();
+    expect(readField(data, "toString")).toBeUndefined();
+    expect(readField(data, "a.constructor")).toBeUndefined();
+    expect(readField(data, "a.__proto__")).toBeUndefined();
+    expect(compileWhere({ constructor: { $exists: true } })({})).toBe(false);
+    expect(compileWhere({ constructor: { $exists: false } })({})).toBe(true);
   });
 });
 
