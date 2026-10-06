@@ -2,8 +2,9 @@
  * Jxsuite/md — Markdown integration for Jx
  *
  * Provides two exports:
- *   - MarkdownFile       — Parse a single markdown file (external class for $prototype)
- *   - MarkdownCollection — Parse a glob of markdown files as a content collection
+ *
+ * - MarkdownFile — Parse a single markdown file (external class for $prototype)
+ * - MarkdownCollection — Parse a glob of markdown files as a content collection
  *
  * Built on the unified/remark ecosystem. Converts MDAST to JX node trees via mdastNodeToJx.
  *
@@ -23,6 +24,7 @@ import { basename, extname, relative, resolve as resolvePath } from "node:path";
 import { globSync } from "glob";
 import { assignHeadingIds, mdastNodeToJx } from "./transpile.ts";
 import { highlightCodeBlocks } from "./highlight.ts";
+import { makeTemplatesInert } from "./inert.ts";
 import type { MarkdownFileResult, MdastNode, UnifiedProcessor } from "./types.ts";
 import type { JxElement } from "@jxsuite/schema/types";
 
@@ -241,6 +243,10 @@ export function processMarkdown(
   // One walk assigns deduplicated heading ids AND builds $toc, so rendered anchors and the
   // Table of contents agree by construction (specs/parser.md).
   const toc = assignHeadingIds($children);
+
+  // Last, because the ids and the table of contents above read `textContent`. Text that happens
+  // To contain `${` is content, not a template (inert.ts).
+  makeTemplatesInert($children);
 
   return {
     $children,
