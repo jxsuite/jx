@@ -108,7 +108,17 @@ export interface StyleButtonView extends Record<string, unknown> {
   icon: string;
   /** The abbreviation drawn when there is no glyph. Empty when there is one, and its span hidden. */
   text: string;
-  selected: boolean;
+  /**
+   * `"true"` / `"false"` — a row's buttons are RADIOS, one choice of several, and never toggles.
+   *
+   * The value is a fact about the document, so the button may draw it and must not decide it. With
+   * the kit's `toggles` on, the button flipped its own `selected` in a click listener that ran
+   * AFTER the row's: a real click flushes microtasks between listeners, so the projection had
+   * already drawn the committed value when the flip inverted it, and Display read unset after
+   * pressing Flex and set after pressing it again. `checked` draws the state without the button
+   * ever writing it.
+   */
+  checked: "true" | "false";
 }
 
 /**

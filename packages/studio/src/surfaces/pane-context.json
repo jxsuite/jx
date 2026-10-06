@@ -497,7 +497,7 @@
                                       "$ref": "#/state/previewHint"
                                     }
                                   },
-                                  "onclick": {
+                                  "onchange": {
                                     "$prototype": "Function",
                                     "body": [
                                       {
@@ -1227,7 +1227,7 @@
                                 "$ref": "$map/item/hint"
                               }
                             },
-                            "onclick": {
+                            "onchange": {
                               "$prototype": "Function",
                               "body": [
                                 {

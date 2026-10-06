@@ -1013,6 +1013,7 @@
                                         {
                                           "tagName": "jx-action-group",
                                           "$props": {
+                                            "selects": "single",
                                             "compact": true,
                                             "label": {
                                               "$ref": "$map/item/label"
@@ -1044,9 +1045,8 @@
                                                   "hint": {
                                                     "$ref": "$map/item/title"
                                                   },
-                                                  "toggles": true,
-                                                  "selected": {
-                                                    "$ref": "$map/item/selected"
+                                                  "checked": {
+                                                    "$ref": "$map/item/checked"
                                                   }
                                                 },
                                                 "onclick": {

@@ -813,7 +813,7 @@ function buttonGroup(
     return {
       icon,
       row: rowKey,
-      selected: v === value,
+      checked: v === value ? ("true" as const) : ("false" as const),
       text: icon === "" ? v : "",
       title: v,
       value: v,
@@ -2112,7 +2112,7 @@ function rememberButtons(view: StylePanelView): void {
   for (const section of view.sections) {
     for (const row of section.rows) {
       if (row.widget === "buttons") {
-        _buttonValues.set(row.key, row.buttons.find((b) => b.selected)?.value ?? "");
+        _buttonValues.set(row.key, row.buttons.find((b) => b.checked === "true")?.value ?? "");
       }
     }
   }

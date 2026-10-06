@@ -1215,7 +1215,10 @@ describe("the button group", () => {
     ]);
     const flex = buttons.find((b) => b.dataset.value === "flex")!;
     expect(flex.dataset.selected).toBe("");
-    expect(flex.querySelector('[part="control"]')!.getAttribute("aria-pressed")).toBe("true");
+    const control = flex.querySelector('[part="control"]')!;
+    expect(control.getAttribute("role")).toBe("radio");
+    expect(control.getAttribute("aria-checked")).toBe("true");
+    expect(control.hasAttribute("aria-pressed")).toBe(false);
     click(buttons.find((b) => b.dataset.value === "grid"));
     await settle();
     expect(selectedNode().style?.display).toBe("grid");

@@ -15,6 +15,13 @@
  * - A `span` or `div` with a group role over two or more action buttons that carry a selected or
  *   checked state is a HAND-ROLLED button group: it gets no frame, no roving caret, and announces
  *   no choice. The Signals panel's Body switch was one until this suite existed.
+ * - A button that `toggles` and ALSO acts in its own `onclick` has two writers for one state. The kit
+ *   flips `selected` in a click listener on the same host, registered after the surface's, and a
+ *   real click flushes microtasks between listeners, so the host's projection draws the committed
+ *   state and the flip then inverts it: the Style panel's Display row read unset after pressing
+ *   Flex and set after pressing it again, and Preview drew off while it was on. A toggle acts on
+ *   the kit's `change`, which follows the flip; a choice the host owns is a `checked` radio
+ *   instead.
  *
  * The walk reaches every element in a document however deep, through `children`, `$switch` cases
  * and `$prototype: "Array"` maps alike, so nesting a group one wrapper deeper cannot dodge it.
@@ -137,6 +144,43 @@ describe("Studio's button groups", () => {
         expect(member.$props?.["toggles"], label).toBeUndefined();
       }
     }
+  });
+
+  test("a button that toggles acts on change, never in its own click handler", () => {
+    /* Anywhere in Studio, not only inside a group: Preview and the block action bar's format
+       buttons were both inverted by it. A click handler on a toggle may still stop the event (the
+       action bar's controls keep a click off the canvas under them), but anything it CALLS runs
+       before the kit's flip, and the flip then writes over whatever that call drew. */
+    const STOP_ONLY = new Set(["stopPropagation", "preventDefault"]);
+    const found: string[] = [];
+    let toggles = 0;
+    for (const { doc, name } of surfaces) {
+      for (const node of elements(doc)) {
+        if (node.tagName !== "jx-action-button" || node.$props?.["toggles"] !== true) {
+          continue;
+        }
+        toggles += 1;
+        const body = (node as { onclick?: { body?: Record<string, unknown>[] } }).onclick?.body;
+        const acts = (body ?? []).some((step) => Object.keys(step).some((k) => !STOP_ONLY.has(k)));
+        if (acts) {
+          found.push(where(name, node));
+        }
+      }
+    }
+    expect(toggles).toBeGreaterThan(3);
+    expect(found).toEqual([]);
+  });
+
+  test("the Style panel's rows are radios: the document owns the value, the button only draws it", () => {
+    const style = surfaces.find(({ name }) => name === "style-panel.json")!.doc;
+    const row = elements(style).find(
+      (node) =>
+        node.tagName === "jx-action-group" && members(node).some((m) => partOf(m) === "button"),
+    )!;
+    expect(row.$props?.["selects"]).toBe("single");
+    const [button] = members(row);
+    expect(button!.$props?.["toggles"]).toBeUndefined();
+    expect(button!.$props?.["checked"]).toEqual({ $ref: "$map/item/checked" });
   });
 
   test("no span or div draws a button group of its own", () => {
