@@ -34,7 +34,7 @@ describe("slugifySegment", () => {
 
   it("drops apostrophes instead of splitting the word", () => {
     expect(slugifySegment("Don't Panic")).toBe("dont-panic");
-    expect(slugifySegment("BJ’s")).toBe("bjs");
+    expect(slugifySegment("Joe’s")).toBe("joes");
   });
 
   it("folds diacritics on Latin letters", () => {

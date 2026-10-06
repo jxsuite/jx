@@ -122,9 +122,9 @@ describe("compileExclude", () => {
     const m = compileExclude(["internal/**", "**/node_modules/**", ".*/**", "Sites/*/dist/"]);
     expect(m.excludesDir("internal")).toBe(true);
     expect(m.excludesDir("internal/Clients")).toBe(false);
-    expect(m.excludesDir("Sites/avunu.net/node_modules")).toBe(true);
+    expect(m.excludesDir("Sites/website/node_modules")).toBe(true);
     expect(m.excludesDir(".obsidian")).toBe(true);
-    expect(m.excludesDir("Sites/avunu.net/dist")).toBe(true);
+    expect(m.excludesDir("Sites/website/dist")).toBe(true);
     expect(m.excludesDir("Frappe")).toBe(false);
     // A file-only pattern never prunes a directory.
     expect(compileExclude(["STYLE.md"]).excludesDir("STYLE.md")).toBe(false);

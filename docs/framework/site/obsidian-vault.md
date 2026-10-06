@@ -19,7 +19,7 @@ code:
 
 An Obsidian vault is a folder of Markdown files, which is exactly what a [content collection](/docs/framework/site/content-collections) reads. This guide publishes one as a website directly from the folder: no copy step, no export script, and the vault stays the place you write.
 
-It uses the conventions of a real knowledge base as the example: Avunu's development notes, where each note marked for publication becomes a page of its public knowledge base and the rest stay private. The same setup fits any vault that has some pages to publish and some to keep private.
+It uses the conventions of a developer knowledge base as the example, where each note marked for publication becomes a page of the public site and the rest stay private. The same setup fits any vault that has some pages to publish and some to keep private.
 
 ## The vault
 
