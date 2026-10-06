@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/jxsuite/jx/compare/feed-v0.3.7...feed-v0.4.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **parser:** three defaults change for a content type that declares none of the new options. Callouts are on: a blockquote that begins with a GitHub alert marker renders as a callout, and alerts set to false keeps the blockquote. A README.md in a subfolder has its folder's id, so a path-based URL moves from /x/sub/README/ to /x/sub/. A dollar-brace sequence in Markdown text is kept as written instead of being evaluated as a template, as are image descriptions and callout titles.
+
+### Features
+
+* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e720c6](https://github.com/jxsuite/jx/commit/6e720c6ec9b3540721c4453d0c02b11414f9efce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 3.0.0
+
 ## [0.3.7](https://github.com/jxsuite/jx/compare/feed-v0.3.6...feed-v0.3.7) (2026-09-29)
 
 

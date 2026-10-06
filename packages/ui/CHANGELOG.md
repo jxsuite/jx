@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1](https://github.com/jxsuite/jx/compare/ui-v0.4.0...ui-v0.4.1) (2026-10-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.0.3
+    * @jxsuite/schema bumped to 3.0.0
+
 ## [0.4.0](https://github.com/jxsuite/jx/compare/ui-v0.3.0...ui-v0.4.0) (2026-09-29)
 
 

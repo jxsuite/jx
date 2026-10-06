@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.4.3](https://github.com/jxsuite/jx/compare/server-v4.4.2...server-v4.4.3) (2026-10-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.39.3
+    * @jxsuite/collab bumped to 0.11.1
+    * @jxsuite/compiler bumped to 5.0.0
+    * @jxsuite/create bumped to 1.3.13
+    * @jxsuite/import bumped to 0.40.6
+    * @jxsuite/protocol bumped to 2.6.1
+    * @jxsuite/runtime bumped to 4.0.3
+    * @jxsuite/schema bumped to 3.0.0
+    * @jxsuite/site bumped to 2.0.3
+    * @jxsuite/starters bumped to 2.0.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.6.2
+    * @jxsuite/connector bumped to 0.6.2
+    * @jxsuite/parser bumped to 2.0.0
+
 ## [4.4.2](https://github.com/jxsuite/jx/compare/server-v4.4.1...server-v4.4.2) (2026-10-06)
 
 
