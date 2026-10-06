@@ -423,7 +423,12 @@
                           "body": [
                             {
                               "stopPropagation": true
-                            },
+                            }
+                          ]
+                        },
+                        "onchange": {
+                          "$prototype": "Function",
+                          "body": [
                             {
                               "operator": "call",
                               "target": {
