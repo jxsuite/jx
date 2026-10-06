@@ -139,9 +139,16 @@ describe("buildExtensionsPayload", () => {
       expect(entrySchema.type).toBe("object");
       expect(Object.keys(entrySchema.additionalProperties.properties)).toEqual([
         "$elements",
+        "alerts",
+        "exclude",
         "format",
+        "idField",
+        "indexRoute",
+        "links",
+        "route",
         "schema",
         "source",
+        "where",
       ]);
     } finally {
       rmSync(root, { force: true, recursive: true });

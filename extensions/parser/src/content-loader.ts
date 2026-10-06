@@ -18,9 +18,9 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, dirname, extname, resolve } from "node:path";
+import { basename, dirname, extname, relative, resolve } from "node:path";
 import { assetUrlFor } from "@jxsuite/schema/asset-paths";
-import { resolveI18n } from "@jxsuite/schema/locale";
+import { localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { FormatEntry, FormatHostIO, FormatRegistry } from "@jxsuite/schema/format-registry";
@@ -30,8 +30,23 @@ import type {
   JxMutableNode,
   ProjectConfig,
 } from "@jxsuite/schema/types";
+import { normalizeAlerts } from "./alerts.ts";
+import { rewriteLinks } from "./content-links.ts";
+import type { FileOutcome, LinkIndex } from "./content-links.ts";
+import {
+  directoryOf,
+  isDirectoryIndex,
+  parseRouteConfig,
+  renderRoute,
+  routeHref,
+  routeParams,
+} from "./content-routes.ts";
+import type { RouteSpec } from "./content-routes.ts";
+import { compileExclude, compileWhere } from "./content-rules.ts";
+import type { ExcludeMatcher, WherePredicate } from "./content-rules.ts";
 import { coerceEntryDates, isCoercedDate, isDateFormat } from "./dates.ts";
 import type { ContentLoaderEntry, ContentTypeDef } from "./types.ts";
+import { walkFiles } from "./walk.ts";
 
 export type { ContentEntry, ContentLoaderEntry, TocEntry } from "./types.ts";
 
@@ -63,6 +78,13 @@ export interface ResolvePathsContext {
    * reads it — it is the discriminator between two translations sharing an id.
    */
   locale?: string | null;
+  /**
+   * The URL pattern of the dynamic page being expanded (`/kb/:category/:slug`, `/kb/*`) and its
+   * parameter names in order. A content type with a `route` reads them to turn each entry's route
+   * into the parameters THIS page needs, so `$paths` never has to name a parameter.
+   */
+  urlPattern?: string;
+  params?: readonly string[];
 }
 
 /** The `$paths` value shape routed to this extension by its `contentType` discriminator. */
@@ -101,18 +123,12 @@ function loadJSONEntries(filePath: string): ContentLoaderEntry[] {
   ];
 }
 
-/** Discover .json entry files for a source (single file or directory). */
-function discoverJSONFiles(resolvedSource: string): string[] {
+/** Discover .json entry files for a source (single file or directory), in sorted order. */
+function discoverJSONFiles(resolvedSource: string, exclude: ExcludeMatcher): string[] {
   if (extname(resolvedSource)) {
     return existsSync(resolvedSource) ? [resolvedSource] : [];
   }
-  try {
-    return readdirSync(resolvedSource, { recursive: true })
-      .filter((f) => String(f).endsWith(".json"))
-      .map((f) => resolve(resolvedSource, String(f)));
-  } catch {
-    return [];
-  }
+  return walkFiles(resolvedSource, (name) => name.endsWith(".json"), exclude);
 }
 
 // ─── Asset mounts and content-relative references ────────────────────────────
@@ -425,7 +441,10 @@ export async function loadContentSection(
   for (const [name, contentTypeDef] of Object.entries(section)) {
     const source = contentTypeDef?.source;
     if (typeof source !== "string" || !source.includes(LOCALE_PLACEHOLDER)) {
-      const entries = await loadContentType(name, contentTypeDef, root, formats, mounts.get(name));
+      const entries = await loadContentType(name, contentTypeDef, root, formats, {
+        mount: mounts.get(name),
+        projectConfig,
+      });
       contentTypes.set(name, entries);
       continue;
     }
@@ -445,13 +464,11 @@ export async function loadContentSection(
     const all: ContentLoaderEntry[] = [];
     for (const locale of locales) {
       const localized = { ...contentTypeDef, source: localeSource(root, source, locale) };
-      const entries = await loadContentType(
-        name,
-        localized,
-        root,
-        formats,
-        mounts.get(`${name}/${locale}`),
-      );
+      const entries = await loadContentType(name, localized, root, formats, {
+        locale,
+        mount: mounts.get(`${name}/${locale}`),
+        projectConfig,
+      });
       for (const entry of entries) {
         entry._meta = { ...entry._meta, locale };
       }
@@ -481,6 +498,345 @@ export function getContentTypeElements(
   return def?.$elements;
 }
 
+// ─── Per-type rules ──────────────────────────────────────────────────────────
+
+/** How a link that has no page is reported (`links`). */
+type LinkMode = "warn" | "error" | "ignore";
+
+/** A content type's declarative options, validated once per load. */
+interface TypeRules {
+  exclude: ExcludeMatcher;
+  where: WherePredicate | null;
+  idField: string | undefined;
+  route: RouteSpec | null;
+  links: LinkMode;
+  alerts: unknown;
+}
+
+/**
+ * Validate and compile a content type's `exclude`, `where`, `idField`, `route`, `links` and
+ * `alerts`. A malformed option is a build failure that names the content type, never a silently
+ * ignored key: `where: { publish: "yes" }` that quietly matched nothing would publish an empty site
+ * and say nothing.
+ */
+function compileTypeRules(name: string, def: ContentTypeDef): TypeRules {
+  const at = `Content type "${name}"`;
+  try {
+    if (def.idField !== undefined && (typeof def.idField !== "string" || def.idField === "")) {
+      throw new TypeError(`"idField" must be a field name`);
+    }
+    const links = def.links ?? "warn";
+    if (links !== "warn" && links !== "error" && links !== "ignore") {
+      throw new TypeError(
+        `"links" must be "warn", "error" or "ignore", got ${JSON.stringify(links)}`,
+      );
+    }
+    normalizeAlerts(def.alerts, `"alerts"`);
+    return {
+      alerts: def.alerts,
+      exclude: compileExclude(def.exclude),
+      idField: def.idField,
+      links,
+      route: parseRouteConfig(def.route, def.indexRoute, name),
+      where: def.where === undefined ? null : compileWhere(def.where),
+    };
+  } catch (error) {
+    const message = errorMessage(error);
+    throw new Error(message.startsWith(at) ? message : `${at}: ${message}`, { cause: error });
+  }
+}
+
+/** The path of a file relative to a source directory, `/`-separated, or null when it is outside. */
+function relativeTo(root: string, file: string): string | null {
+  const rel = relative(root, file).split("\\").join("/");
+  return rel === "" || rel === ".." || rel.startsWith("../") ? null : rel;
+}
+
+/** One source file and the entries it yielded, before the collection-wide rules run. */
+interface LoadedFile {
+  filePath: string;
+  /** Relative to the source directory; null for a single-file or remote source. */
+  rel: string | null;
+  entries: ContentLoaderEntry[];
+}
+
+/** Everything {@link finishEntries} needs that is not the entries themselves. */
+interface FinishContext {
+  name: string;
+  schema: ContentTypeSchema | undefined;
+  rules: TypeRules;
+  mount: AssetMount | undefined;
+  projectConfig: ProjectConfig | undefined;
+  locale: string | undefined;
+  /** Whether the format branch's date-coercion pass applies (it does not for JSON and remote). */
+  coerceDates: boolean;
+  /** Extensions of the collection's entry files, for link resolution. */
+  entryExtensions: Set<string>;
+  /** The source directory, when there is one. */
+  sourceRoot: string | undefined;
+}
+
+/**
+ * The collection-wide pass every source kind goes through once its files are loaded.
+ *
+ * Order matters and is the whole design. `where` runs first, so an entry that is not published is
+ * never validated, coerced, given a route or counted as a duplicate. Ids are settled before
+ * anything keyed by id (relationships, duplicate checks, routes that read `{id}`). Routes are
+ * computed before links, because a link can only be resolved once the page it points at has a URL.
+ *
+ * @returns {ContentLoaderEntry[]} The kept entries, in load order
+ */
+function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEntry[] {
+  const { name, rules } = ctx;
+
+  // 1. where: split every file's entries into kept and left out.
+  const kept: LoadedFile[] = [];
+  const unpublished = new Map<string, string>();
+  for (const file of files) {
+    const keep: ContentLoaderEntry[] = [];
+    for (const entry of file.entries) {
+      if (rules.where && !rules.where(entry.data)) {
+        if (file.rel !== null && file.entries.length === 1) {
+          unpublished.set(file.rel, `left out by where.${rules.where.why(entry.data) ?? "filter"}`);
+        }
+      } else {
+        keep.push(entry);
+      }
+    }
+    if (keep.length > 0) {
+      kept.push({ ...file, entries: keep });
+    }
+  }
+
+  // 2. Per kept entry: where it came from, and content-relative assets onto the mount.
+  for (const file of kept) {
+    for (const entry of file.entries) {
+      if (file.rel !== null) {
+        entry._meta = { ...entry._meta, path: file.rel };
+      }
+    }
+    if (ctx.mount) {
+      rewriteEntryAssets(file.entries, file.filePath, ctx.mount, name, ctx.schema);
+    }
+  }
+  const entries = kept.flatMap((file) => file.entries);
+
+  // 3. Ids: the frontmatter field the type names, then a duplicate report.
+  if (rules.idField) {
+    for (const entry of entries) {
+      const value = entry.data[rules.idField];
+      if ((typeof value === "string" && value !== "") || typeof value === "number") {
+        entry.id = String(value);
+      } else {
+        console.warn(
+          `Content ids: "${name}/${entry.id}" has no usable "${rules.idField}" field, ` +
+            `so it keeps its path id`,
+        );
+      }
+    }
+  }
+  const byId = new Map<string, ContentLoaderEntry>();
+  for (const entry of entries) {
+    const prior = byId.get(entry.id);
+    if (prior) {
+      console.warn(
+        `Content ids: "${name}" has two entries with the id "${entry.id}" ` +
+          `(${prior._meta?.path ?? "an earlier entry"} and ${entry._meta?.path ?? "a later entry"}). ` +
+          `A lookup finds only the first; give one of them a distinct ${rules.idField ? `"${rules.idField}"` : "name"}.`,
+      );
+    } else {
+      byId.set(entry.id, entry);
+    }
+  }
+
+  // 4. Dates, then validation: kept entries only.
+  if (ctx.schema) {
+    if (ctx.coerceDates) {
+      for (const warning of coerceEntryDates(entries, ctx.schema, name)) {
+        console.warn(warning.message);
+      }
+    }
+    validateEntries(entries, ctx.schema, name);
+  }
+
+  // 5. Routes, and links over the finished routes.
+  if (rules.route) {
+    assignRoutes(entries, unpublished, ctx, rules.route);
+    if (ctx.sourceRoot) {
+      resolveEntryLinks(kept, unpublished, ctx);
+    }
+  }
+  return entries;
+}
+
+/** The site's `build.trailingSlash`, defaulting to `"always"` exactly as the build does. */
+function trailingSlashOf(projectConfig: ProjectConfig | undefined): string {
+  const value = projectConfig?.build?.trailingSlash;
+  return typeof value === "string" ? value : "always";
+}
+
+/** The URL prefix a collection's locale puts in front of its routes (`/fr`), or `""`. */
+function localePrefixOf(ctx: FinishContext): string {
+  const { i18n } = resolveI18n(ctx.projectConfig ?? {});
+  return localeUrlPrefix(ctx.locale, i18n);
+}
+
+/**
+ * Stamp `_meta.route` and `_meta.url` on every entry whose route template renders.
+ *
+ * An entry the template cannot render (a missing `category`) and an entry whose route another
+ * already holds are both left without a route and reported with the file names involved: the second
+ * would otherwise overwrite the first's page, or hand a link to the wrong document. Both are
+ * recorded as unpublished so a link to one says why it has no page.
+ */
+function assignRoutes(
+  entries: ContentLoaderEntry[],
+  unpublished: Map<string, string>,
+  ctx: FinishContext,
+  spec: RouteSpec,
+): void {
+  const trailingSlash = trailingSlashOf(ctx.projectConfig);
+  const prefix = localePrefixOf(ctx);
+  const owner = new Map<string, string>();
+  for (const entry of entries) {
+    const path = entry._meta?.path ?? entry.id;
+    const rendered = renderRoute(spec, { data: entry.data, id: entry.id, path });
+    if ("error" in rendered) {
+      console.warn(
+        `Content routes: "${ctx.name}/${entry.id}" (${path}) has no route: ${rendered.error}`,
+      );
+      unpublished.set(path, "it has no route");
+      continue;
+    }
+    const prior = owner.get(rendered.route);
+    if (prior !== undefined) {
+      console.warn(
+        `Content routes: "${ctx.name}" has two entries at ${rendered.route} (${prior} and ${path}). ` +
+          `Only ${prior} is routed; make the route unique, for example by adding a field to the template.`,
+      );
+      unpublished.set(path, `its route ${rendered.route} is already used by ${prior}`);
+      continue;
+    }
+    owner.set(rendered.route, path);
+    entry._meta = {
+      ...entry._meta,
+      route: rendered.route,
+      url: routeHref(rendered.route, trailingSlash, prefix),
+    };
+  }
+}
+
+/** One broken link, for the error-mode summary. */
+interface BrokenLink {
+  from: string;
+  href: string;
+  reason: string;
+}
+
+/**
+ * Rewrite the relative links of every kept entry to the routes of the entries they name.
+ *
+ * Builds the {@link LinkIndex} the resolver needs from what the loader knows (every file it loaded,
+ * which of them are published, which directory each README or index stands for), then reports each
+ * link that has no page at the severity `links` asks for. In `error` mode all of them are gathered
+ * and thrown together, so one build names every broken link instead of one per run.
+ */
+function resolveEntryLinks(
+  kept: LoadedFile[],
+  unpublished: Map<string, string>,
+  ctx: FinishContext,
+): void {
+  const { name, rules, sourceRoot } = ctx;
+  const files = new Map<string, FileOutcome>();
+  const indexes = new Map<string, string>();
+  const isReadme = (rel: string) => /^readme\./i.test(rel.slice(rel.lastIndexOf("/") + 1));
+  const noteIndex = (rel: string) => {
+    const dir = directoryOf(rel);
+    const prior = indexes.get(dir);
+    // `index` beats `README` when a directory has both, matching how ids are derived.
+    if (prior === undefined || (isReadme(prior) && !isReadme(rel))) {
+      indexes.set(dir, rel);
+    }
+  };
+  for (const file of kept) {
+    const [entry] = file.entries;
+    if (file.rel === null || file.entries.length !== 1 || !entry) {
+      continue;
+    }
+    const route = entry._meta?.route;
+    files.set(
+      file.rel,
+      route === undefined
+        ? { unpublished: unpublished.get(file.rel) ?? "it has no route" }
+        : { route },
+    );
+    if (isDirectoryIndex(file.rel)) {
+      noteIndex(file.rel);
+    }
+  }
+  for (const [rel, reason] of unpublished) {
+    if (!files.has(rel)) {
+      files.set(rel, { unpublished: reason });
+      if (isDirectoryIndex(rel)) {
+        noteIndex(rel);
+      }
+    }
+  }
+
+  const index: LinkIndex = {
+    entryExtensions: ctx.entryExtensions,
+    excludedBy: (path) => rules.exclude.excludedBy(path),
+    exists: (path) => existsSync(resolve(sourceRoot!, path)),
+    files,
+    indexes,
+    localePrefix: localePrefixOf(ctx),
+    trailingSlash: trailingSlashOf(ctx.projectConfig),
+  };
+
+  const broken: BrokenLink[] = [];
+  const seen = new Set<string>();
+  for (const file of kept) {
+    for (const entry of file.entries) {
+      if (!entry.$children || file.rel === null) {
+        continue;
+      }
+      rewriteLinks(entry.$children, file.rel, index, (problem) => {
+        const key = `${file.rel}\0${problem.href}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          broken.push({ from: file.rel!, href: problem.href, reason: problem.reason });
+        }
+      });
+    }
+  }
+  if (rules.links === "ignore" || broken.length === 0) {
+    return;
+  }
+  const lines = broken.map(
+    ({ from, href, reason }) => `"${from}" links to "${href}", which ${reason}`,
+  );
+  if (rules.links === "error") {
+    const plural = broken.length === 1 ? "" : "s";
+    const list = lines.map((line) => `  - ${line}`).join("\n");
+    throw new Error(`Content links: "${name}" has ${broken.length} broken link${plural}:\n${list}`);
+  }
+  for (const line of lines) {
+    console.warn(`Content links: "${name}": ${line}; it renders as plain text.`);
+  }
+}
+
+// ─── Content Type Loading ────────────────────────────────────────────────────
+
+/** Per-load context a caller threads into {@link loadContentType}. */
+interface LoadOptions {
+  /** The type's asset mount; content-relative references remap onto it. */
+  mount?: AssetMount | undefined;
+  /** The project config: `build.trailingSlash` and the i18n routing rules. */
+  projectConfig?: ProjectConfig | undefined;
+  /** The locale this load is for, when the source carried `{locale}`. */
+  locale?: string | undefined;
+}
+
 /**
  * Load a single content type by its definition, dispatching through the format registry.
  *
@@ -488,7 +844,7 @@ export function getContentTypeElements(
  * @param {ContentTypeDef} contentTypeDef - Content type definition from the `content` section
  * @param {string} projectRoot - Absolute path to project root directory
  * @param {FormatRegistry} registry - Format-dispatch view of the extension registry
- * @param {AssetMount} [mount] - The type's asset mount; content-relative references remap onto it
+ * @param {LoadOptions} [options] - Asset mount, project config and locale for this load
  * @returns {Promise<ContentLoaderEntry[]>} Array of ContentEntry
  */
 async function loadContentType(
@@ -496,13 +852,27 @@ async function loadContentType(
   contentTypeDef: ContentTypeDef,
   projectRoot: string,
   registry: FormatRegistry,
-  mount?: AssetMount,
+  options: LoadOptions = {},
 ) {
   const { source } = contentTypeDef;
   if (!source) {
     return [];
   }
+  const { mount, projectConfig, locale } = options;
   const schema = contentTypeDef.schema as ContentTypeSchema | undefined;
+  const rules = compileTypeRules(name, contentTypeDef);
+  const finishContext = (extra: Partial<FinishContext>): FinishContext => ({
+    coerceDates: false,
+    entryExtensions: new Set<string>(),
+    locale,
+    mount,
+    name,
+    projectConfig,
+    rules,
+    schema,
+    sourceRoot: undefined,
+    ...extra,
+  });
 
   // Derive directive allowedNames from content type $elements (tag names from npm packages)
   const directiveOptions = contentTypeDef.$elements?.length
@@ -542,39 +912,41 @@ async function loadContentType(
           `(its format block lacks "remote": true).`,
       );
     }
+    let remote: ContentLoaderEntry[];
     try {
-      const entries = (await entry.call("load", source, {
+      remote = (await entry.call("load", source, {
         directiveOptions,
         schema,
+        ...(rules.idField !== undefined && { idField: rules.idField }),
       })) as ContentLoaderEntry[];
-      if (schema) {
-        validateEntries(entries, schema, name);
-      }
-      return entries;
     } catch (error) {
       console.warn(`Content type "${name}": ${errorMessage(error)}`);
       return [];
     }
+    return finishEntries([{ entries: remote, filePath: source, rel: null }], finishContext({}));
   }
 
   const resolvedSource = resolve(projectRoot, source).split("\\").join("/");
   const ext = extname(source).toLowerCase();
+  // Directory sources pass their resolved root so formats can derive path-based ids for nested files
+  const sourceRoot = extname(source) ? undefined : resolvedSource;
+  /** Whether a discovered file is left out by `exclude` (a format class may not honor the option). */
+  const isExcluded = (file: string) => {
+    const rel = sourceRoot === undefined ? null : relativeTo(sourceRoot, file);
+    return rel !== null && rules.exclude.excludedBy(rel) !== undefined;
+  };
+  const relOf = (file: string) => (sourceRoot === undefined ? null : relativeTo(sourceRoot, file));
 
   // JSON — the native built-in
   if (formatName === "json" || (!entry && ext === ".json")) {
-    const files = discoverJSONFiles(resolvedSource);
-    const entries: ContentLoaderEntry[] = [];
-    for (const filePath of files) {
-      const fileEntries = loadJSONEntries(filePath);
-      if (mount) {
-        rewriteEntryAssets(fileEntries, filePath, mount, name, schema);
-      }
-      entries.push(...fileEntries);
+    const loaded: LoadedFile[] = [];
+    for (const filePath of discoverJSONFiles(resolvedSource, rules.exclude)) {
+      loaded.push({ entries: loadJSONEntries(filePath), filePath, rel: relOf(filePath) });
     }
-    if (schema) {
-      validateEntries(entries, schema, name);
-    }
-    return entries;
+    return finishEntries(
+      loaded,
+      finishContext({ entryExtensions: new Set([".json"]), sourceRoot }),
+    );
   }
 
   // Derive the format from the source extension when no explicit format is named
@@ -589,25 +961,25 @@ async function loadContentType(
   }
 
   // Discover entry files via the class, then load each
-  const files = entry.capabilities.discover
+  const discovered = entry.capabilities.discover
     ? ((await entry.call("discover", source, {
         baseDir: projectRoot,
+        ...(rules.exclude.empty ? {} : { exclude: contentTypeDef.exclude }),
       })) as string[])
     : [resolvedSource];
+  const files = discovered.filter((file) => !isExcluded(file));
 
-  // Directory sources pass their resolved root so formats can derive path-based ids for nested files
-  const sourceRoot = extname(source) ? undefined : resolvedSource;
-  const entries: ContentLoaderEntry[] = [];
+  const fileExtensions = files.map((file) => extname(file).toLowerCase());
+  const loaded: LoadedFile[] = [];
   for (const filePath of files) {
     const fileEntries = (await entry.call("load", filePath, {
       directiveOptions,
       schema,
       ...(sourceRoot !== undefined && { sourceRoot }),
+      ...(rules.alerts !== undefined && { alerts: rules.alerts }),
+      ...(rules.idField !== undefined && { idField: rules.idField }),
     })) as ContentLoaderEntry[];
-    if (mount) {
-      rewriteEntryAssets(fileEntries, filePath, mount, name, schema);
-    }
-    entries.push(...fileEntries);
+    loaded.push({ entries: fileEntries, filePath, rel: relOf(filePath) });
   }
 
   /*
@@ -615,14 +987,14 @@ async function loadContentType(
    * both the entries and the schema: `Csv.load` receives a schema and `Markdown.load` does not, so
    * doing it per-format would mean doing it twice and missing every third-party format class.
    */
-  if (schema) {
-    for (const warning of coerceEntryDates(entries, schema, name)) {
-      console.warn(warning.message);
-    }
-    validateEntries(entries, schema, name);
-  }
-
-  return entries;
+  return finishEntries(
+    loaded,
+    finishContext({
+      coerceDates: true,
+      entryExtensions: new Set([...entry.extensions, ...fileExtensions]),
+      sourceRoot,
+    }),
+  );
 }
 
 /** Error message for an unregistered non-JSON extension, naming the fix. */
@@ -782,6 +1154,48 @@ export function resolveContentTypeRefs(
   }
 }
 
+/**
+ * `$paths` for a content type with a `route`: one parameter map per entry the page can serve.
+ *
+ * The page pattern arrives with the locale prefix still on it (`/fr/kb/*`) while an entry's route
+ * is locale-free, so the prefix is taken off first. An entry the pattern cannot produce is skipped,
+ * and a page that serves none of them is reported once with an example route, because the usual
+ * cause is a template and a page that were never meant for each other.
+ */
+function routedPaths(
+  contentType: string,
+  entries: ContentLoaderEntry[],
+  ctx: ResolvePathsContext,
+  urlPattern: string,
+): Record<string, unknown>[] {
+  const { i18n } = resolveI18n(ctx.projectConfig ?? {});
+  const prefix = localeUrlPrefix(ctx.locale, i18n);
+  const pattern =
+    prefix !== "" && (urlPattern === prefix || urlPattern.startsWith(`${prefix}/`))
+      ? urlPattern.slice(prefix.length) || "/"
+      : urlPattern;
+  const paths: Record<string, unknown>[] = [];
+  let example: string | undefined;
+  for (const entry of entries) {
+    const route = entry._meta?.route;
+    if (route === undefined) {
+      continue;
+    }
+    example ??= route;
+    const params = routeParams(route, pattern, ctx.params ?? []);
+    if (params) {
+      paths.push({ ...params, ...(entry._meta === undefined ? {} : { _meta: entry._meta }) });
+    }
+  }
+  if (paths.length === 0 && example !== undefined) {
+    console.warn(
+      `Warning: $paths for content type "${contentType}": no entry route fits the page pattern ` +
+        `"${urlPattern}" (for example ${example}), so this page generates nothing`,
+    );
+  }
+  return paths;
+}
+
 // ─── The Content project-section class ───────────────────────────────────────
 
 /**
@@ -831,8 +1245,18 @@ export class Content {
   }
 
   /**
-   * Expand a content-type `$paths` source into route-param maps: one `{ [param]: value }` per
-   * entry, with `param` defaulting to "slug" and `field` to "id" (the entry id).
+   * Expand a content-type `$paths` source into route-param maps.
+   *
+   * **With `param` or `field`** (or on a type with no `route`): one `{ [param]: value }` per entry,
+   * `param` defaulting to "slug" and `field` to "id" (the entry id). Unchanged since before routes
+   * existed, and still the right shape for a flat `[slug]` collection.
+   *
+   * **With neither, on a type that declares a `route`:** the page's own URL pattern decides. Each
+   * entry's route is matched against the pattern the host passes (`/kb/:category/:slug`, `/kb/*`)
+   * and the parameters that pattern needs are derived from it, so the same `$paths: {
+   * "contentType": "kb" }` serves `[category]/[slug].json`, `[...path].json` or a `[category].json`
+   * section page, and the page generated for an entry is always at the URL its links point to. An
+   * entry whose route the pattern cannot produce belongs to another page and is skipped here.
    *
    * Each map also carries the entry's own `_meta`, under that reserved name. `_meta` is not a route
    * parameter and the host strips it before substitution — it is how a fact about the _entry_
@@ -841,7 +1265,7 @@ export class Content {
    * timestamp in `<lastmod>`, so the whole archive looks edited whenever the template is.
    *
    * @param {ContentPathsSource} pathsDef - The `$paths` value ({ contentType, param?, field? })
-   * @param {ResolvePathsContext} ctx - Host context ({ data, projectConfig, root })
+   * @param {ResolvePathsContext} ctx - Host context ({ data, projectConfig, root, urlPattern })
    * @returns {Promise<Record<string, unknown>[]>} Array of route-param objects
    */
   static async resolvePaths(
@@ -869,6 +1293,14 @@ export class Content {
       localized && typeof wanted === "string"
         ? entries.filter((entry) => entry._meta?.locale === wanted)
         : entries;
+    if (
+      pathsDef.param === undefined &&
+      pathsDef.field === undefined &&
+      ctx.urlPattern !== undefined &&
+      scoped.some((entry) => entry._meta?.route !== undefined)
+    ) {
+      return routedPaths(pathsDef.contentType, scoped, ctx, ctx.urlPattern);
+    }
     const paths: Record<string, unknown>[] = [];
     for (const entry of scoped) {
       const value = field === "id" ? entry.id : (entry.data[field] ?? entry.id);

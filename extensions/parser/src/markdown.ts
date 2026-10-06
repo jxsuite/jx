@@ -15,6 +15,7 @@
  * @license MIT
  */
 
+import { compileExclude } from "./content-rules.ts";
 import { transpileJxMarkdown } from "./transpile.ts";
 import { serializeJxMarkdown } from "./serialize.ts";
 import type { SerializeOptions } from "./serialize.ts";
@@ -37,6 +38,17 @@ export interface MarkdownLoadOptions {
    * alerts (`> [!NOTE]`) as plain blockquotes. Absent renders the built-in callout markup.
    */
   alerts?: unknown;
+}
+
+/** Options for {@link Markdown.discover}. */
+export interface MarkdownDiscoverOptions {
+  /** Directory the `source` is relative to. */
+  baseDir?: string;
+  /**
+   * Glob patterns, relative to the source directory, for files (and whole directories) to leave
+   * out. A directory every file of which is excluded is not read at all.
+   */
+  exclude?: readonly string[];
 }
 
 /**
@@ -63,22 +75,23 @@ export class Markdown {
     return serializeJxMarkdown(doc, options);
   }
 
-  /** List .md entry files for a content-type source (file path or directory). */
-  static async discover(source: string, options: { baseDir?: string } = {}): Promise<string[]> {
-    const { existsSync, readdirSync } = await import("node:fs");
+  /**
+   * List .md entry files for a content-type source (file path or directory).
+   *
+   * A directory is walked in sorted order, so the entries of a collection come back in the same
+   * order on every machine. The platform's own directory order is whatever the filesystem happens
+   * to return, which made an unsorted listing differ between a laptop and CI.
+   */
+  static async discover(source: string, options: MarkdownDiscoverOptions = {}): Promise<string[]> {
+    const { existsSync } = await import("node:fs");
     const { resolve, extname } = await import("node:path");
+    const { walkFiles } = await import("./walk.ts");
     const resolved = options.baseDir ? resolve(options.baseDir, source) : resolve(source);
 
     if (extname(resolved)) {
       return existsSync(resolved) ? [resolved] : [];
     }
-    try {
-      return readdirSync(resolved, { recursive: true })
-        .filter((f) => String(f).endsWith(".md"))
-        .map((f) => resolve(resolved, String(f)));
-    } catch {
-      return [];
-    }
+    return walkFiles(resolved, (name) => name.endsWith(".md"), compileExclude(options.exclude));
   }
 
   /** Load one markdown file into a content entry (frontmatter → data, body preserved). */

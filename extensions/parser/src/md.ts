@@ -166,8 +166,12 @@ function extractExcerpt(tree: MdastNode) {
 /**
  * Derive an entry slug from a file path. Without a source root (or for files directly at the root),
  * the slug is the basename — the historical behavior every flat collection relies on. Files in
- * subdirectories of the root get path-based slugs with POSIX separators and a trailing `/index`
- * stripped, so `studio/canvas.md` and `studio/canvas/index.md` both yield `studio/canvas`.
+ * subdirectories of the root get path-based slugs with POSIX separators and a trailing `/index` or
+ * `/README` stripped, so `studio/canvas.md`, `studio/canvas/index.md` and `studio/canvas/README.md`
+ * all yield `studio/canvas`: the file a folder shows (on GitHub, in Obsidian) is that folder's
+ * entry. Case and spaces in names are kept as written, so `Linux/Swap Configuration.md` is the id
+ * `Linux/Swap Configuration`; a collection that wants URL-friendly ids sets `idField` or slugifies
+ * in its `route`.
  *
  * @param {string} filePath - Absolute path to the markdown file
  * @param {string} [sourceRoot] - Resolved content-source root directory
@@ -178,8 +182,8 @@ function deriveSlug(filePath: string, sourceRoot?: string): string {
     const rel = relative(sourceRoot, filePath).split("\\").join("/");
     if (rel && !rel.startsWith("..") && rel.includes("/")) {
       let slug = rel.slice(0, rel.length - extname(rel).length);
-      if (slug.endsWith("/index")) {
-        slug = slug.slice(0, -"/index".length);
+      if (slug.endsWith("/index") || /\/readme$/i.test(slug)) {
+        slug = slug.slice(0, slug.lastIndexOf("/"));
       }
       return slug;
     }

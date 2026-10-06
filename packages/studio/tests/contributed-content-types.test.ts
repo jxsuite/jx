@@ -261,9 +261,16 @@ describe("parser contribution fixture", () => {
     // The per-entry form schema comes from the fragment's additionalProperties.
     expect(Object.keys(contribution.entrySchema.properties ?? {})).toEqual([
       "$elements",
+      "alerts",
+      "exclude",
       "format",
+      "idField",
+      "indexRoute",
+      "links",
+      "route",
       "schema",
       "source",
+      "where",
     ]);
   });
 });

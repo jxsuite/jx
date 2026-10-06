@@ -937,7 +937,7 @@
           "description": "File-based content collections. Each key names a content type; entries are loaded from the named source through the format registry.",
           "type": "object",
           "additionalProperties": {
-            "description": "Content type definition. Defines the source directory, frontmatter schema, and element dependencies.",
+            "description": "Content type definition. Defines the source, how entries are filtered, identified and routed, and their schema and element dependencies.",
             "type": "object",
             "properties": {
               "$elements": {
@@ -962,9 +962,86 @@
                   ]
                 }
               },
+              "alerts": {
+                "description": "How GitHub-style alerts (`> [!NOTE]`) in Markdown entries render. Maps an alert type (case-insensitive) to the custom element that renders it, e.g. { \"NOTE\": \"doc-note\" }. `true` renders a type with the built-in markup (how a type beyond GitHub's five is switched on); null or false leaves a type an ordinary blockquote. Unmapped NOTE, TIP, IMPORTANT, WARNING and CAUTION render as built-in accessible markup.",
+                "type": "object",
+                "propertyNames": {
+                  "pattern": "^[A-Za-z][\\w-]*$"
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][\\w.-]*$"
+                    },
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "examples": [
+                  {
+                    "NOTE": "doc-note",
+                    "TIP": "doc-tip",
+                    "WARNING": "doc-warning"
+                  }
+                ]
+              },
+              "exclude": {
+                "description": "Glob patterns, relative to the source directory, for files that are never read: `internal/**`, `STYLE.md`, `**/node_modules/**`, `.*/**`. `*` and `?` stop at `/`, `**` crosses directories, `{a,b}` alternates, and dotfiles are ordinary files. Excluded files are not parsed, validated, routed, linked to, searched or published.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "examples": [
+                  [
+                    "internal/**",
+                    "STYLE.md",
+                    ".*/**",
+                    "**/node_modules/**"
+                  ]
+                ]
+              },
               "format": {
                 "description": "Name of a format class provided by an enabled extension (e.g. \"Markdown\", \"Csv\"). When omitted, the format is derived from the source file extension via the format registry. \"json\" is the only built-in.",
                 "type": "string"
+              },
+              "idField": {
+                "description": "Frontmatter field whose value is the entry id, instead of the path-derived id. An entry without the field keeps its path id and is reported.",
+                "type": "string",
+                "minLength": 1,
+                "examples": [
+                  "slug"
+                ]
+              },
+              "indexRoute": {
+                "description": "A site-absolute path template. `{name}` inserts the entry id (`id`), the file's directory (`dir`), its name (`file`) or a frontmatter field (dotted paths allowed); `{name:slug}` slugifies it, and `lower`, `upper` and `raw` are also available.",
+                "examples": [
+                  "/kb/{dir:slug}/"
+                ],
+                "type": "string",
+                "pattern": "^/"
+              },
+              "links": {
+                "description": "How a relative link to an entry that has no page (excluded, filtered out by `where`, unrouted, or missing) is reported. The link renders as plain text in every mode. Relative links are only rewritten for content types that declare a `route`.",
+                "enum": [
+                  "warn",
+                  "error",
+                  "ignore"
+                ],
+                "default": "warn"
+              },
+              "route": {
+                "description": "A site-absolute path template. `{name}` inserts the entry id (`id`), the file's directory (`dir`), its name (`file`) or a frontmatter field (dotted paths allowed); `{name:slug}` slugifies it, and `lower`, `upper` and `raw` are also available.",
+                "examples": [
+                  "/kb/{category:slug}/{slug}/"
+                ],
+                "type": "string",
+                "pattern": "^/"
               },
               "schema": {
                 "description": "JSON Schema for validating frontmatter of content type entries.",
@@ -996,6 +1073,85 @@
                   "./content/docs/"
                 ],
                 "type": "string"
+              },
+              "where": {
+                "description": "Declarative frontmatter filter: only entries whose frontmatter satisfies every key are kept. A value is a literal to equal (a scalar also matches an array field that contains it) or an operator object: `$eq`, `$ne`, `$in`, `$nin`, `$exists`, `$gt`, `$gte`, `$lt`, `$lte`. Keys combine with AND; there is no OR and nothing is evaluated. Filtered entries are not validated, routed, linked to, queried or searched.",
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "enum": [
+                          "$eq",
+                          "$ne",
+                          "$in",
+                          "$nin",
+                          "$exists",
+                          "$gt",
+                          "$gte",
+                          "$lt",
+                          "$lte"
+                        ]
+                      },
+                      "minProperties": 1,
+                      "properties": {
+                        "$eq": {},
+                        "$ne": {},
+                        "$in": {
+                          "type": "array"
+                        },
+                        "$nin": {
+                          "type": "array"
+                        },
+                        "$exists": {
+                          "type": "boolean"
+                        },
+                        "$gt": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "$gte": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "$lt": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        },
+                        "$lte": {
+                          "type": [
+                            "string",
+                            "number"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null",
+                        "array"
+                      ]
+                    }
+                  ]
+                },
+                "examples": [
+                  {
+                    "publish": true,
+                    "status": {
+                      "$ne": "draft"
+                    }
+                  }
+                ]
               }
             }
           }
