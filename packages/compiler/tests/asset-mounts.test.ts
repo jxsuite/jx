@@ -80,6 +80,19 @@ describe("loadAssetMounts", () => {
     ]);
   });
 
+  it("keeps the filter an owner put on its mount, so the host never serves what it refuses", async () => {
+    const filter = (path: string) => !path.startsWith("internal/");
+    const registry = makeRegistry(
+      makeAssetEntry("Content", () => [
+        { dir: "/repo/docs", filter, urlPrefix: "content/docs/" },
+        { dir: "/repo/media", filter: "not a function", urlPrefix: "/media" },
+      ]),
+    );
+    const { mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    expect(mounts[0]!.filter).toBe(filter);
+    expect(mounts[1]).toEqual({ dir: "/repo/media", urlPrefix: "/media" });
+  });
+
   it("passes the section value and skips a section the project never declares", async () => {
     const seen: unknown[] = [];
     const registry = makeRegistry(
@@ -203,6 +216,30 @@ describe("copyMountedAssets", () => {
 
     expect(result.copied).toBe(1);
     expect(existsSync(join(outDir, "content/docs/my shot.png"))).toBe(true);
+  });
+
+  it("does not copy a file its mount refuses, and reports it as unresolved", () => {
+    mkdirSync(join(TMP, "src/internal"), { recursive: true });
+    writeFileSync(join(TMP, "src/internal/secret.png"), "secret");
+    writeFileSync(join(TMP, "src/ok.png"), "ok");
+    const mounts: AssetMount[] = [
+      {
+        dir: join(TMP, "src"),
+        filter: (path) => !path.startsWith("internal/"),
+        urlPrefix: "/content/docs",
+      },
+    ];
+    const outDir = join(TMP, "dist");
+    mkdirSync(outDir);
+
+    const result = copyMountedAssets(
+      ["/content/docs/ok.png", "/content/docs/internal/secret.png"],
+      mounts,
+      outDir,
+    );
+
+    expect(result).toEqual({ copied: 1, missing: ["/content/docs/internal/secret.png"] });
+    expect(existsSync(join(outDir, "content/docs/internal/secret.png"))).toBe(false);
   });
 
   it("reports unresolvable, missing, and traversing refs without copying them", () => {

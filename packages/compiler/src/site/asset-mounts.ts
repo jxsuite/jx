@@ -67,6 +67,8 @@ export async function loadAssetMounts(
         const normalized: AssetMount = {
           dir: mount.dir,
           urlPrefix: normalizeAssetPrefix(mount.urlPrefix),
+          // What the owner says the mount may serve travels with it (a notes folder's `exclude`).
+          ...(typeof mount.filter === "function" && { filter: mount.filter }),
         };
         const prior = byPrefix.get(normalized.urlPrefix);
         if (prior) {
