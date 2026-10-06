@@ -459,3 +459,27 @@ describe("a localized collection", () => {
     expect(plain.every((l) => l.attributes?.hreflang === undefined)).toBe(true);
   });
 });
+
+describe("an entry that carries its own url", () => {
+  const feed = normalizeFeedConfig(SECTION, "en").blog!;
+
+  test("is announced at the loader's url, made absolute", () => {
+    const entry = {
+      ...post("bench-operations", "2025-01-02"),
+      _meta: { route: "/kb/frappe/bench-operations", url: "/kb/frappe/bench-operations/" },
+    } as unknown as ContentLoaderEntry;
+    const item = entryToItem(entry, feed, SITE, "always");
+    expect(item.url).toBe("https://example.com/kb/frappe/bench-operations/");
+    expect(item.id).toBe(item.url);
+  });
+
+  test("an entry with no url, or one that is not a site path, falls back to basePath + id", () => {
+    const plain = entryToItem(post("hello", "2025-01-02"), feed, SITE, "always");
+    expect(plain.url).toBe("https://example.com/blog/hello/");
+    const odd = {
+      ...post("odd", "2025-01-02"),
+      _meta: { url: "https://elsewhere.example/odd/" },
+    } as unknown as ContentLoaderEntry;
+    expect(entryToItem(odd, feed, SITE, "always").url).toBe("https://example.com/blog/odd/");
+  });
+});

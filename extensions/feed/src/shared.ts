@@ -122,7 +122,15 @@ export function entryToItem(
 ): FeedItem {
   const data = (entry.data ?? {}) as Record<string, unknown>;
   const meta = (entry._meta ?? {}) as Record<string, unknown>;
-  const url = entryUrl(siteUrl, feed.basePath, entry.id, trailingSlash);
+  /*
+   * An entry of a content type with a `route` already knows its URL: the loader stamped it at
+   * `_meta.url`, from the same template the pages and the links were generated from. Only an entry
+   * with no route is placed by the feed's own `basePath` + id, which is the older, flat rule.
+   */
+  const url =
+    typeof meta.url === "string" && meta.url.startsWith("/")
+      ? new URL(meta.url, siteUrl).href
+      : entryUrl(siteUrl, feed.basePath, entry.id, trailingSlash);
   const published = readDate(data[feed.dateField]) ?? readDate(meta.mtime);
   const { author } = data;
 
