@@ -356,6 +356,7 @@ export async function expandDynamicRoutes(
       // The template's OWN prefix, read before expansion: `/fr/blog/:slug` is a French route
       // Whatever its entries turn out to be called, and that is what scopes a localized collection.
       localeOfRoute(route.urlPattern, i18n ?? null),
+      route,
     );
 
     for (const pathEntry of pathEntries) {
@@ -400,6 +401,9 @@ export async function expandDynamicRoutes(
  * @param {Record<string, unknown>} sections - Loaded project sections keyed by section key
  * @param {ExtensionRegistry} [registry]
  * @param {ProjectConfig} [projectConfig]
+ * @param {string | null} [locale] - The locale the route being expanded belongs to
+ * @param {Route} [route] - The dynamic page being expanded; its pattern and parameter names reach
+ *   an extension's `resolvePaths` so it can produce exactly the parameters this page needs
  * @returns {Promise<Record<string, unknown>[]>} Array of { paramName: value } objects
  */
 async function resolvePathEntries(
@@ -409,6 +413,7 @@ async function resolvePathEntries(
   registry?: ExtensionRegistry,
   projectConfig?: ProjectConfig,
   locale?: string | null,
+  route?: Pick<Route, "urlPattern" | "params">,
 ): Promise<Record<string, unknown>[]> {
   // Legacy: array of param objects
   if (Array.isArray($paths)) {
@@ -456,6 +461,7 @@ async function resolvePathEntries(
       locale,
       projectConfig,
       root: projectRoot,
+      ...(route === undefined ? {} : { params: route.params, urlPattern: route.urlPattern }),
     })) as Record<string, unknown>[];
   }
 
