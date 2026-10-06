@@ -75,6 +75,39 @@ Query them from any page or component:
 
 `ContentEntry` matches on the entry id (slug) by default; set `field` to match a frontmatter field (e.g. `"sku"`) instead.
 
+### Publishing a folder of notes
+
+A content type can publish a folder written for an editor, such as an Obsidian vault, as it is:
+
+```json
+{
+  "content": {
+    "kb": {
+      "source": "../..",
+      "format": "Markdown",
+      "exclude": ["internal/**", "STYLE.md", ".*/**", "**/node_modules/**"],
+      "where": { "publish": true, "status": { "$ne": "draft" } },
+      "route": "/kb/{category:slug}/{slug}/",
+      "indexRoute": "/kb/{dir:slug}/",
+      "links": "warn",
+      "alerts": { "NOTE": "doc-note", "TIP": "doc-tip", "WARNING": "doc-warning" }
+    }
+  }
+}
+```
+
+| Option       | What it does                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `exclude`    | Globs (relative to `source`) for files that are never read                                                          |
+| `where`      | A declarative frontmatter filter: literals, `$ne`, `$in`, `$nin`, `$exists`, `$gt`, `$gte`, `$lt`, `$lte`; AND only |
+| `idField`    | Frontmatter field used as the entry id                                                                              |
+| `route`      | URL template for each entry; stamped at `_meta.route` and `_meta.url`                                               |
+| `indexRoute` | URL template for a folder's `README.md` or `index.md`                                                               |
+| `links`      | `warn` (default), `error` or `ignore`: how a relative link to an entry with no page is reported                     |
+| `alerts`     | GitHub alert type to custom element, `true` for the built-in markup, `null` for a plain blockquote                  |
+
+With a `route`, `$paths: { "contentType": "kb" }` needs no parameter name, a `ContentEntry` with no `id` binds to its page, relative links between entries are rewritten to routes, and `README.md` maps to its folder. Full reference: [Content collections](https://jxsuite.com/docs/framework/site/content-collections) and [Obsidian vault as content](https://jxsuite.com/docs/framework/site/obsidian-vault).
+
 ## `Markdown`
 
 One class carries every format capability:

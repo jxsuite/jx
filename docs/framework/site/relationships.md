@@ -69,7 +69,7 @@ References resolve when content loads, at build and in the dev server and in Stu
 
 For a to-many field, each id in the array is replaced by its entry the same way.
 
-An id that matches no entry in the target type is left untouched, and the raw string stays in the data. Guard templates accordingly, or keep ids and filenames in sync.
+An id that matches no entry in the target type is left untouched, and the raw string stays in the data. Guard templates accordingly, or keep ids and filenames in sync. An entry that the target type's `exclude` or [`where`](/docs/framework/site/content-collections#choosing-which-files-are-entries) leaves out does not exist as far as relationships are concerned, so a reference to it is unresolved in the same way.
 
 ## Beyond content
 

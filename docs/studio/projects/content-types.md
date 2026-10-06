@@ -102,11 +102,11 @@ Give a type a boolean field named `draft` and its entries get a draft workflow:
 A collection whose schema does not declare `draft` shows none of this: painting "Published" on entries of a project that never defined the state would be inventing one.
 
 :::doc-warning
-Marking an entry a draft filters it out of Studio's own listings. It does **not** keep the entry out of a build: a page that queries the collection will still render it unless the page's own query excludes it.
+Marking an entry a draft filters it out of Studio's own listings. It does **not** keep the entry out of a build: a page that queries the collection will still render it unless the page's own query excludes it. To keep entries out of the build for good, give the content type a `where` filter in `project.json`, such as `{ "draft": { "$ne": true } }`; see [Content collections](/docs/framework/site/content-collections#choosing-which-files-are-entries).
 :::
 
 :::doc-note
-Studio stores your types in the `content` section of `project.json`, one entry per type, recording its `source` folder, `format`, and field `schema`. Pages query these collections to list and display entries; see [Site architecture](/docs/framework/site).
+Studio stores your types in the `content` section of `project.json`, one entry per type, recording its `source` folder, `format`, and field `schema`. Pages query these collections to list and display entries; see [Site architecture](/docs/framework/site). Options that choose which files are entries, or say where each one is routed, are covered in [Content collections](/docs/framework/site/content-collections).
 :::
 
 ## Next

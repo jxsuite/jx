@@ -479,6 +479,10 @@
               "label": "Jx Markdown"
             },
             {
+              "path": "framework/site/obsidian-vault",
+              "label": "Obsidian vault as content"
+            },
+            {
               "path": "framework/site/relationships",
               "label": "Relationships"
             },

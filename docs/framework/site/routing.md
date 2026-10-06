@@ -68,6 +68,14 @@ The compiler iterates `$paths` at build time and emits one HTML page per entry, 
 
 One page per collection entry. `param` names the route parameter (default `slug`); `field` picks which entry field supplies the value (default `id`, the entry id).
 
+A content type that declares a [`route`](/docs/framework/site/content-collections#ids-and-routes) needs neither:
+
+```json
+{ "contentType": "kb" }
+```
+
+The compiler passes the page's own URL pattern to the collection, and each entry's route is matched against it to produce the parameters that page needs. The same `$paths` serves `pages/kb/[...path].json`, which receives the rest of each route, and a `[category]/[slug].json` plus `[category].json` pair, which receive one segment each. A `ContentEntry` with no `id` binds to the entry whose route is the page's URL. See [Obsidian vault as content](/docs/framework/site/obsidian-vault) for a worked example.
+
 ```json
 { "values": ["en", "fr", "de"], "param": "lang" }
 ```
