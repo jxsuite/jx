@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.0.3](https://github.com/jxsuite/jx/compare/compiler-v4.0.2...compiler-v4.0.3) (2026-10-06)
+
+
+### Bug Fixes
+
+* **compiler:** declare the import map in head ahead of the modulepreload hints ([bf9017e](https://github.com/jxsuite/jx/commit/bf9017e782fef092f5f1dc2cfc7e3726fc79ee7f))
+* **compiler:** declare the import map in head ahead of the modulepreload hints ([e467359](https://github.com/jxsuite/jx/commit/e4673594a39fd32fe21fd8b406c6c8761872652e))
+
 ## [4.0.2](https://github.com/jxsuite/jx/compare/compiler-v4.0.1...compiler-v4.0.2) (2026-09-29)
 
 
