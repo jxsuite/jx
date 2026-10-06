@@ -48,6 +48,8 @@ The build writes `dist/feed.xml` and `dist/feed.json`, and adds the discovery li
 | `contentMode`               | `"summary"`        | `full` adds the entry body beside the summary; `summary` omits it |
 | `language`                  | `defaults.lang`    | BCP 47 tag                                                        |
 
+An entry of a content type that declares a [`route`](/docs/framework/site/content-collections#ids-and-routes) is announced at its own URL, and `basePath` places only the entries that have none. Entries a content type's `exclude` or `where` leaves out never reach a feed.
+
 ## Dates
 
 Feed timestamps come from your frontmatter. Declare the field with a `format` so the loader normalizes it:

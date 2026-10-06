@@ -70,7 +70,8 @@ import type {
 
 /** A (possibly nested) JSON Schema node, covering both object and property level keys. */
 export interface JsonSchema {
-  type?: string;
+  /** One JSON Schema type, or a union of them (`["object", "boolean"]`). */
+  type?: string | string[];
   properties?: Record<string, JsonSchema>;
   required?: string[];
   description?: string;
@@ -1047,7 +1048,10 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
   if (ps.type === "array" && ps.items?.type === "object" && ps.items.properties) {
     return arrayOfObjects(prop, ps.items.properties, args, plan, row);
   }
-  if (ps.type === "array" || ps.type === "object") {
+  /* A union with an object or a list in it (`alerts` is an object of types or `false`) is JSON too:
+     a text box would store what is typed as a string, which is none of the members. */
+  const types = Array.isArray(ps.type) ? ps.type : [ps.type];
+  if (types.includes("array") || types.includes("object")) {
     plan.commit = "json";
     row.kind = "json";
     row.value = current !== undefined ? JSON.stringify(current, null, 2) : "";

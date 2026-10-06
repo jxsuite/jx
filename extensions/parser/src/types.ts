@@ -27,6 +27,23 @@ export interface ContentTypeDef {
   format?: string;
   schema?: Record<string, unknown>;
   $elements?: (string | { $ref: string })[];
+  /** Globs, relative to a directory `source`, for files that are never read. */
+  exclude?: string[];
+  /** Declarative frontmatter filter: only entries that satisfy it are kept. */
+  where?: Record<string, unknown>;
+  /** Frontmatter field whose value is the entry id (the path-derived id when absent). */
+  idField?: string;
+  /** Route template giving each entry its URL. */
+  route?: string;
+  /** Route template for a directory's README.md or index.md (`route` is used when absent). */
+  indexRoute?: string;
+  /** How a link that has no page is reported. Default `"warn"`. */
+  links?: "warn" | "error" | "ignore";
+  /**
+   * GitHub alert type → custom element, `true` for the built-in markup, `false` to leave it a
+   * blockquote. `false` for the whole option turns callouts off, `true` is the default.
+   */
+  alerts?: Record<string, string | boolean | null> | boolean;
   [key: string]: unknown;
 }
 

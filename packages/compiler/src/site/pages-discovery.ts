@@ -301,6 +301,28 @@ function entryMtime(pathEntry: Record<string, unknown>): string | null {
 }
 
 /**
+ * Why a concrete page URL would write outside the output directory, or null when it would not: a
+ * `.` or `..` segment, a backslash or a NUL.
+ *
+ * @param {string} url - The route with its parameters substituted
+ * @returns {string | null}
+ */
+function traversalIn(url: string): string | null {
+  if (url.includes("\0")) {
+    return "has a NUL character";
+  }
+  for (const segment of url.split("/")) {
+    if (segment === "." || segment === "..") {
+      return 'has a "." or ".." segment';
+    }
+    if (segment.includes("\\")) {
+      return "has a backslash";
+    }
+  }
+  return null;
+}
+
+/**
  * Expand dynamic routes by resolving $paths from each dynamic page.
  *
  * Supports these $paths shapes (per spec §4.3): 1. Explicit values: { values: ["en", "fr"], param:
@@ -325,6 +347,11 @@ export async function expandDynamicRoutes(
   i18n?: ResolvedI18n | null,
 ) {
   const expanded: Route[] = [];
+  /**
+   * Every dynamic page's pattern, so an extension can tell a route no page produces from one a
+   * different page does.
+   */
+  const dynamicPatterns = routes.filter((r) => r.isDynamic).map((r) => r.urlPattern);
 
   for (const route of routes) {
     if (!route.isDynamic) {
@@ -356,6 +383,8 @@ export async function expandDynamicRoutes(
       // The template's OWN prefix, read before expansion: `/fr/blog/:slug` is a French route
       // Whatever its entries turn out to be called, and that is what scopes a localized collection.
       localeOfRoute(route.urlPattern, i18n ?? null),
+      route,
+      dynamicPatterns,
     );
 
     for (const pathEntry of pathEntries) {
@@ -370,6 +399,17 @@ export async function expandDynamicRoutes(
         params[param] = String(value);
         concreteUrl = concreteUrl.replace(`:${param}`, params[param]);
         concreteUrl = concreteUrl.replace("*", params[param]);
+      }
+
+      /* A parameter value is data (a frontmatter field, a file name) and becomes part of the path the
+         page is written to. One that climbs out of the output directory is not a page. */
+      const escapes = traversalIn(concreteUrl);
+      if (escapes !== null) {
+        console.warn(
+          `Warning: $paths for ${route.urlPattern} produced "${concreteUrl}", which ${escapes}; ` +
+            `skipping it`,
+        );
+        continue;
       }
 
       const mtime = entryMtime(pathEntry);
@@ -400,6 +440,10 @@ export async function expandDynamicRoutes(
  * @param {Record<string, unknown>} sections - Loaded project sections keyed by section key
  * @param {ExtensionRegistry} [registry]
  * @param {ProjectConfig} [projectConfig]
+ * @param {string | null} [locale] - The locale the route being expanded belongs to
+ * @param {Route} [route] - The dynamic page being expanded; its pattern and parameter names reach
+ *   an extension's `resolvePaths` so it can produce exactly the parameters this page needs
+ * @param {readonly string[]} [patterns] - The pattern of every dynamic page in the project
  * @returns {Promise<Record<string, unknown>[]>} Array of { paramName: value } objects
  */
 async function resolvePathEntries(
@@ -409,6 +453,8 @@ async function resolvePathEntries(
   registry?: ExtensionRegistry,
   projectConfig?: ProjectConfig,
   locale?: string | null,
+  route?: Pick<Route, "urlPattern" | "params">,
+  patterns?: readonly string[],
 ): Promise<Record<string, unknown>[]> {
   // Legacy: array of param objects
   if (Array.isArray($paths)) {
@@ -456,6 +502,8 @@ async function resolvePathEntries(
       locale,
       projectConfig,
       root: projectRoot,
+      ...(route === undefined ? {} : { params: route.params, urlPattern: route.urlPattern }),
+      ...(patterns === undefined ? {} : { patterns }),
     })) as Record<string, unknown>[];
   }
 

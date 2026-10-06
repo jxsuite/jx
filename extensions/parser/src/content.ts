@@ -6,6 +6,8 @@
  * queryContentType, findEntry) used by both the classes and the server endpoint.
  */
 
+import { localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 import { parseComparable } from "./dates.ts";
 import type { ContentLoaderEntry } from "./types.ts";
 
@@ -29,11 +31,15 @@ interface EntryConfig {
   _project?: {
     /** The loaded `content` section (Content.projectData result) under its section key. */
     content?: Map<string, ContentLoaderEntry[]>;
+    /** The project config, for the i18n routing rules a locale prefix comes from. */
+    config?: ProjectConfig | null;
     [k: string]: unknown;
   };
   _document?: {
     route?: {
       _pathParams?: Record<string, string>;
+      /** The concrete URL of the page being built (`/kb/frappe/bench-operations`). */
+      urlPattern?: string;
       /** The language this route serves, when the project declares any (§13.4). */
       locale?: string | null;
     };
@@ -219,23 +225,28 @@ export class ContentEntry {
     this.config = config;
   }
 
+  /**
+   * The route the page being built is at, without its locale prefix or trailing slash: the key an
+   * entry of a content type with a `route` is found by when the page names no id.
+   */
+  #pageRoute(): string | undefined {
+    const { _project, _document } = this.config;
+    let path = _document?.route?.urlPattern;
+    if (typeof path !== "string") {
+      return undefined;
+    }
+    const { i18n } = resolveI18n(_project?.config ?? {});
+    const prefix = localeUrlPrefix(_document?.route?.locale, i18n);
+    if (prefix !== "" && (path === prefix || path.startsWith(`${prefix}/`))) {
+      path = path.slice(prefix.length);
+    }
+    return path.replace(/\/+$/, "") || "/";
+  }
+
   resolve() {
     const { contentType, id, field, _project, _document } = this.config;
     const entries = _project?.content?.get(contentType ?? "");
     if (!entries) {
-      return null;
-    }
-
-    let resolvedId = id;
-    if (
-      resolvedId &&
-      typeof resolvedId === "object" &&
-      (resolvedId as { $ref?: string }).$ref?.startsWith("#/$params/")
-    ) {
-      const paramName = (resolvedId as { $ref: string }).$ref.replace("#/$params/", "");
-      resolvedId = _document?.route?._pathParams?.[paramName];
-    }
-    if (!resolvedId) {
       return null;
     }
 
@@ -255,6 +266,31 @@ export class ContentEntry {
       localized && typeof wanted === "string"
         ? entries.filter((e: ContentLoaderEntry) => e._meta?.locale === wanted)
         : entries;
+
+    /*
+     * A page that names no `id` is bound to the entry its URL belongs to. That is how a content
+     * type with a `route` is consumed: `$paths` generated this page FROM that entry's route, so
+     * the route is the join, and neither the page nor the template repeats a parameter name.
+     */
+    if (id === undefined && field === undefined) {
+      const route = this.#pageRoute();
+      return route === undefined
+        ? null
+        : (scoped.find((e: ContentLoaderEntry) => e._meta?.route === route) ?? null);
+    }
+
+    let resolvedId = id;
+    if (
+      resolvedId &&
+      typeof resolvedId === "object" &&
+      (resolvedId as { $ref?: string }).$ref?.startsWith("#/$params/")
+    ) {
+      const paramName = (resolvedId as { $ref: string }).$ref.replace("#/$params/", "");
+      resolvedId = _document?.route?._pathParams?.[paramName];
+    }
+    if (!resolvedId) {
+      return null;
+    }
 
     if (field && field !== "id") {
       return scoped.find((e: ContentLoaderEntry) => e.data[field] === resolvedId) ?? null;

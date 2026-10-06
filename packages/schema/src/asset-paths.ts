@@ -77,6 +77,16 @@ export interface AssetMount {
   urlPrefix: string;
   /** Absolute directory the prefix maps onto. */
   dir: string;
+  /**
+   * Whether the mount serves a file, asked with the file's path relative to {@link dir},
+   * `/`-separated. Absent means every file under the directory. A mount over a folder of notes sets
+   * it so that what the collection leaves out (`exclude`, hidden files, unpublished documents) is
+   * never reachable through the mount either: {@link assetUrlFor} gives a refused file no URL and
+   * {@link resolveAssetUrl} resolves a refused URL to nothing, so no host serves or copies it. It is
+   * a function, so it exists only where the mount was declared; a host that rebuilds a mount from
+   * its two strings (a project-relative copy for Studio) gets none.
+   */
+  filter?: (path: string) => boolean;
 }
 
 /** Normalize a path or prefix for comparison: forward slashes, no trailing slash. */
@@ -117,6 +127,10 @@ export function assetUrlFor(mounts: readonly AssetMount[], absolutePath: string)
       continue;
     }
     const rest = path.slice(dir.length + 1);
+    const { filter: serves } = mount;
+    if (serves && !serves(rest)) {
+      return null;
+    }
     const encoded = rest
       .split("/")
       .map((segment) => encodeURIComponent(segment))
@@ -158,6 +172,10 @@ export function resolveAssetUrl(mounts: readonly AssetMount[], url: string): str
     const rest = decoded.slice(prefix.length + 1);
     const segments = rest.split("/");
     if (segments.some((s) => s === "" || s === "." || s === "..")) {
+      return null;
+    }
+    const { filter: serves } = mount;
+    if (serves && !serves(segments.join("/"))) {
       return null;
     }
     return `${normalizeDir(mount.dir)}/${segments.join("/")}`;

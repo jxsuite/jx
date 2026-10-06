@@ -41,6 +41,35 @@ describe("processMarkdown", () => {
     ).toBe("framework/concepts/state");
   });
 
+  test("a README stands for its directory exactly as an index does", () => {
+    for (const name of ["README.md", "readme.md", "Readme.md"]) {
+      expect(processMarkdown("hi", `/docs/Frappe/${name}`, { sourceRoot: "/docs" }).slug).toBe(
+        "Frappe",
+      );
+    }
+    expect(
+      processMarkdown("hi", "/docs/WordPress/Gravity Forms/README.md", { sourceRoot: "/docs" })
+        .slug,
+    ).toBe("WordPress/Gravity Forms");
+    // Only the whole name is the index: a file merely starting with it is an ordinary entry.
+    expect(
+      processMarkdown("hi", "/docs/Frappe/README notes.md", { sourceRoot: "/docs" }).slug,
+    ).toBe("Frappe/README notes");
+  });
+
+  test("keeps case and spaces in path ids, which is what makes them stable", () => {
+    expect(
+      processMarkdown("hi", "/docs/Linux/Swap Configuration.md", { sourceRoot: "/docs" }).slug,
+    ).toBe("Linux/Swap Configuration");
+    expect(processMarkdown("hi", "/docs/Git & Dev Tools/A.md", { sourceRoot: "/docs" }).slug).toBe(
+      "Git & Dev Tools/A",
+    );
+  });
+
+  test("a README at the source root keeps its basename id", () => {
+    expect(processMarkdown("hi", "/docs/README.md", { sourceRoot: "/docs" }).slug).toBe("README");
+  });
+
   test("keeps basename slugs at the sourceRoot itself and outside it", () => {
     expect(processMarkdown("hi", "/docs/intro.md", { sourceRoot: "/docs" }).slug).toBe("intro");
     expect(processMarkdown("hi", "/docs/index.md", { sourceRoot: "/docs" }).slug).toBe("index");

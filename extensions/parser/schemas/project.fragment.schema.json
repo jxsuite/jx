@@ -9,7 +9,7 @@
       "description": "File-based content collections. Each key names a content type; entries are loaded from the named source through the format registry.",
       "type": "object",
       "additionalProperties": {
-        "description": "Content type definition. Defines the source directory, frontmatter schema, and element dependencies.",
+        "description": "Content type definition. Defines the source, how entries are filtered, identified and routed, and their schema and element dependencies.",
         "type": "object",
         "properties": {
           "$elements": {
@@ -19,10 +19,16 @@
               "oneOf": [
                 {
                   "type": "object",
-                  "properties": { "$ref": { "type": "string" } },
+                  "properties": {
+                    "$ref": {
+                      "type": "string"
+                    }
+                  },
                   "required": ["$ref"]
                 },
-                { "type": "string" }
+                {
+                  "type": "string"
+                }
               ]
             }
           },
@@ -34,16 +40,22 @@
             "description": "JSON Schema for validating frontmatter of content type entries.",
             "type": "object",
             "properties": {
-              "type": { "const": "object" },
+              "type": {
+                "const": "object"
+              },
               "properties": {
                 "description": "Field definitions; values are field schemas from the effective project field union.",
                 "type": "object",
-                "additionalProperties": { "$ref": "https://jxsuite.com/schema/project/fields/v2" }
+                "additionalProperties": {
+                  "$ref": "https://jxsuite.com/schema/project/fields/v2"
+                }
               },
               "required": {
                 "description": "Frontmatter fields every entry must provide.",
                 "type": "array",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -51,6 +63,126 @@
             "description": "Path to the content directory relative to the project root.",
             "examples": ["./content/blog/", "./content/docs/"],
             "type": "string"
+          },
+          "exclude": {
+            "description": "Glob patterns, relative to the source directory, for files that are never read: `internal/**`, `STYLE.md`, `**/node_modules/**`, `.*/**`. `*` and `?` stop at `/`, `**` crosses directories, `{a,b}` alternates, and dotfiles are ordinary files. A bare name with no extension (`internal`) excludes that folder as well as a file of the name. A pattern cannot climb out of the source (`../`). Excluded files are not parsed, validated, routed, linked to, searched or published, and the collection's asset mount does not serve them either: a note that refers to one gets a warning and the reference is left as written.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "examples": [["internal/**", "STYLE.md", ".*/**", "**/node_modules/**"]]
+          },
+          "where": {
+            "description": "Declarative frontmatter filter: only entries whose frontmatter satisfies every key are kept. A value is a literal to equal (a scalar also matches an array field that contains it; an array or an object with no `$` keys is compared whole) or an operator object: `$eq`, `$ne`, `$in`, `$nin`, `$exists`, `$gt`, `$gte`, `$lt`, `$lte`. Keys combine with AND; there is no OR and nothing is evaluated. A filter that removes every entry is reported. Filtered entries are not validated, routed, linked to, queried or searched, and are not served from the collection's asset mount.",
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[^$]"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "enum": ["$eq", "$ne", "$in", "$nin", "$exists", "$gt", "$gte", "$lt", "$lte"]
+                  },
+                  "minProperties": 1,
+                  "properties": {
+                    "$eq": {},
+                    "$ne": {},
+                    "$in": {
+                      "type": "array"
+                    },
+                    "$nin": {
+                      "type": "array"
+                    },
+                    "$exists": {
+                      "type": "boolean"
+                    },
+                    "$gt": {
+                      "type": ["string", "number"]
+                    },
+                    "$gte": {
+                      "type": ["string", "number"]
+                    },
+                    "$lt": {
+                      "type": ["string", "number"]
+                    },
+                    "$lte": {
+                      "type": ["string", "number"]
+                    }
+                  }
+                },
+                {
+                  "type": ["string", "number", "boolean", "null", "array"]
+                },
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "pattern": "^[^$]"
+                  }
+                }
+              ]
+            },
+            "examples": [
+              {
+                "publish": true,
+                "status": {
+                  "$ne": "draft"
+                }
+              }
+            ]
+          },
+          "idField": {
+            "description": "Frontmatter field whose value is the entry id, instead of the path-derived id. An entry without the field keeps its path id and is reported.",
+            "type": "string",
+            "minLength": 1,
+            "examples": ["slug"]
+          },
+          "route": {
+            "description": "A site-absolute path template. `{name}` inserts the entry id (`id`), the file's directory (`dir`), its name (`file`) or a frontmatter field (dotted paths allowed); `{name:slug}` slugifies it, and `lower`, `upper` and `raw` are also available.",
+            "examples": ["/kb/{category:slug}/{slug}/"],
+            "type": "string",
+            "pattern": "^/"
+          },
+          "indexRoute": {
+            "description": "The route template for a directory's `README.md` or `index.md`, the file a folder stands for, when it should differ from `route` (a section's page at `/kb/{dir:slug}/` rather than `/kb/{category:slug}/{slug}/`). It takes the same placeholders and transforms as `route`, and needs a `route` for every other entry.",
+            "examples": ["/kb/{dir:slug}/"],
+            "type": "string",
+            "pattern": "^/"
+          },
+          "links": {
+            "description": "How a relative link to an entry that has no page (excluded, filtered out by `where`, unrouted, or missing) is reported. The link renders as plain text in every mode. Relative links are only rewritten for content types that declare a `route`.",
+            "enum": ["warn", "error", "ignore"],
+            "default": "warn"
+          },
+          "alerts": {
+            "description": "How GitHub-style alerts (`> [!NOTE]`) in Markdown entries render. `false` turns callouts off for the whole type; `true`, or leaving the option out, renders NOTE, TIP, IMPORTANT, WARNING and CAUTION as built-in accessible markup. An object maps an alert type (case-insensitive) to the custom element that renders it, e.g. { \"NOTE\": \"doc-note\" }; `true` renders a type with the built-in markup (how a type beyond GitHub's five, such as Obsidian's `info`, is switched on); null or false leaves a type an ordinary blockquote. A well-formed marker of a type that is not enabled is reported when the file loads.",
+            "type": ["object", "boolean"],
+            "propertyNames": {
+              "pattern": "^[A-Za-z][\\w-]*$"
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][\\w.-]*$"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "examples": [
+              {
+                "NOTE": "doc-note",
+                "TIP": "doc-tip",
+                "WARNING": "doc-warning"
+              }
+            ]
           }
         }
       }

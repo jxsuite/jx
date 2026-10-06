@@ -31,7 +31,7 @@ Running `jx build` (see [CLI commands](/docs/framework/build/cli)) orchestrates 
 
 1. **Load `project.json`** and register the extensions it declares (`extensions`), which contribute file formats such as Markdown pages.
 2. **Discover routes** by scanning `pages/`: `pages/index.json` → `/`, `pages/about.json` → `/about`, `pages/blog/[slug].json` → `/blog/:slug`, `pages/docs/[...path].json` → catch-all. Files starting with `_` are not routed. `.json` pages are native; other extensions (like `.md`) route through a format registered by an enabled extension.
-3. **Expand dynamic routes**: a `[param]` page's `$paths` definition produces one concrete route per entry.
+3. **Expand dynamic routes**: a `[param]` page's `$paths` definition produces one concrete route per entry. The page's own URL pattern is handed to the extension that owns the `$paths` shape, which is how a content type with a `route` produces exactly the parameters each page needs (see [Routing](/docs/framework/site/routing)).
 4. **Compile each route**: resolve its layout, merge `$head` from site + layout + page, inject the read-only `$site`/`$page` context, resolve build-time data, transform images for responsive output, then hand the assembled document to the compiler.
 5. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in `project.json`), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
 

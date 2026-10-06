@@ -233,12 +233,19 @@
             "identifier": "options",
             "type": {
               "type": "object",
-              "properties": { "baseDir": { "type": "string" } }
+              "properties": {
+                "baseDir": { "type": "string" },
+                "exclude": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Glob patterns, relative to the source directory, for files and directories to leave out"
+                }
+              }
             }
           }
         ],
         "returnType": { "type": "array", "items": { "type": "string" } },
-        "description": "List markdown entry files for a content-type source"
+        "description": "List markdown entry files for a content-type source, in sorted order"
       },
       "load": {
         "role": "load",
@@ -259,7 +266,11 @@
               "type": "object",
               "properties": {
                 "directiveOptions": { "type": "object" },
-                "directives": { "type": "boolean" }
+                "directives": { "type": "boolean" },
+                "alerts": {
+                  "description": "GitHub alert type -> custom element name (or false to leave alerts as blockquotes); absent renders the built-in callouts",
+                  "oneOf": [{ "const": false }, { "type": "object" }]
+                }
               }
             }
           }

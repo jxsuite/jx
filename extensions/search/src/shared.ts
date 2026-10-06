@@ -84,6 +84,28 @@ export function jxTreeToText(children?: (JxElement | string)[]): string {
   return collectText(children).join(" ").replaceAll(/\s+/g, " ").trim();
 }
 
+/** The five entities the parser's escaping and an author's markup commonly leave in `innerHTML`. */
+const ENTITIES: Record<string, string> = {
+  "&#36;": "$",
+  "&amp;": "&",
+  "&gt;": ">",
+  "&lt;": "<",
+  "&quot;": '"',
+};
+
+/**
+ * The text of an `innerHTML` string: tags dropped, the common entities decoded.
+ *
+ * The content loader writes text that contains `${` as escaped `innerHTML` so the build does not
+ * read it as a template (parser.md §3.5), which means the words of a code sample live there and not
+ * in `textContent`. An index that skipped `innerHTML` would silently stop finding them.
+ */
+function innerHtmlText(html: string): string {
+  return html
+    .replaceAll(/<[^>]*>/g, " ")
+    .replaceAll(/&#36;|&amp;|&gt;|&lt;|&quot;/g, (entity) => ENTITIES[entity]!);
+}
+
 function collectText(children: (JxElement | string)[] | undefined): string[] {
   const parts: string[] = [];
   for (const node of children ?? []) {
@@ -96,6 +118,8 @@ function collectText(children: (JxElement | string)[] | undefined): string[] {
     }
     if (typeof node.textContent === "string") {
       parts.push(node.textContent);
+    } else if (typeof node.innerHTML === "string") {
+      parts.push(innerHtmlText(node.innerHTML));
     }
     if (Array.isArray(node.children)) {
       parts.push(...collectText(node.children as (JxElement | string)[]));

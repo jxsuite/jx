@@ -1776,6 +1776,33 @@ function isBareSpecifier(s: string) {
 }
 
 /**
+ * The resolved value of a text template that still contains `${`, as escaped `innerHTML`.
+ *
+ * A template's result is data: an excerpt, a heading, a title. When that data itself holds `${` (a
+ * note that explains template syntax) it is text to show, and left as `textContent` the compile
+ * phase would read it as a template a second time, bind it to an expression that throws or renders
+ * nothing, and the words would be gone. The same entity spelling the `innerHTML` resolution below
+ * uses keeps it text.
+ *
+ * @param {string} resolved
+ * @returns {string}
+ */
+function inertTextHtml(resolved: string): string {
+  return escapeHtml(resolved).replaceAll("${", "&#36;{");
+}
+
+/**
+ * A resolved attribute value with any `${` split by a zero-width space. An entity cannot be written
+ * into an attribute, and a value that kept the sequence would be bound as a template again.
+ *
+ * @param {string} resolved
+ * @returns {string}
+ */
+function inertAttribute(resolved: string): string {
+  return resolved.replaceAll("${", "$\u200B{");
+}
+
+/**
  * Deep-clone a map template, resolving template strings and $ref values against the given scope.
  *
  * @param {JxElement} template
@@ -1808,7 +1835,11 @@ function expandMapTemplate(template: JxElement, scope: Record<string, unknown>):
       const attrs = { ...(v as Record<string, JxAttributeValue>) };
       for (const [ak, av] of Object.entries(attrs)) {
         if (isTemplateString(av)) {
-          attrs[ak] = (evaluateMapTemplate(av, scope) as JxAttributeValue | undefined) ?? av;
+          const resolved = evaluateMapTemplate(av, scope) as JxAttributeValue | undefined;
+          attrs[ak] =
+            typeof resolved === "string" && resolved.includes("${")
+              ? inertAttribute(resolved)
+              : (resolved ?? av);
         }
       }
       node.attributes = attrs;
@@ -1823,7 +1854,12 @@ function expandMapTemplate(template: JxElement, scope: Record<string, unknown>):
       }
       node.$props = props;
     } else if (typeof v === "string" && isTemplateString(v)) {
-      node[k] = evaluateMapTemplate(v, scope) ?? v;
+      const resolved = evaluateMapTemplate(v, scope);
+      if (k === "textContent" && typeof resolved === "string" && resolved.includes("${")) {
+        node.innerHTML = inertTextHtml(resolved);
+      } else {
+        node[k] = resolved ?? v;
+      }
     } else {
       node[k] = v;
     }
@@ -1886,9 +1922,16 @@ function resolveDocTemplates(node: JxElement | string, scope: Record<string, unk
     }
   }
   if (typeof node.textContent === "string" && isTemplateString(node.textContent)) {
-    node.textContent =
-      (evaluateStaticTemplate(node.textContent, scope) as string | null) ??
-      (node.textContent as string | null);
+    const resolved = evaluateStaticTemplate(node.textContent, scope);
+    if (typeof resolved === "string" && resolved.includes("${")) {
+      // The resolved value is data (an excerpt, a heading, a title) that happens to contain `${`, not
+      // A template. Left as `textContent` the compile phase would read it as one again and bind it
+      // To an expression that throws or renders nothing, so it stays text as escaped `innerHTML`.
+      node.innerHTML = inertTextHtml(resolved);
+      delete node.textContent;
+    } else {
+      node.textContent = (resolved as string | null) ?? (node.textContent as string | null);
+    }
   }
   if (node.style && typeof node.style === "object") {
     for (const [k, v] of Object.entries(node.style)) {
@@ -1902,7 +1945,13 @@ function resolveDocTemplates(node: JxElement | string, scope: Record<string, unk
   if (node.attributes && typeof node.attributes === "object") {
     for (const [k, v] of Object.entries(node.attributes)) {
       if (typeof v === "string" && isTemplateString(v)) {
-        node.attributes[k] = (evaluateStaticTemplate(v, scope) as JxAttributeValue | null) ?? v;
+        const resolved = evaluateStaticTemplate(v, scope) as JxAttributeValue | null;
+        // A resolved value is data: a `${` left in it must not become a template a second time. An
+        // Entity cannot be written into an attribute, so the sequence is split with a zero-width space.
+        node.attributes[k] =
+          typeof resolved === "string" && resolved.includes("${")
+            ? inertAttribute(resolved)
+            : (resolved ?? v);
       }
     }
   }

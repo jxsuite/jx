@@ -183,3 +183,14 @@ describe("splitEntry", () => {
     expect(splitEntry(undefined, 3)).toEqual({ preamble: "", sections: [] });
   });
 });
+
+describe("text kept as innerHTML", () => {
+  test("is searchable: the loader writes template-looking text there, escaped", () => {
+    const text = jxTreeToText([
+      { innerHTML: "echo &#36;{HOME} &amp;&amp; ls", tagName: "code" },
+      { innerHTML: "<b>bold</b> &lt;tag&gt; &quot;q&quot;", tagName: "p" },
+      { innerHTML: "ignored", tagName: "p", textContent: "textContent wins" },
+    ]);
+    expect(text).toBe('echo ${HOME} && ls bold <tag> "q" textContent wins');
+  });
+});
