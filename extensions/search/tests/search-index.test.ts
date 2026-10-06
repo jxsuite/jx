@@ -277,3 +277,60 @@ describe("SearchIndex.emit — a localized collection", () => {
     expect(documents[0]!.url).toBe("/blog/hello/");
   });
 });
+
+describe("an entry that carries its own url", () => {
+  const routed = (id: string, route: string, url: string | undefined, text: string) =>
+    ({
+      $children: [{ tagName: "p", textContent: text }],
+      _meta: { route, ...(url === undefined ? {} : { url }) },
+      body: "",
+      data: { title: id },
+      id,
+    }) as unknown as ContentLoaderEntry;
+
+  const emitRouted = (entries: ContentLoaderEntry[]) =>
+    JSON.parse(
+      SearchIndex.emit(
+        { collections: { kb: { basePath: "/docs/" } } },
+        { projectConfig: {}, sections: { content: new Map([["kb", entries]]) } },
+      )[0]!.content,
+    ) as SearchIndexEnvelope;
+
+  test("is indexed at the loader's url, not basePath + id", () => {
+    const { documents } = emitRouted([
+      routed(
+        "bench-operations",
+        "/kb/frappe/bench-operations",
+        "/kb/frappe/bench-operations/",
+        "x",
+      ),
+    ]);
+    expect(documents[0]!.url).toBe("/kb/frappe/bench-operations/");
+  });
+
+  test("a section deep link is appended to that url", () => {
+    const entry = {
+      $children: [
+        { id: "backups", tagName: "h2", textContent: "Backups" },
+        { tagName: "p", textContent: "y" },
+      ],
+      _meta: { url: "/kb/frappe/bench-operations/" },
+      body: "",
+      data: { title: "Bench" },
+      id: "bench-operations",
+    } as unknown as ContentLoaderEntry;
+    const { documents } = emitRouted([entry]);
+    expect(documents.map((d) => d.url)).toEqual([
+      "/kb/frappe/bench-operations/",
+      "/kb/frappe/bench-operations/#backups",
+    ]);
+  });
+
+  test("an entry with no url, or a url that is not a site path, falls back to the older rule", () => {
+    const { documents } = emitRouted([
+      routed("plain", "/ignored", undefined, "a"),
+      routed("odd", "/ignored", "https://elsewhere.example/odd/", "b"),
+    ]);
+    expect(documents.map((d) => d.url)).toEqual(["/docs/plain/", "/docs/odd/"]);
+  });
+});

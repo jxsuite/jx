@@ -41,6 +41,8 @@ Per collection:
 | `sections`     | `true`                         | Also index one document per heading, with `#anchor` deep links |
 | `sectionDepth` | `3`                            | Deepest heading level that gets its own section document       |
 
+An entry of a content type that declares a [`route`](/docs/framework/site/content-collections#ids-and-routes) is indexed at its own route, so `basePath` only places the entries that have none. The index also sees the collection exactly as the build does: files the content type's `exclude` or `where` leave out are not in it, and neither are entries without a route that the build could not generate a page for.
+
 Top-level: `output` (default `/search-index.json`) sets where the index is written; `engine` is `minisearch` (the only engine today; the field exists so future engines slot in without reshaping the section).
 
 `bunx jx build` then emits the index into `dist/` alongside your pages. The index holds two kinds of documents per entry: the whole page, and one per heading section, so a query can land on "the _Assets_ section of _Site architecture_" rather than just the page.

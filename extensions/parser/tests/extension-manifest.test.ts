@@ -118,6 +118,43 @@ describe("project fragment", () => {
     expect(validate(section)).toBe(true);
   });
 
+  test("declares the options a new content type needs first, then the vault options", () => {
+    /* Studio's Content Types form renders a type's options in the order the schema declares them,
+       so the order is user-facing: the four every type has stay where they were, and the options
+       for publishing a folder of notes come after them. Alphabetical order once pushed `schema`,
+       the one field a first-time author edits, below the fold of the tutorial's screenshots. */
+    const types = (fragment.properties as Record<string, { additionalProperties: unknown }>)
+      .content!.additionalProperties as { properties: Record<string, unknown> };
+    expect(Object.keys(types.properties)).toEqual([
+      "$elements",
+      "format",
+      "schema",
+      "source",
+      "exclude",
+      "where",
+      "idField",
+      "route",
+      "indexRoute",
+      "links",
+      "alerts",
+    ]);
+  });
+
+  test("accepts the whole alerts option as a boolean and a where filter with a literal object", () => {
+    const validate = makeAjv().compile(fragment);
+    const type = (extra: Record<string, unknown>) => ({
+      content: { kb: { format: "Markdown", source: "./kb", ...extra } },
+    });
+    expect(validate(type({ alerts: false }))).toBe(true);
+    expect(validate(type({ alerts: true }))).toBe(true);
+    expect(validate(type({ alerts: { NOTE: "doc-note", INFO: true } }))).toBe(true);
+    expect(validate(type({ alerts: "yes" }))).toBe(false);
+    expect(validate(type({ where: { meta: { a: 1 } } }))).toBe(true);
+    expect(validate(type({ where: { status: { $ne: "draft" } } }))).toBe(true);
+    expect(validate(type({ where: { $or: [] } }))).toBe(false);
+    expect(validate(type({ where: { status: { $regex: "x" } } }))).toBe(false);
+  });
+
   test("rejects malformed entries and field schemas", () => {
     const validate = makeAjv().compile(fragment);
     expect(validate({ content: { posts: 42 } })).toBe(false);

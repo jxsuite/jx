@@ -59,6 +59,10 @@ Together the two **partition** the entry, which is the point. Emitting the full 
 This generalizes to any `emit` implementation: what an emitter writes is downloaded and parsed by a visitor, so emitting the same content twice costs them twice.
 :::
 
+### Which entries, and where
+
+The index is built from the loaded collection, so it holds exactly what the build holds: the parser leaves out files a content type's `exclude` names and entries its `where` rejects before anything else reads them, and the index never sees them. An entry's URL is its `_meta.url` when the content type declares a `route` (parser.md §9.5), so the index points at the page the build generated, and `basePath` plus the id is the fallback for an entry with none.
+
 ### Opting a page out
 
 An entry whose frontmatter says `search: false` contributes nothing: no page document and no section documents, because a page that should not be found by its title should not be found by its headings either. The index is otherwise a pure function of the collection, and this is the one lever a single page has. jxsuite.com uses it for the three reference pages derived from its specs (the spec changelog alone was 6.4% of the index), which stay published, routed and in the sidebar; the key removes an entry from the index and from nothing else.

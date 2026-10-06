@@ -1,11 +1,11 @@
 /**
  * Jx Markdown Transpiler — Browser-safe module
  *
- * Exports only the transpiler functions that work in browser environments
- * (no node:fs, node:path, or glob dependencies).
+ * Exports only the transpiler functions that work in browser environments (no node:fs, node:path,
+ * or glob dependencies).
  *
- * Use `@jxsuite/parser/transpile` to import in browser contexts (e.g. studio).
- * Use `@jxsuite/parser` for the full parser including MarkdownFile/MarkdownCollection.
+ * Use `@jxsuite/parser/transpile` to import in browser contexts (e.g. studio). Use
+ * `@jxsuite/parser` for the full parser including MarkdownFile/MarkdownCollection.
  *
  * @module @jxsuite/parser/transpile
  * @license MIT
@@ -18,6 +18,8 @@ import remarkParseFrontmatter from "remark-parse-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
+import { ALERT_NODE, DEFAULT_ALERT_TITLES, inlineText } from "./alerts.ts";
+import type { AlertNode } from "./alerts.ts";
 import type { MdastNode, UnifiedProcessor } from "./types.ts";
 import type {
   JsonValue,
@@ -389,6 +391,10 @@ export function mdastNodeToJx(node: MdastNode) {
     return directiveToJx(node);
   }
 
+  if (node.type === ALERT_NODE) {
+    return alertToJx(node as AlertNode);
+  }
+
   if (node.type === "text") {
     return node.value ?? null;
   }
@@ -514,6 +520,56 @@ export function mdastNodeToJx(node: MdastNode) {
   }
 
   return el;
+}
+
+/**
+ * Convert an alert (`> [!NOTE]`, rewritten by `transformAlerts` before conversion) to a Jx element.
+ *
+ * Two shapes, chosen by the content type's `alerts` option. A type mapped to an element renders as
+ * exactly what `:::that-element` would have produced, with the alert type at `data-alert` and any
+ * author title at `data-title`, so the component owns its own look and its own title. A type with
+ * no mapping gets built-in markup that stands alone: a `div` with `role="note"` whose first child
+ * is a visible title paragraph, and class hooks (`jx-alert`, `jx-alert-<type>`, `jx-alert-title`)
+ * for the page's stylesheet. The title is a `p`, not a heading, so a callout never lands in the
+ * table of contents or in the search index's section list.
+ *
+ * @param {AlertNode} node
+ * @returns {JxElement}
+ */
+function alertToJx(node: AlertNode): JxElement {
+  const body = convertChildren(node.children ?? []);
+
+  if (node.element) {
+    const attributes: Record<string, JxAttributeValue> = { "data-alert": node.alert };
+    if (node.titleNodes) {
+      attributes["data-title"] = inlineText(node.titleNodes).trim();
+    }
+    const el: JxElement = { attributes, tagName: node.element };
+    if (body.length > 0) {
+      el.children = body;
+    }
+    return el;
+  }
+
+  const title: JxElement = { className: "jx-alert-title", tagName: "p" };
+  if (node.titleNodes) {
+    const inline = convertChildren(node.titleNodes);
+    if (inline.length === 1 && typeof inline[0] === "string") {
+      [title.textContent] = inline;
+    } else {
+      title.children = inline;
+    }
+  } else {
+    title.textContent =
+      DEFAULT_ALERT_TITLES[node.alert] ??
+      `${node.alert.charAt(0).toUpperCase()}${node.alert.slice(1)}`;
+  }
+  return {
+    attributes: { "data-alert": node.alert, role: "note" },
+    children: [title, ...body],
+    className: `jx-alert jx-alert-${node.alert}`,
+    tagName: "div",
+  };
 }
 
 /**

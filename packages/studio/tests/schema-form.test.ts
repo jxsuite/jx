@@ -381,6 +381,21 @@ describe("form dispatch", () => {
     expect(m.patches).toEqual([{ tags: ["a", "b"] }]);
   });
 
+  test("a union with an object in it is edited as JSON, so false and a map both commit as what they are", async () => {
+    const m = await mountForm(
+      { properties: { alerts: { type: ["object", "boolean"] } } },
+      { alerts: { NOTE: "doc-note" } },
+    );
+    expect((control(m, "alerts", "json-text") as HTMLTextAreaElement).value).toContain(
+      '"NOTE": "doc-note"',
+    );
+    type(control(m, "alerts", "json-text"), "false");
+    await settle(560);
+    type(control(m, "alerts", "json-text"), '{"INFO":true}');
+    await settle(560);
+    expect(m.patches).toEqual([{ alerts: false }, { alerts: { INFO: true } }]);
+  });
+
   test("a json-schema field names the shape it holds and commits parsed JSON", async () => {
     const m = await mountForm(
       { properties: { shape: { format: "json-schema", type: "object" } } },

@@ -115,14 +115,17 @@
               "properties": {
                 "data": { "type": "object" },
                 "projectConfig": { "type": "object" },
-                "root": { "type": "string" }
+                "root": { "type": "string" },
+                "locale": { "type": ["string", "null"] },
+                "urlPattern": { "type": "string" },
+                "params": { "type": "array", "items": { "type": "string" } }
               }
             },
-            "description": "Host context: { data, projectConfig, root } where data is the projectData result"
+            "description": "Host context: { data, projectConfig, root, locale, urlPattern, params } where data is the projectData result and urlPattern/params describe the dynamic page being expanded"
           }
         ],
         "returnType": { "$ref": "#/$defs/returnTypes/PathEntries" },
-        "description": "Expand a content-type $paths source into one route-param object per entry (param defaults to \"slug\", field to \"id\")"
+        "description": "Expand a content-type $paths source into one route-param object per entry (param defaults to \"slug\", field to \"id\"); a content type with a route and no param or field derives each entry's parameters from the page's own URL pattern"
       },
       "assets": {
         "role": "assets",

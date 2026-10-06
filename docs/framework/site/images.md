@@ -119,7 +119,7 @@ In pages, layouts, and components, image paths resolve against the **site root**
 ![A diagram](./images/diagram.png)
 ```
 
-A relative reference in an entry is remapped to the collection's own URL, so `content/blog/images/diagram.png` becomes `/content/blog/images/diagram.png`, and the build copies the file there. See [Content collections](/docs/framework/site/content-collections).
+A relative reference in an entry is remapped to the collection's own URL, so `content/blog/images/diagram.png` becomes `/content/blog/images/diagram.png`, and the build copies the file there. A collection that declares `exclude`, `where` or `route` does not publish through that URL what its own rules leave out: an excluded file, a hidden file such as `.env` and a Markdown document are neither remapped nor copied, even when a page names `/content/<type>/...` directly. See [Content collections](/docs/framework/site/content-collections).
 
 ## Per-image overrides
 
