@@ -858,6 +858,26 @@ export interface ContentLoaderEntry {
     /** Authored text of a field the date-coercion pass rewrote, keyed by field name. */
     rawDates?: Record<string, unknown>;
     /**
+     * The entry's source file, relative to its content type's source directory, `/`-separated and
+     * with its extension (`Frappe/Bench Operations.md`). Stamped by the content loader for every
+     * entry it reads from a directory, so a message or an "edit this page" link can name the file
+     * an entry came from.
+     */
+    path?: string;
+    /**
+     * The entry's route: the site-absolute path its content type's `route` template gives it,
+     * without a locale prefix or a trailing slash (`/kb/frappe/bench-operations`). Present only
+     * when the content type declares a `route`. Everything that needs a URL for the entry (links
+     * between entries, `$paths`, search, feeds) reads this, so they cannot disagree.
+     */
+    route?: string;
+    /**
+     * The entry's URL as a link target: {@link route} percent-encoded, with the locale prefix of a
+     * `{locale}` collection and the site's `build.trailingSlash` applied
+     * (`/kb/frappe/bench-operations/`).
+     */
+    url?: string;
+    /**
      * The locale this entry was loaded for, set only when its content type's `source` carried a
      * `{locale}` placeholder. It is what lets a `[slug]` route under `/fr/` expand the French
      * entries and not the English ones — without it, two translations of one post share an id and
