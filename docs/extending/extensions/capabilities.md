@@ -53,22 +53,22 @@ To find and invoke a capability, a host scans `$defs.methods` for the `role`, ta
 
 ## The roles
 
-| Role             | Block       | Signature                                                                   | Consumers                                                   |
-| ---------------- | ----------- | --------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `parse`          | `format`    | `(source, options?) → JxDocument`                                           | compiler, server, Studio (open file)                        |
-| `serialize`      | `format`    | `(doc, options?) → string`                                                  | Studio (save), site build (export sidecars)                 |
-| `discover`       | `format`    | `(source, { baseDir }) → string[]`                                          | content loading (list entry files)                          |
-| `load`           | `format`    | `(path, { schema, directiveOptions }) → ContentLoaderEntry[]`               | content loading (parse one source)                          |
-| `projectData`    | `project`   | `(sectionValue, { projectConfig, root, registry, io }) → unknown`           | site build, dev server (result stored as `_project[<key>]`) |
-| `resolvePaths`   | `project`   | `(pathsDef, { data, projectConfig, root }) → Record<string, unknown>[]`     | pages discovery (`$paths` expansion), Studio preview        |
-| `lower`          | any         | `(def, context) → JxStateDefinition`                                        | compiler (rewrites a state def into a core shape)           |
-| `emit`           | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`    | site build (writes derived assets into the build output)    |
-| `assets`         | `project`   | `(sectionValue, { projectConfig, root }) → AssetMount[]`                    | site build, dev server (publishes directories at site URLs) |
-| `mount`          | `server`    | `(options, ctx) → (request, env) => Promise<Response>`                      | generated site worker, dev server                           |
-| `dialect`        | `connector` | `(connection, env) → Kysely Dialect`                                        | data mounts, auth, deploy                                   |
-| `deploySchema`   | `connector` | `(tables, connection, { env, dryRun }) → { statements, applied, warnings }` | `jx db push`, Studio push                                   |
-| `bindings`       | `connector` | `(connection) → wrangler config fragment`                                   | scaffolding, `jx db push`                                   |
-| `testConnection` | `connector` | `(connection, env) → { ok, error? }`                                        | Studio connections UI, CLI                                  |
+| Role             | Block       | Signature                                                                                             | Consumers                                                   |
+| ---------------- | ----------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `parse`          | `format`    | `(source, options?) → JxDocument`                                                                     | compiler, server, Studio (open file)                        |
+| `serialize`      | `format`    | `(doc, options?) → string`                                                                            | Studio (save), site build (export sidecars)                 |
+| `discover`       | `format`    | `(source, { baseDir }) → string[]`                                                                    | content loading (list entry files)                          |
+| `load`           | `format`    | `(path, { schema, directiveOptions }) → ContentLoaderEntry[]`                                         | content loading (parse one source)                          |
+| `projectData`    | `project`   | `(sectionValue, { projectConfig, root, registry, io }) → unknown`                                     | site build, dev server (result stored as `_project[<key>]`) |
+| `resolvePaths`   | `project`   | `(pathsDef, { data, projectConfig, root, urlPattern, params, patterns }) → Record<string, unknown>[]` | pages discovery (`$paths` expansion), Studio preview        |
+| `lower`          | any         | `(def, context) → JxStateDefinition`                                                                  | compiler (rewrites a state def into a core shape)           |
+| `emit`           | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`                              | site build (writes derived assets into the build output)    |
+| `assets`         | `project`   | `(sectionValue, { projectConfig, root }) → AssetMount[]`                                              | site build, dev server (publishes directories at site URLs) |
+| `mount`          | `server`    | `(options, ctx) → (request, env) => Promise<Response>`                                                | generated site worker, dev server                           |
+| `dialect`        | `connector` | `(connection, env) → Kysely Dialect`                                                                  | data mounts, auth, deploy                                   |
+| `deploySchema`   | `connector` | `(tables, connection, { env, dryRun }) → { statements, applied, warnings }`                           | `jx db push`, Studio push                                   |
+| `bindings`       | `connector` | `(connection) → wrangler config fragment`                                                             | scaffolding, `jx db push`                                   |
+| `testConnection` | `connector` | `(connection, env) → { ok, error? }`                                                                  | Studio connections UI, CLI                                  |
 
 `resolvePaths` methods additionally declare a `discriminator`, the `$paths` key that routes to them. The parser's is `contentType`, so a page with `"$paths": { "contentType": "blog" }` dispatches to `Content.resolvePaths`. Hosts dispatch purely on which discriminator key is present in the `$paths` value; two extensions can coexist without either knowing the other's shape.
 
@@ -145,6 +145,8 @@ A page authored with `{ "$prototype": "TableQuery", "table": "posts", "timing": 
 ```
 
 Each returned pair is an **asset mount**: `{ "urlPrefix": "/content/blog", "dir": "/abs/path/to/content/blog" }`. The parser returns one per content type with a directory source, which is what lets a Markdown entry reference `./images/hero.png` and still resolve everywhere.
+
+A mount may also carry a `filter(path)`, asked with a file's path relative to `dir`, that says whether the mount serves it. The parser sets one on a content type that declares `exclude`, `where` or `route`, so an excluded folder, a hidden file or a Markdown document is never reachable through the mount, however a page names it. Hosts get this for free through `assetUrlFor` and `resolveAssetUrl`. A filter is a function, so it exists where the mount was declared and does not survive a serialized copy.
 
 Hosts do three things with a mount, and your extension writes none of them:
 

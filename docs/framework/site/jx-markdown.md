@@ -176,7 +176,7 @@ A blockquote that starts with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` 
 > Restore into a scratch site first.
 ```
 
-Text after the marker on the same line is the callout's title (Obsidian's form; GitHub shows it as plain text), and with none the title is the type's name. Callouts nest inside lists and inside each other, and the marker is matched without regard to case. An ordinary blockquote, and one with a type nobody has configured, stays a blockquote.
+Text after the marker on the same line is the callout's title (Obsidian's form; GitHub shows it as plain text), and with none the title is the type's name. Callouts nest inside lists and inside each other, and the marker is matched without regard to case. A file saved with Windows line endings reads the same as one with Unix endings. An ordinary blockquote stays a blockquote, and so does one whose type nobody has enabled: the load prints a warning that names the file and the type, because the literal `[!info]` on the page is otherwise the only clue.
 
 Without configuration a callout renders as a `div` with `role="note"` and the classes `jx-alert` and `jx-alert-note` (or `-tip`, and so on), whose first child is a visible `p.jx-alert-title`. It carries no styles, so your stylesheet decides what it looks like. The title is a paragraph rather than a heading, so a callout never appears in the table of contents or the search index's section list.
 
@@ -194,7 +194,9 @@ A content type's `alerts` option swaps in your own components, the same ones `::
 }
 ```
 
-A mapped type renders as that element with the alert type at `data-alert` and any author title at `data-title`; types you leave out keep the built-in markup. Map a type to `null` or `false` to leave it a plain blockquote, or to `true` to switch on a type beyond GitHub's five (`"INFO": true`) with the built-in markup. The element still has to be registered where the pages render, as it is for a directive.
+A mapped type renders as that element with the alert type at `data-alert` and any author title at `data-title`; types you leave out keep the built-in markup. Map a type to `null` or `false` to leave it a plain blockquote, or to `true` to switch on a type beyond GitHub's five (`"INFO": true`) with the built-in markup, which is how Obsidian's extra types (`info`, `example`, `faq`) are enabled. `"alerts": false` turns callouts off for the whole content type. The element still has to be registered where the pages render, as it is for a directive.
+
+The built-in titles are English (`Note`, `Warning`). A localized site gives a callout its own title (`> [!WARNING] Attention`) or maps the types onto components that translate them.
 
 :::doc-note
 Callouts are a content-loading feature. Studio's canvas opens a `.md` file through the component parser, which keeps the blockquote exactly as you wrote it, so the callout appears on the built site and in previews that build, not in the canvas. The file on disk is never changed.

@@ -126,7 +126,7 @@ Enable the parser and search extensions, then describe the collection in `Sites/
 
 These options do the work that would otherwise need a script:
 
-- `exclude` keeps whole folders and single files out. The private `internal/` notes, the website project itself, the style guide, the vault's root README and Obsidian's own `.obsidian` folder are never read, so none of them can be validated, routed, linked or searched.
+- `exclude` keeps whole folders and single files out. The private `internal/` notes, the website project itself, the style guide, the vault's root README and Obsidian's own `.obsidian` folder are never read, so none of them can be validated, routed, linked or searched, and a published note cannot pull one into the site by referring to it either. Add Obsidian's templates folder here too: a template with placeholder frontmatter is a note that fails to load.
 - `where` publishes only documents with `publish: true` that are not drafts. A note without those keys is out, which is the safe default for a vault.
 - `route` gives each document its URL from its own frontmatter. `{category:slug}` turns `Git & Dev Tools` into `git-and-dev-tools`, and `indexRoute` sends each folder's `README.md` to the folder's own page.
 - `schema` still validates what is published, and only that.
@@ -206,7 +206,7 @@ The folders are not part of the URL. The category comes from frontmatter, so mov
 
 `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]` render as accessible callouts: a `div` with `role="note"`, a visible title, and `jx-alert-*` classes for your stylesheet. A title after the marker, as in `> [!TIP] Faster restores`, replaces the default one, and callouts work inside list items.
 
-If your site already has callout components, map the types onto them with `"alerts": { "NOTE": "doc-note", "TIP": "doc-tip", "WARNING": "doc-warning" }` in the content type. See [Callouts](/docs/framework/site/jx-markdown#callouts) for the details.
+If your site already has callout components, map the types onto them with `"alerts": { "NOTE": "doc-note", "TIP": "doc-tip", "WARNING": "doc-warning" }` in the content type. Obsidian's other callout types (`[!info]`, `[!example]`, `[!faq]`) are not enabled until you say so with `"alerts": { "INFO": true }`; until then they stay blockquotes and the build names each one. See [Callouts](/docs/framework/site/jx-markdown#callouts) for the details.
 
 ## Links between notes
 
@@ -223,7 +223,7 @@ That is the right default while you write, because an unpublished note should no
 
 ## Code
 
-Fences are highlighted at build time with light and dark colors. Besides the web languages, the set covers what a notes vault tends to contain: `sql`, `php`, `python`, `ruby`, `nix`, `nginx`, `caddyfile`, `toml`, `ini`, `diff`, `xml` and `dockerfile`. A fence with no language, or `text`, stays plain. Braces in code are left alone: `{{ doc.name }}`, `${first}` and `${{ secrets.TOKEN }}` come out exactly as written, because a Markdown body is never evaluated as a template.
+Fences are highlighted at build time with light and dark colors. Besides the web languages, the set covers what a notes vault tends to contain: `sql`, `php`, `python`, `ruby`, `nix`, `nginx`, `caddyfile`, `toml`, `ini`, `diff`, `xml` and `dockerfile`. A fence with no language, or `text`, stays plain. Braces in code are left alone: `{{ doc.name }}`, `${first}` and `${{ secrets.TOKEN }}` come out exactly as written, because the text of a note is never evaluated as a template.
 
 ## Check the build
 
@@ -234,13 +234,15 @@ Run `jx build` and read three things:
 - `dist/search-index.json`. It lists the same pages, at the same URLs.
 
 :::doc-note
-A vault of Markdown can contain text that looks like something else. Jx never evaluates a code fence, and `where` and `exclude` take no code, only data, so nothing in a note is executed by the build.
+A vault of Markdown can contain text that looks like something else. Jx never evaluates the text of a note: a code fence, a heading or a paragraph that contains `${` stays exactly as written, and so do image descriptions, link titles and callout titles. A link's own `href` is the one place a template is still read, because a link target may legitimately name state. `where` and `exclude` take no code, only data.
 :::
 
 ## What is not supported
 
+- A link to an attachment (`[report](files/report.pdf)`) is published with the note that links it: the file is copied to `/content/kb/files/report.pdf` and the link points there, the same way an image does. An attachment the type excludes, or a folder with no `README.md` or `index.md`, is reported like any other broken link and shown as text. A hidden file (a name starting with a dot) and a Markdown document are never served as attachments.
 - Obsidian wikilinks (`[[Note]]`) and embeds (`![[Note]]`) are plain text to the parser. Turn off **Use [[Wikilinks]]** in the vault's Files and Links settings so links are written as Markdown links.
 - A foldable callout (`> [!NOTE]-`) is shown open. Plugin syntax such as Dataview blocks is not interpreted.
+- A symlink inside the vault is followed wherever it points, so a folder linked in from elsewhere publishes with the rest. That is trusted input, like every other file in the source: only commit links you would commit files for. A link back into a folder the walk is already inside is skipped.
 - Studio's canvas shows callouts and relative links as written, because it opens a file through the component parser. The built site and build previews show them rendered.
 - A link whose file name differs from the real one only by case resolves when exactly one file matches, so a vault written on a case-insensitive filesystem still publishes from a Linux CI runner. Two files that differ only by case make such a link ambiguous and it is reported.
 

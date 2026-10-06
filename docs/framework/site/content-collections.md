@@ -56,7 +56,9 @@ Each definition takes these keys, and only `source` is usually needed:
 - **`exclude`** and **`where`**: which files are entries at all. See [Choosing which files are entries](#choosing-which-files-are-entries).
 - **`idField`**, **`route`** and **`indexRoute`**: what each entry is called and where it lives. See [Ids and routes](#ids-and-routes).
 - **`links`**: how a relative link to an entry with no page is reported. See [Links between entries](#links-between-entries).
-- **`alerts`**: which component renders a `> [!NOTE]` callout. See [Callouts](/docs/framework/site/jx-markdown#callouts).
+- **`alerts`**: which component renders a `> [!NOTE]` callout, or `false` for none. See [Callouts](/docs/framework/site/jx-markdown#callouts).
+
+An option name that is one typo away from a real one (`excludes`, `wher`, `idfield`) is a build error that names the one you meant, because these options keep things out of a site and a filter that is silently ignored publishes what it was written to hide. A key that resembles no option is ignored, with a warning.
 
 ## Entry ids
 
@@ -87,17 +89,20 @@ By default every file under the source is an entry. Two options narrow that, and
 
 **`exclude`** is a list of glob patterns, relative to the source folder, for files that are never read.
 
-| Pattern              | Excludes                                          |
-| -------------------- | ------------------------------------------------- |
-| `STYLE.md`           | that file at the source root only                 |
-| `**/README.md`       | every `README.md`, at any depth                   |
-| `internal/**`        | everything below `internal/`, however deep        |
-| `drafts/`            | the same as `drafts/**`                           |
-| `.*/**`              | every dot folder at the root, such as `.obsidian` |
-| `**/node_modules/**` | a `node_modules` folder anywhere                  |
-| `{notes,scratch}/**` | either folder                                     |
+| Pattern              | Excludes                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `STYLE.md`           | that file at the source root only                                                    |
+| `**/README.md`       | every `README.md`, at any depth                                                      |
+| `internal/**`        | everything below `internal/`, however deep                                           |
+| `drafts/`            | the same as `drafts/**`                                                              |
+| `.*/**`              | every dot folder at the root, such as `.obsidian`                                    |
+| `**/node_modules/**` | a `node_modules` folder anywhere                                                     |
+| `{notes,scratch}/**` | either folder                                                                        |
+| `internal`           | the folder `internal` (a bare name with no extension) as well as a file of that name |
 
-`*` and `?` stop at a slash, `**` crosses folders, and a dotfile is an ordinary file, so a pattern that should skip `.obsidian` says so. A folder that a pattern excludes whole is never opened, which keeps a vault that sits next to a website's `node_modules` quick to build. Patterns cannot be negated (`!keep.md` is an error).
+`*` and `?` stop at a slash, `**` crosses folders, and a dotfile is an ordinary file, so a pattern that should skip `.obsidian` says so. A folder that a pattern excludes whole is never opened, which keeps a vault that sits next to a website's `node_modules` quick to build. Patterns cannot be negated (`!keep.md` is an error), cannot climb out of the source (`../x` is an error), and a pattern with an unclosed `{` or an invalid `[...]` class is an error that names the pattern. A segment may carry at most four `*` wildcards.
+
+Excluded files are not served either. A directory source is also published at `/content/<type>` so that images and downloads beside the notes have a URL, and a type that declares `exclude`, `where` or `route` serves nothing that `exclude` names, nothing whose path has a dot segment (`.git`, `.env`, `.obsidian`) and no Markdown document. A note that refers to one of those gets a warning and the reference stays as written, so a published note cannot pull a private file into the site.
 
 **`where`** keeps only the entries whose frontmatter passes. Every key is a frontmatter field, keys combine with AND, and a value is either a literal to equal or an operator object.
 
@@ -110,15 +115,17 @@ By default every file under the source is an entry. Two options narrow that, and
 | `{ "$exists": true }`             | is set (an empty YAML key counts as not set)                       |
 | `{ "$gte": "2026-01-01" }`        | is at or after a date, number or string (`$gt`, `$lt`, `$lte` too) |
 
-A plain value also matches an array that contains it, so `{ "tags": "frappe" }` keeps every entry tagged `frappe`. A dotted key such as `meta.public` reaches into nested data. There is no OR: a site that needs "either" declares two content types. An operator the filter does not know is a build error that names the key, and so is a malformed pattern, so a typo never quietly publishes everything or nothing.
+A plain value also matches an array that contains it, so `{ "tags": "frappe" }` keeps every entry tagged `frappe`. A dotted key such as `meta.public` reaches into nested data. A value that is an array, or an object with no `$` keys, is compared whole. There is no OR: a site that needs "either" declares two content types. An operator the filter does not know is a build error that names the key, and so is a malformed pattern. A filter that removes every entry, or an `exclude` that leaves no file at all, prints a warning, so a mistake in the filter does not publish an empty site without a word.
 
-An entry that fails `where`, and a file that matches `exclude`, are gone for every consumer at once: they are not validated, so their missing frontmatter never warns, and they never appear in `ContentCollection` or `ContentEntry` results, `$paths` expansion, the sitemap, the [search index](/docs/framework/site/search), a [feed](/docs/framework/site/feeds), or a [relationship](/docs/framework/site/relationships). Files are read in sorted order (by name, folder by folder), so a collection loads in the same order on every machine.
+`where` is not the `filter` of a `ContentCollection`. `where` runs once, when the collection loads, and decides what exists; `filter` runs on a page and chooses among what exists, with the rule form `{ "field": "tags", "op": "contains", "value": "frappe" }` or the shorthand `{ "category": "Frappe" }`. The two differ on arrays on purpose: `where: { "tags": "frappe" }` matches an entry whose `tags` array contains `frappe`, while the shorthand `filter` compares with `==`, which an array never equals, so use the `contains` op to match inside an array on a page.
+
+An entry that fails `where`, and a file that matches `exclude`, are gone for every consumer at once: they are not validated, so their missing frontmatter never warns, and they never appear in `ContentCollection` or `ContentEntry` results, `$paths` expansion, the sitemap, the [search index](/docs/framework/site/search), a [feed](/docs/framework/site/feeds), or a [relationship](/docs/framework/site/relationships). Files are read in sorted order (by name, folder by folder), so a collection loads in the same order on every machine. A symlinked folder is followed, as it always was, so a monorepo can mount shared documentation into a collection; a link back into a folder the walk is already inside is skipped. Symlinks in a source are trusted like any other file in it. A file that cannot be read, such as one with invalid YAML frontmatter, fails the build with its path, and `exclude` is how a folder of templates stays out.
 
 ## Ids and routes
 
 Two more options say what an entry is called and where it lives.
 
-**`idField`** takes a frontmatter field name and uses its value as the id: `"idField": "slug"` makes `slug: bench-operations` the id of that entry. An entry without the field keeps its path id and a warning says so. Two entries with the same id are reported with both file names, because a lookup by id finds only the first.
+**`idField`** takes a frontmatter field name and uses its value as the id: `"idField": "slug"` makes `slug: bench-operations` the id of that entry. An entry without the field keeps its path id and a warning says so, and so does one whose value could not be a folder name (`../../x`, or a backslash). Two entries with the same id are reported with both file names, because a lookup by id finds only the first. A folder holding both a `README.md` and an `index.md` gives the folder's id to the `index.md`, as it always had, and the README keeps `Folder/README`.
 
 **`route`** is a template for the entry's URL (`indexRoute`, below, is its counterpart for a folder's README). It is the one place that URL is decided, and the pages `$paths` generates, the links between entries, the sitemap, the search index and feeds all read it.
 
@@ -133,7 +140,7 @@ Two more options say what an entry is called and where it lives.
 | `{file}`                       | the file name without its extension                           |
 | `{category}`, `{meta.section}` | a frontmatter field (dotted paths reach into nested data)     |
 
-A transform follows a colon and they chain: `{category:slug}`, `{title:lower}`. `slug` lowercases, folds accents, reads `&` as "and" (so `Git & Dev Tools` becomes `git-and-dev-tools`), drops apostrophes, turns other punctuation into single hyphens, and keeps letters of every script. `lower`, `upper` and `raw` (no change) are the others. A value that cannot be turned into a path segment, such as a missing field, leaves the entry without a route and a warning names the file; so does an entry whose route another entry already holds, and the first one wins. Whether the built URL ends in a slash follows `build.trailingSlash`, whatever the template ends with.
+A transform follows a colon and they chain: `{category:slug}`, `{title:lower}`. `slug` lowercases, folds accents, reads `&` as "and" (so `Git & Dev Tools` becomes `git-and-dev-tools`), drops apostrophes, turns other punctuation into single hyphens, and keeps letters of every script. `lower`, `upper` and `raw` (no change) are the others. A value that cannot be turned into a path segment, such as a missing field, or one holding `.`, `..`, a backslash, `?`, `#` or `%` under the `raw` transform, leaves the entry without a route and a warning names the file; so does an entry whose route another entry already holds, and the first one wins. When more than three entries fail for the same reason (a placeholder naming a field no note has), one line gives the reason, the count and a few files. An entry with no route is left out of the collection, so the sitemap, the search index, a feed and every listing agree on the same set of pages. Whether the built URL ends in a slash follows `build.trailingSlash`, whatever the template ends with.
 
 A folder's `README.md` or `index.md` stands for the folder, and `indexRoute` says where it goes:
 
@@ -153,7 +160,7 @@ With a `route`, a dynamic page needs no parameter name. The compiler hands the p
 }
 ```
 
-That page can be `pages/kb/[...path].json`, which serves every route under `/kb/`, or `pages/kb/[category]/[slug].json` plus `pages/kb/[category].json` for articles and section pages. A `ContentEntry` with no `id` is bound to the entry whose route is the page's own URL. Name `param` or `field` in `$paths` and you get the older meaning instead: one parameter, valued by the id or that field.
+That page can be `pages/kb/[...path].json`, which serves every route under `/kb/`, or `pages/kb/[category]/[slug].json` plus `pages/kb/[category].json` for articles and section pages. A route that no dynamic page of the project produces (a `route` of `/kb/{id:slug}/` with only a `[category]/[slug]` page, so the entries at other depths have no page) is reported once, with a few of the routes, because links to those entries were rewritten to them. A `ContentEntry` with no `id` is bound to the entry whose route is the page's own URL. Name `param` or `field` in `$paths` and you get the older meaning instead: one parameter, valued by the id or that field.
 
 Each entry also carries what the loader worked out: `_meta.path` is its file relative to the source, and, when there is a route, `_meta.route` and `_meta.url` are its path and its link target (`/kb/frappe/bench-operations/`). A listing page links to an entry with `${item._meta.url}`.
 
@@ -164,14 +171,15 @@ A document written for an editor links to its neighbours by file: `[Swap](../Lin
 - The path is resolved from the entry's own folder, with `%20` and other escapes decoded and `..` followed, and it never leaves the source folder: a link that climbs out of it is not rewritten and is reported.
 - A link to a folder (`../Frappe/`) goes to that folder's `README.md` or `index.md`.
 - A `?query` is kept, and a `#fragment` becomes the heading id the page carries, so `Note.md#Heading%20Text` (Obsidian's spelling) and `#heading-text` both land on the heading. A `#Heading%20Text` link within the same page is fixed the same way.
-- External links, `mailto:` and `tel:` links, absolute paths and links to anything that is not an entry, such as an image or a PDF, are left exactly as written.
-- A link to an entry that is excluded, filtered out, has no route, or does not exist is shown as plain text, so the site never publishes a dead link, and the build names the file and the target.
+- External links, `mailto:` and `tel:` links and absolute paths are left exactly as written.
+- A link to a file that is not an entry, such as a PDF, is followed to the URL the collection publishes it at (`/content/<type>/files/report.pdf`), the same remap an image's `src` gets. A link to a folder with no README or index, and one to an attachment the type does not publish, is shown as plain text and reported.
+- A link to an entry that is excluded, filtered out, has no route, or does not exist is shown as plain text, so the site never publishes a dead link, and the build names the file and the target. Names are compared in composed Unicode, so a link typed with a decomposed `é` finds a file saved with a composed one.
 
 ```text
 Content links: "kb": "Frappe/Bench Operations.md" links to "Draft%20Recipe.md", which is not published (left out by where.status); it renders as plain text.
 ```
 
-The `links` option sets how loud that is: `"warn"` (the default) prints each one, `"error"` fails the build with every broken link in one message, and `"ignore"` says nothing. The link is text in all three. Links are only rewritten when the type declares a `route`, so a collection without one behaves as it always did. [Obsidian vault as content](/docs/framework/site/obsidian-vault) walks through all of this on a real vault.
+The `links` option sets how loud that is: `"warn"` (the default) prints each one, `"error"` fails the build with every broken link in one message, and `"ignore"` says nothing. The link is text in all three. A `warn` build names the first 25 and counts the rest, so a cause that sits outside the links (a route template naming a missing field leaves every entry unrouted) does not bury itself. Links are only rewritten when the type declares a `route`, so a collection without one behaves as it always did. [Obsidian vault as content](/docs/framework/site/obsidian-vault) walks through all of this on a real vault.
 
 ## Media beside your content
 
@@ -183,7 +191,7 @@ Entries reference images the way any markdown editor expects, relative to the fi
 
 Keep the images in the collection directory (`content/blog/images/diagram.png`), and the entry reads correctly in VS Code, Obsidian, GitHub, and on the built site alike. When the collection loads, that reference is remapped to the collection's own URL, `/content/blog/images/diagram.png`, which the build copies into `dist/` and the dev server serves straight from the source file. It works even when the source lives outside the project, which is how these docs ship their screenshots from `docs/images/`.
 
-Only files an entry actually references are published; unreferenced siblings and the entry files themselves never reach `dist/`.
+Only files an entry actually references are published; unreferenced siblings and the entry files themselves never reach `dist/`. A type that declares `exclude`, `where` or `route` also refuses what its own rules leave out (see [Choosing which files are entries](#choosing-which-files-are-entries)), whichever way a page refers to it.
 
 :::doc-note
 Remapping applies to element `src`/`poster` values and to frontmatter fields your schema declares as `"format": "uri-reference"` (that's also what gives Studio a [media picker](/docs/studio/projects/media) for the field). A path that doesn't resolve to a real file beside the entry is left exactly as written, with a build warning naming the entry, so root-relative paths into `public/` keep working unchanged.
@@ -308,6 +316,16 @@ A schema field can reference another content type:
 ```
 
 An entry then stores the target's id (`author: jane-doe` in frontmatter), and loading resolves it to the full entry, so templates read `${state.post.data.author.data.name}`. Array fields whose `items` carry the `$ref` are to-many. Resolution rules, editing support, and modeling patterns are covered in [Relationships](/docs/framework/site/relationships).
+
+## Upgrading
+
+Three behaviors changed for a content type that declares none of the new options, because the old behavior lost data or contradicted itself. They are marked as a breaking change in the release notes.
+
+- **Callouts are on.** A blockquote that begins `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]` renders as a callout. To keep the old blockquote, set `"alerts": false` on the type.
+- **A `README.md` in a folder has the folder's id.** `docs/sub/README.md` is the entry `docs/sub`, as `docs/sub/index.md` always was, so its URL under a path-based route moves from `/docs/sub/README/` to `/docs/sub/`. A folder holding both keeps `index.md` as the folder and the README keeps `docs/sub/README`. A README directly in the source keeps the id `README`. Set `idField` to pin ids to a frontmatter field.
+- **`${...}` in Markdown text is text.** A fence that showed a template literal, a shell `${HOME}` or a `${{ secrets.X }}` used to be evaluated and lose the code. It is now left exactly as written, and so are image descriptions and callout titles. A link's `href` is still read as a template.
+
+Files are also discovered in sorted order now, so the first of two entries that claim one id or route is the same on every machine. Symlinked folders are still followed.
 
 ## Related
 
