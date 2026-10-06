@@ -334,6 +334,8 @@ A dynamic page must declare which paths it generates. This is done via a top-lev
 
 The compiler iterates `$paths` at build time, injecting each set of parameters into `$params` and compiling one HTML page per entry.
 
+**A content type that declares a `route`** (§6.1) needs no `param` or `field`: `{ "contentType": "kb" }` is the whole `$paths`. The compiler passes the page's own URL pattern and parameter names to the extension, and each entry's route is matched against that pattern, so one `$paths` serves `pages/kb/[...path].json`, `pages/kb/[category]/[slug].json` and `pages/kb/[category].json` alike, and every page is generated at the URL its entry's links point to. A `ContentEntry` with no `id` binds to the entry whose route is the page's URL. Naming `param` or `field` keeps the shape above. The contract is in [parser.md §9.5](./parser.md).
+
 ### 4.4 Route Priority
 
 > **Status: Partial.** Rules 1, 2 and 4 ship (`compareRoutes` in `packages/site/src/routes.ts`, the `_` exclusion in `packages/compiler/src/site/pages-discovery.ts`). Rule 3 holds only against a catch-all: two dynamic routes with no catch-all are ordered alphabetically, so `/:category/:id` sorts ahead of `/blog/:slug` and `matchRoute` answers `/blog/x` with it.
@@ -623,17 +625,32 @@ Collections are defined in the `content` key of `project.json`. Each key names a
 }
 ```
 
+A content type also takes `exclude` and `where` (which files are entries), `idField`, `route` and `indexRoute` (what each entry is called and where it lives), `links` (how a relative link to an entry with no page is reported) and `alerts` (how GitHub-style callouts render). They let a folder of Markdown written for an editor, an Obsidian vault for example, publish as it is, with no copy or export step:
+
+```json
+"kb": {
+  "source": "../..",
+  "format": "Markdown",
+  "exclude": ["internal/**", "Sites/**", "STYLE.md", ".*/**", "**/node_modules/**"],
+  "where": { "publish": true, "status": { "$ne": "draft" } },
+  "route": "/kb/{category:slug}/{slug}/",
+  "indexRoute": "/kb/{dir:slug}/"
+}
+```
+
+Excluded and filtered files are never routed, queried, linked to, searched or published, and a relative link between two entries resolves to the target's route. The contract is in [parser.md §9.4–§9.6](./parser.md).
+
 A collection whose `source` is a **directory** also publishes that directory at `/content/<type>` — the collection's asset mount ([extensions.md §8.5](./extensions.md)). Files sitting beside the entries (images, downloads) therefore have a stable site URL even when the source lives outside the project, and entries address them relative to themselves. See §9.3.
 
 ### 6.2 Collection Shapes
 
 `format` values are **format class names** provided by enabled extensions (§6.5) — `"json"` is the only native built-in. There is no YAML format class.
 
-| Format     | File Type                 | Entry ID                               | Notes                                                        |
-| ---------- | ------------------------- | -------------------------------------- | ------------------------------------------------------------ |
-| `Markdown` | Markdown with frontmatter | Filename (path-based for nested files) | Body parsed to Jx tree (`$children`); from `@jxsuite/parser` |
-| `json`     | JSON objects              | `id` field or filename                 | Native built-in — direct data access                         |
-| `Csv`      | CSV rows                  | Row index or ID column                 | From `@jxsuite/parser`; supports remote (`https`) sources    |
+| Format     | File Type                 | Entry ID                                                                             | Notes                                                        |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `Markdown` | Markdown with frontmatter | Filename (path-based for nested files; `README` stands for its folder, or `idField`) | Body parsed to Jx tree (`$children`); from `@jxsuite/parser` |
+| `json`     | JSON objects              | `id` field or filename                                                               | Native built-in — direct data access                         |
+| `Csv`      | CSV rows                  | Row index or ID column                                                               | From `@jxsuite/parser`; supports remote (`https`) sources    |
 
 ### 6.3 Schema Validation
 

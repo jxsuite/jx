@@ -292,22 +292,22 @@ Parameters are part of the value and carry meaning: `@jxsuite/parser` declares `
 
 Capabilities are declared in `$defs.methods` using well-known `role` values. All capability methods are `scope: "static"` — hosts call them on the implementation class without constructing an instance. The instance `resolve()` method remains the runtime's on-demand access path.
 
-| Role           | Block       | Signature                                                                   | Consumers                                                                          |
-| -------------- | ----------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `parse`        | `format`    | `(source, options?) → JxDocument \| ContentLoaderEntry[]`                   | compiler, server, studio (open file, convert a file)                               |
-| `serialize`    | `format`    | `(doc, options?) → string`                                                  | studio (save, create a file, convert a file), site build (export sidecars)         |
-| `rewrite`      | `format`    | `(source, edits) → string`                                                  | rename refactor (repair a reference inside a format that does not round-trip)      |
-| `discover`     | `format`    | `(source, { baseDir }) → string[]`                                          | content loading (list entry files)                                                 |
-| `load`         | `format`    | `(path, { schema, directiveOptions }) → ContentLoaderEntry[]`               | content loading (parse one source)                                                 |
-| `projectData`  | `project`   | `(sectionValue, { projectConfig, root, registry, io }) → unknown`           | compiler site build, dev server resolve — result stored as `_project[<key>]`       |
-| `resolvePaths` | `project`   | `(pathsDef, { data, projectConfig, root }) → Record<string, unknown>[]`     | pages discovery (`$paths` expansion), studio preview                               |
-| `lower`        | any         | `(def, context) → JxStateDefinition`                                        | compiler — rewrites a state def into a core shape for client output                |
-| `emit`         | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`    | compiler site build — writes derived assets into the build output (§8.4)           |
-| `assets`       | `project`   | `(sectionValue, { projectConfig, root }) → AssetMount[]`                    | compiler site build, dev server — publishes source directories at site URLs (§8.5) |
-| `mount`        | `server`    | `(options, ctx) → (request: Request, env) => Promise<Response>`             | generated site worker, dev server                                                  |
-| `dialect`      | `connector` | `(connection, env) → Kysely Dialect`                                        | data mounts, auth, deploy                                                          |
-| `deploySchema` | `connector` | `(tables, connection, { env, dryRun }) → { statements, applied, warnings }` | `jx db push`, studio push                                                          |
-| `bindings`     | `connector` | `(connection) → wrangler config fragment`                                   | scaffolding, `jx db push`                                                          |
+| Role           | Block       | Signature                                                                                           | Consumers                                                                          |
+| -------------- | ----------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `parse`        | `format`    | `(source, options?) → JxDocument \| ContentLoaderEntry[]`                                           | compiler, server, studio (open file, convert a file)                               |
+| `serialize`    | `format`    | `(doc, options?) → string`                                                                          | studio (save, create a file, convert a file), site build (export sidecars)         |
+| `rewrite`      | `format`    | `(source, edits) → string`                                                                          | rename refactor (repair a reference inside a format that does not round-trip)      |
+| `discover`     | `format`    | `(source, { baseDir, exclude? }) → string[]`                                                        | content loading (list entry files)                                                 |
+| `load`         | `format`    | `(path, { schema, directiveOptions, ... }) → ContentLoaderEntry[]`                                  | content loading (parse one source)                                                 |
+| `projectData`  | `project`   | `(sectionValue, { projectConfig, root, registry, io }) → unknown`                                   | compiler site build, dev server resolve — result stored as `_project[<key>]`       |
+| `resolvePaths` | `project`   | `(pathsDef, { data, projectConfig, root, locale, urlPattern, params }) → Record<string, unknown>[]` | pages discovery (`$paths` expansion), studio preview                               |
+| `lower`        | any         | `(def, context) → JxStateDefinition`                                                                | compiler — rewrites a state def into a core shape for client output                |
+| `emit`         | `project`   | `(sectionValue, { projectConfig, root, sections, routes }) → EmitFile[]`                            | compiler site build — writes derived assets into the build output (§8.4)           |
+| `assets`       | `project`   | `(sectionValue, { projectConfig, root }) → AssetMount[]`                                            | compiler site build, dev server — publishes source directories at site URLs (§8.5) |
+| `mount`        | `server`    | `(options, ctx) → (request: Request, env) => Promise<Response>`                                     | generated site worker, dev server                                                  |
+| `dialect`      | `connector` | `(connection, env) → Kysely Dialect`                                                                | data mounts, auth, deploy                                                          |
+| `deploySchema` | `connector` | `(tables, connection, { env, dryRun }) → { statements, applied, warnings }`                         | `jx db push`, studio push                                                          |
+| `bindings`     | `connector` | `(connection) → wrangler config fragment`                                                           | scaffolding, `jx db push`                                                          |
 
 **What `parse` returns is decided by `documentKinds`, not by a second declaration.** A format declaring `page` or `component` returns a `JxDocument`: the compiler builds its page and component globs from `documentExtensions("page"|"component")` and casts every `parse` result, so the claim is already load-bearing in the build. A format declaring only `content` makes no such claim, and may return `ContentLoaderEntry[]` — the parser's `Csv` does exactly that, which is why it declares no `serialize`.
 
@@ -323,6 +323,8 @@ Studio reads the pair to answer two questions it used to have no answer for:
 Declaring both capabilities is therefore the whole of what a third-party format extension has to do to appear in both surfaces; neither carries a list of format names. | `testConnection` | `connector` | `(connection, env) → { ok, error? }` | studio connections UI, CLI |
 
 `resolvePaths` methods declare a `"discriminator"` — the `$paths` key that routes to them (parser: `contentType`). Hosts dispatch on which discriminator key is present in the `$paths` value. A connector `table` discriminator (dynamic-table-driven page paths) is **planned**; no connector descriptor declares one today — `contentType` is the only registered discriminator.
+
+**The host tells `resolvePaths` which page it is expanding.** The context carries `urlPattern` (`/kb/:category/:slug`, `/kb/*`) and `params` (the page's parameter names, in order), so a capability can return the parameters THAT page needs instead of making the author name them: the parser's `Content` matches each entry's route against the pattern when its content type declares a `route` and the `$paths` value names no `param` or `field` (parser.md §9.5). A capability that does not need them ignores them, and a host that does not pass them (the studio's parameter picker) gets the older behavior.
 
 **`_meta` is reserved in a `resolvePaths` result.** Every other key in a returned object is a route parameter, substituted into the URL pattern; `_meta` is not, and the host strips it before substitution. It carries facts about the **source entry** the route was generated from, which the route would otherwise have no way to learn — its `sourcePath` is the `[slug]` template, not the entry. The one the build reads today is `mtime`, which is what lets a sitemap date each post in a collection by the post rather than by the template (`site-architecture.md` §8.4.1). A capability may omit it; a route with no entry behind it falls back to its own file.
 
