@@ -1,18 +1,18 @@
 /**
  * Build-time syntax highlighting for fenced code blocks (node-only).
  *
- * A synchronous Shiki core (JavaScript regex engine — no WASM, no async) tokenizes a fixed
- * grammar set against a light + dark GitHub theme pair. Tokens are emitted as span elements
- * carrying both colors as CSS custom properties (--shiki-light / --shiki-dark); the page's
- * stylesheet decides which one paints, so highlighting follows the color-scheme contract
- * (spec §9.5) for auto and forced schemes alike.
+ * A synchronous Shiki core (JavaScript regex engine — no WASM, no async) tokenizes a fixed grammar
+ * set (see `getHighlighter` for the list) against a light + dark GitHub theme pair. Tokens are
+ * emitted as span elements carrying both colors as CSS custom properties (--shiki-light /
+ * --shiki-dark); the page's stylesheet decides which one paints, so highlighting follows the
+ * color-scheme contract (spec §9.5) for auto and forced schemes alike.
  *
  * Lives outside the browser-safe transpile module: only the compile-time markdown path
  * (processMarkdown in md.ts) pays for the grammars.
  *
- * @docs framework/site/jx-markdown
  * @module @jxsuite/parser/highlight
  * @license MIT
+ * @docs framework/site/jx-markdown
  */
 
 import { createHighlighterCoreSync } from "shiki/core";
@@ -20,15 +20,28 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import githubDark from "@shikijs/themes/github-dark-default";
 import githubLight from "@shikijs/themes/github-light-default";
 import css from "@shikijs/langs/css";
+import diff from "@shikijs/langs/diff";
+import dockerfile from "@shikijs/langs/dockerfile";
 import html from "@shikijs/langs/html";
+import ini from "@shikijs/langs/ini";
 import javascript from "@shikijs/langs/javascript";
 import json from "@shikijs/langs/json";
+import jsonc from "@shikijs/langs/jsonc";
 import markdown from "@shikijs/langs/markdown";
+import nginx from "@shikijs/langs/nginx";
+import nix from "@shikijs/langs/nix";
+import php from "@shikijs/langs/php";
+import python from "@shikijs/langs/python";
+import ruby from "@shikijs/langs/ruby";
 import shellscript from "@shikijs/langs/shellscript";
+import sql from "@shikijs/langs/sql";
+import toml from "@shikijs/langs/toml";
 import typescript from "@shikijs/langs/typescript";
+import xml from "@shikijs/langs/xml";
 import yaml from "@shikijs/langs/yaml";
 import type { JxElement } from "@jxsuite/schema/types";
 import type { HighlighterCore } from "shiki/core";
+import { caddyfile } from "./grammars/caddyfile.ts";
 
 const THEMES = { dark: "github-dark-default", light: "github-light-default" } as const;
 
@@ -38,7 +51,32 @@ let _highlighter: HighlighterCore | null = null;
 function getHighlighter(): HighlighterCore {
   _highlighter ??= createHighlighterCoreSync({
     engine: createJavaScriptRegexEngine(),
-    langs: [json, typescript, javascript, markdown, html, shellscript, css, yaml],
+    langs: [
+      json,
+      jsonc,
+      typescript,
+      javascript,
+      markdown,
+      html,
+      shellscript,
+      css,
+      yaml,
+      /* The languages a technical knowledge base reaches for next: server config, scripting,
+         databases, data files, and patches. They were chosen by reading every fence in a real
+         operations vault, and tests/highlight.test.ts tokenizes a sample of each. */
+      sql,
+      php,
+      python,
+      ruby,
+      nix,
+      nginx,
+      caddyfile,
+      toml,
+      ini,
+      diff,
+      xml,
+      dockerfile,
+    ],
     themes: [githubLight, githubDark],
   });
   return _highlighter;

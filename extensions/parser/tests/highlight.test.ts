@@ -46,6 +46,101 @@ describe("highlightFence", () => {
   });
 });
 
+describe("the knowledge-base language set", () => {
+  const samples: Record<string, string> = {
+    caddyfile: 'example.com {\n    reverse_proxy {host} # note\n    header "X-A" "b"\n}',
+    diff: "- old\n+ new",
+    dockerfile: "FROM node:22\nRUN npm ci",
+    ini: "[main]\nkey = value",
+    jsonc: '{ // comment\n  "a": 1 }',
+    nginx: "server { listen 80; }",
+    nix: "{ pkgs }: { x = pkgs.hello; }",
+    php: "<?php echo 1;",
+    python: "def f(x):\n    return x",
+    ruby: "puts 1",
+    sql: "SELECT 1 FROM t;",
+    toml: "[a]\nb = 1",
+    xml: "<a b='1'>x</a>",
+  };
+
+  for (const [lang, code] of Object.entries(samples)) {
+    test(`highlights ${lang} into dual-theme spans that spell the source back`, () => {
+      const spans = highlightFence(code, lang)!;
+      expect(spans).not.toBeNull();
+      const text = spans
+        .map((s) => (typeof s === "string" ? s : ((s as JxElement).textContent ?? "")))
+        .join("");
+      expect(text).toBe(code);
+      expect(
+        spans.some(
+          (s) => typeof s === "object" && Object.keys(s.style ?? {}).includes("--shiki-light"),
+        ),
+      ).toBe(true);
+    });
+  }
+
+  test("resolves the aliases authors actually type", () => {
+    for (const alias of ["py", "rb", "yml", "sh", "shell", "docker"]) {
+      expect(highlightFence("x", alias)).not.toBeNull();
+    }
+  });
+
+  test("a plain text fence stays plain", () => {
+    expect(highlightFence("anything", "text")).toBeNull();
+  });
+
+  test("the caddyfile grammar colors directives, placeholders, matchers, durations and comments", () => {
+    const spans = highlightFence(
+      [
+        "{",
+        "\tauto_https off",
+        "}",
+        "",
+        "example.com, :8080 {",
+        "    reverse_proxy {host} {$ENV_VAR}",
+        "    timeout 30s # five",
+        "    @api path /api/*",
+        '    header "X-A" `raw`',
+        "}",
+      ].join("\n"),
+      "caddyfile",
+    )! as (JxElement | string)[];
+    const colorOf = (text: string) =>
+      (spans.find((s) => typeof s === "object" && s.textContent === text) as JxElement | undefined)
+        ?.style?.["--shiki-light"];
+    const plain = colorOf(" ");
+    for (const token of [
+      "reverse_proxy",
+      "{host}",
+      "{$ENV_VAR}",
+      "30s",
+      "# five",
+      "@api",
+      '"X-A"',
+      "`raw`",
+      "example.com, :8080",
+    ]) {
+      expect(colorOf(token)).toBeDefined();
+      expect(colorOf(token)).not.toBe(plain);
+    }
+  });
+
+  test("tokenizes every fence of a vault-shaped document without throwing", () => {
+    const fences = [
+      ["bash", "fallocate -l 4G /swapfile && swapon /swapfile"],
+      ["python", 'print("{{ doc.name }} ${x}")'],
+      ["sql", "SELECT `name` FROM tabUser WHERE 1 = 1;"],
+      ["php", "<?php add_action('init', fn() => 1);"],
+      ["nix", "{ config, ... }: { services.nginx.enable = true; }"],
+      ["ini", "[mysqld]\ninnodb_buffer_pool_size=1G"],
+      ["nginx", "location / { proxy_pass http://127.0.0.1:8000; }"],
+    ];
+    for (const [lang, code] of fences) {
+      expect(() => highlightFence(code!, lang!)).not.toThrow();
+    }
+  });
+});
+
 // ─── highlightCodeBlocks ──────────────────────────────────────────────────────
 
 describe("highlightCodeBlocks", () => {
