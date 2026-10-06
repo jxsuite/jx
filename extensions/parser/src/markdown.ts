@@ -2,14 +2,14 @@
  * Markdown — the markdown format-extension class for Jx
  *
  * Single class carrying every format capability:
- * - static `parse` (markdown source → Jx document) — browser-safe
- * - static `serialize` (Jx document → markdown source) — browser-safe
- * - static `discover` / `load` (compile-time content access) — node-only, dynamic imports
- * - instance `resolve` (runtime on-demand access for `$prototype: "Markdown"` state)
  *
- * The node-only capabilities dynamically import `node:fs` / `./md.ts` inside the
- * method so this module stays importable in the browser (studio calls parse/serialize
- * in-process).
+ * - Static `parse` (markdown source → Jx document) — browser-safe
+ * - Static `serialize` (Jx document → markdown source) — browser-safe
+ * - Static `discover` / `load` (compile-time content access) — node-only, dynamic imports
+ * - Instance `resolve` (runtime on-demand access for `$prototype: "Markdown"` state)
+ *
+ * The node-only capabilities dynamically import `node:fs` / `./md.ts` inside the method so this
+ * module stays importable in the browser (studio calls parse/serialize in-process).
  *
  * @module @jxsuite/parser/markdown
  * @license MIT
@@ -32,6 +32,11 @@ export interface MarkdownLoadOptions {
    * basename ids.
    */
   sourceRoot?: string;
+  /**
+   * The content type's `alerts` option: alert type → custom element, or `false` to leave GitHub
+   * alerts (`> [!NOTE]`) as plain blockquotes. Absent renders the built-in callout markup.
+   */
+  alerts?: unknown;
 }
 
 /**
@@ -90,6 +95,7 @@ export class Markdown {
         directiveOptions: options.directiveOptions,
       }),
       ...(options.sourceRoot !== undefined && { sourceRoot: options.sourceRoot }),
+      ...(options.alerts !== undefined && { alerts: options.alerts }),
     });
     const _meta: ContentLoaderEntry["_meta"] = {};
     /*

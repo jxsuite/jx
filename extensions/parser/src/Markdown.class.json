@@ -259,7 +259,11 @@
               "type": "object",
               "properties": {
                 "directiveOptions": { "type": "object" },
-                "directives": { "type": "boolean" }
+                "directives": { "type": "boolean" },
+                "alerts": {
+                  "description": "GitHub alert type -> custom element name (or false to leave alerts as blockquotes); absent renders the built-in callouts",
+                  "oneOf": [{ "const": false }, { "type": "object" }]
+                }
               }
             }
           }

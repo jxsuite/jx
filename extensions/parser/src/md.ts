@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 import { DEFAULT_FORMAT_LOCALE } from "@jxsuite/schema/intl";
 import { basename, extname, relative, resolve as resolvePath } from "node:path";
 import { globSync } from "glob";
+import { normalizeAlerts, transformAlerts } from "./alerts.ts";
 import { assignHeadingIds, mdastNodeToJx } from "./transpile.ts";
 import { highlightCodeBlocks } from "./highlight.ts";
 import { makeTemplatesInert } from "./inert.ts";
@@ -197,6 +198,8 @@ function deriveSlug(filePath: string, sourceRoot?: string): string {
  * @param {boolean} [config.directives] - Enable directive support
  * @param {unknown} [config.directiveOptions] - Directive plugin options
  * @param {string} [config.sourceRoot] - Content-source root; files below it get path-based slugs
+ * @param {unknown} [config.alerts] - The content type's `alerts` option: alert type → element name,
+ *   or `false` to leave `> [!NOTE]` blockquotes as written. Absent means the built-in callouts.
  * @returns {MarkdownFileResult}
  */
 export function processMarkdown(
@@ -206,6 +209,7 @@ export function processMarkdown(
     directives?: boolean;
     directiveOptions?: unknown;
     sourceRoot?: string;
+    alerts?: unknown;
   } = {},
 ) {
   let processor = (unified as unknown as () => UnifiedProcessor)()
@@ -221,6 +225,12 @@ export function processMarkdown(
   const tree = processor.parse(source);
   const vfile = { data: {} };
   processor.runSync(tree, vfile);
+
+  // Callouts first, so the excerpt and word count read the alert's own text, not its `[!NOTE]` marker.
+  const alerts = normalizeAlerts(config.alerts);
+  if (alerts) {
+    transformAlerts(tree as unknown as MdastNode, alerts);
+  }
 
   const vfileData = vfile.data as Record<string, unknown>;
   const frontmatter = (vfileData.frontmatter ?? {}) as Record<string, unknown>;
