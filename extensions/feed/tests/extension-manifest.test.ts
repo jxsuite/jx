@@ -70,6 +70,19 @@ describe("jx-extension.json manifest", () => {
     }
   });
 
+  /*
+   * Specs/compiler.md §5.4: `$implementation` names the JavaScript module. Under Node the package's
+   * `src/` is TypeScript that the runtime refuses to import from node_modules, so the loader maps
+   * src/feed.js to the built dist/feed.js. A `.ts` name here made `jx build` fail with "Cannot find
+   * module '.../feed/dist/feed.ts'" for every site that used the feed section.
+   */
+  test("the class descriptor names the JavaScript implementation, which Node loads from dist/", () => {
+    const feed = loadJson(resolve(dirname(MANIFEST_PATH), manifest.classes.Feed!)) as {
+      $implementation?: string;
+    };
+    expect(feed.$implementation).toBe("./feed.js");
+  });
+
   test("admission blocks: the feed section owner declares projectData, head, and emit", () => {
     const feed = loadJson(resolve(dirname(MANIFEST_PATH), manifest.classes.Feed!)) as {
       project?: { key: string };
