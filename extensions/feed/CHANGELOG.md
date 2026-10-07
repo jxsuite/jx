@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/jxsuite/jx/compare/feed-v0.4.0...feed-v0.4.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **compiler:** load extension implementations under Node, so jx build runs without bun ([#432](https://github.com/jxsuite/jx/issues/432)) ([ca21789](https://github.com/jxsuite/jx/commit/ca21789b432ea4ee556f89838f2837a8ef4d02f3))
+
 ## [0.4.0](https://github.com/jxsuite/jx/compare/feed-v0.3.7...feed-v0.4.0) (2026-10-06)
 
 
