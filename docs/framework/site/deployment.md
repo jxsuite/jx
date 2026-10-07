@@ -29,6 +29,7 @@ dist/
 ├── index.html                # One HTML file per route
 ├── about/index.html
 ├── blog/hello-world/index.html
+├── 404.html                  # The not-found page, when pages/404.* exists
 ├── components/               # Compiled component JS + CSS sidecars
 ├── images/_optimized/        # Responsive image variants
 ├── sitemap.xml               # When url is set in project.json
@@ -240,6 +241,16 @@ The `build` section of `project.json`:
 ### trailingSlash
 
 `"always"` (the default) writes every route as a directory index, so `/about` becomes `dist/about/index.html`, so the canonical served URL is `/about/`. `"never"` writes flat files, `dist/about.html`, for hosts that serve extensionless or `.html` URLs. Pick whichever matches how your host serves files, and keep it stable: changing it changes every URL on the site.
+
+The setting also decides the form of the URLs the build writes into the canonical link, `og:url`, `sitemap.xml` and the `hreflang` alternates, so they name the URL your host answers with the page: `/about/` with `"always"` and `/about` with `"never"`.
+
+## The 404 page
+
+Add `pages/404.json` (or `404.md`) and the build writes it to `dist/404.html`, the file name Cloudflare Pages, GitHub Pages and Netlify serve for a URL that matches nothing. It lands there under either `trailingSlash` setting, gets no canonical link, and stays out of the sitemap.
+
+Without one, Cloudflare Pages assumes a single-page application and answers every unknown path with your home page and a 200, so a mistyped link never looks broken to a visitor or a crawler.
+
+A `404.html` in `public/` is copied over the built one, for a page you would rather write by hand. `jx preview` serves `dist/404.html` for unknown URLs, so you see the same page locally.
 
 ## Adapters
 

@@ -90,9 +90,9 @@ describe("a {locale} content source", () => {
 
     const sitemap = readFileSync(join(root, "dist/sitemap.xml"), "utf8");
     const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    expect(locs).toContain("https://localized.example/en/blog/hello");
-    expect(locs).toContain("https://localized.example/fr/blog/hello");
-    expect(locs).not.toContain("https://localized.example/fr/blog/solo");
+    expect(locs).toContain("https://localized.example/en/blog/hello/");
+    expect(locs).toContain("https://localized.example/fr/blog/hello/");
+    expect(locs).not.toContain("https://localized.example/fr/blog/solo/");
     // Each URL exactly once — a shared id must not produce a duplicate route.
     expect(new Set(locs).size).toBe(locs.length);
   });

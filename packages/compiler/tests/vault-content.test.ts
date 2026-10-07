@@ -252,8 +252,8 @@ describe("the rendered HTML", () => {
 describe("what every consumer of the collection sees", () => {
   it("the sitemap lists the routed documents and nothing else", () => {
     const sitemap = html(catchAll, "sitemap.xml");
-    expect(sitemap).toContain("<loc>https://vault.example/kb/frappe/bench-operations</loc>");
-    expect(sitemap).toContain("<loc>https://vault.example/kb/frappe</loc>");
+    expect(sitemap).toContain("<loc>https://vault.example/kb/frappe/bench-operations/</loc>");
+    expect(sitemap).toContain("<loc>https://vault.example/kb/frappe/</loc>");
     expect(sitemap).not.toContain("draft");
     expect(sitemap).not.toContain("private");
     expect(sitemap).not.toContain("internal");
@@ -288,7 +288,7 @@ describe("what every consumer of the collection sees", () => {
     const sitemap = html(catchAll, "sitemap.xml");
     const index = html(catchAll, "search-index.json");
     const feed = html(catchAll, "feed.xml");
-    expect(sitemap).toContain("<loc>https://vault.example/kb/dup/same</loc>");
+    expect(sitemap).toContain("<loc>https://vault.example/kb/dup/same/</loc>");
     for (const unrouted of ["Dup/Two", "NoCat", "Orphan", "uniquewordloser", "uniquewordorphan"]) {
       expect(sitemap).not.toContain(unrouted);
       expect(index).not.toContain(unrouted);

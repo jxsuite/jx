@@ -20,6 +20,8 @@ import {
 } from "@jxsuite/schema/locale";
 import type { ResolvedI18n, TextDirection } from "@jxsuite/schema/locale";
 
+import { servedRoute } from "./static-host.ts";
+
 /*
  * `resolveI18n` and the two types beside it live in `@jxsuite/schema/locale` rather than here.
  * Studio needs the same answer and cannot import this package — there is no `./site/i18n` export,
@@ -278,12 +280,15 @@ export function translationSets(
  * @param {readonly TranslationRoute[]} routes - Concrete routes only
  * @param {ResolvedI18n | null} i18n
  * @param {string} siteUrl - Absolute site URL; alternates must be absolute
+ * @param {string} [trailingSlash] - `build.trailingSlash`: the alternates name the URL the host
+ *   serves, so they agree with the canonical link and the sitemap
  * @returns {Map<string, LocaleAlternate[]>} Keyed by `urlPattern`
  */
 export function localeAlternates(
   routes: readonly TranslationRoute[],
   i18n: ResolvedI18n | null,
   siteUrl: string,
+  trailingSlash?: string,
 ): Map<string, LocaleAlternate[]> {
   const out = new Map<string, LocaleAlternate[]>();
   if (i18n === null || siteUrl === "") {
@@ -299,13 +304,13 @@ export function localeAlternates(
     let alternates = built.get(members);
     if (alternates === undefined) {
       alternates = members.map((m) => ({
-        href: siteAbsoluteUrl(m.urlPattern, siteUrl),
+        href: siteAbsoluteUrl(servedRoute(m.urlPattern, trailingSlash), siteUrl),
         hreflang: m.locale,
       }));
       const fallback = members.find((m) => m.locale === i18n.defaultLocale);
       if (fallback !== undefined) {
         alternates.push({
-          href: siteAbsoluteUrl(fallback.urlPattern, siteUrl),
+          href: siteAbsoluteUrl(servedRoute(fallback.urlPattern, trailingSlash), siteUrl),
           hreflang: "x-default",
         });
       }

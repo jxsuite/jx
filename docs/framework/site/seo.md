@@ -96,7 +96,7 @@ It's a warning and never an error, and three things never trigger it: any relati
 { "tagName": "link", "rel": "https://example.com/rel/pricing", "href": "/pricing/" }
 ```
 
-Two tags are added automatically: `<link rel="canonical">` (built from `url` in `project.json` plus the page route, when `url` is set) and the `<html lang>` attribute. Both lose to one you write yourself. If your `url` includes a folder, as in `https://example.com/docs/`, the folder is kept: the canonical for `/about` is `https://example.com/docs/about`, not `https://example.com/about`. See [serving from a subfolder](/docs/framework/site/deployment#serving-from-a-subfolder).
+Two tags are added automatically: `<link rel="canonical">` (built from `url` in `project.json` plus the route as your host serves it, when `url` is set) and the `<html lang>` attribute. Both lose to one you write yourself. The route takes the form `build.trailingSlash` gives it, `/about/` by default and `/about` with `"never"`, so the canonical link, `og:url`, the sitemap and the `hreflang` links all name the URL that answers with the page. If your `url` includes a folder, as in `https://example.com/docs/`, the folder is kept: the canonical for `/about` is `https://example.com/docs/about/`, not `https://example.com/about/`. The [404 page](/docs/framework/site/deployment#the-404-page) gets no canonical link. See [serving from a subfolder](/docs/framework/site/deployment#serving-from-a-subfolder).
 
 `lang` comes from the page's `$lang` if it has one, otherwise `defaults.lang`, otherwise `"en"`. A page can also set `$dir` (or the site `defaults.dir`) for right-to-left content:
 
@@ -166,12 +166,14 @@ Template strings resolve inside the object, at any depth, so the block can refer
 
 When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the route table, one `<url>` per compiled page, with:
 
-- `<loc>`: absolute, built from `url` + the route, identical to the page's canonical URL, folder included
+- `<loc>`: absolute, built from `url` + the route as `build.trailingSlash` serves it, identical to the page's canonical URL, folder included
 - `<lastmod>`: a full timestamp (`2025-03-04T16:00:00Z`), taken from the page source file, or from the content entry when the page was generated from one
 
 Dynamic routes appear as their expanded concrete URLs, each dated by **its own content entry** rather than by the `[slug]` template. That matters more than it sounds: you edit a template far more often than the posts under it, and dating by the template made every post in an archive announce itself as changed each time, the opposite of what `<lastmod>` is for. A route with no entry behind it (an authored page, or a `$paths` listing plain values) is still dated by its own file.
 
 Redirect sources are not pages and never appear.
+
+Two kinds of page are left out without any setting. One is a page whose `<head>` asks crawlers for `noindex`, a `<meta name="robots">` whose content includes `noindex` or `none`, whether it comes from your layout, your state or `$head`: a sitemap that lists a page the page itself disowns gives a crawler two answers to one question. The other is the [404 page](/docs/framework/site/deployment#the-404-page). Both are still built and served.
 
 To opt a single page out (a thank-you page, a draft), set `"$sitemap": false` at the page root. To disable the sitemap entirely, set `"build": { "sitemap": false }`. Without `url` the sitemap is skipped with a build warning, because absolute `<loc>` values can't be built.
 
