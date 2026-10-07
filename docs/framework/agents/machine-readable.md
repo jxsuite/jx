@@ -6,6 +6,7 @@ code:
   - sites/jxsuite.com/project.json
   - extensions/search/src/search-index.ts
   - packages/schema/schema.json
+  - packages/compiler/src/site/static-host.ts
 ---
 
 # Machine-readable docs
@@ -35,6 +36,18 @@ A plain-text index in the [llms.txt convention](https://llmstxt.org): a one-para
 Each section's landing page comes first, then the rest of that section's own pages, then each of its groups in turn, exactly as the sidebar orders them.
 
 It carries no page bodies, roughly 27 KB against `full-docs.json`'s ~680 KB, which makes it the cheap first fetch: point an agent at it, let it read the titles and descriptions, and let it pull only the pages it needs.
+
+### A Markdown copy of every page
+
+Beside each page's HTML the build writes a Markdown copy of it. `https://jxsuite.com/templates/` has `https://jxsuite.com/templates/index.md`; with `trailingSlash: "never"` the copy of `/about` is `/about.md`. The path follows the HTML file, and for a URL without a file name it is the `index.md` the llms.txt proposal names.
+
+You do not have to guess it. Every page that has a copy says so in its `<head>`:
+
+```html
+<link href="/templates/index.md" rel="alternate" type="text/markdown" />
+```
+
+That `rel="alternate"` link is the discovery mechanism the llms.txt proposal recommends. An agent that fetched the HTML follows it, and a crawler that understands alternates finds the copy on its own. The link names only a copy the build wrote, and the [404 page](/docs/framework/site/deployment#the-404-page) has none. To point a page at a different Markdown file, write the same `<link>` in the page's `$head`: yours wins.
 
 ### `full-docs.json`
 

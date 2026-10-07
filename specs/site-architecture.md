@@ -1039,6 +1039,8 @@ The compiler automatically generates certain tags if not explicitly declared:
 | `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set |
 | `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                         |
 
+A page that has a Markdown twin also gets a `<link rel="alternate">` to it (§8.4.3).
+
 #### 8.4.1 Sitemap & `robots.txt`
 
 When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the route table — one `<url>` entry per compiled page, each with a `<loc>` (absolute, built from `url` + the route as `build.trailingSlash` serves it via `new URL(route, url)`, so it is identical to the page's `<link rel="canonical">`) and a `<lastmod>` — the page source file's modification time as a **full RFC 3339 timestamp**. The W3C Datetime profile sitemaps.org cites admits both that and a bare `YYYY-MM-DD`; the date-only form threw away any way to tell two edits on one day apart.
@@ -1061,6 +1063,21 @@ A page at the route `/404` (`pages/404.json`, `pages/404.md`, or any registered 
 - leaves it out of the sitemap (§8.4.1).
 
 A `404.html` in `public/` is copied over it like any other `public/` file, so a project that wants a hand-written one can ship it. Only the route `/404` is special: `/docs/404` and a locale-prefixed `/fr/404` are ordinary pages.
+
+#### 8.4.3 Export sidecars and how a page points to them
+
+A format that declares `exportTarget` (extensions.md §7) gets a serialized twin of every page, written beside the page's HTML at a path derived from it: with `build.trailingSlash: "always"`, `about/index.html` has `about/index.md`; with `"never"`, `about.html` has `about.md`. For a URL without a file name that is the llms.txt proposal's `index.md`. A twin nobody can find is a twin nobody uses, and `/about/` is not `/about/index.md` to a reader who has not been told, so the page advertises each twin that was written:
+
+```html
+<link href="/about/index.md" rel="alternate" type="text/markdown" />
+```
+
+The `type` is the format's media type without its parameters, and the `href` is site-absolute, so it carries the deployment's base path like every other URL the build writes (§14.7). This is the discovery the llms.txt proposal recommends (`rel="alternate" type="text/markdown"`).
+
+- **An author's own wins.** A page that already has an alternate of that type, from its own `$head` or its layout, keeps it and gets no second one, like every auto-injected entry (§8.4).
+- **Only files that exist.** Twins are serialized before the page is written, and the link is added only for a twin that was. A format that throws or returns nothing for a page leaves that page without a link, and the build still reports the error.
+- **Not on the not-found page** (§8.4.2): the URL it answers at is whatever was mistyped, so there is nothing for a twin to be a twin of.
+- **A format without a media type** advertises nothing, since an alternate with no type says only that something else exists.
 
 ### 8.5 Structured Data (JSON-LD)
 
