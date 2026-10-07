@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.4.4](https://github.com/jxsuite/jx/compare/desktop-v5.4.3...desktop-v5.4.4) (2026-10-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 5.1.0
+    * @jxsuite/feed bumped to 0.4.1
+    * @jxsuite/server bumped to 4.4.4
+  * devDependencies
+    * @jxsuite/server bumped to 4.4.4
+
 ## [5.4.3](https://github.com/jxsuite/jx/compare/desktop-v5.4.2...desktop-v5.4.3) (2026-10-07)
 
 

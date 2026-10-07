@@ -2,9 +2,9 @@
 
 ## Extension Packages, Schema Composition, and the Capability Contract
 
-**Version:** 0.4.7-draft\
+**Version:** 0.4.8-draft\
 **Status:** Partial\
-**Updated:** 2026-10-06\
+**Updated:** 2026-10-07\
 **License:** MIT
 
 Supersedes v1 ("Format-Extension Classes and the Capability Contract"). The format-class contract from v1 survives unchanged (§6–§8); v2 adds the package layer around it: extension packages, manifest-driven registration, JSON-Schema composition, project sections, server mounts, and the studio settings vocabulary. The relationships vocabulary has a companion spec: [relationships.md](./relationships.md).
@@ -775,6 +775,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.8-draft** (2026-10-07) — An exportTarget sidecar is advertised from its page with a link rel=alternate (site-architecture.md 8.4.3); a format with no mediaType is exported but not advertised.
 - **0.4.7-draft** (2026-10-06) — §8 the resolvePaths context carries the expanding page's urlPattern and params and every dynamic page's pattern, discover takes an exclude option, an asset mount may carry a filter, and a host refuses a page URL that climbs out of the output directory.
 - **0.4.6-draft** (2026-09-29) — Census against the code: thirteen unmarked sections (§3, §5.4, §6.1, §7, §8, §8.1, §8.4, §9, §9.1, §9.2, §10, §11.1 and §12) gain Partial markers naming what ships and what does not, §11 is marked Partial for its module fallback divergence, and the stale Implemented marker on §8.6 is corrected to Partial.
 - **0.4.5-draft** (2026-09-13) — §8.4: an entry's frontmatter may say search: false, and @jxsuite/search emits nothing for it — page and sections alike; only the boolean opts out, a non-boolean value is indexed and reported once.
@@ -809,4 +810,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Extensions Specification v0.4.7-draft_
+_Jx Extensions Specification v0.4.8-draft_

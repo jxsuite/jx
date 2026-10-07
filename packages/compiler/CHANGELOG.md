@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.1.0](https://github.com/jxsuite/jx/compare/compiler-v5.0.0...compiler-v5.1.0) (2026-10-07)
+
+
+### Features
+
+* **compiler:** advertise each page's Markdown twin with a link rel=alternate ([#435](https://github.com/jxsuite/jx/issues/435)) ([844ba5a](https://github.com/jxsuite/jx/commit/844ba5a353227ee77dab3f31061aa8d34d02f453))
+
+
+### Bug Fixes
+
+* **compiler:** canonical and sitemap URLs follow trailingSlash; write the 404 page to 404.html ([#433](https://github.com/jxsuite/jx/issues/433)) ([6347a35](https://github.com/jxsuite/jx/commit/6347a35617a6e572e31d91bc2bafd65d17765d88))
+* **compiler:** load extension implementations under Node, so jx build runs without bun ([#432](https://github.com/jxsuite/jx/issues/432)) ([ca21789](https://github.com/jxsuite/jx/commit/ca21789b432ea4ee556f89838f2837a8ef4d02f3))
+
 ## [5.0.0](https://github.com/jxsuite/jx/compare/compiler-v4.0.3...compiler-v5.0.0) (2026-10-06)
 
 
