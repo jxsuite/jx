@@ -22,7 +22,9 @@ export type { FormatRegistry, FormatEntry } from "@jxsuite/schema/format-registr
  * Import a class $implementation module by absolute path, tolerating source-vs-built layouts. A
  * `.class.json` typically declares `"$implementation": "./markdown.js"` next to its TypeScript
  * source: under Bun the sibling `.ts` resolves directly, while under node the built module lives in
- * the package's `dist/` directory. Tries, in order: the literal path, src/ → dist/, .js → .ts.
+ * the package's `dist/` directory. Tries, in order: the literal path, src/ → dist/, that same file
+ * with its `.ts` extension read as `.js` (a descriptor that names its TypeScript source, whose
+ * built module is JavaScript), and .js → .ts.
  *
  * @param {string} path - Absolute path to the implementation module
  * @returns {Promise<Record<string, unknown>>}
@@ -32,7 +34,11 @@ export async function importImplementation(path: string): Promise<Record<string,
   const srcSeg = `${sep}src${sep}`;
   const distSeg = `${sep}dist${sep}`;
   if (path.includes(srcSeg)) {
-    candidates.push(path.replace(srcSeg, distSeg));
+    const built = path.replace(srcSeg, distSeg);
+    candidates.push(built);
+    if (built.endsWith(".ts")) {
+      candidates.push(`${built.slice(0, -3)}.js`);
+    }
   }
   if (path.endsWith(".js")) {
     candidates.push(`${path.slice(0, -3)}.ts`);
