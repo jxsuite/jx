@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.1.0](https://github.com/jxsuite/jx/compare/studio-v6.0.0...studio-v6.1.0) (2026-10-07)
+
+
+### Features
+
+* **studio:** open a cloud project from a repository subfolder ([#429](https://github.com/jxsuite/jx/issues/429)) ([da2b867](https://github.com/jxsuite/jx/commit/da2b8675aeed8d183d77c063db2b03789de73b8f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ui bumped to 0.5.0
+
 ## [6.0.0](https://github.com/jxsuite/jx/compare/studio-v5.7.0...studio-v6.0.0) (2026-10-06)
 
 

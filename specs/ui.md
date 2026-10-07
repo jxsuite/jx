@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.57-draft\
+**Version:** 0.1.58-draft\
 **Status:** Partial\
-**Updated:** 2026-09-29\
+**Updated:** 2026-10-07\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -441,6 +441,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.58-draft** (2026-10-07) — jx-dialog gains confirm-disabled and an xl size, and when open is a column whose body scrolls under a pinned header and footer (§5.2).
 - **0.1.57-draft** (2026-09-29) — Census against the code: §3, §5, §5.3, §9 and §10 are marked Implemented (§9 with the compiled distribution as a Future remainder), the overview markers on §1 and §4 are removed, §2, §5.1, §5.2, §5.4, §5.5, §6 and §7 are re-marked to name what is actually short, and §3.1, §3.2, §3.3 and §4.1 gain Partial markers for where the code and the text disagree.
 - **0.1.56-draft** (2026-09-29) — §4.3/§5.4: only `contain: layout` satisfies the outset hit area rule and jx-tab's close button carries it; a compact jx-action-group is one line (a wrapping row is compact=false), dims a disabled segment's ink rather than its share of the frame, fills a vertical group's stretched hosts, and keeps the system selection pair for an emphasized chosen segment.
 - **0.1.55-draft** (2026-09-29) — §3.2/§5.1/§5.3: the fields' empty error region is inert (box model reset, clipped, pointer-transparent) whatever a consumer's [part=error] rule sets, and consumers name their own banners with names the kit does not use.
@@ -502,4 +503,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.57-draft_
+_Jx UI Kit Specification v0.1.58-draft_

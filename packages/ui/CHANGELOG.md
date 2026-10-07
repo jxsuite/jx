@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/jxsuite/jx/compare/ui-v0.4.1...ui-v0.5.0) (2026-10-07)
+
+
+### Features
+
+* **studio:** open a cloud project from a repository subfolder ([#429](https://github.com/jxsuite/jx/issues/429)) ([da2b867](https://github.com/jxsuite/jx/commit/da2b8675aeed8d183d77c063db2b03789de73b8f))
+
 ## [0.4.1](https://github.com/jxsuite/jx/compare/ui-v0.4.0...ui-v0.4.1) (2026-10-06)
 
 
