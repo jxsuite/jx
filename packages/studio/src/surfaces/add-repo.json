@@ -1,18 +1,35 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioAddRepo",
-  "$description": "The repository picker: every repo the platform's account link can reach, filtered by name, and one of them adopted as a Jx project. Two flows share it — Add existing repository, and Open Project on a platform whose projects ARE repositories — so the headline is state rather than text. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop, which is what retired the `sp-underlay` this surface used to paint beside a fixed card and the `z-index: 1000` that card needed to climb back out from under its own scrim. There is no confirming button: each row commits itself, because a picker whose answer is one of N rows has N answers rather than one. Nothing here knows what `not_jx_project` means, which permission counts as write, or that a Jx-tagged repository sorts first — `new-project/add-repo-modal.ts` keeps the listing, the ordering and the adoption, and hands over rows that are already strings and booleans.",
+  "$description": "The repository picker: every repository the platform's account link can reach, narrowed by name and account, and — once one is chosen — the folders it holds a project.json in, so a project that lives in a subfolder opens as itself. Two flows share it — Add existing repository, and Open Project on a platform whose projects ARE repositories — so the headline and the primary answer are state rather than text. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop. Choosing is two steps now, a repository and then its folder, so the dialog has a confirming button again; a double-click on a row still opens it in one gesture when the folder is unambiguous. Nothing here knows what `not_jx_project` means, which permission counts as write, which folder to preselect or that a Jx-tagged repository sorts first — `new-project/add-repo-modal.ts` keeps the listing, the ordering, the scan and the adoption, and hands over rows that are already strings and booleans.",
   "tagName": "jx-dialog",
   "$props": {
     "headline": {
       "$ref": "#/state/title"
     },
-    "confirmLabel": "",
+    "confirmLabel": {
+      "$ref": "#/state/confirmLabel"
+    },
+    "confirmDisabled": {
+      "$ref": "#/state/confirmDisabled"
+    },
     "cancelLabel": "Cancel",
-    "size": "md"
+    "size": "xl"
   },
   "attributes": {
     "part": "add-repo"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
   },
   "oncancel": {
     "$prototype": "Function",
@@ -39,67 +56,122 @@
     ]
   },
   "style": {
-    "$description": "Seventeen `.add-repo-*` rules in `styles/overlays.css` become the parts below, and four of them do not travel: `.add-repo-modal .new-project-modal-body` inherited a fixed card, a scroll body and a border from `.new-project-modal`, and a modal `<dialog>` is every one of those; `.add-repo-refresh` and its hover and disabled variants drew a button by hand, and the refresh is a `jx-button` now. The row's own `font-size: 13px` goes with them: a `<button>` does not inherit type, which is what `font: inherit` is for, and what it now inherits is the dialog's own body size rather than a number this surface picked. Six token repairs travel with the rest — `--spectrum-font-size-50` and `--spectrum-font-size-75` resolve only inside `<sp-theme>`, and a document mounted in the dialog layer is outside it, so every one of them would silently have taken its hard-coded fallback — and the two links lose the hard-coded blue they carried as a fallback behind `var(--accent)`, which is the same bug written the other way round.",
+    "$description": "The dialog is wide enough for two panes — the repositories on the left, the chosen repository's projects on the right — and the PANES scroll, never the dialog: `jx-dialog` pins its header and footer and scrolls its body, and this surface turns the body into a column the picker fills, so the filter above the lists, the summary under them and the access footer at the bottom all stay on screen however long a list is. That is what retired the two scrollbars the old picker drew side by side, its own 320px list inside a dialog that also scrolled. Below 40rem the panes stack.",
+    "& > [part=\"dialog\"] > [part=\"body\"]": {
+      "$description": "The kit's body scrolls by default; here the picker is the body's only child and does its own scrolling inside two panes, so the body becomes the column it fills.",
+      "display": "flex",
+      "flexDirection": "column",
+      "overflow": "hidden"
+    },
     "& [part=\"picker\"]": {
       "display": "flex",
       "flexDirection": "column",
-      "gap": "var(--jx-space-3)"
+      "gap": "var(--jx-space-3)",
+      "flex": "0 1 30rem",
+      "minHeight": "0",
+      "containerType": "inline-size",
+      "containerName": "add-repo"
     },
-    "& [part=\"list\"]": {
-      "$description": "The list scrolls, not the dialog. `jx-dialog` already scrolls its own body, so a cap here looks redundant — it is not: the filter above the list and the access footer below it are the two things that widen a listing that is missing what the reader came for, and a dialog that scrolls as one takes both of them off screen exactly when the list is long enough to need them.",
+    "& [part=\"toolbar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "flex": "none"
+    },
+    "& [part=\"filter\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"owner\"]": {
+      "flex": "0 0 12rem"
+    },
+    "& [part=\"owner-slot\"], & [part=\"list-slot\"], & [part=\"detail-slot\"], & [part=\"locations-slot\"], & [part=\"failure-slot\"], & [part=\"access-slot\"], & [part=\"tag-slot\"], & [part=\"private-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"panes\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "minmax(0, 1fr) minmax(0, 1fr)",
+      "gap": "var(--jx-space-3)",
+      "flex": "1 1 auto",
+      "minHeight": "0"
+    },
+    "& [part=\"repos\"], & [part=\"detail\"]": {
+      "$description": "Each pane is a framed box of its own height that scrolls its own content, so choosing a repository far down the list never scrolls its projects out of view.",
       "display": "flex",
       "flexDirection": "column",
-      "maxHeight": "320px",
-      "overflowY": "auto"
-    },
-    "& [part=\"row\"]": {
-      "$description": "A whole row is the button, because the answer is the repository rather than a control inside it. `baseline` rather than `center`: the name and the metadata beside it are different sizes, and aligning their boxes leaves the two strings visibly off each other.",
-      "display": "flex",
-      "alignItems": "baseline",
-      "gap": "var(--jx-space-3)",
-      "width": "100%",
-      "padding": "var(--jx-space-2) var(--jx-space-3)",
-      "background": "none",
-      "border": "none",
+      "minHeight": "0",
+      "border": "1px solid var(--border)",
       "borderRadius": "var(--radius)",
-      "font": "inherit",
-      "color": "var(--fg)",
-      "cursor": "pointer",
-      "textAlign": "left",
-      "&:hover:not([disabled])": {
-        "background": "var(--hover-bg)"
-      },
-      "&[disabled]": {
-        "$description": "Every row goes quiet while any one of them is importing: one adoption at a time, and the row that is running says so itself rather than the list going grey around it.",
-        "opacity": "0.6",
-        "cursor": "default"
-      }
+      "overflow": "hidden"
     },
-    "& [part=\"name\"]": {
-      "color": "var(--accent)"
+    "& [part=\"repo-list\"]": {
+      "flex": "1 1 auto",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-1)"
     },
-    "& [part=\"meta\"]": {
+    "& [part=\"location-list\"]": {
+      "margin": "0 calc(-1 * var(--jx-space-2))"
+    },
+    "& [part=\"detail-body\"]": {
       "display": "flex",
-      "alignItems": "baseline",
-      "gap": "var(--jx-space-2)",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "flex": "1 1 auto",
+      "minHeight": "0",
+      "overflowY": "auto",
+      "padding": "var(--jx-space-3)"
+    },
+    "& [part=\"detail-head\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "flex": "none",
+      "minWidth": "0"
+    },
+    "& [part=\"detail-name\"]": {
+      "fontWeight": "600",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"detail-meta\"]": {
       "fontSize": "var(--jx-text-sm)",
       "color": "var(--fg-dim)"
+    },
+    "& [part=\"folder-row\"]": {
+      "flex": "none"
+    },
+    "& [part=\"repo\"] [part=\"description\"], & [part=\"location\"] [part=\"description\"]": {
+      "$description": "The note gives way before the name does: a repository is found by its name, and a branch or a path cut short is still recognisable where a name cut short is not.",
+      "flexShrink": "4"
+    },
+    "& [part=\"badges\"]": {
+      "display": "inline-flex",
+      "gap": "var(--jx-space-1)"
     },
     "& [part=\"badge\"]": {
       "padding": "0 var(--jx-space-2)",
-      "border": "1px solid var(--border)",
-      "borderRadius": "var(--jx-radius-lg)"
+      "border": "1px solid currentColor",
+      "borderRadius": "var(--jx-radius-lg)",
+      "fontSize": "var(--jx-text-xs)",
+      "opacity": "0.8"
     },
-    "& [part=\"busy\"]": {
-      "$description": "Pushed to the far end of the row it belongs to, so \"Importing…\" reads as this repository's state rather than as another piece of its metadata.",
-      "marginLeft": "auto",
-      "fontSize": "var(--jx-text-sm)",
-      "color": "var(--fg-dim)"
-    },
-    "& [part=\"empty\"]": {
+    "& [part=\"empty\"], & [part=\"note\"]": {
       "margin": "0",
       "padding": "var(--jx-space-4) var(--jx-space-3)",
       "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"note\"]": {
+      "padding": "0"
+    },
+    "& [part=\"summary\"]": {
+      "$description": "What confirming will do, in words: which repository, which folder, which branch. Polite and live, because the arrows in both fields change it without moving focus, and this is how a reader who cannot see the panes hears where they are.",
+      "margin": "0",
+      "flex": "none",
+      "minHeight": "var(--jx-leading-md)",
+      "fontSize": "var(--jx-text-sm)",
       "color": "var(--fg-dim)"
     },
     "& [part=\"install\"], & [part=\"access-link\"]": {
@@ -107,17 +179,19 @@
       "textDecoration": "underline"
     },
     "& [part=\"failure\"]": {
-      "$description": "The refusal from the last adoption, said above the list the reader is still looking at, because the list survives it: a repository with no readable project.json is a fact about that repository, and the ones beside it are still on offer. It is `failure` rather than `error` because `jx-textfield` draws a `[part=\"error\"]` of its own inside this same tree — the kit is light DOM, so a scoped rule on that name would style the filter field's error line too.",
+      "$description": "The refusal from the last adoption, said above the footer the reader is still looking at, because the panes survive it: a folder with no readable project.json is a fact about that folder, and the rest are still on offer. It is `failure` rather than `error` because `jx-textfield` draws a `[part=\"error\"]` of its own inside this same tree.",
       "margin": "0",
+      "flex": "none",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--danger)"
     },
     "& [part=\"access\"]": {
-      "$description": "The listing is bounded by what the Jx Suite GitHub App was granted, so the dialog always offers a way out of that boundary rather than only saying the list is short. `center`, not `baseline`: the `Refresh` beside the note is a small kit button, and a small kit control is layout-contained so its outset hit area adds nothing to a scrolling ancestor's overflow, which leaves it with no baseline to export; a baseline row would synthesise one from its bottom edge and drop the note and the links onto it. surface-baseline-rows.test.ts holds the rule for every surface.",
+      "$description": "The listing is bounded by what the Jx Suite GitHub App was granted, so the dialog always offers a way out of that boundary rather than only saying the list is short. `center`, not `baseline`: a small kit button exports no baseline (surface-baseline-rows.test.ts).",
       "display": "flex",
       "flexWrap": "wrap",
       "alignItems": "center",
       "gap": "var(--jx-space-2)",
+      "flex": "none",
       "paddingTop": "var(--jx-space-3)",
       "borderTop": "1px solid var(--border)",
       "fontSize": "var(--jx-text-sm)",
@@ -130,6 +204,15 @@
       "display": "flex",
       "flexWrap": "wrap",
       "gap": "var(--jx-space-3)"
+    },
+    "@container add-repo (max-width: 40rem)": {
+      "& [part=\"panes\"]": {
+        "gridTemplateColumns": "minmax(0, 1fr)",
+        "gridTemplateRows": "minmax(0, 1fr) minmax(0, 1fr)"
+      },
+      "& [part=\"owner\"]": {
+        "flexBasis": "9rem"
+      }
     }
   },
   "children": [
@@ -140,235 +223,649 @@
       },
       "children": [
         {
-          "tagName": "jx-textfield",
-          "attributes": {
-            "part": "filter"
-          },
-          "$props": {
-            "label": "Filter repositories",
-            "placeholder": "Filter repositories…",
-            "size": "sm",
-            "value": {
-              "$ref": "#/state/filter"
-            }
-          },
-          "oninput": {
-            "$prototype": "Function",
-            "body": [
-              {
-                "operator": "call",
-                "target": {
-                  "$ref": "#/state/setFilter"
-                },
-                "value": [
-                  {
-                    "$ref": "event#/target/value"
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
           "tagName": "div",
           "attributes": {
-            "part": "body-slot",
-            "role": "none"
+            "part": "toolbar"
           },
-          "style": {
-            "display": "contents"
-          },
-          "$switch": {
-            "$ref": "#/state/listState"
-          },
-          "cases": {
-            "loading": {
-              "tagName": "p",
+          "children": [
+            {
+              "tagName": "jx-textfield",
               "attributes": {
-                "part": "empty"
+                "part": "filter"
               },
-              "textContent": "Loading repositories…"
-            },
-            "empty-filter": {
-              "tagName": "p",
-              "attributes": {
-                "part": "empty"
-              },
-              "textContent": "No repositories match the filter."
-            },
-            "empty-write": {
-              "tagName": "p",
-              "attributes": {
-                "part": "empty"
-              },
-              "textContent": "No repositories with write access. Widen the Jx Suite GitHub App's repository access below, or ask a repository admin for write access."
-            },
-            "empty-install": {
-              "tagName": "p",
-              "attributes": {
-                "part": "empty"
-              },
-              "children": [
-                {
-                  "tagName": "span",
-                  "textContent": "No repositories are reachable yet. "
-                },
-                {
-                  "tagName": "a",
-                  "attributes": {
-                    "part": "install",
-                    "href": "${state.installUrl}",
-                    "target": "_blank",
-                    "rel": "noreferrer"
-                  },
-                  "textContent": "Install the Jx Suite GitHub App"
-                },
-                {
-                  "tagName": "span",
-                  "textContent": " to grant repository access, then use Refresh below."
+              "$props": {
+                "label": "Filter repositories",
+                "placeholder": "Filter repositories…",
+                "type": "search",
+                "size": "sm",
+                "value": {
+                  "$ref": "#/state/filter"
                 }
-              ]
-            },
-            "empty-none": {
-              "tagName": "p",
-              "attributes": {
-                "part": "empty"
               },
-              "textContent": "No repositories are reachable. Install the GitHub App (or widen its repository access) and try again."
-            },
-            "listed": {
-              "tagName": "div",
-              "attributes": {
-                "part": "list"
-              },
-              "children": [
-                {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/rows"
-                  },
-                  "key": {
-                    "$ref": "$map/item/fullName"
-                  },
-                  "map": {
-                    "tagName": "button",
-                    "attributes": {
-                      "part": "row",
-                      "type": "button",
-                      "data-repo": "${$map.item.fullName}",
-                      "title": "${$map.item.fullName}",
-                      "disabled": {
-                        "$ref": "$map/item/disabled"
-                      }
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setFilter"
                     },
-                    "onclick": {
-                      "$prototype": "Function",
-                      "body": [
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "onkeydown": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "$switch": {
+                      "$ref": "event#/key"
+                    },
+                    "cases": {
+                      "ArrowDown": [
+                        {
+                          "preventDefault": true
+                        },
                         {
                           "operator": "call",
                           "target": {
-                            "$ref": "#/state/choose"
+                            "$ref": "#/state/move"
                           },
-                          "value": [
-                            {
-                              "$ref": "$map/item/fullName"
-                            }
-                          ]
+                          "value": [1]
+                        }
+                      ],
+                      "ArrowUp": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/move"
+                          },
+                          "value": [-1]
+                        }
+                      ],
+                      "Enter": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/confirm"
+                          },
+                          "value": []
                         }
                       ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "owner-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasOwners"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "owner"
+                  },
+                  "$props": {
+                    "label": "Account",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/owners"
                     },
-                    "children": [
+                    "value": {
+                      "$ref": "#/state/owner"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
                       {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "name"
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setOwner"
                         },
-                        "textContent": "${$map.item.fullName}"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "meta"
-                        },
-                        "children": [
+                        "value": [
                           {
-                            "tagName": "span",
-                            "attributes": {
-                              "part": "tag-slot",
-                              "role": "none"
-                            },
-                            "style": {
-                              "display": "contents"
-                            },
-                            "$switch": {
-                              "$ref": "$map/item/isJx"
-                            },
-                            "cases": {
-                              "true": {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "badge"
-                                },
-                                "textContent": "Jx"
-                              }
-                            }
-                          },
-                          {
-                            "tagName": "span",
-                            "attributes": {
-                              "part": "private-slot",
-                              "role": "none"
-                            },
-                            "style": {
-                              "display": "contents"
-                            },
-                            "$switch": {
-                              "$ref": "$map/item/isPrivate"
-                            },
-                            "cases": {
-                              "true": {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "badge"
-                                },
-                                "textContent": "private"
-                              }
-                            }
-                          },
-                          {
-                            "tagName": "span",
-                            "textContent": "${$map.item.meta}"
+                            "$ref": "event#/target/value"
                           }
                         ]
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "busy-slot",
-                          "role": "none"
-                        },
-                        "style": {
-                          "display": "contents"
-                        },
-                        "$switch": {
-                          "$ref": "$map/item/importing"
-                        },
-                        "cases": {
-                          "true": {
-                            "tagName": "span",
-                            "attributes": {
-                              "part": "busy"
-                            },
-                            "textContent": "Importing…"
-                          }
-                        }
                       }
                     ]
                   }
                 }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "panes"
+          },
+          "children": [
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "repos",
+                "aria-label": "Repositories"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "list-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/listState"
+                  },
+                  "cases": {
+                    "loading": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "Loading repositories…"
+                    },
+                    "empty-filter": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "No repositories match the filter."
+                    },
+                    "empty-write": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "Repositories you can write to are listed here. Widen the Jx Suite GitHub App's repository access below, or ask a repository admin for write access."
+                    },
+                    "empty-install": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Repositories the Jx Suite GitHub App can reach are listed here. "
+                        },
+                        {
+                          "tagName": "a",
+                          "attributes": {
+                            "part": "install",
+                            "href": "${state.installUrl}",
+                            "target": "_blank",
+                            "rel": "noreferrer"
+                          },
+                          "textContent": "Install the Jx Suite GitHub App"
+                        },
+                        {
+                          "tagName": "span",
+                          "textContent": " to grant repository access, then use Refresh below."
+                        }
+                      ]
+                    },
+                    "empty-none": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "Repositories the Jx Suite GitHub App can reach are listed here. Install the App, or widen its repository access, and try again."
+                    },
+                    "listed": {
+                      "tagName": "jx-listbox",
+                      "attributes": {
+                        "part": "repo-list",
+                        "id": "add-repo-repos"
+                      },
+                      "$props": {
+                        "label": "Repositories",
+                        "active": "${state.activeRepoId}"
+                      },
+                      "onselect": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/select"
+                            },
+                            "value": [
+                              {
+                                "$ref": "event#/detail"
+                              }
+                            ]
+                          }
+                        ],
+                        "description": "One handler for every row, because a row's `select` bubbles; its detail is the row's value, the repository's full name."
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/rows"
+                          },
+                          "key": {
+                            "$ref": "$map/item/fullName"
+                          },
+                          "map": {
+                            "tagName": "jx-option",
+                            "attributes": {
+                              "part": "repo",
+                              "id": "${$map.item.id}",
+                              "data-repo": "${$map.item.fullName}",
+                              "title": "${$map.item.fullName}"
+                            },
+                            "$props": {
+                              "value": {
+                                "$ref": "$map/item/fullName"
+                              },
+                              "label": {
+                                "$ref": "$map/item/fullName"
+                              },
+                              "description": {
+                                "$ref": "$map/item/meta"
+                              }
+                            },
+                            "ondblclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/openRepo"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/fullName"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "badges",
+                                  "slot": "end"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "tag-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/isJx"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "badge"
+                                        },
+                                        "textContent": "Jx"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "private-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "$map/item/isPrivate"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "badge"
+                                        },
+                                        "textContent": "private"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "section",
+              "attributes": {
+                "part": "detail",
+                "aria-label": "Project"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "detail-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasDetail"
+                  },
+                  "cases": {
+                    "false": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "Choose a repository to see the Jx projects it holds and pick the one to open."
+                    },
+                    "true": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "detail-body"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "detail-head"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "detail-name"
+                              },
+                              "textContent": "${state.detailName}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "detail-meta"
+                              },
+                              "textContent": "${state.detailMeta}"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "jx-field",
+                          "attributes": {
+                            "part": "folder-row"
+                          },
+                          "$props": {
+                            "span": true,
+                            "label": "Project Folder",
+                            "description": {
+                              "$ref": "#/state/folderHelp"
+                            },
+                            "invalid": {
+                              "$ref": "#/state/folderInvalid"
+                            }
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "folder"
+                              },
+                              "$props": {
+                                "placeholder": "Repository root",
+                                "size": "sm",
+                                "mono": true,
+                                "value": {
+                                  "$ref": "#/state/folder"
+                                },
+                                "invalid": {
+                                  "$ref": "#/state/folderInvalid"
+                                },
+                                "error": {
+                                  "$ref": "#/state/folderError"
+                                }
+                              },
+                              "oninput": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setFolder"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "onkeydown": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "$switch": {
+                                      "$ref": "event#/key"
+                                    },
+                                    "cases": {
+                                      "ArrowDown": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/moveLocation"
+                                          },
+                                          "value": [1]
+                                        }
+                                      ],
+                                      "ArrowUp": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/moveLocation"
+                                          },
+                                          "value": [-1]
+                                        }
+                                      ],
+                                      "Enter": [
+                                        {
+                                          "preventDefault": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/confirm"
+                                          },
+                                          "value": []
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "locations-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/detailState"
+                          },
+                          "cases": {
+                            "loading": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "note"
+                              },
+                              "textContent": "Looking for project.json files…"
+                            },
+                            "listed": {
+                              "tagName": "jx-listbox",
+                              "attributes": {
+                                "part": "location-list",
+                                "id": "add-repo-locations"
+                              },
+                              "$props": {
+                                "label": "Projects in this repository",
+                                "active": "${state.activeLocationId}"
+                              },
+                              "onselect": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/pickLocation"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/detail"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/locations"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/dir"
+                                  },
+                                  "map": {
+                                    "tagName": "jx-option",
+                                    "attributes": {
+                                      "part": "location",
+                                      "id": "${$map.item.id}",
+                                      "data-dir": "${$map.item.dir}",
+                                      "title": "${$map.item.path}"
+                                    },
+                                    "$props": {
+                                      "value": {
+                                        "$ref": "$map/item/dir"
+                                      },
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "description": {
+                                        "$ref": "$map/item/path"
+                                      }
+                                    },
+                                    "ondblclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/confirm"
+                                          },
+                                          "value": []
+                                        }
+                                      ]
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "jx-icon",
+                                        "attributes": {
+                                          "slot": "icon"
+                                        },
+                                        "$props": {
+                                          "name": "folder"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            },
+                            "empty": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "note"
+                              },
+                              "textContent": "No folder in this repository holds a project.json yet. Name one above if it does, or create a new project instead."
+                            },
+                            "unlisted": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "note"
+                              },
+                              "textContent": "Name the folder that holds the project's project.json, or leave the field empty to open the repository root."
+                            },
+                            "failed": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "note"
+                              },
+                              "textContent": "Studio couldn't list this repository's projects. Name the folder that holds the project.json instead."
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
               ]
             }
-          }
+          ]
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "summary",
+            "aria-live": "polite"
+          },
+          "textContent": "${state.summary}"
         },
         {
           "tagName": "div",

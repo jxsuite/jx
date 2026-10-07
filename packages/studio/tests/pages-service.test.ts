@@ -104,6 +104,27 @@ describe("Cloudflare API wrappers", () => {
     expect(body.source.config.repo_name).toBe("site");
   });
 
+  test("a project in a subfolder builds in that folder", async () => {
+    const { calls } = withCfApi({
+      "/pages/projects": { name: "blog", subdomain: "blog.pages.dev" },
+    });
+    await createPagesProject({
+      accountId: DEPLOY.accountId,
+      owner: "octocat",
+      productionBranch: "main",
+      projectName: "blog",
+      repo: "mono",
+      rootDir: "sites/blog",
+    });
+    const post = calls.find((c) => c.init?.method === "POST");
+    const body = post?.init?.body as { build_config: Record<string, string> };
+    expect(body.build_config).toEqual({
+      build_command: "bunx jx build",
+      destination_dir: "dist",
+      root_dir: "sites/blog",
+    });
+  });
+
   test("latestDeployment maps the newest deployment and handles none", async () => {
     withCfApi({
       "/deployments": [

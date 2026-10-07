@@ -64,7 +64,7 @@ Pages serves both halves of a Jx site, but a project with **[data tables](/docs/
 Your pages stay prerendered and CDN-served either way, because only the `/_jx/*` routes reach the worker. The two adapters arrange that differently: **Cloudflare Pages** ships a `_routes.json` alongside the worker that tells Cloudflare to wake it for `/_jx/*` and nothing else, while a **Cloudflare Workers** deploy puts the worker in front of every request and hands anything that isn't one of its routes straight to the static assets.
 
 :::doc-note
-Studio records the connection under `build.deploy` in `project.json` (provider, account, project name, and live address), so it travels with the repository, and any copy of Studio that opens the project knows publishing is already set up. Cloudflare builds with `bunx jx build` and serves the `dist/` output.
+Studio records the connection under `build.deploy` in `project.json` (provider, account, project name, and live address), so it travels with the repository, and any copy of Studio that opens the project knows publishing is already set up. Cloudflare builds with `bunx jx build` and serves the `dist/` output. For a project that lives in a subfolder of its repository (opened on Jx Cloud from that folder), the Pages project Studio creates builds in that folder, so the same command builds that project and nothing beside it.
 :::
 
 ## Next

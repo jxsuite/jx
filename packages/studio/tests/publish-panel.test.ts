@@ -352,6 +352,36 @@ describe("openPublishPanel — connect form", () => {
     expect(fieldValue("repo")).toBe("site");
   });
 
+  test("a project in a subfolder prefills its repository and builds Pages in its folder", async () => {
+    resetStudioState({ projectConfig: { build: {}, name: "Blog" } });
+    const cfApi = cfApiMock({
+      "/accounts": [{ id: DEPLOY.accountId, name: "Acme" }],
+      // Not there yet, so connecting creates it.
+      "/pages/projects/blog": { __error: "404" },
+      "/pages/projects": { name: "blog", subdomain: "blog.pages.dev" },
+      "/deployments": [],
+    });
+    installMockPlatform({
+      cfApi,
+      cfConnection: () =>
+        Promise.resolve({ accountId: DEPLOY.accountId, accountName: "Acme", connected: true }),
+      projectRoot: "octocat/mono@main:sites/blog",
+    });
+    openPublishPanel();
+    await flush();
+    expect(fieldValue("owner")).toBe("octocat");
+    expect(fieldValue("repo")).toBe("mono");
+    pickAccount("a".repeat(32));
+    click("submit");
+    await flush();
+    const calls = cfApi.mock.calls as unknown as [string, { method?: string; body?: unknown }?][];
+    const created = calls.find(
+      ([path, init]) => path.endsWith("/pages/projects") && init?.method === "POST",
+    );
+    const body = created?.[1]?.body as { build_config: Record<string, string> } | undefined;
+    expect(body?.build_config["root_dir"]).toBe("sites/blog");
+  });
+
   test("every row is a named field, so a control is reachable by what it collects", async () => {
     resetStudioState({ projectConfig: { build: {}, name: "My Site" } });
     installConnected();

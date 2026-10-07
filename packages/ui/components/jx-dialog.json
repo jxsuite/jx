@@ -5,6 +5,7 @@
   "observedAttributes": [
     "headline",
     "confirm-label",
+    "confirm-disabled",
     "secondary-label",
     "cancel-label",
     "destructive",
@@ -28,6 +29,12 @@
       "default": "OK",
       "attribute": "confirm-label",
       "description": "The primary button's text; empty for no primary button."
+    },
+    "confirmDisabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "confirm-disabled",
+      "description": "The primary answer cannot be given yet: its button stays in the footer, announced and disabled, and dispatches nothing. For a dialog whose answer is a choice the reader has not made, where hiding the button would leave them nothing to look for."
     },
     "secondaryLabel": {
       "type": "string",
@@ -57,7 +64,7 @@
       "type": "string",
       "default": "sm",
       "attribute": "size",
-      "description": "sm, md or lg: the dialog's width."
+      "description": "sm, md, lg or xl: the dialog's width. xl is for a dialog that lays two panes side by side, such as a picker with a list and the chosen item's detail."
     },
     "open": {
       "type": "boolean",
@@ -214,11 +221,29 @@
         "outline": "var(--jx-focus-ring)"
       }
     },
+    "& > [part=\"dialog\"][open]": {
+      "$description": "Open, the box is a column whose BODY scrolls, never the box itself. A dialog that scrolled as one carried its own scrollbar beside any list the body scrolled for itself, and took the headline and the answers off screen exactly when the content was long enough to need them. Keyed on [open] because a closed <dialog> is hidden by the user agent's display: none, which an unconditional display here would override.",
+      "display": "flex",
+      "flexDirection": "column",
+      "overflow": "hidden"
+    },
+    "& > [part=\"dialog\"] > [part=\"header\"], & > [part=\"dialog\"] > [part=\"footer\"]": {
+      "flex": "none"
+    },
+    "& > [part=\"dialog\"] > [part=\"body\"]": {
+      "$description": "The one region that scrolls. Child combinators, not the descendant ones the parts below use, because a consumer's content is light DOM inside this same box and a surface may name a [part=\"body\"] of its own.",
+      "flex": "1 1 auto",
+      "minHeight": "0",
+      "overflowY": "auto"
+    },
     "&[data-size=\"md\"] > [part=\"dialog\"]": {
       "width": "min(90vw, 32rem)"
     },
     "&[data-size=\"lg\"] > [part=\"dialog\"]": {
       "width": "min(90vw, 44rem)"
+    },
+    "&[data-size=\"xl\"] > [part=\"dialog\"]": {
+      "width": "min(92vw, 60rem)"
     },
     "& [part=\"header\"]": {
       "padding": "var(--jx-space-5) var(--jx-space-5) 0"
@@ -381,6 +406,9 @@
                   "$props": {
                     "variant": {
                       "$ref": "#/state/confirmVariant"
+                    },
+                    "disabled": {
+                      "$ref": "#/state/confirmDisabled"
                     }
                   },
                   "attributes": {

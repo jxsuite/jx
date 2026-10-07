@@ -288,9 +288,16 @@ describe("add-repo modal gaps", () => {
 
   /* The picker is a document in the dialog layer now, so its rows are addressed by `part` and the
      dialog itself is the `jx-dialog` — `.add-repo-row` and the `sp-underlay` card it sat in are
-     both gone (`src/surfaces/add-repo.json`). */
-  function rows(): HTMLButtonElement[] {
-    return [...document.querySelectorAll('#layer-dialog [part="row"]')] as HTMLButtonElement[];
+     both gone (`src/surfaces/add-repo.json`). A row CHOOSES a repository; the dialog's own
+     primary button adopts it, since the folder within it is a second choice. */
+  function rows(): HTMLElement[] {
+    return [...document.querySelectorAll('#layer-dialog jx-option[part="repo"]')] as HTMLElement[];
+  }
+
+  function primary(): HTMLButtonElement | null {
+    return document.querySelector(
+      '#layer-dialog jx-dialog[part="add-repo"] [part="confirm"] [part="control"]',
+    );
   }
 
   function picker(): HTMLElement | null {
@@ -325,12 +332,17 @@ describe("add-repo modal gaps", () => {
     await flush(3);
     rows()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    // The row that is running says so itself, and every row goes quiet while it does.
-    expect(rows()[0]!.textContent).toContain("Importing…");
-    expect(rows()[1]!.disabled).toBe(true);
+    primary()!.click();
+    await flush();
+    // The answer says it is running, and cannot be given again while it is.
+    expect(primary()!.textContent?.trim()).toBe("Adding…");
+    expect(primary()!.disabled).toBe(true);
     rows()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(imports).toBe(1);
+    expect(document.querySelector('#layer-dialog [part="detail-name"]')?.textContent).toBe(
+      "octocat/site",
+    );
     releaseImport();
     expect(await promise).toEqual({ root: "octocat/site@main" });
   });
@@ -340,6 +352,8 @@ describe("add-repo modal gaps", () => {
     const promise = openAddRepoModal();
     await flush(3);
     rows()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    primary()!.click();
     await flush();
     expect(document.querySelector('#layer-dialog [part="failure"]')?.textContent).toContain(
       "cannot import repositories",

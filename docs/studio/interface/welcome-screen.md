@@ -32,7 +32,15 @@ The full walkthrough is in **[Create a project](/docs/studio/projects/create)**.
 
 Studio opens the project and adds it to **Recent** for next time.
 
-On **studio.jxsuite.com**, projects live in GitHub repositories instead of local folders, so **Open Project…** opens a repository picker: it lists the GitHub repositories you have write access to (Jx projects first), with a filter field to narrow the list. Click one and Studio opens it at `/edit/owner/repo@branch`. Repositories without a `project.json` show an inline explanation instead of opening.
+On **studio.jxsuite.com**, projects live in GitHub repositories instead of local folders, so **Open Project…** opens a repository picker in two panes:
+
+1. On the left, the GitHub repositories you have write access to, Jx projects first. Type in the filter field to narrow the list, or pick an account from the menu beside it when your repositories span several. Click a repository, or move through the list with :kbd[↑] and :kbd[↓] while the filter has focus.
+2. On the right, the projects that repository holds: every folder with a `project.json`, found on its default branch. Studio picks one for you (the repository root when that is a project, otherwise the first folder listed) and shows it in the **Project Folder** field. Click another row, step through them with :kbd[↑] and :kbd[↓] in the field, or type a folder yourself.
+3. Click **Open**, or press :kbd[Enter] in either field. Double-clicking a repository that holds exactly one project opens it in one step.
+
+Studio opens a project at the repository root at `/edit/owner/repo@branch`, and a project in a subfolder at `/edit/owner/repo@branch:folder`, for example `/edit/acme/docs@main:sites/marketing`. A project in a subfolder is a project of its own: its files, Source control changes and preview are that folder's alone, and its commits land in that folder of the repository. A folder without a `project.json` shows an inline explanation instead of opening.
+
+For a repository too large to scan in full, the projects Studio did find are listed and a note under **Project Folder** says the list may be incomplete; type the folder if yours is missing.
 
 If a repository you expect isn't listed, the App simply hasn't been given access to it. See [Repository access](#repository-access) below.
 
@@ -51,9 +59,9 @@ This entry appears when Studio is connected to your GitHub account.
 
 1. Click **Add Existing Repository…**.
 2. Type in the filter field to narrow the list of repositories your account can reach.
-3. Click a repository. Studio imports it and opens it as a project.
+3. Click a repository, check the **Project Folder** Studio picked from the projects it holds, and click **Add**. Studio imports it and opens it as a project.
 
-A repository must already contain a Jx project (a `project.json` file); if it doesn't, Studio tells you why it can't be added. Connecting your account is covered in **[GitHub](/docs/studio/publish/github)**.
+This is the same picker as **Open Project…** on studio.jxsuite.com, except that it also lists repositories you can only read. The folder you add must already contain a Jx project (a `project.json` file); if it doesn't, Studio tells you why it can't be added. Connecting your account is covered in **[GitHub](/docs/studio/publish/github)**.
 
 ## Notices from a hosted Studio
 

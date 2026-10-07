@@ -105,6 +105,48 @@ describe("jx-dialog", () => {
     expect(inner(el).open).toBe(false);
   });
 
+  test("confirm-disabled keeps the primary answer in the footer, disabled, and silent", async () => {
+    const el = await dialog({ headline: "Open", "confirm-label": "Open", "confirm-disabled": "" });
+    showModal(el);
+    await tick();
+    const heard: string[] = [];
+    el.addEventListener("confirm", () => heard.push("confirm"));
+    const control = buttonIn(el, "confirm")!;
+    expect(control.textContent?.trim()).toBe("Open");
+    expect(control.disabled).toBe(true);
+    control.click();
+    expect(heard).toEqual([]);
+    // A host that has its answer flips the property, and the same button answers.
+    (el as JxDialog & { confirmDisabled: boolean }).confirmDisabled = false;
+    await tick();
+    expect(buttonIn(el, "confirm")!.disabled).toBe(false);
+    buttonIn(el, "confirm")!.click();
+    expect(heard).toEqual(["confirm"]);
+  });
+
+  test("open, the box is a column whose body scrolls and whose header and footer stay put", () => {
+    /* The layout itself is the engine's to measure; what this pins is the rule set that produces
+       it, because a dialog that scrolled as one drew a second scrollbar beside any list its body
+       scrolled for itself. Keyed on [open] so the UA's display: none still hides a closed one. */
+    const style = documents["jx-dialog"]!.style as Record<string, Record<string, unknown>>;
+    expect(style['& > [part="dialog"][open]']).toMatchObject({
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+    });
+    expect(style['& > [part="dialog"]']!["display"]).toBeUndefined();
+    expect(style['& > [part="dialog"] > [part="body"]']).toMatchObject({
+      flex: "1 1 auto",
+      minHeight: "0",
+      overflowY: "auto",
+    });
+    expect(
+      style['& > [part="dialog"] > [part="header"], & > [part="dialog"] > [part="footer"]'],
+    ).toEqual({ flex: "none" });
+    // The widest step, for two panes side by side.
+    expect(style['&[data-size="xl"] > [part="dialog"]']).toEqual({ width: "min(92vw, 60rem)" });
+  });
+
   test("the platform's cancel (Escape, a light dismissal) is dispatched as cancel", async () => {
     const el = await dialog({ headline: "Hm", dismissible: "" });
     expect(inner(el).getAttribute("closedby")).toBe("any");

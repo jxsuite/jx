@@ -48,6 +48,7 @@ import type {
   ReferencesResult,
   RenameResult,
   RepoInfo,
+  RepoProjects,
   StarterInfo,
   StudioPlatform,
 } from "../types";
@@ -56,12 +57,21 @@ import type { ReadFilesRequest, ReadFilesResult, UploadResult } from "@jxsuite/p
 import { reportActionRequired } from "../account/action-required";
 import { offeredActions, retryHint } from "../platform-errors";
 import { createReadBatcher } from "./read-batcher";
+import { normalizeProjectDir } from "../utils/project-dir";
 import type { BatchAnswer } from "./read-batcher";
+
+// Re-exported for the cloud shell and its tests, which spell folders through this entry.
+export { normalizeProjectDir } from "../utils/project-dir";
 
 export interface CloudProject {
   owner: string;
   repo: string;
   branch: string;
+  /**
+   * The folder holding the project's `project.json`, relative to the repository root and already
+   * normalized ({@link normalizeProjectDir}); absent or `""` when the project IS the repository.
+   */
+  dir?: string;
 }
 
 interface ProjectInfoWire {
@@ -213,12 +223,45 @@ async function reportRefusal(res: Response): Promise<void> {
   });
 }
 
-/** Editor URL for a project session (mirrors the shell's route). */
-export function editUrl(project: CloudProject): string {
-  return `/edit/${project.owner}/${project.repo}@${encodeURIComponent(project.branch)}`;
+/**
+ * The revision a session reads: the branch, then `:` and the project folder when there is one.
+ *
+ * Git's own `<rev>:<path>` notation, and unambiguous for the reason git can use it: `:` is one of
+ * the characters a ref name may never contain (git-check-ref-format), so the FIRST colon always
+ * ends the branch, however many slashes the branch or the folder holds.
+ */
+export function revisionSpec(project: CloudProject): string {
+  return project.dir ? `${project.branch}:${project.dir}` : project.branch;
 }
 
-/** Parse an /edit/:owner/:repo@:branch path (editUrl's inverse); null when it is not one. */
+/** Split a {@link revisionSpec} back into its branch and folder; null when either half is unusable. */
+function parseRevisionSpec(spec: string): { branch: string; dir?: string } | null {
+  const colon = spec.indexOf(":");
+  const branch = colon === -1 ? spec : spec.slice(0, colon);
+  const dir = colon === -1 ? "" : normalizeProjectDir(spec.slice(colon + 1));
+  if (!branch || dir === null) {
+    return null;
+  }
+  return dir ? { branch, dir } : { branch };
+}
+
+/**
+ * Editor URL for a project session (mirrors the shell's route):
+ * `/edit/<owner>/<repo>@<branch>[:<folder>]`. The branch is one encoded component, so its slashes
+ * travel as `%2F`; the folder keeps its slashes, so a subfolder project's address reads as the path
+ * it is.
+ */
+export function editUrl(project: CloudProject): string {
+  const folder = project.dir
+    ? `:${project.dir
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")}`
+    : "";
+  return `/edit/${project.owner}/${project.repo}@${encodeURIComponent(project.branch)}${folder}`;
+}
+
+/** Parse an /edit/:owner/:repo@:branch[:dir] path (editUrl's inverse); null when it is not one. */
 export function parseEditPath(pathname: string): CloudProject | null {
   /* Asset routers may normalize "@" to "%40", so decode the whole path first
      (branch slashes survive: `.+` spans them). */
@@ -232,22 +275,27 @@ export function parseEditPath(pathname: string): CloudProject | null {
   if (!match) {
     return null;
   }
-  const [, owner, repo, branch] = match;
-  if (!owner || !repo || !branch) {
+  const [, owner, repo, spec] = match;
+  const revision = spec ? parseRevisionSpec(spec) : null;
+  if (!owner || !repo || !revision) {
     return null;
   }
-  return { owner, repo, branch };
+  return { owner, repo, ...revision };
 }
 
-/** Gateway base path for a project session. */
+/**
+ * Gateway base path for a project session. The revision spec — branch and folder — is ONE encoded
+ * segment, so the gateway's route shape is the same for a subfolder project as for a repository,
+ * and the folder's slashes cannot be mistaken for the session's own sub-path.
+ */
 export function sessionBase(project: CloudProject): string {
-  const { owner, repo, branch } = project;
-  return `/api/v1/p/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/studio`;
+  const { owner, repo } = project;
+  return `/api/v1/p/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(revisionSpec(project))}/studio`;
 }
 
-/** Catalogue/recents root key for a project: "owner/repo@branch". */
+/** Catalogue/recents root key for a project: "owner/repo@branch", plus ":dir" for a subfolder. */
 export function projectRootKey(project: CloudProject): string {
-  return `${project.owner}/${project.repo}@${project.branch}`;
+  return `${project.owner}/${project.repo}@${revisionSpec(project)}`;
 }
 
 /**
@@ -559,17 +607,18 @@ function awaitAction(popup: Window): Promise<ActionOutcome> {
   });
 }
 
-/** Parse an "owner/repo@branch" root key; null when malformed. */
+/** Parse an "owner/repo@branch[:dir]" root key; null when malformed. */
 export function parseRootKey(root: string): CloudProject | null {
   const match = /^([^/@]+)\/([^/@]+)@(.+)$/.exec(root);
   if (!match) {
     return null;
   }
-  const [, owner, repo, branch] = match;
-  if (!owner || !repo || !branch) {
+  const [, owner, repo, spec] = match;
+  const revision = spec ? parseRevisionSpec(spec) : null;
+  if (!owner || !repo || !revision) {
     return null;
   }
-  return { owner, repo, branch };
+  return { owner, repo, ...revision };
 }
 
 /** Every project this account can open, straight off the wire; [] when the catalogue is unreachable. */
@@ -1558,13 +1607,40 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }));
     },
 
-    /** Adopt an existing repo as a Jx project; resolves to its catalogue root key. */
-    async importProject(opts: { owner: string; name: string }) {
+    /**
+     * The folders of a repository that hold a project.json, read from its default branch. The
+     * platform drops vendored folders and other tools' `project.json` (Nx's), and says when the
+     * repository was too large to list in full.
+     */
+    async listRepoProjects(repo: { owner: string; name: string }): Promise<RepoProjects> {
+      const res = await fetch(
+        `/api/v1/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/projects`,
+        { credentials: "include" },
+      );
+      const found = await okJson<RepoProjects>(res, "Failed to look for projects");
+      /* Canonical on the way in, so a location the reader picks is spelled the way the root key,
+         the editor URL and the session will spell it; anything that climbs out is not offered. */
+      const locations: RepoProjects["locations"] = [];
+      for (const location of found.locations) {
+        const dir = normalizeProjectDir(location.dir);
+        if (dir !== null) {
+          locations.push(location.name ? { dir, name: location.name } : { dir });
+        }
+      }
+      return { branch: found.branch, locations, truncated: found.truncated === true };
+    },
+
+    /** Adopt an existing repo (or one folder of it) as a Jx project; resolves to its root key. */
+    async importProject(opts: { owner: string; name: string; dir?: string }) {
+      const dir = normalizeProjectDir(opts.dir ?? "");
+      if (dir === null) {
+        throw new Error("The project folder must stay inside the repository.");
+      }
       const res = await fetch("/api/v1/projects/import", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(opts),
+        body: JSON.stringify({ owner: opts.owner, name: opts.name, ...(dir ? { dir } : {}) }),
       });
       const imported = await okJson<{ owner: string; name: string; defaultBranch: string }>(
         res,
@@ -1575,6 +1651,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           owner: imported.owner,
           repo: imported.name,
           branch: imported.defaultBranch,
+          ...(dir ? { dir } : {}),
         }),
       };
     },
