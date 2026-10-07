@@ -15,6 +15,7 @@
  *   nobody finds.
  *
  * @docs framework/site/deployment
+ * @docs framework/agents/machine-readable
  */
 
 import { relative, sep } from "node:path";
