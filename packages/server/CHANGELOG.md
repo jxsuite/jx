@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.4.5](https://github.com/jxsuite/jx/compare/server-v4.4.4...server-v4.4.5) (2026-10-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 5.1.1
+    * @jxsuite/import bumped to 0.40.8
+
 ## [4.4.4](https://github.com/jxsuite/jx/compare/server-v4.4.3...server-v4.4.4) (2026-10-07)
 
 
