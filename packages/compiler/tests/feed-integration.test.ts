@@ -83,7 +83,11 @@ describe("feeds through a real build", () => {
     const html = read("dist/index.html");
     expect(html).toContain('href="https://feeds.example/feed.xml"');
     expect(html).toContain('href="https://feeds.example/feed.json"');
-    expect(html.match(/rel="alternate"/g)).toHaveLength(2);
+    // The page's Markdown twin is advertised the same way (`rel="alternate"`), but it is not a feed.
+    const feeds = html.match(
+      /<link[^>]*rel="alternate"[^>]*type="application\/(?:atom\+xml|feed\+json)"/g,
+    );
+    expect(feeds).toHaveLength(2);
   });
 
   it("names the content types no host would infer", () => {

@@ -96,7 +96,13 @@ import {
   registrationScript,
   tombstoneServiceWorker,
 } from "./service-worker.ts";
-import { htmlDeclaresNoindex, isNotFoundRoute, servedRoute } from "./static-host.ts";
+import {
+  htmlDeclaresNoindex,
+  isNotFoundRoute,
+  outputUrlPath,
+  servedRoute,
+  withAlternateLink,
+} from "./static-host.ts";
 import {
   buildManifest,
   buildSecurityTxt,
@@ -747,10 +753,62 @@ export async function buildSite(
       // Determine output path
       const outPath = routeToOutputPath(route.urlPattern, outDir, trailingSlash);
       mkdirSync(dirname(outPath), { recursive: true });
+
+      /*
+       * Serialize the export sidecars (formats with exportTarget: true, e.g. Markdown) BEFORE the
+       * page is written, so its `<head>` advertises exactly the twins that exist: a link to a file
+       * the build did not write is worse than no link. The not-found page is served for whatever
+       * URL was mistyped, so what it would advertise is not a twin of anything.
+       */
+      const sidecars: { content: string; path: string; type: string | null }[] = [];
+      for (const fmt of formatRegistry.withCapability("serialize")) {
+        if (!fmt.exportTarget) {
+          continue;
+        }
+        try {
+          const content = (await fmt.call("serialize", result.doc, {
+            buildScope: (state: Record<string, JxStateDefinition>) =>
+              buildInitialScope(state, null),
+            componentDefs,
+            evaluateTemplate: (value: string, scope: Record<string, unknown>) => {
+              if (!isTemplateString(value)) {
+                return;
+              }
+              return evaluateStaticTemplate(value, scope) ?? value;
+            },
+            mode: "export",
+          })) as string;
+          if (content) {
+            sidecars.push({
+              content,
+              path: outPath.replace(/\.html$/, fmt.extensions[0]!),
+              type: fmt.mediaTypeEssence,
+            });
+          }
+        } catch (error) {
+          const err = error as Error;
+          errors.push(`Error exporting ${fmt.name} for ${route.urlPattern}: ${err.message}`);
+        }
+      }
+      if (!isNotFoundRoute(route.urlPattern)) {
+        for (const sidecar of sidecars) {
+          if (sidecar.type !== null) {
+            result.html = withAlternateLink(result.html, {
+              href: outputUrlPath(outDir, sidecar.path),
+              type: sidecar.type,
+            });
+          }
+        }
+      }
+
       /* Last, after the scans above: they ask what this page REFERENCES, and the answer is a
          build-output path, not a deployed URL. Re-rooting first would make every one of them miss. */
       writeFileSync(outPath, rewriteHtmlBase(result.html, basePath), "utf8");
       fileCount += 1;
+      for (const sidecar of sidecars) {
+        writeFileSync(sidecar.path, sidecar.content, "utf8");
+        fileCount += 1;
+      }
 
       // Record a sitemap entry for this concrete page (skip unexpanded dynamic routes and
       // Pages that opted out via $sitemap: false). <loc> is built like the canonical URL so
@@ -778,35 +836,6 @@ export async function buildSite(
           loc: siteAbsoluteUrl(servedRoute(route.urlPattern, trailingSlash), siteUrl),
           ...(routeAlternates.length > 0 && { alternates: routeAlternates }),
         });
-      }
-
-      // Write serialized export sidecars alongside HTML (formats with exportTarget: true)
-      for (const fmt of formatRegistry.withCapability("serialize")) {
-        if (!fmt.exportTarget) {
-          continue;
-        }
-        try {
-          const content = (await fmt.call("serialize", result.doc, {
-            buildScope: (state: Record<string, JxStateDefinition>) =>
-              buildInitialScope(state, null),
-            componentDefs,
-            evaluateTemplate: (value: string, scope: Record<string, unknown>) => {
-              if (!isTemplateString(value)) {
-                return;
-              }
-              return evaluateStaticTemplate(value, scope) ?? value;
-            },
-            mode: "export",
-          })) as string;
-          if (content) {
-            const sidecarPath = outPath.replace(/\.html$/, fmt.extensions[0]!);
-            writeFileSync(sidecarPath, content, "utf8");
-            fileCount += 1;
-          }
-        } catch (error) {
-          const err = error as Error;
-          errors.push(`Error exporting ${fmt.name} for ${route.urlPattern}: ${err.message}`);
-        }
       }
 
       // Write any additional files (island modules, etc.)

@@ -122,7 +122,7 @@ Hosts never hard-code file types. Each one builds a format registry from the ena
 - **Pages and components discovery**: the site build and dev server glob for `.json` plus every extension whose format declares the matching `documentKind`, then call `parse` on non-JSON matches. This is why adding a Markdown page is just dropping `pages/about.md` in a parser-enabled project.
 - **Content loading**: a `content` section entry names a format (or derives it from the source's file extension); the loader calls `discover` to list entry files, then `load` per file, validating each entry against the content type's schema. See [Content collections](/docs/framework/site/content-collections).
 - **Studio editing**: opening a claimed file calls `parse` to get the Jx tree the canvas edits; saving calls `serialize`. When a capability's `timing` excludes the browser, Studio round-trips through the dev server's `POST /__studio/format` endpoint instead of importing the implementation ([Studio routes](/docs/extending/reference/studio-routes)).
-- **Export sidecars**: with `exportTarget: true`, the build serializes each page into the format next to its HTML output.
+- **Export sidecars**: with `exportTarget: true`, the build serializes each page into the format next to its HTML output, and links to it from the page's `<head>` with `rel="alternate"` and the format's `mediaType`, so a reader of the HTML can find it. A format with no `mediaType` is exported but not advertised.
 
 ## Studio hints
 

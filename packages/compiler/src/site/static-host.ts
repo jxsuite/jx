@@ -9,10 +9,17 @@
  * - Which route is the site's not-found page ({@link isNotFoundRoute}), which hosts expect at
  *   `/404.html` and which is never a page to index;
  * - Whether a built page asks crawlers not to index it ({@link htmlDeclaresNoindex}), because a
- *   sitemap that lists a page the page itself disowns sends two answers to the same question.
+ *   sitemap that lists a page the page itself disowns sends two answers to the same question;
+ * - Where a page's machine-readable twin lives, and the `<link rel="alternate">` that tells a reader
+ *   of the HTML about it ({@link withAlternateLink}), because a file nothing points to is a file
+ *   nobody finds.
  *
  * @docs framework/site/deployment
+ * @docs framework/agents/machine-readable
  */
+
+import { relative, sep } from "node:path";
+import { escapeHtml } from "../shared.ts";
 
 /**
  * The route of the site's not-found page, written to `404.html` (specs/site-architecture.md
@@ -83,4 +90,64 @@ export function htmlDeclaresNoindex(html: string): boolean {
     }
   }
   return false;
+}
+
+/** The `<head>` of a built page, or the whole string when it has no closing tag. */
+function headOf(html: string): { head: string; end: number } {
+  const end = html.search(/<\/head\s*>/i);
+  return { end, head: end === -1 ? html : html.slice(0, end) };
+}
+
+/**
+ * Whether a page's `<head>` already has a `<link rel="alternate">` of this media type, one the
+ * author wrote or an earlier step added. `type` is compared by essence and without regard to case.
+ *
+ * @param {string} html - A built page
+ * @param {string} type - A media type essence, `text/markdown`
+ * @returns {boolean} True when the page already advertises an alternate of that type
+ */
+export function hasAlternateLink(html: string, type: string): boolean {
+  const wanted = type.trim().toLowerCase();
+  for (const [tag] of headOf(html).head.matchAll(/<link\b[^>]*>/gi)) {
+    const rel = (attributeOf(tag, "rel") ?? "").toLowerCase().split(/\s+/);
+    const linked = (attributeOf(tag, "type") ?? "").split(";")[0]?.trim().toLowerCase();
+    if (rel.includes("alternate") && linked === wanted) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Adds `<link rel="alternate" type="…" href="…">` to the end of a built page's `<head>`, unless the
+ * page already has an alternate of that type (an author's own wins, like every auto-injected entry,
+ * specs/site-architecture.md §8.4) or has no `<head>` to put it in.
+ *
+ * This is the discovery mechanism the llms.txt proposal recommends for a Markdown twin
+ * (`rel="alternate" type="text/markdown"`): the twin's URL is not one a reader can guess, and
+ * `/templates/` is not `/templates/index.md` to anyone who has not been told.
+ *
+ * @param {string} html - A built page
+ * @param {{ href: string; type: string }} link - Site-absolute `href`, and the media type essence
+ * @returns {string} The page, with the link when it was needed
+ */
+export function withAlternateLink(html: string, link: { href: string; type: string }): string {
+  const { end } = headOf(html);
+  if (end === -1 || hasAlternateLink(html, link.type)) {
+    return html;
+  }
+  const tag = `<link href="${escapeHtml(link.href)}" rel="alternate" type="${escapeHtml(link.type)}">`;
+  return `${html.slice(0, end)}${tag}\n${html.slice(end)}`;
+}
+
+/**
+ * The site-absolute URL path a file in the build output is served at, percent-encoded the way a
+ * `<link href>` and a canonical URL are (`/kb/a b/index.md` is `/kb/a%20b/index.md`).
+ *
+ * @param {string} outDir - The build output directory
+ * @param {string} file - A file inside it
+ * @returns {string} `/templates/index.md`
+ */
+export function outputUrlPath(outDir: string, file: string): string {
+  return new URL(`/${relative(outDir, file).split(sep).join("/")}`, "http://localhost").pathname;
 }
