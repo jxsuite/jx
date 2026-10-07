@@ -92,8 +92,10 @@ describe('build.trailingSlash: "always" (the default)', () => {
     expect(html(root, "about/index.md")).toContain("About");
   });
 
-  it("advertises nothing on the not-found page, which is a twin of no URL", () => {
+  it("gives the not-found page no twin: nothing advertised and nothing written", () => {
     expect(twins(html(root, "404.html"))).toEqual([]);
+    expect(existsSync(join(root, "dist/404.md"))).toBe(false);
+    expect(existsSync(join(root, "dist/404/index.md"))).toBe(false);
   });
 });
 

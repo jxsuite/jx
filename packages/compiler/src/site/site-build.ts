@@ -784,11 +784,12 @@ export async function buildSite(
       /*
        * Serialize the export sidecars (formats with exportTarget: true, e.g. Markdown) BEFORE the page
        * is written, so its `<head>` advertises exactly the twins that exist: a link to a file the
-       * build did not write is worse than no link.
+       * build did not write is worse than no link. The not-found page has none: it is served for
+       * whatever URL was mistyped, so there is nothing for a twin to be a twin of.
        */
       const sidecars: { content: string; path: string; type: string | null }[] = [];
       for (const fmt of formatRegistry.withCapability("serialize")) {
-        if (!fmt.exportTarget) {
+        if (!fmt.exportTarget || isNotFoundRoute(route.urlPattern)) {
           continue;
         }
         try {
@@ -813,16 +814,12 @@ export async function buildSite(
           errors.push(`Error exporting ${fmt.name} for ${route.urlPattern}: ${err.message}`);
         }
       }
-      /* The not-found page is served for whatever URL was mistyped, so what it would advertise is
-         not a twin of anything. */
-      if (!isNotFoundRoute(route.urlPattern)) {
-        for (const sidecar of sidecars) {
-          if (sidecar.type !== null) {
-            result.html = withAlternateLink(result.html, {
-              href: outputUrlPath(outDir, sidecar.path),
-              type: sidecar.type,
-            });
-          }
+      for (const sidecar of sidecars) {
+        if (sidecar.type !== null) {
+          result.html = withAlternateLink(result.html, {
+            href: outputUrlPath(outDir, sidecar.path),
+            type: sidecar.type,
+          });
         }
       }
 
