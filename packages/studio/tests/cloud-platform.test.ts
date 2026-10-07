@@ -3,9 +3,11 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   createCloudPlatform,
   editUrl,
+  normalizeProjectDir,
   parseEditPath,
   parseRootKey,
   projectRootKey,
+  revisionSpec,
   sessionBase,
 } from "../src/platforms/cloud";
 import { recordCollabSockets } from "./collab-socket-recorder";
@@ -633,6 +635,101 @@ describe("root keys", () => {
   });
 });
 
+describe("project folders", () => {
+  const FOLDER = { owner: "Avunu", repo: "docs", branch: "main", dir: "Sites/avunu.net" };
+
+  test("a folder rides after the branch as git's own <rev>:<path>", () => {
+    expect(revisionSpec(FOLDER)).toBe("main:Sites/avunu.net");
+    expect(revisionSpec(PROJECT)).toBe("main");
+    expect(projectRootKey(FOLDER)).toBe("Avunu/docs@main:Sites/avunu.net");
+    expect(parseRootKey("Avunu/docs@main:Sites/avunu.net")).toEqual(FOLDER);
+  });
+
+  test("the first colon ends the branch, however many slashes either half holds", () => {
+    const nested = { owner: "o", repo: "r", branch: "release/1.2", dir: "apps/web/site" };
+    expect(parseRootKey(projectRootKey(nested))).toEqual(nested);
+    expect(parseEditPath(editUrl(nested))).toEqual(nested);
+  });
+
+  test("the editor URL keeps the folder readable and the branch one component", () => {
+    expect(editUrl(FOLDER)).toBe("/edit/Avunu/docs@main:Sites/avunu.net");
+    expect(editUrl({ ...FOLDER, branch: "feat/x", dir: "a b/c" })).toBe(
+      "/edit/Avunu/docs@feat%2Fx:a%20b/c",
+    );
+    expect(parseEditPath("/edit/Avunu/docs@feat%2Fx:a%20b/c")).toEqual({
+      ...FOLDER,
+      branch: "feat/x",
+      dir: "a b/c",
+    });
+  });
+
+  test("the session base carries branch and folder as ONE segment", () => {
+    expect(sessionBase(FOLDER)).toBe("/api/v1/p/Avunu/docs/main%3ASites%2Favunu.net/studio");
+  });
+
+  test("a folder is canonical, so one place is one project", () => {
+    expect(normalizeProjectDir("/Sites//avunu.net/")).toBe("Sites/avunu.net");
+    expect(normalizeProjectDir(String.raw` sites\blog `)).toBe("sites/blog");
+    expect(normalizeProjectDir("")).toBe("");
+    expect(normalizeProjectDir("/")).toBe("");
+    expect(normalizeProjectDir("../x")).toBeNull();
+    expect(normalizeProjectDir("a/./b")).toBeNull();
+    // A spelled-out root is the repository itself, so it adds no folder to the key.
+    expect(parseRootKey("o/r@main:/")).toEqual({ owner: "o", repo: "r", branch: "main" });
+    expect(parseRootKey("o/r@main:/Sites/x/")).toEqual({
+      owner: "o",
+      repo: "r",
+      branch: "main",
+      dir: "Sites/x",
+    });
+  });
+
+  test("a folder that climbs out of the repository is not a project anywhere", () => {
+    expect(parseRootKey("o/r@main:../x")).toBeNull();
+    expect(parseEditPath("/edit/o/r@main:a/../../x")).toBeNull();
+    expect(parseRootKey("o/r@:x")).toBeNull();
+  });
+
+  test("a folder session talks to its own gateway base and serves raw files under it", async () => {
+    const calls = mockFetch({
+      "/project-info": {
+        body: {
+          root: "Avunu/docs",
+          name: "avunu.net",
+          defaultBranch: "main",
+          permission: "write",
+          projectConfig: { name: "Avunu" },
+        },
+      },
+    });
+    const p = createCloudPlatform(FOLDER);
+    expect(p.projectRoot).toBe("Avunu/docs@main:Sites/avunu.net");
+    expect(p.documentBaseUrl).toBe("/api/v1/p/Avunu/docs/main%3ASites%2Favunu.net/studio/raw/");
+    const opened = await p.openProject();
+    expect(opened?.handle).toEqual({
+      root: "Avunu/docs@main:Sites/avunu.net",
+      name: "Avunu",
+      projectConfig: { name: "Avunu" },
+    });
+    expect(calls[0]?.url).toBe("/api/v1/p/Avunu/docs/main%3ASites%2Favunu.net/studio/project-info");
+  });
+
+  test("switching branch keeps the folder", async () => {
+    const assigned: string[] = [];
+    const original = globalThis.location;
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { ...original, assign: (url: string) => assigned.push(url) },
+    });
+    try {
+      await createCloudPlatform(FOLDER).gitCheckout?.("next");
+    } finally {
+      Object.defineProperty(globalThis, "location", { configurable: true, value: original });
+    }
+    expect(assigned).toEqual(["/edit/Avunu/docs@next:Sites/avunu.net"]);
+  });
+});
+
 describe("project catalogue", () => {
   test("listProjects maps platform projects to catalogue root keys", async () => {
     mockFetch({
@@ -952,6 +1049,71 @@ describe("identity & cloudflare surface", () => {
     });
     expect(p.importProject?.({ owner: "acme", name: "plain" })).rejects.toThrow(
       /no readable project.json/,
+    );
+  });
+
+  test("importProject sends a canonical folder and keys the project on it", async () => {
+    const calls = mockFetch({
+      "/api/v1/projects/import": {
+        body: {
+          repoId: 9,
+          root: "acme/site:apps/web",
+          owner: "acme",
+          name: "site",
+          defaultBranch: "main",
+          dir: "apps/web",
+        },
+      },
+    });
+    const p = createCloudPlatform(null);
+    expect(await p.importProject?.({ owner: "acme", name: "site", dir: "/apps/web/" })).toEqual({
+      root: "acme/site@main:apps/web",
+    });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
+      owner: "acme",
+      name: "site",
+      dir: "apps/web",
+    });
+    // The root is no folder at all, on the wire as in the key.
+    await p.importProject?.({ owner: "acme", name: "site", dir: "/" });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({ owner: "acme", name: "site" });
+    // A folder that climbs out is refused before anything is asked.
+    expect(p.importProject?.({ owner: "acme", name: "site", dir: "../other" })).rejects.toThrow(
+      /inside the repository/,
+    );
+    expect(calls).toHaveLength(2);
+  });
+
+  test("listRepoProjects reads the scan and keeps only folders it can open", async () => {
+    const calls = mockFetch({
+      "/api/v1/repos/acme/my%20site/projects": {
+        body: {
+          branch: "trunk",
+          locations: [
+            { dir: "", name: "Root" },
+            { dir: "/sites/blog/", name: "Blog" },
+            { dir: "../escape" },
+            { dir: "sites/shop" },
+          ],
+          truncated: true,
+        },
+      },
+    });
+    const p = createCloudPlatform(null);
+    expect(await p.listRepoProjects?.({ owner: "acme", name: "my site" })).toEqual({
+      branch: "trunk",
+      locations: [
+        { dir: "", name: "Root" },
+        { dir: "sites/blog", name: "Blog" },
+        { dir: "sites/shop" },
+      ],
+      truncated: true,
+    });
+    expect(calls[0]?.url).toBe("/api/v1/repos/acme/my%20site/projects");
+
+    mockFetch({ "/projects": { status: 403, body: { error: "Resource not accessible" } } });
+    expect(p.listRepoProjects?.({ owner: "acme", name: "x" })).rejects.toThrow(
+      /Resource not accessible/,
     );
   });
 
