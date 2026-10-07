@@ -83,8 +83,8 @@ afterAll(() => {
 
 describe("sitemap <lastmod> for generated routes", () => {
   it("dates each collection route by its own entry", () => {
-    expect(lastmodOf("https://lastmod.example/posts/first")).toBe("2024-03-04T05:06:07Z");
-    expect(lastmodOf("https://lastmod.example/posts/second")).toBe("2021-11-12T13:14:15Z");
+    expect(lastmodOf("https://lastmod.example/posts/first/")).toBe("2024-03-04T05:06:07Z");
+    expect(lastmodOf("https://lastmod.example/posts/second/")).toBe("2021-11-12T13:14:15Z");
   });
 
   /*
@@ -92,8 +92,8 @@ describe("sitemap <lastmod> for generated routes", () => {
    * were the template's mtime and therefore equal to each other.
    */
   it("does not give two entries the template's single timestamp", () => {
-    const first = lastmodOf("https://lastmod.example/posts/first");
-    const second = lastmodOf("https://lastmod.example/posts/second");
+    const first = lastmodOf("https://lastmod.example/posts/first/");
+    const second = lastmodOf("https://lastmod.example/posts/second/");
     expect(first).not.toBe(second);
   });
 
@@ -108,6 +108,6 @@ describe("sitemap <lastmod> for generated routes", () => {
   // `_meta` rides along with the parameters and must not become one.
   it("keeps the reserved carrier out of the generated URLs", () => {
     expect(sitemap).not.toContain("_meta");
-    expect(sitemap).toContain("<loc>https://lastmod.example/posts/first</loc>");
+    expect(sitemap).toContain("<loc>https://lastmod.example/posts/first/</loc>");
   });
 });

@@ -1032,25 +1032,35 @@ The compiler automatically generates certain tags if not explicitly declared:
 | `<meta charset>`                 | Always (from `defaults.charset`)                                         |
 | `<meta name="viewport">`         | Always, unless the author supplies one                                   |
 | `<title>`                        | Always — page title, falling back to the site `name`                     |
-| `<link rel="canonical">`         | When `url` is set, from `$site.url` + page path                          |
+| `<link rel="canonical">`         | `url` set: `$site.url` + served path (§8.4.1); not the 404 page (§8.4.2) |
 | `<meta property="og:url">`       | With the canonical; an author-supplied value wins                        |
 | `<meta property="og:site_name">` | From `$site.name`; an author-supplied value wins                         |
 | `<html lang>`                    | From the page's `$lang`, else `defaults.lang`                            |
 | `<html dir>`                     | From the page's `$dir`, else `defaults.dir`; omitted when neither is set |
-| `sitemap.xml` entry              | Every page, when `url` is set (§8.4.1)                                   |
+| `sitemap.xml` entry              | Every indexable page, when `url` is set (§8.4.1)                         |
 
 #### 8.4.1 Sitemap & `robots.txt`
 
-When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the route table — one `<url>` entry per compiled page, each with a `<loc>` (absolute, built from `url` + the route via `new URL(route, url)`, so it is identical to the page's `<link rel="canonical">`) and a `<lastmod>` — the page source file's modification time as a **full RFC 3339 timestamp**. The W3C Datetime profile sitemaps.org cites admits both that and a bare `YYYY-MM-DD`; the date-only form threw away any way to tell two edits on one day apart.
+When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the route table — one `<url>` entry per compiled page, each with a `<loc>` (absolute, built from `url` + the route as `build.trailingSlash` serves it via `new URL(route, url)`, so it is identical to the page's `<link rel="canonical">`) and a `<lastmod>` — the page source file's modification time as a **full RFC 3339 timestamp**. The W3C Datetime profile sitemaps.org cites admits both that and a bare `YYYY-MM-DD`; the date-only form threw away any way to tell two edits on one day apart.
 
 - **Requires `url`.** Absolute `<loc>` values cannot be built without it; if `url` is absent the sitemap is skipped with a build warning.
-- **Per-page opt-out.** A page sets `$sitemap: false` at its root to be excluded (e.g. thank-you pages, or drafts while build-time draft filtering is still pending). Every other page is included.
+- **Per-page opt-out.** A page sets `$sitemap: false` at its root to be excluded (e.g. thank-you pages, or drafts while build-time draft filtering is still pending). Two kinds of page are left out without it: a page whose built `<head>` carries `<meta name="robots">` with `noindex` (or `none`), because a sitemap that lists a page the page itself disowns gives a crawler two answers to one question, and the not-found page (§8.4.2). Both are still built and served. Every other page is included.
 - **Disable entirely.** Set `build.sitemap: false` (§14.1.1).
 - **Dynamic routes** are listed by their expanded concrete URLs, each dated by **the entry it was generated from** rather than by the template. A route's `sourcePath` is the `[slug]` file that rendered it, and a template is edited far more often than the posts beneath it — so dating by the template made an entire archive announce itself as changed whenever the template moved, which is the opposite of what `<lastmod>` is for. A `resolvePaths` result therefore carries the entry's `_meta` (`parser.md` §9.3) beside its route parameters; `_meta` is reserved, is never a route parameter, and is stripped before URL substitution. A route with no entry behind it — an authored page, or a `$paths` shape describing only parameter values — still uses its own file's modification time, which for those is the right answer.
-- **`<loc>` form** follows the canonical URL exactly and is not re-normalized for `build.trailingSlash`, keeping sitemap and canonical URLs in agreement.
+- **`<loc>` form** is the canonical URL exactly, and both are the route as `build.trailingSlash` serves it (§14.1.1): `/about/` under `"always"`, where the page is written to `about/index.html`, and `/about` under `"never"`, where it is written to `about.html`. The root is `/` either way. An earlier revision left both un-normalized, so a site built with the default `"always"` named URLs other than the ones its host serves. The `hreflang` alternates (§13.5) follow the same rule.
 - **`robots.txt`.** After the `public/` copy, a `Sitemap: <url>/sitemap.xml` line is appended to `dist/robots.txt` (creating a minimal `robots.txt` if none was provided). An existing `Sitemap:` line is left untouched.
 
 Redirect sources are not pages and never appear in the sitemap.
+
+#### 8.4.2 The not-found page
+
+A page at the route `/404` (`pages/404.json`, `pages/404.md`, or any registered page format) is the site's not-found page. Static hosts look for it by name: Cloudflare Pages, GitHub Pages and Netlify serve `/404.html` for a URL nothing answers, and Cloudflare Pages treats a site with no top-level `404.html` as a single-page application, answering every unknown path with the root page. `jx preview` already serves `dist/404.html` for an unknown URL. So the build:
+
+- writes the page to `dist/404.html` under either `build.trailingSlash` setting, and not also to `dist/404/index.html`, since the second is a URL that answers 200 with a page that says the URL is missing;
+- gives it no canonical link and no `og:url`, because the URL it answers at is whatever the visitor mistyped;
+- leaves it out of the sitemap (§8.4.1).
+
+A `404.html` in `public/` is copied over it like any other `public/` file, so a project that wants a hand-written one can ship it. Only the route `/404` is special: `/docs/404` and a locale-prefixed `/fr/404` are ordinary pages.
 
 ### 8.5 Structured Data (JSON-LD)
 
@@ -1931,7 +1941,7 @@ Configured in `project.json`:
 | --------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `outDir`        | `string`         | `"./dist"`    | Output directory for static assets                                                                                                            |
 | `format`        | `string`         | `"directory"` | **Reserved; currently unused.** Accepted for forward compatibility with single-file output — the build emits per-route directories regardless |
-| `trailingSlash` | `string`         | `"always"`    | `"always"` or `"never"`                                                                                                                       |
+| `trailingSlash` | `string`         | `"always"`    | `"always"` or `"never"`: the output layout, and the form of the canonical, `og:url`, sitemap and `hreflang` URLs (§8.4.1)                     |
 | `sitemap`       | `boolean`        | `true`        | Generate `sitemap.xml` from the route table (requires `url`; §8.4.1)                                                                          |
 | `adapter`       | `string \| null` | `null`        | Deployment adapter: `"cloudflare-workers"`, `"cloudflare-pages"`, `"node"`, `"bun"`                                                           |
 
@@ -1976,6 +1986,7 @@ dist/
 │       ├── hero-640-a1b2c3d4.webp
 │       ├── hero-320-a1b2c3d4.avif
 │       └── hero-640-a1b2c3d4.avif
+├── 404.html                     # The not-found page, when pages/404.* exists (§8.4.2)
 ├── sitemap.xml                  # Auto-generated from the route table (when url is set)
 ├── robots.txt                   # From public/, with a Sitemap: line appended
 ├── favicon.svg                  # Copied from public/

@@ -406,10 +406,13 @@ describe("buildSite", () => {
     expect(sitemap).toContain('<?xml version="1.0" encoding="UTF-8"?>');
     expect(sitemap).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
 
-    // <loc> matches the canonical-URL form (new URL — no trailing slash appended)
+    /*
+     * <loc> is the URL the host serves the page at: with the default `trailingSlash: "always"`, the
+     * directory form, which is also what the page's canonical link says.
+     */
     expect(sitemap).toContain("<loc>https://test.com/</loc>");
-    expect(sitemap).toContain("<loc>https://test.com/about</loc>");
-    expect(sitemap).toContain("<loc>https://test.com/blog</loc>");
+    expect(sitemap).toContain("<loc>https://test.com/about/</loc>");
+    expect(sitemap).toContain("<loc>https://test.com/blog/</loc>");
 
     // <lastmod> is a W3C date
     // Full RFC 3339, not date-only: the W3C Datetime profile admits both, and the date-only form
@@ -1878,7 +1881,7 @@ describe("buildSite — locale routing", () => {
     const sitemap = readFileSync(resolve(I18N_TMP, "dist/sitemap.xml"), "utf8");
     expect(sitemap).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
     expect(sitemap).toContain(
-      '<xhtml:link rel="alternate" hreflang="ar" href="https://multi.example/ar"/>',
+      '<xhtml:link rel="alternate" hreflang="ar" href="https://multi.example/ar/"/>',
     );
   }, 30_000);
 

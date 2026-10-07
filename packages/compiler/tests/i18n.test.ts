@@ -290,6 +290,28 @@ describe("localeAlternates", () => {
     );
   });
 
+  // The annotation names the URL the host answers with the page, so it follows `build.trailingSlash`.
+  test("hrefs take the served form of `build.trailingSlash`", () => {
+    const bare = [
+      { urlPattern: "/about" },
+      { urlPattern: "/fr-ca/about" },
+      { urlPattern: "/ar/about" },
+    ];
+    const hrefs = (slash?: string) =>
+      localeAlternates(bare, i18n, "https://x.example", slash)
+        .get("/about")
+        ?.map((a) => `${a.hreflang} ${a.href}`);
+    expect(hrefs("always")).toEqual([
+      "ar https://x.example/ar/about/",
+      "en https://x.example/about/",
+      "fr-CA https://x.example/fr-ca/about/",
+      "x-default https://x.example/about/",
+    ]);
+    expect(hrefs("never")?.at(-1)).toBe("x-default https://x.example/about");
+    // Unset: the route as written, which is what every caller that does not know the setting got.
+    expect(hrefs()?.at(-1)).toBe("x-default https://x.example/about");
+  });
+
   // A lone hreflang pointing at itself is noise; the annotation is about a set.
   test("a page with no translations gets none", () => {
     expect(map.has("/only-english/")).toBe(false);

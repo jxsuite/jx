@@ -204,7 +204,7 @@ describe("a site whose url carries a path", () => {
 
     // `<loc>` is built like the canonical URL, so the two always agree.
     expect(read("dist/sitemap.xml")).toContain(
-      "<loc>https://example.pages.dev/m/probe/about</loc>",
+      "<loc>https://example.pages.dev/m/probe/about/</loc>",
     );
     expect(read("dist/robots.txt")).toContain(
       "Sitemap: https://example.pages.dev/m/probe/sitemap.xml",
@@ -250,6 +250,6 @@ describe("a site whose url carries a path", () => {
     expect(read("dist/_redirects")).toContain("/old /new 301");
     expect(read("dist/_headers")).toMatch(/^\/\*$/m);
     expect(read("dist/sw.js")).toContain('const PRECACHE = ["/"]');
-    expect(read("dist/sitemap.xml")).toContain("<loc>https://example.com/about</loc>");
+    expect(read("dist/sitemap.xml")).toContain("<loc>https://example.com/about/</loc>");
   }, 120_000);
 });

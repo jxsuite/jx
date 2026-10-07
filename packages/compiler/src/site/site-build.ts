@@ -39,6 +39,7 @@ import {
   resolveSidecarEntry,
 } from "./bundler.ts";
 import { loadProjectConfig } from "./site-loader.ts";
+import type { ResolvedProjectConfig } from "./site-loader.ts";
 import {
   discoverPages,
   expandDynamicRoutes,
@@ -95,6 +96,7 @@ import {
   registrationScript,
   tombstoneServiceWorker,
 } from "./service-worker.ts";
+import { htmlDeclaresNoindex, isNotFoundRoute, servedRoute } from "./static-host.ts";
 import {
   buildManifest,
   buildSecurityTxt,
@@ -579,7 +581,7 @@ export async function buildSite(
     translationKey: declaredKeys.get(r.urlPattern),
     urlPattern: r.urlPattern,
   }));
-  const alternateMap = localeAlternates(keyedRoutes, i18n, siteUrl ?? "");
+  const alternateMap = localeAlternates(keyedRoutes, i18n, siteUrl ?? "", trailingSlash);
   /*
    * The same sets, site-absolute, for `$page.alternates`. Computed from the whole table for the
    * same reason the alternates are — and separately from them because a switcher must work in a
@@ -754,7 +756,12 @@ export async function buildSite(
       // Pages that opted out via $sitemap: false). <loc> is built like the canonical URL so
       // The two always agree.
       const isConcrete = !route.urlPattern.includes(":") && !route.urlPattern.includes("*");
-      if (sitemapEnabled && !result.excludeFromSitemap && isConcrete) {
+      /*
+       * A page the sitemap would list and the page itself disowns sends two answers to one question,
+       * so a page that asks crawlers for `noindex` is left out, and so is the not-found page.
+       */
+      const indexable = !isNotFoundRoute(route.urlPattern) && !htmlDeclaresNoindex(result.html);
+      if (sitemapEnabled && !result.excludeFromSitemap && indexable && isConcrete) {
         const routeAlternates = alternateMap.get(route.urlPattern) ?? [];
         sitemapEntries.push({
           /*
@@ -768,7 +775,7 @@ export async function buildSite(
             typeof route.sourceMtime === "string" && route.sourceMtime !== ""
               ? route.sourceMtime
               : toRfc3339(statSync(route.sourcePath).mtime),
-          loc: siteAbsoluteUrl(route.urlPattern, siteUrl),
+          loc: siteAbsoluteUrl(servedRoute(route.urlPattern, trailingSlash), siteUrl),
           ...(routeAlternates.length > 0 && { alternates: routeAlternates }),
         });
       }
@@ -1239,7 +1246,7 @@ export async function buildSite(
  */
 async function compilePage(
   route: SiteRoute,
-  projectConfig: ProjectConfig,
+  projectConfig: ResolvedProjectConfig,
   projectRoot: string,
   sections: Record<string, unknown>,
   imageCache: CacheManifest | null,
@@ -1427,7 +1434,14 @@ async function compilePage(
     ...(projectConfig.name != null && { siteName: projectConfig.name }),
     ...(projectConfig.url != null && { siteUrl: projectConfig.url }),
     ...(locale.alternates.length > 0 && { alternates: locale.alternates }),
-    pageUrl: route.urlPattern,
+    /*
+     * The canonical link and og:url name the URL the host answers with the page: the route as
+     * `build.trailingSlash` serves it. The not-found page gets neither, since the URL it answers at
+     * is whatever the visitor mistyped.
+     */
+    ...(!isNotFoundRoute(route.urlPattern) && {
+      pageUrl: servedRoute(route.urlPattern, projectConfig.build.trailingSlash),
+    }),
   });
 
   // Merge project-level $media into the layout document so responsive queries are available
@@ -2400,7 +2414,7 @@ function injectHead(
  * Convert a URL pattern to an output file path.
  *
  * "/" → dist/index.html "/about" → dist/about/index.html (with trailingSlash: "always")
- * "/blog/hello" → dist/blog/hello/index.html
+ * "/blog/hello" → dist/blog/hello/index.html "/404" → dist/404.html
  *
  * @param {string} urlPattern
  * @param {string} outDir
@@ -2410,6 +2424,12 @@ function injectHead(
 function routeToOutputPath(urlPattern: string, outDir: string, trailingSlash: string) {
   if (urlPattern === "/") {
     return join(outDir, "index.html");
+  }
+
+  // The not-found page is the one file a static host looks for by name (specs/site-architecture.md
+  // §8.4.2), whatever the trailingSlash setting.
+  if (isNotFoundRoute(urlPattern)) {
+    return join(outDir, "404.html");
   }
 
   // Remove leading slash
