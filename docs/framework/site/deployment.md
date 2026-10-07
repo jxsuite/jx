@@ -30,6 +30,7 @@ dist/
 ├── about/index.html
 ├── blog/hello-world/index.html
 ├── 404.html                  # The not-found page, when pages/404.* exists
+├── about/index.md            # A Markdown copy of each page, linked from its <head>
 ├── components/               # Compiled component JS + CSS sidecars
 ├── images/_optimized/        # Responsive image variants
 ├── sitemap.xml               # When url is set in project.json
