@@ -1060,7 +1060,8 @@ A page at the route `/404` (`pages/404.json`, `pages/404.md`, or any registered 
 
 - writes the page to `dist/404.html` under either `build.trailingSlash` setting, and not also to `dist/404/index.html`, since the second is a URL that answers 200 with a page that says the URL is missing;
 - gives it no canonical link and no `og:url`, because the URL it answers at is whatever the visitor mistyped;
-- leaves it out of the sitemap (§8.4.1).
+- leaves it out of the sitemap (§8.4.1);
+- writes no Markdown twin for it (§8.4.3), since a twin is of a URL and this page has none.
 
 A `404.html` in `public/` is copied over it like any other `public/` file, so a project that wants a hand-written one can ship it. Only the route `/404` is special: `/docs/404` and a locale-prefixed `/fr/404` are ordinary pages.
 
@@ -1076,7 +1077,7 @@ The `type` is the format's media type without its parameters, and the `href` is 
 
 - **An author's own wins.** A page that already has an alternate of that type, from its own `$head` or its layout, keeps it and gets no second one, like every auto-injected entry (§8.4).
 - **Only files that exist.** Twins are serialized before the page is written, and the link is added only for a twin that was. A format that throws or returns nothing for a page leaves that page without a link, and the build still reports the error.
-- **Not on the not-found page** (§8.4.2): the URL it answers at is whatever was mistyped, so there is nothing for a twin to be a twin of.
+- **No twin for the not-found page** (§8.4.2): the URL it answers at is whatever was mistyped, so there is nothing for a twin to be a twin of. None is written, and none is advertised.
 - **A format without a media type** advertises nothing, since an alternate with no type says only that something else exists.
 
 ### 8.5 Structured Data (JSON-LD)

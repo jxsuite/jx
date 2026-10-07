@@ -247,7 +247,7 @@ The setting also decides the form of the URLs the build writes into the canonica
 
 ## The 404 page
 
-Add `pages/404.json` (or `404.md`) and the build writes it to `dist/404.html`, the file name Cloudflare Pages, GitHub Pages and Netlify serve for a URL that matches nothing. It lands there under either `trailingSlash` setting, gets no canonical link, and stays out of the sitemap.
+Add `pages/404.json` (or `404.md`) and the build writes it to `dist/404.html`, the file name Cloudflare Pages, GitHub Pages and Netlify serve for a URL that matches nothing. It lands there under either `trailingSlash` setting, gets no canonical link and no Markdown copy, and stays out of the sitemap.
 
 Without one, Cloudflare Pages assumes a single-page application and answers every unknown path with your home page and a 200, so a mistyped link never looks broken to a visitor or a crawler.
 
