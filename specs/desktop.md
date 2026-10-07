@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.5.9-draft\
+**Version:** 0.5.10-draft\
 **Status:** Partial\
-**Updated:** 2026-10-04\
+**Updated:** 2026-10-07\
 **License:** MIT
 
 ---
@@ -1168,6 +1168,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.5.10-draft** (2026-10-07) — Open Project on the cloud picks a project folder within the chosen repository (listRepoProjects, and importProject's dir), and a cloud project's root key, editor URL and session revision carry that folder in git's rev:path notation (§4.1, §4.2, §10.1).
 - **0.5.9-draft** (2026-10-04) — §3.1 a backend that sets DirEntry.version may answer a documentBaseUrl request with an immutable cache lifetime only when ?v= is a version it issued and it returns exactly the bytes that version names, an older one included (the browser keeps that answer for good, so Studio keeps versions true); an unrecognized v and every unversioned URL keep the revalidating response. §10.1 the cloud adapter reports its event stream's first open as an "open" resync.
 - **0.5.8-draft** (2026-10-04) — §10.1 the cloud /events socket reconnects on jittered backoff with wake triggers and reports onResync: reconnect on every open after the first, commit on a committed git notice; the dev server's EventSource and the Chromium shell's RPC socket report reconnect the same way.
 - **0.5.7-draft** (2026-10-04) — §10.4 backend-directed access: an action-required refusal (HTTP 403, actions, heading, retry) reaches every adapter member intact, session refusals nobody caught are reported once and their actions offered, the AI and Cloudflare routes are told the bound project, AccountStatus carries platform account entries and notices, and the platform gains performAction.
@@ -1238,4 +1239,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.5.9-draft_
+_Jx Studio Desktop Architecture Specification v0.5.10-draft_
