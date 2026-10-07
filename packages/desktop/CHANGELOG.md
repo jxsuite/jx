@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.4.3](https://github.com/jxsuite/jx/compare/desktop-v5.4.2...desktop-v5.4.3) (2026-10-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/studio bumped to 6.1.0
+  * devDependencies
+    * @jxsuite/ui bumped to 0.5.0
+
 ## [5.4.2](https://github.com/jxsuite/jx/compare/desktop-v5.4.1...desktop-v5.4.2) (2026-10-06)
 
 
