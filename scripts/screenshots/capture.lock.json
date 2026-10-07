@@ -736,9 +736,9 @@
       "width": 3840
     },
     "docs/images/new-project-modal.png": {
-      "bytes": 864823,
-      "capturedAt": "2026-10-05T22:57:24Z",
-      "capturedBy": "screenshots@ci/37372419526",
+      "bytes": 846678,
+      "capturedAt": "2026-10-07T12:34:58Z",
+      "capturedBy": "screenshots@ci/37621842544",
       "definition": "7f2ead4c8a2991fd60f7081224e089f04d7cf3d665e7c762b7bd78e5a0d59dae",
       "height": 1796,
       "runtime": {
@@ -746,7 +746,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "d4058226a5d8f9f73478663fa824d4dcf6d4b8104126ba041d312dfcf00b6e8e",
+      "sha256": "73dc5eab70ee551db9591c7211a7f2dfb7c0bebf68dcdd29a8763e73dcb92eac",
       "shot": "new-project",
       "width": 1152
     },
