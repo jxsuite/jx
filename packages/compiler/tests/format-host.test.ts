@@ -33,6 +33,46 @@ describe("importImplementation", () => {
     }
   });
 
+  test("falls back from a src/ .js path to the built module in dist/", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "jx-import-impl-"));
+    try {
+      mkdirSync(join(dir, "dist"));
+      writeFileSync(join(dir, "dist", "mod.js"), "export const hello = 7;\n");
+      const mod = await importImplementation(join(dir, "src", "mod.js"));
+      expect(mod.hello).toBe(7);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  /*
+   * A descriptor that names its TypeScript source (`"$implementation": "./feed.ts"`) used to make
+   * Node look for dist/feed.ts and fail with "Cannot find module", although the build wrote
+   * dist/feed.js.
+   */
+  test("falls back from a src/ .ts path to the built .js module in dist/", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "jx-import-impl-"));
+    try {
+      mkdirSync(join(dir, "dist"));
+      writeFileSync(join(dir, "dist", "mod.js"), "export const hello = 9;\n");
+      const mod = await importImplementation(join(dir, "src", "mod.ts"));
+      expect(mod.hello).toBe(9);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("a .ts path outside src/ is not guessed at as a .js file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "jx-import-impl-"));
+    try {
+      writeFileSync(join(dir, "mod.js"), "export const hello = 1;\n");
+      // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
+      await expect(importImplementation(join(dir, "mod.ts"))).rejects.toThrow();
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   test("throws the last error when no candidate resolves", async () => {
     // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
     await expect(importImplementation("/no/such/src/missing.js")).rejects.toThrow();

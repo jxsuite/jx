@@ -3,7 +3,7 @@
   "$prototype": "Class",
   "title": "Feed",
   "description": "Atom (RFC 4287) and JSON Feed generation from content collections, with RFC 5005 archives",
-  "$implementation": "./feed.ts",
+  "$implementation": "./feed.js",
   "project": {
     "key": "feed",
     "title": "Feeds",
