@@ -213,7 +213,7 @@ describe("the hreflang graph", () => {
 
   it("is complete and symmetric: every member names every member, itself included", () => {
     const graph = new Map(
-      routes.map((r) => [`${SITE}/${r}`.replace(/\/$/, "/"), alternates(html(r))]),
+      routes.map((r) => [`${SITE}/${r}`.replace(/([^/])$/, "$1/"), alternates(html(r))]),
     );
     for (const [url, set] of graph) {
       const members = Object.entries(set).filter(([lang]) => lang !== "x-default");
@@ -229,7 +229,7 @@ describe("the hreflang graph", () => {
   });
 
   it("names exactly one x-default per set, pointing at the default locale", () => {
-    expect(alternates(html("fr-ca/a-propos"))["x-default"]).toBe(`${SITE}/about`);
+    expect(alternates(html("fr-ca/a-propos"))["x-default"]).toBe(`${SITE}/about/`);
     expect(alternates(html("ar"))["x-default"]).toBe(`${SITE}/`);
     expect(html("about").match(/hreflang="x-default"/g)).toHaveLength(1);
   });
@@ -251,12 +251,12 @@ describe("a localized collection URL", () => {
    * translations of an entry share an id (§13.3), and the id is what the route parameter carries.
    */
   it("pairs each entry with its translation through a parameter in the key", () => {
-    expect(alternates(html("notes/first"))["fr-CA"]).toBe(`${SITE}/fr-ca/carnet/first`);
-    expect(alternates(html("fr-ca/carnet/first"))["en"]).toBe(`${SITE}/notes/first`);
+    expect(alternates(html("notes/first"))["fr-CA"]).toBe(`${SITE}/fr-ca/carnet/first/`);
+    expect(alternates(html("fr-ca/carnet/first"))["en"]).toBe(`${SITE}/notes/first/`);
   });
 
   it("keeps entries apart — one key per entry, not one for the collection", () => {
-    expect(alternates(html("notes/second"))["fr-CA"]).toBe(`${SITE}/fr-ca/carnet/second`);
+    expect(alternates(html("notes/second"))["fr-CA"]).toBe(`${SITE}/fr-ca/carnet/second/`);
   });
 });
 
@@ -267,14 +267,14 @@ describe("a localized slug", () => {
    * mechanism, no route table entry, no metadata file.
    */
   it("is joined to the page it translates, in both directions", () => {
-    expect(alternates(html("about"))["fr-CA"]).toBe(`${SITE}/fr-ca/a-propos`);
-    expect(alternates(html("fr-ca/a-propos"))["en"]).toBe(`${SITE}/about`);
+    expect(alternates(html("about"))["fr-CA"]).toBe(`${SITE}/fr-ca/a-propos/`);
+    expect(alternates(html("fr-ca/a-propos"))["en"]).toBe(`${SITE}/about/`);
   });
 
   it("reaches the sitemap with the rest of the set", () => {
     const sitemap = readFileSync(join(root, "dist/sitemap.xml"), "utf8");
-    expect(sitemap).toContain(`<loc>${SITE}/fr-ca/a-propos</loc>`);
-    expect(sitemap).toContain(`hreflang="fr-CA" href="${SITE}/fr-ca/a-propos"`);
+    expect(sitemap).toContain(`<loc>${SITE}/fr-ca/a-propos/</loc>`);
+    expect(sitemap).toContain(`hreflang="fr-CA" href="${SITE}/fr-ca/a-propos/"`);
   });
 });
 
