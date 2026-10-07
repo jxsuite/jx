@@ -190,6 +190,33 @@ export interface RepoInfo {
 }
 
 /**
+ * One folder of a repository that holds a `project.json`, as `StudioPlatform.listRepoProjects`
+ * finds it: a place Open Project can start a session from.
+ */
+export interface RepoProjectLocation {
+  /**
+   * The folder, relative to the repository root, without leading or trailing slashes; `""` is the
+   * root.
+   */
+  dir: string;
+  /** The `name` its `project.json` declares, when the platform read one; absent otherwise. */
+  name?: string;
+}
+
+/** Every project a repository holds, as far as the platform could look. */
+export interface RepoProjects {
+  /** The branch the scan read: the repository's default branch. */
+  branch: string;
+  /** Each folder holding a `project.json`, the root first and the rest in path order. */
+  locations: RepoProjectLocation[];
+  /**
+   * The repository was too large to list in one read, so a project may exist that `locations` does
+   * not name. The picker offers a typed folder when this is set.
+   */
+  truncated: boolean;
+}
+
+/**
  * Where a new project is written. The New Project modal collects this from the user and the backend
  * MUST honor it — no backend may pick a destination on its own (see
  * `StudioPlatform.createDestination`).
@@ -728,11 +755,23 @@ export interface StudioPlatform {
    */
   listRepos?: () => Promise<RepoInfo[]>;
   /**
-   * Adopt an existing repository as a Jx project and return its catalogue root key (openable via
-   * the recent-projects path). Rejects with a structured message when the repository carries no
-   * project.json.
+   * The folders of a repository that hold a `project.json` — the project locations Open Project
+   * offers once a repository is chosen, so a project that lives in a subfolder (a monorepo's
+   * `sites/marketing`) can be opened as itself. Optional beside `listRepos`: without it the picker
+   * opens a repository at its root, as it always has.
    */
-  importProject?: (opts: { owner: string; name: string }) => Promise<{ root: string }>;
+  listRepoProjects?: (repo: { owner: string; name: string }) => Promise<RepoProjects>;
+  /**
+   * Adopt an existing repository as a Jx project and return its catalogue root key (openable via
+   * the recent-projects path). `dir` names the folder that holds the `project.json`, relative to
+   * the repository root; absent or `""` is the root. Rejects with a structured message when that
+   * folder carries no project.json.
+   */
+  importProject?: (opts: {
+    owner: string;
+    name: string;
+    dir?: string;
+  }) => Promise<{ root: string }>;
   /**
    * Open a pull request for the current branch. Cloud platforms implement it against their session;
    * local platforms omit it and Studio falls back to a direct GitHub API call with the user's

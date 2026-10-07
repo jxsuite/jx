@@ -91,7 +91,7 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 | **Git**                  | `gitStatus`, `gitCommit`, `gitPush`, `gitPull`, `gitDiff`, `gitCheckout`, `gitClone?`, `createPullRequest?`, …                                                                                                                 |
 | **Collab**               | `collab?` (realtime co-editing handle per document)                                                                                                                                                                            |
 | **Data / secrets**       | `dataConnections?`, `dataRows?`, row CRUD, `dataPush?`, `listSecrets?`, `setSecrets?`                                                                                                                                          |
-| **Publish / identity**   | `getUser?`, `getAccountStatus?`, `listRepos?`, `importProject?`, `cfConnection?`, `cfConnect?`, `cfApi?`                                                                                                                       |
+| **Publish / identity**   | `getUser?`, `getAccountStatus?`, `listRepos?`, `listRepoProjects?`, `importProject?`, `cfConnection?`, `cfConnect?`, `cfApi?`                                                                                                  |
 | **Site preview / build** | `previewSite?`, `setPreviewOverlay?`, `clearPreviewOverlay?`, `buildSite?` (specs/studio.md §10.1, §10.2)                                                                                                                      |
 | **Code services / AI**   | `codeService` (§5.3), `resolveClass?`, `aiChatUrl`                                                                                                                                                                             |
 | **Multi-window / shell** | `openProjectInNewWindow?`, `pickProject?`, `newWindow?`, `setWindowProject?`, `getProjectRoot?`, `getAppInfo?`, `getSettings?`, `patchSettings?`                                                                               |
@@ -99,19 +99,9 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 
 **Every path across the PAL is project-relative, in both directions.** A caller passes `components/card.json`, and a member that reports paths reports them in that same space — including the refactor members, whose reports name files the sweep found. Where a backend speaks a different space, the adapter translates, and it translates in ONE direction only: an adapter that both prefixes a request and strips a prefix off the reply is asserting that the backend echoes its own input space, which is a property of a particular route rather than of the protocol. The dev server's own convention is stated in `server.md` §4.1.
 
-**`readFile` decodes; `readFileBytes` does not, and the difference is not a convenience.** `readFile`
-answers a `string`, which means UTF-8, which means every byte sequence that is not valid UTF-8 is
-replaced with U+FFFD on the way through. That is invisible and irreversible: a JPEG read this way is
-not a damaged JPEG, it is a run of replacement characters no decoder will turn back into an image. So
-a caller that must DECODE a project file reads `readFileBytes` instead, and gets an `ArrayBuffer`.
+**`readFile` decodes; `readFileBytes` does not, and the difference is not a convenience.** `readFile` answers a `string`, which means UTF-8, which means every byte sequence that is not valid UTF-8 is replaced with U+FFFD on the way through. That is invisible and irreversible: a JPEG read this way is not a damaged JPEG, it is a run of replacement characters no decoder will turn back into an image. So a caller that must DECODE a project file reads `readFileBytes` instead, and gets an `ArrayBuffer`.
 
-**The `<img>` route is not an alternative on the desktop, which is the platform that needs it most.**
-A preview `src` resolves to the per-window loopback origin while the shell document sits on `views://`,
-so an image drawn from it TAINTS a canvas and `toBlob()` throws; and `server.md` §4.2 bans CORS
-outright, because the whole loopback containment rests on the browser refusing cross-origin reads.
-Bytes that arrive through the PAL become a same-origin `Blob`, so tainting stops being a hazard to work
-around and becomes one that cannot arise. The RPC launchers carry them base64-encoded, for the same
-reason `uploadFile` accepts base64: their params and results are JSON, and a JPEG is not a string.
+**The `<img>` route is not an alternative on the desktop, which is the platform that needs it most.** A preview `src` resolves to the per-window loopback origin while the shell document sits on `views://`, so an image drawn from it TAINTS a canvas and `toBlob()` throws; and `server.md` §4.2 bans CORS outright, because the whole loopback containment rests on the browser refusing cross-origin reads. Bytes that arrive through the PAL become a same-origin `Blob`, so tainting stops being a hazard to work around and becomes one that cannot arise. The RPC launchers carry them base64-encoded, for the same reason `uploadFile` accepts base64: their params and results are JSON, and a JPEG is not a string.
 
 **User settings are written as PATCHES, never as the whole map.** `patchSettings({ set, remove })` must leave a key named by neither exactly as it found it, and answers with the store as it then stands. A whole-map write cannot express "change this one thing", so every writer implicitly claims the whole store: on the chromium launcher, where each window is its own process with its own browser profile and therefore its own `localStorage`, a welcome window holding no settings overwrote the credentials another window had just stored — and a `settings.json` was left holding one key of the three its owner had configured. The rule also preserves keys the writing build does not know: one written by a newer version, or by hand. A backend applies the patch under a lock that spans the read and the write, so two concurrent patches compose rather than one overwriting the other.
 
@@ -196,7 +186,7 @@ Nothing yet boots a packaged window in CI (the `bundle-desktop-*.yml` lanes are 
    - If a project was previously open and the handle is still valid, reopen it
    - Otherwise, show the welcome state ("Open a project to get started")
 3. When the user triggers "Open Project":
-   - With `openProjectPicker: "repo-list"` (cloud), Studio shows its own repository picker over `listRepos` + `importProject` (write-access repositories only) and opens the choice through the recent-projects path — `openProject()` is never called
+   - With `openProjectPicker: "repo-list"` (cloud), Studio shows its own repository picker over `listRepos`, `listRepoProjects` and `importProject` (write-access repositories only, and a project folder within the chosen one) and opens the choice through the recent-projects path — `openProject()` is never called
    - With a project already open on a platform that implements **both** `openProjectInNewWindow` and `pickProject`, Studio first asks **where** (§4.2a) and routes the answer
    - Otherwise Studio calls `getPlatform().openProject()` and the platform presents its native project opening flow
    - On success, Studio receives `{ config, handle }` and initializes the file tree
@@ -246,7 +236,17 @@ A project is identified by its `project.json` file. This is the single point of 
 
 - **Desktop:** User selects `project.json` via native file dialog. The parent directory becomes the project root.
 - **Dev server:** User selects the folder containing `project.json` via `showDirectoryPicker()`. Studio reads `project.json` from the directory to validate it.
-- **Cloud:** User picks from a repository list (`openProjectPicker: "repo-list"` — GitHub repositories with write access, Jx-tagged repos first). Selection runs `importProject`, which probes the repository's `project.json` and resolves the catalogue root key Studio navigates to.
+- **Cloud:** User picks from a repository list (`openProjectPicker: "repo-list"` — GitHub repositories with write access, Jx-tagged repos first), then a **project folder** within it. Confirming runs `importProject({ owner, name, dir })`, which probes `project.json` in that folder and resolves the catalogue root key Studio navigates to.
+
+The project folder is what lets a repository hold more than one project, or hold one below its root (a monorepo's `sites/marketing`): the folder holding `project.json` is the project root, exactly as the parent directory of the picked file is on the desktop. The picker's two steps:
+
+| Step       | Source                                | Behaviour                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository | `listRepos`                           | A filter field over a `jx-listbox`, narrowed by name and, when the repositories span several accounts, by account. The filter's arrows move the active row; a row the caret only passes through is not scanned until it rests there (250 ms), and a clicked one is scanned at once                                                                                                                |
+| Folder     | `listRepoProjects({ owner, name })`   | Every folder of the default branch holding a `project.json`, root first then shallowest, with the `name` each declares. The root is preselected when it is a project, otherwise the first folder. A **Project Folder** field drives the list (its arrows step through it) and accepts any folder, which is the answer when the scan reports `truncated` or the platform has no `listRepoProjects` |
+| Confirm    | `importProject({ owner, name, dir })` | **Open** (or **Add**), Enter in either field, or a double-click on a repository holding exactly one project. Disabled until a repository is chosen and its folder is usable; a folder that climbs out of the repository (`..`) is refused in the field                                                                                                                                            |
+
+A folder is canonical everywhere it is spelled: repository-relative, slash-separated, no leading, trailing or doubled slash, and `""` for the root (`packages/studio/src/utils/project-dir.ts`). It is part of the project's identity, so two spellings of one folder must never become two Recent rows or two sessions. On the cloud the root key, the editor URL and the session's revision all carry it in git's own `<rev>:<path>` notation, `owner/repo@main:sites/marketing` (§10.1).
 
 What that list contains is bounded by the App's grant, not by the account's repositories, so the picker (both modes — Open Project and Add Existing Repository) also renders a **repository-access footer** built from `getAccountStatus()`:
 
@@ -267,7 +267,8 @@ User clicks "Open Project"
         │
         ├─── openProjectPicker: "repo-list" (Cloud): Studio's repository picker
         │    → listRepos → write-access repos, Jx-tagged first → user picks
-        │    → importProject → { root } → opens via the recent-projects path
+        │    → listRepoProjects → folders holding project.json → user picks one
+        │    → importProject({ dir }) → { root } → opens via the recent-projects path
         │    (openProject() is never called)
         │
         ├─── A project is open AND the platform has openProjectInNewWindow + pickProject:
@@ -414,22 +415,11 @@ openNewProjectModal() is left responsible for opening what it created
 
 > **Status: Implemented.**
 
-Unlike Open (§4.2a), New Project never asks. There is nothing to pick between — the window that
-already had a project keeps it, and the one just created gets a window of its own whenever
-`openProjectInNewWindow` is available; without it (single-window platforms) the new project replaces
-what this window was showing, exactly as Open does with one window.
+Unlike Open (§4.2a), New Project never asks. There is nothing to pick between — the window that already had a project keeps it, and the one just created gets a window of its own whenever `openProjectInNewWindow` is available; without it (single-window platforms) the new project replaces what this window was showing, exactly as Open does with one window.
 
-**Desktop's `createProject` re-roots the calling window's own backend as a side effect of
-scaffolding** — git init (§4.5's "every created project is a git repository") has no explicit-root
-form of its own, so it runs through whatever this window's backend is currently bound to, and that
-has to be the new root for git init to apply to the right directory. This is fine when the window is
-about to show the new project too, but wrong the moment a DIFFERENT project was already showing here:
-the new-window flow above dedupes by asking the backend which window already has a root open, and
-thanks to the reroot that now reads as THIS window, even though its own UI still names the project it
-had before create ran.
+**Desktop's `createProject` re-roots the calling window's own backend as a side effect of scaffolding** — git init (§4.5's "every created project is a git repository") has no explicit-root form of its own, so it runs through whatever this window's backend is currently bound to, and that has to be the new root for git init to apply to the right directory. This is fine when the window is about to show the new project too, but wrong the moment a DIFFERENT project was already showing here: the new-window flow above dedupes by asking the backend which window already has a root open, and thanks to the reroot that now reads as THIS window, even though its own UI still names the project it had before create ran.
 
-`services/project-adoption.ts`'s `adoptCreatedProject` is what closes that gap, and every path that
-creates a project — the wizard and both AI bootstrap tools — runs through it:
+`services/project-adoption.ts`'s `adoptCreatedProject` is what closes that gap, and every path that creates a project — the wizard and both AI bootstrap tools — runs through it:
 
 ```
 initRepo(root)                    — git init, through this window's (just re-rooted) backend
@@ -449,9 +439,7 @@ A different project was already showing here, and openProjectInNewWindow exists?
              of its own, and this window's project, tabs and backend binding are untouched
 ```
 
-The outcome is reported the same way §4.2a's is: `adopted` is `workspace.projectRoot === root`, and
-`openedElsewhere` distinguishes "opened, just not here" from a genuine failure — a caller that only
-checked `adopted` would otherwise report the ordinary new-window case as one.
+The outcome is reported the same way §4.2a's is: `adopted` is `workspace.projectRoot === root`, and `openedElsewhere` distinguishes "opened, just not here" from a genuine failure — a caller that only checked `adopted` would otherwise report the ordinary new-window case as one.
 
 A live preview under the fields shows the resolved destination (`/home/you/Sites/my-site`, or `acme/my-site`) before anything is written.
 
@@ -1067,7 +1055,9 @@ The snap cannot use the Chromium snap a user already has: a strictly confined sn
 
 A cloud adapter replaces filesystem operations with API calls to a remote service. The project root becomes a project ID rather than a filesystem path. All PAL methods translate to REST or WebSocket calls to the cloud API.
 
-Concretely, the shipped adapter is session-bound: every call goes to `/api/v1/p/:owner/:repo/:branch/studio/*` with cookie auth, so the "project id" is the triple in the path. It reports `id: "cloud"`, `canvasUrl: "/canvas.html"` and `openProjectPicker: "repo-list"` — that last one routes New Project through Studio's own repository picker over `listRepos` + `importProject`, so `openProject()` is never called (§3.4). It implements the full git family, the identity and publish members, `subscribeFileEvents` over the session's `/events` WebSocket, `collab`, and `importSite`, which posts to the platform's own `/api/v1/import/site` rather than a session route, because importing is how a cloud project comes into existence and the project-less hub is where it must work. That route has not shipped on the platform yet, so the member answers 404 until it does. It deliberately omits `pickDirectory`, the package install family, `gitClone`, `resolveClass` and `codeService`; each degrades exactly as its protocol route's `degradation` field describes, which is what makes an omission a documented state rather than a break.
+Concretely, the shipped adapter is session-bound: every call goes to `/api/v1/p/:owner/:repo/:branch/studio/*` with cookie auth, so the "project id" is the triple in the path. It reports `id: "cloud"`, `canvasUrl: "/canvas.html"` and `openProjectPicker: "repo-list"` — that last one routes Open Project through Studio's own repository picker over `listRepos`, `listRepoProjects` + `importProject`, so `openProject()` is never called (§3.4).
+
+**A project in a subfolder is a session of its own.** The `:branch` segment is a REVISION SPEC: the branch, then `:` and the project folder when the project is not the repository root (`main:sites/marketing`), encoded as one segment, so a folder project's routes have exactly the root's shape. git's `<rev>:<path>` notation is unambiguous for the reason git can use it: `:` is one of the characters a ref name may never contain, so the first colon always ends the branch. The same spelling is the root key (`owner/repo@main:sites/marketing`) and the editor URL (`/edit/owner/repo@main:sites/marketing`, the branch one encoded component and the folder's slashes kept), and a key or path without a colon is the repository root exactly as before. The backend serves that session over the folder's SUBTREE, so every path Studio sends and receives is project-relative, as it is against a dev server opened on a subfolder; the folder goes back on only where the session meets the repository, and a commit patches the repository's root tree with the folder's entries alone. It implements the full git family, the identity and publish members, `subscribeFileEvents` over the session's `/events` WebSocket, `collab`, and `importSite`, which posts to the platform's own `/api/v1/import/site` rather than a session route, because importing is how a cloud project comes into existence and the project-less hub is where it must work. That route has not shipped on the platform yet, so the member answers 404 until it does. It deliberately omits `pickDirectory`, the package install family, `gitClone`, `resolveClass` and `codeService`; each degrades exactly as its protocol route's `degradation` field describes, which is what makes an omission a documented state rather than a break.
 
 **`discoverComponents` is NOT among them, and the reason it once was is worth keeping.** It returned nothing under a blanket "no execution of project JS" posture — but for a JSON component, discovery is a file read and a property lookup, and executes nothing. The posture belongs to the formats that genuinely need a project-supplied parser, not to the whole feature. Omitting it did not cost a feature list: the canvas injects the `$elements` a document's tags need only when the component registry is non-empty, so an empty registry meant no component was ever registered or fetched, and every instance rendered as an unregistered custom element — blank space where the component should be. An omission is only a documented state when something actually degrades gracefully.
 

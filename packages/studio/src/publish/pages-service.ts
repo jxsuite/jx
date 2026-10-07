@@ -36,6 +36,12 @@ export interface ConnectOptions {
   productionBranch: string;
   owner: string;
   repo: string;
+  /**
+   * The folder of the repository the project lives in, when it is not the root (a cloud project
+   * opened from a subfolder). Pages builds there, so `bunx jx build` finds that project's
+   * `project.json` and `dist` is that project's output.
+   */
+  rootDir?: string;
 }
 
 /** True when the active platform can reach the Cloudflare API. */
@@ -106,6 +112,7 @@ export async function createPagesProject(opts: ConnectOptions): Promise<PagesPro
       build_config: {
         build_command: "bunx jx build",
         destination_dir: "dist",
+        ...(opts.rootDir ? { root_dir: opts.rootDir } : {}),
       },
       source: {
         type: "github",

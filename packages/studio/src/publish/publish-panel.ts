@@ -19,12 +19,12 @@
  * HTML, in the accessibility tree and in every DOM dump. It is gone, and the document is now the
  * thing that makes it impossible rather than the thing that remembers not to — the field binds no
  * `value` at all, and the draft lives in the adapter's closure until {@link saveToken} reads it. A
- * stored token is reported as *stored*, the field is only ever drawn for a REPLACEMENT the reader
+ * stored token is reported as _stored_, the field is only ever drawn for a REPLACEMENT the reader
  * asked for, and revoking lives where every other credential's does — Preferences › Accounts
  * (`studio.md` §15 rule 1: a surface never prints the secret it describes).
  *
- * @docs studio/publish/cloudflare
  * @license MIT
+ * @docs studio/publish/cloudflare
  */
 
 import type { DeployConfig, ProjectConfig } from "@jxsuite/schema/types";
@@ -36,6 +36,7 @@ import { resetModelCache } from "../services/ai-models";
 import { projectState } from "../store";
 import type { CfConnection } from "../types";
 import { layerHost } from "../ui/layers";
+import { normalizeProjectDir } from "../utils/project-dir";
 import { openPublishSurface } from "../surfaces/publish";
 import type { PublishForm, PublishSurfaceHandle, PublishView } from "../surfaces/publish";
 import type { CfAccount, PagesDeploymentInfo } from "./pages-service";
@@ -80,6 +81,17 @@ function prefillRepo(): { owner: string; repo: string } {
   const root = getPlatform().projectRoot;
   const match = /^([\w.-]+)\/([\w.-]+)(?:@.+)?$/.exec(root);
   return match ? { owner: match[1]!, repo: match[2]! } : { owner: "", repo: "" };
+}
+
+/**
+ * The repository folder a cloud project lives in ("owner/repo@branch:sites/blog"), or "" for one
+ * that is the whole repository and for every non-cloud root. Not a form field: the folder is the
+ * project's identity rather than a choice, and a Pages project that built anywhere else would build
+ * a different project, or none.
+ */
+function projectFolder(): string {
+  const spec = /^[\w.-]+\/[\w.-]+@[^:]+:(.+)$/.exec(getPlatform().projectRoot)?.[1] ?? "";
+  return normalizeProjectDir(spec) ?? "";
 }
 
 /** The connected Pages project, as the surface takes it: strings, never a config object. */
@@ -257,12 +269,14 @@ async function submitConnect(): Promise<void> {
   _error = "";
   paint();
   try {
+    const rootDir = projectFolder();
     const deploy = await connectDeploy(config, {
       accountId: _form.accountId,
       owner: _form.owner,
       productionBranch: _form.branch || "main",
       projectName: _form.projectName,
       repo: _form.repo,
+      ...(rootDir ? { rootDir } : {}),
     });
     _deployment = await latestDeployment(deploy).catch(() => null);
   } catch (error) {
