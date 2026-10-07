@@ -2,7 +2,7 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.6.15-draft\
+**Version:** 0.6.16-draft\
 **Status:** Partial\
 **Updated:** 2026-10-07\
 **License:** MIT
@@ -2310,6 +2310,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.6.16-draft** (2026-10-07) — The not-found page gets no Markdown twin: none is written and none is advertised (8.4.2, 8.4.3).
 - **0.6.15-draft** (2026-10-07) — A page advertises each export sidecar it has with a link rel=alternate of the format's media type (new 8.4.3); only twins that were written, an author's own link wins, none on the not-found page.
 - **0.6.14-draft** (2026-10-07) — Canonical link, og:url, sitemap loc and hreflang alternates take the served form of build.trailingSlash (reversing the earlier un-normalized form), the sitemap leaves out noindex pages and the not-found page, and a page at /404 is written to 404.html (new 8.4.2).
 - **0.6.13-draft** (2026-10-06) — §4.3 a routed content type needs no param in $paths, and §6.1 names the exclude, where, idField, route, links and alerts options that publish a folder of Markdown as it is.
