@@ -1,8 +1,8 @@
 {
   "dependencies": {
-    "@webref/css": "^8.7.5",
-    "@webref/elements": "^2.9.0",
-    "@webref/idl": "^3.85.0",
+    "@webref/css": "^8.7.6",
+    "@webref/elements": "^2.9.1",
+    "@webref/idl": "^3.85.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
   },
