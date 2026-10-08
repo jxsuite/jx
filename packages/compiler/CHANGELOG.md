@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.1](https://github.com/jxsuite/jx/compare/compiler-v5.1.0...compiler-v5.1.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **compiler:** write no Markdown twin for the not-found page ([#438](https://github.com/jxsuite/jx/issues/438)) ([b93fc4e](https://github.com/jxsuite/jx/commit/b93fc4ead3eae911bf9ec35562a1637abb425ab5))
+
 ## [5.1.0](https://github.com/jxsuite/jx/compare/compiler-v5.0.0...compiler-v5.1.0) (2026-10-07)
 
 
