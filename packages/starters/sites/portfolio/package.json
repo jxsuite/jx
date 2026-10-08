@@ -12,7 +12,7 @@
     "@jxsuite/parser": "^2.0.0"
   },
   "devDependencies": {
-    "@jxsuite/compiler": "^5.1.0",
+    "@jxsuite/compiler": "^5.1.1",
     "@jxsuite/runtime": "^4.0.3"
   }
 }
