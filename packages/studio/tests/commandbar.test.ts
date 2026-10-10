@@ -214,7 +214,7 @@ describe("the primary cluster", () => {
   });
 
   test("a live record renders its title, its glyph and its chord in the tooltip", async () => {
-    ctx = makeContext({ document: { open: true, canUndo: true } });
+    ctx = makeContext({ document: { open: true, canUndo: true, dirty: true } });
     await mountBar();
 
     const save = btn("Save");
@@ -228,6 +228,14 @@ describe("the primary cluster", () => {
     expect(printedOf(save)).toContain("Save");
     click(control(save));
     expect(ran).toEqual(["save"]);
+  });
+
+  test("Save is disabled on a clean document and says why", async () => {
+    ctx = makeContext({ document: { open: true, dirty: false } });
+    await mountBar();
+    const save = btn("Save");
+    expect(control(save).disabled).toBe(true);
+    expect(hintOf(save)).toBe("Save — requires unsaved changes");
   });
 
   test("a disabled record states WHY in the tooltip instead of vanishing", async () => {

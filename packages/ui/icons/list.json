@@ -24,6 +24,7 @@
   "arrows-out-line-horizontal": ["regular"],
   "arrows-out-line-vertical": ["regular"],
   "arrows-vertical": ["regular"],
+  "books": ["regular"],
   "brackets-curly": ["regular"],
   "browser": ["regular"],
   "caret-down": ["regular", "bold"],

@@ -23,7 +23,6 @@ import {
   fitToScreen,
   getFit,
   hasDeclaredFit,
-  markExplicitZoom,
   observeCenterUntilStable,
   PAN_ZOOM_MAX,
   PAN_ZOOM_MIN,
@@ -440,18 +439,9 @@ describe("declared fit", () => {
     expect(wrap.style.transform).toContain("scale(");
   });
 
-  test("markExplicitZoom declares whatever the zoom currently is", () => {
-    resetWorkspaceWithTab();
-    makePanzoomWrap();
-    setPaneZoom(0.75);
-    markExplicitZoom();
-    expect(getFit()).toBe(0.75);
-  });
-
-  test("setUserZoom and markExplicitZoom are no-ops with no tab open", () => {
+  test("setUserZoom is a no-op with no tab open", () => {
     closeAllTabs();
     setUserZoom(2);
-    markExplicitZoom();
     expect(hasDeclaredFit()).toBe(false);
     expect(getFit()).toBe(DEFAULT_FIT);
   });
@@ -537,8 +527,7 @@ describe("fitOnCanvasEntry", () => {
     const wrap = makePanzoomWrap();
     defineMetric(primary().wrap, "clientWidth", 700);
     canvasPanels.push({ _width: 1280 } as never);
-    setPaneZoom(0.5);
-    markExplicitZoom();
+    setUserZoom(0.5);
 
     fitOnCanvasEntry(primary());
 

@@ -1,4 +1,5 @@
 import "./with-dom.js";
+import { hasTyping, noteTyping } from "../src/tabs/typing";
 import { displayTagName } from "@jxsuite/schema/guards";
 import { effect } from "../src/reactivity";
 import {
@@ -176,6 +177,17 @@ describe("renameTab", () => {
     const renamed = workspace.tabs.get("pages/new.md") as any;
     expect(renamed.doc.document.children).toEqual([{ tagName: "p" }]);
     expect(renamed.doc.dirty).toBe(true);
+  });
+
+  test("unsaved typing follows the rename, and closing forgets it", () => {
+    openTab({ document: { tagName: "div" }, documentPath: "pages/old.md", id: "pages/old.md" });
+    noteTyping("pages/old.md");
+    renameTab("pages/old.md", "pages/new.md", "pages/new.md");
+    expect(hasTyping("pages/old.md")).toBe(false);
+    expect(hasTyping("pages/new.md")).toBe(true);
+    closeTab("pages/new.md");
+    // The same file reopening must not come back with Save lit.
+    expect(hasTyping("pages/new.md")).toBe(false);
   });
 
   test("updates tabOrder preserving position", () => {

@@ -290,6 +290,36 @@ export function clampEditZoom(zoom: number): number {
 }
 
 /**
+ * Where an Edit-mode zoom is anchored: the scroller, the zoom the canvas is DRAWN at now, and the
+ * layout-px offset into the canvas of the content line at viewport-y `anchorY` (the cursor for a
+ * wheel, the scroller's middle for a button or a chord).
+ *
+ * The drawn zoom is read from the panel's applied layout width rather than from `ui.editZoom`,
+ * which a wheel burst has already moved on: the reactive write lands per event and the DOM once a
+ * frame.
+ */
+function editZoomAnchor(
+  surface: CanvasSurface,
+  layoutWidth: number | null,
+  anchorY: number | null,
+): { layoutY: number; scroller: HTMLElement; zoom: number } | null {
+  const scroller = surface.wrap.querySelector<HTMLElement>('[part="edit-canvas"]');
+  const canvasEl = surface.panels[0]?.canvas;
+  if (!scroller || !canvasEl) {
+    return null;
+  }
+  const column = surface.wrap.querySelector<HTMLElement>('[part="edit-column"]');
+  const renderWidth = column ? rectOf(column).width : 0;
+  const zoom = layoutWidth && renderWidth > 0 ? renderWidth / layoutWidth : 1;
+  let y = anchorY;
+  if (y === null) {
+    const box = rectOf(scroller);
+    y = box.top + box.height / 2;
+  }
+  return { layoutY: Math.max(0, (y - rectOf(canvasEl).top) / zoom), scroller, zoom };
+}
+
+/**
  * Apply the active tab's edit-mode content zoom to the single edit panel.
  *
  * Mechanism: a parent-side transform on the iframe never reflows the iframe's internal document (it
@@ -309,7 +339,10 @@ export function clampEditZoom(zoom: number): number {
  * bare style writes only; the iframe's own ResizeObserver re-posts `contentHeight` after the
  * reflow, which also finalizes the viewport height.
  */
-export function applyEditZoom(surface: CanvasSurface = activeCanvasSurface()) {
+export function applyEditZoom(
+  surface: CanvasSurface = activeCanvasSurface(),
+  anchorY: number | null = null,
+) {
   // THIS pane's effective mode. It was the focused pane's, so a side pane in Edit was refused its
   // Own content zoom whenever the primary happened to be in Design.
   if (canvasModeOfPane(surface.paneId) !== "edit") {
@@ -322,6 +355,7 @@ export function applyEditZoom(surface: CanvasSurface = activeCanvasSurface()) {
   const canvasEl = panel.canvas;
   const iframe = canvasEl.querySelector("iframe");
   const editZoom = tabOfSurface(surface)?.session.ui.editZoom ?? 1;
+  const anchor = editZoomAnchor(surface, panel._width ?? null, anchorY);
   if (editZoom === 1) {
     // Exactly today's fluid behavior — no inline width, no transform, auto viewport height.
     panel._width = null;
@@ -357,6 +391,11 @@ export function applyEditZoom(surface: CanvasSurface = activeCanvasSurface()) {
       panel.viewport.style.height = `${iframe.offsetHeight * editZoom}px`;
     }
   }
+  if (anchor) {
+    // The content line that was under the anchor goes back under it: it sat `layoutY` layout px
+    // Into the canvas, which now draws it `layoutY * (new - old)` px further down.
+    anchor.scroller.scrollTop += anchor.layoutY * (editZoom - anchor.zoom);
+  }
   // Re-anchor the fixed block-action-bar over the rescaled canvas.
   renderOnly("overlays");
 }
@@ -386,17 +425,25 @@ export function setEditZoom(zoom: number, surface: CanvasSurface = activeCanvasS
  */
 const _editZoomRafs = new Map<string, number>();
 
+/** The viewport-y each stage's pending frame zooms around — the latest wheel event's cursor. */
+const _editZoomAnchors = new Map<string, number | null>();
+
 /**
  * Wheel-rate edit-zoom setter: the reactive `editZoom` write lands immediately (the zoom pod's
  * label tracks it), but the DOM work — an iframe width resize, i.e. a real reflow — is coalesced to
  * one `applyEditZoom()` per animation frame so a fast ctrl+scroll burst doesn't thrash layout.
  */
-export function requestEditZoom(zoom: number, surface: CanvasSurface = activeCanvasSurface()) {
+export function requestEditZoom(
+  zoom: number,
+  surface: CanvasSurface = activeCanvasSurface(),
+  anchorY: number | null = null,
+) {
   const tab = tabOfSurface(surface);
   if (!tab) {
     return;
   }
   tab.session.ui.editZoom = clampEditZoom(zoom);
+  _editZoomAnchors.set(surface.paneId, anchorY);
   if (_editZoomRafs.has(surface.paneId)) {
     return;
   }
@@ -404,7 +451,9 @@ export function requestEditZoom(zoom: number, surface: CanvasSurface = activeCan
     surface.paneId,
     requestAnimationFrame(() => {
       _editZoomRafs.delete(surface.paneId);
-      applyEditZoom(surface);
+      const at = _editZoomAnchors.get(surface.paneId) ?? null;
+      _editZoomAnchors.delete(surface.paneId);
+      applyEditZoom(surface, at);
     }),
   );
 }
@@ -608,21 +657,14 @@ export function setFit(fit: FitMode, surface: CanvasSurface = activeCanvasSurfac
 }
 
 /**
- * Record the active document's CURRENT pan-zoom as its declared fit.
- *
- * For the gesture paths that move the zoom themselves and then have to say so — ctrl+scroll writes
- * `ui.zoom` directly, pinch will too. An author-chosen zoom is a numeric fit, so re-entering the
- * mode restores it instead of re-framing over the top of it.
- */
-export function markExplicitZoom(surface: CanvasSurface = activeCanvasSurface()): void {
-  declareFit(clampPanZoom(zoomOf(surface)), surface);
-}
-
-/**
  * Set the active tab's pan-zoom on the author's behalf: clamped, declared as this document's fit,
  * and applied. Every author-facing pan-zoom control routes through here.
  */
-export function setUserZoom(zoom: number, surface: CanvasSurface = activeCanvasSurface()): void {
+export function setUserZoom(
+  zoom: number,
+  surface: CanvasSurface = activeCanvasSurface(),
+  at: { clientX: number; clientY: number } | null = null,
+): void {
   const tab = tabOfSurface(surface);
   if (!tab) {
     return;
@@ -631,7 +673,23 @@ export function setUserZoom(zoom: number, surface: CanvasSurface = activeCanvasS
   // Synchronously on assignment, and the zoom pod reads `getFit()` while it renders — so declaring
   // Second means the control repaints one interaction behind the state it is reporting.
   const next = clampPanZoom(zoom);
+  const ratio = next / zoomOf(surface);
   declareFit(next, surface);
+  if (surface.panzoomWrap && ratio !== 1) {
+    /* Zoom AROUND a point: the cursor for a wheel, the stage's middle for a button or a chord.
+       Measured from the wrap's own drawn box, not the stage's: the wrap's layout origin is not the
+       stage's (it centres itself with `margin-block: auto`, and Stylebook puts a lead slot before
+       it), and the cursor-minus-stage arithmetic this replaced drifted by exactly that offset. A
+       content point `d` px into the drawn box is `d * ratio` px in after the zoom, so the pan
+       moves by the difference. */
+    const box = rectOf(surface.panzoomWrap);
+    const stage = rectOf(surface.wrap);
+    const x = at?.clientX ?? stage.left + stage.width / 2;
+    const y = at?.clientY ?? stage.top + stage.height / 2;
+    surface.panX += (x - box.left) * (1 - ratio);
+    surface.panY += (y - box.top) * (1 - ratio);
+    surface.needsCenter = false;
+  }
   setZoomOf(surface, next);
   applyTransform(surface);
 }

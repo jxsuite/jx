@@ -51,16 +51,16 @@ import {
 } from "../tabs/transact";
 import {
   applyEditZoom,
-  markExplicitZoom,
   requestEditZoom,
   setEditZoom,
+  setUserZoom,
+  stageZoom,
 } from "../canvas/canvas-utils";
 import { openQuickSearch } from "../panels/quick-search";
 import { inspectorTab } from "../panels/right-panel";
 import { requestClose } from "../panels/tab-strip";
 import { layerHost } from "../ui/layers";
 import { openDialogSurface } from "../surfaces/dialog";
-import { rectOf } from "../utils/geometry";
 import {
   DOCK_IDS,
   requireNavigatorPanelId,
@@ -78,6 +78,8 @@ import { hasElementSelection, hasSelection, inCanvas, keyScopeStack } from "../c
 import { defaultCommands } from "../commands/defaults";
 import { setActiveRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
+import { pointerAnchor } from "../canvas/iframe-host";
+import type { PointerAnchor } from "../canvas/iframe-host";
 import type { CommandContext } from "../commands/context";
 import type { DockId as CommandDockId } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -314,10 +316,14 @@ function redoDocument(): void {
 
 // ─── Canvas zoom ──────────────────────────────────────────────────────────────
 
-/** Design-mode zoom bounds. Edit mode clamps inside `canvas-utils`. */
-const ZOOM_MIN = 0.05;
-const ZOOM_MAX = 5;
+/** One chord step. Both zooms clamp inside `canvas-utils`. */
 const ZOOM_STEP = 1.2;
+
+/** How long after an Edit zoom step its anchor is measured again: the zoom's frame, then a reflow. */
+const EDIT_ZOOM_SETTLE_MS = 34;
+
+/** How long an Edit zoom burst must be idle before its anchor is let go. */
+const EDIT_ZOOM_RELEASE_MS = 300;
 
 /** Whether the zoom verbs address the reflowing content zoom rather than the artboard transform. */
 function isContentZoom(ctx: CommandContext): boolean {
@@ -346,8 +352,8 @@ function zoomBy(ctx: CommandContext, factor: number, redraw: () => void): void {
     setEditZoom((tab.session.ui.editZoom ?? 1) * factor);
     return;
   }
-  const next = (tab.session.ui.zoom ?? 1) * factor;
-  tab.session.ui.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+  // Around the stage's middle, like the zoom pod's buttons.
+  setUserZoom(stageZoom() * factor);
   redraw();
 }
 
@@ -1074,6 +1080,26 @@ let _stageContext: StageContext | null = null;
  */
 export function installStageGestures(surface: CanvasSurface): () => void {
   const canvasWrap = surface.wrap;
+  /* An Edit zoom burst's anchor: the element under the cursor when the burst began. The frame
+     reflows at every step, so after each one the element is measured again and the scroller takes
+     back whatever it moved; the anchor is let go once the burst has been idle a while. */
+  let zoomAnchor: PointerAnchor | null = null;
+  let zoomRelease: ReturnType<typeof setTimeout> | undefined;
+  let zoomCorrecting = false;
+  const correctEditZoom = () => {
+    const anchor = zoomAnchor;
+    if (!anchor || zoomCorrecting) {
+      return;
+    }
+    zoomCorrecting = true;
+    void anchor.settle().then((top) => {
+      zoomCorrecting = false;
+      const sc = canvasWrap.querySelector<HTMLElement>('[part="edit-canvas"]');
+      if (top !== null && sc) {
+        sc.scrollTop += top - anchor.top;
+      }
+    });
+  };
   const getContext = () => _stageContext?.(surface) ?? stageless();
   const controller = new AbortController();
   const { signal } = controller;
@@ -1093,7 +1119,16 @@ export function installStageGestures(surface: CanvasSurface): () => void {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           const editZoom = paneTab?.session.ui.editZoom ?? 1;
-          requestEditZoom(editZoom * (1 + -e.deltaY * 0.005), surface);
+          const canvasEl = surface.panels[0]?.canvas;
+          zoomAnchor ??= canvasEl ? pointerAnchor(canvasEl) : null;
+          requestEditZoom(editZoom * (1 + -e.deltaY * 0.005), surface, e.clientY);
+          // Measured after the zoom's own frame has applied, and the frame has had one to reflow.
+          setTimeout(correctEditZoom, EDIT_ZOOM_SETTLE_MS);
+          clearTimeout(zoomRelease);
+          zoomRelease = setTimeout(() => {
+            correctEditZoom();
+            zoomAnchor = null;
+          }, EDIT_ZOOM_RELEASE_MS);
           return;
         }
         /* The stage's own scroller, by the `part` the stage document draws it with — the same
@@ -1125,24 +1160,14 @@ export function installStageGestures(surface: CanvasSurface): () => void {
       }
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        // Zoom towards cursor
-        const rect = rectOf(canvasWrap);
-        const cursorX = e.clientX - rect.left;
-        const cursorY = e.clientY - rect.top;
-        /* THIS pane's tab, not the focused pane's. Both reads were `activeTab`, so a wheel over
-           the unfocused stage magnified a document on the other side of the splitter. */
-        const oldZoom = paneTab?.session.ui.zoom ?? 1;
-        const delta = -e.deltaY * 0.005;
-        const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, oldZoom * (1 + delta)));
-        const ratio = newZoom / oldZoom;
-        // Adjust pan so the point under cursor stays stationary
-        setPan(cursorX - (cursorX - panX) * ratio, cursorY - (cursorY - panY) * ratio);
-        if (paneTab) {
-          paneTab.session.ui.zoom = newZoom;
-        }
-        // The author chose this zoom, so re-entering Design keeps it instead of auto-fitting.
-        // On THIS stage: the declared fit is a fact about the document under the cursor.
-        markExplicitZoom(surface);
+        /* Zoom toward the cursor, on THIS stage (a lens pane carries its own scale). The author
+           chose this zoom, so it is declared as the document's fit and re-entering Design keeps
+           it instead of auto-fitting. */
+        setUserZoom(stageZoom(surface) * (1 + -e.deltaY * 0.005), surface, {
+          clientX: e.clientX,
+          clientY: e.clientY,
+        });
+        return;
       } else if (e.shiftKey) {
         // Shift+scroll = horizontal pan
         setPan(panX - e.deltaY, panY);
@@ -1206,7 +1231,10 @@ export function installStageGestures(surface: CanvasSurface): () => void {
     { signal },
   );
 
-  return () => controller.abort();
+  return () => {
+    clearTimeout(zoomRelease);
+    controller.abort();
+  };
 }
 
 /** The context a stage answers with before the bootstrap has published a reader. */

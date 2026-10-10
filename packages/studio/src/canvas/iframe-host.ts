@@ -158,6 +158,8 @@ interface HostState {
   lastSnapshotSeq: number;
   /** The last non-null selection rect drawn (parent/overlay coords) — toolbar position fallback. */
   lastSelectionRect: ParentRect | null;
+  /** The node the pointer last hovered (iframe-viewport rect), so a zoom can hold it still. */
+  lastHover: NodeHit | null;
   /**
    * The gen of the render/patch this iframe's DOM currently reflects (set from `renderComplete`/
    * `patchComplete`). Cross-frame drag replies (`dragOver`/`dropResult`) are dropped unless their
@@ -747,6 +749,38 @@ function measureIn(
     // A plain copy: `session.selection` is a reactive proxy and only serializable values cross.
     host.channel.post({ kind: "measure", paths: [[...path]], reqId });
   });
+}
+
+/** An element on screen that a zoom should hold still: where it is now, and where it went. */
+export interface PointerAnchor {
+  /** The element's top-document `top` when the anchor was taken. */
+  top: number;
+  /** Measure it again, after the zoom has reflowed the frame; null when it is gone. */
+  settle: () => Promise<number | null>;
+}
+
+/**
+ * The node under the pointer in `canvasEl`'s frame, as a zoom anchor — or null when the pointer has
+ * hovered nothing there.
+ *
+ * Edit's zoom REFLOWS: the frame's layout width changes, text rewraps, and everything above the
+ * cursor changes height, so no arithmetic on the old geometry can say where the line under the
+ * cursor will land. The frame can: it reported that node on hover, and it measures it again once
+ * the new layout exists.
+ */
+export function pointerAnchor(canvasEl: HTMLElement): PointerAnchor | null {
+  const host = hostForCanvas(canvasEl);
+  const hover = host?.lastHover;
+  if (!host || !hover) {
+    return null;
+  }
+  return {
+    settle: async () => {
+      const point = await measureIn(host, hover.path);
+      return point?.top ?? null;
+    },
+    top: pointForRect(host, hover.rect).top,
+  };
 }
 
 /**
@@ -1913,6 +1947,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     coSelectionKeys: new Set<string>(),
     insertZone: null,
     lastRenderedGen: -1,
+    lastHover: null,
     lastSelectionRect: null,
     lastSnapshotSeq: 0,
     overlay,
@@ -2039,6 +2074,7 @@ const PREVIEW_BLOCKED: ReadonlySet<IframeToParent["kind"]> = new Set([
   "dropResult",
   "editCommit",
   "editCommitProp",
+  "editInput",
   "editInsert",
   "editMerge",
   "editRangeReplace",
@@ -2272,6 +2308,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         }
         return;
       }
+      state.lastHover = msg.hit;
       drawHover(state, msg.hit);
       return;
     }
@@ -2626,6 +2663,15 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         pendingFlushes.delete(msg.reqId);
         flushOwners.delete(msg.reqId);
         done();
+      }
+      return;
+    }
+    case "editInput": {
+      // The first keystroke of a burst: the text lands on the idle tick, but the tab has unsaved
+      // Work from now, and Save's enablement reads exactly this flag.
+      const tab = hostTab(state);
+      if (tab) {
+        tab.doc.dirty = true;
       }
       return;
     }
@@ -3537,26 +3583,35 @@ function hostForActivePanel(): HostState | null {
 
 /**
  * The format toolbar's anchor rect, in PARENT-VIEWPORT space (the bar is `position:fixed`). Both
- * source rects — the edit session's caret snapshot and the `lastSelectionRect` fallback — are in
- * UNSCALED iframe-viewport px (D-2: the overlay draws them inside the scaled panzoom-wrap, so the
- * browser applies the zoom there); the fixed bar gets no such free ride, so scale by the live
- * empirical zoom ({@link hostDragGeometry}) and add the iframe's on-screen offset, whose GBCR
- * already bakes in pan + zoom + ancestor scroll. The empirical ratio covers BOTH scale sources:
- * design mode's panzoom-wrap transform and edit mode's content-zoom counter-scale (where it
- * evaluates to exactly `editZoom` — the iframe's layout width is `renderWidth / editZoom` while its
- * rendered width is `renderWidth`).
+ * source rects — the selected element's `lastSelectionRect` and the edit session's caret-snapshot
+ * fallback — are in UNSCALED iframe-viewport px (D-2: the overlay draws them inside the scaled
+ * panzoom-wrap, so the browser applies the zoom there); the fixed bar gets no such free ride, so
+ * scale by the live empirical zoom ({@link hostDragGeometry}) and add the iframe's on-screen
+ * offset, whose GBCR already bakes in pan + zoom + ancestor scroll. The empirical ratio covers BOTH
+ * scale sources: design mode's panzoom-wrap transform and edit mode's content-zoom counter-scale
+ * (where it evaluates to exactly `editZoom` — the iframe's layout width is `renderWidth / editZoom`
+ * while its rendered width is `renderWidth`).
  */
 export function getEditBarAnchorRect(): ParentRect | null {
-  // The format toolbar follows the live caret/selection snapshot of the active edit session; the
-  // Structural bar (tag badge / parent selector / move / convert / drag handle) must still position
-  // On a plain selection with no inline-edit session, so fall back to the active panel's host and
-  // Its last measured selection rect.
+  // The bar rests on the SELECTED ELEMENT's box, edit session or not. It used to prefer the caret's
+  // Snapshot rect while editing, so it hopped line to line with the caret and sat over the text the
+  // Author was typing; the snapshot still feeds the format state, never the position. Only an edit
+  // Session with no measured element yet falls back to the caret rect.
   const editHost = activeEditHost;
   const host = editHost ?? hostForActivePanel();
   if (!host) {
     return null;
   }
   const { rect: ifr, scale } = hostDragGeometry(host);
+  if (host.lastSelectionRect) {
+    // Overlay-local (same top-left + coordinate space as the iframe viewport).
+    return {
+      height: host.lastSelectionRect.height * scale,
+      left: host.lastSelectionRect.left * scale + ifr.left,
+      top: host.lastSelectionRect.top * scale + ifr.top,
+      width: host.lastSelectionRect.width * scale,
+    };
+  }
   const snapRect = host === editHost ? host.snapshot?.rect : null;
   if (snapRect) {
     return {
@@ -3564,15 +3619,6 @@ export function getEditBarAnchorRect(): ParentRect | null {
       left: snapRect.x * scale + ifr.left,
       top: snapRect.y * scale + ifr.top,
       width: snapRect.width * scale,
-    };
-  }
-  if (host.lastSelectionRect) {
-    // The fallback rect is overlay-local (same top-left + coordinate space as the iframe viewport).
-    return {
-      height: host.lastSelectionRect.height * scale,
-      left: host.lastSelectionRect.left * scale + ifr.left,
-      top: host.lastSelectionRect.top * scale + ifr.top,
-      width: host.lastSelectionRect.width * scale,
     };
   }
   return null;

@@ -563,6 +563,9 @@ export type IframeToParent =
   // Inline editing started in the iframe (the parent shows the format toolbar from here). `prop`
   // Names the component-instance prop when the session edits prop-bound text (plain sessions).
   | { kind: "editStart"; path: (string | number)[]; prop?: string }
+  // The first keystroke of a typing burst, ahead of the idle tick's commit: the parent marks the tab
+  // Dirty now, so Save is enabled the instant there is text a save would keep.
+  | { kind: "editInput" }
   // Committed inline-edit content (rich `children` else `textContent`) for the parent to persist.
   | {
       kind: "editCommit";

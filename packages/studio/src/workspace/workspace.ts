@@ -1,4 +1,5 @@
 import { computed, reactive, toRaw } from "../reactivity";
+import { clearTyping, hasTyping, noteTyping } from "../tabs/typing";
 import { commitTabBuffers } from "../services/monaco-buffer";
 import { resetAiWrites } from "../services/ai-writes";
 import { ensureCollab, rekeyCollab } from "../collab/collab-session";
@@ -1034,6 +1035,8 @@ export function closeTab(tabId: string) {
   rememberClosedTab(tab);
   disposeTab(tab);
   workspace.tabs.delete(tabId);
+  // The id comes back when the same file reopens, and it must not come back with Save lit.
+  clearTyping(tabId);
   detachTab(tabId);
   workspace.mruOrder = workspace.mruOrder.filter((id) => id !== tabId);
   resetTabCycle();
@@ -1270,6 +1273,10 @@ export function renameTab(oldId: string, newId: string, newDocumentPath: string)
   }
   tab.id = newId;
   tab.documentPath = newDocumentPath;
+  if (hasTyping(oldId)) {
+    clearTyping(oldId);
+    noteTyping(newId);
+  }
   workspace.tabs.delete(oldId);
   workspace.tabs.set(newId, tab);
   for (const pane of workspace.panes) {
