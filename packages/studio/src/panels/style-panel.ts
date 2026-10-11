@@ -1471,13 +1471,32 @@ function buildEditor(
      match, and a menu that offers unmatchable states is a menu people stop reading. What the
      element already DECLARES and the active selector are unioned in after, so nothing an author has
      written can drop out of it. */
-  const selectorOptions = [
-    ...new Set([
-      ...selectorsForNode(node),
-      ...declaredSelectors,
-      ...(activeSelector ? [activeSelector] : []),
-    ]),
-  ];
+  /* In Project Styles the coordinate is a TAG PATH (`a`, `table th`) and its states nest under it
+     (`a :hover`). The menu offered the ROOT's states instead, and picking one replaced the tag, so
+     `:hover` styled the document element and a project had no way to write `a:hover` at all. Here
+     the states are the tag's own, spelled as the path they write. */
+  const stylebookPath =
+    stylebookSelector && isTagPath(stylebookSelector) ? stylebookSelector : null;
+  const stylebookLeaf = stylebookPath?.split(" ").at(-1) ?? null;
+  const stylebookDeclared = stylebookPath
+    ? Object.keys(resolveNestedTagStyle(style, stylebookPath)).filter((k) => isNestedSelector(k))
+    : [];
+  const selectorOptions = stylebookPath
+    ? [
+        ...new Set([
+          ...[...selectorsForNode({ tagName: stylebookLeaf ?? "div" }), ...stylebookDeclared].map(
+            (state) => `${stylebookPath} ${state}`,
+          ),
+          ...(activeSelector && activeSelector !== stylebookPath ? [activeSelector] : []),
+        ]),
+      ]
+    : [
+        ...new Set([
+          ...selectorsForNode(node),
+          ...declaredSelectors,
+          ...(activeSelector ? [activeSelector] : []),
+        ]),
+      ];
 
   // ── The Target Line (§6.2) ─────────────────────────────────────────────────
   const stylebookTag = stylebookTagOf(stylebookSelector);
@@ -1486,15 +1505,19 @@ function buildEditor(
   setTargetLine({
     segments: targetSegments(elementLabel, mediaTab, mediaNames.length > 0, schemeLayer),
     selector: {
-      value: activeSelector,
+      // The bare tag path IS the base rule in Project Styles, so it reads as the base entry.
+      value: stylebookPath && activeSelector === stylebookPath ? null : activeSelector,
       options: selectorOptions,
-      declared: declaredSelectors,
+      declared: stylebookPath
+        ? new Set(stylebookDeclared.map((state) => `${stylebookPath} ${state}`))
+        : declaredSelectors,
       onSelect: (value) => {
         const current = activeTab.value;
         if (!current) {
           return;
         }
-        current.session.ui.activeSelector = value;
+        // Clearing the state in Project Styles returns to the tag, never to the document root.
+        current.session.ui.activeSelector = value ?? stylebookPath;
         /* §6.2's own rule: a control that selects a rendering context has to change the rendering,
            or it is a control over a label. `:hover` gets away with not doing this because you can
            hover the element; `:popover-open` cannot, because a closed popover is not on the screen
@@ -1523,7 +1546,9 @@ function buildEditor(
             isNestedSelector(v.trim()) ? "" : 'A selector must start with ":", ".", "&" or "[".',
         }).then((value) => {
           if (value && activeTab.value) {
-            activeTab.value.session.ui.activeSelector = value.trim();
+            activeTab.value.session.ui.activeSelector = stylebookPath
+              ? `${stylebookPath} ${value.trim()}`
+              : value.trim();
           }
         });
       },

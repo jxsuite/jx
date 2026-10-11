@@ -14,8 +14,37 @@ const TRANSPARENT_PX =
 // A neutral, visible gray placeholder for image-like bindings in edit mode (e.g. a component `image`
 // Prop bound to ${...}). The component renders <img src={prop}> internally, so a transparent pixel
 // Would collapse to nothing — a gray SVG box reads as an intentional placeholder instead.
-const PLACEHOLDER_IMG =
+export const PLACEHOLDER_IMG =
   "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Crect%20width='32'%20height='32'%20fill='%23d0d0d0'/%3E%3C/svg%3E";
+
+/**
+ * Swap every image under `host` that fails to load for {@link PLACEHOLDER_IMG}, until `signal`
+ * aborts.
+ *
+ * For previews drawn in the PARENT realm, where nothing ran {@link prepareForEditMode}: a library
+ * card's file, a component whose image prop is a `${}` binding with nothing to bind it, a document
+ * whose `src` is empty. The browser drew each as its broken-image glyph. `error` does not bubble,
+ * so the listener captures — which also covers images a preview renders after it is mounted. An
+ * empty `src` fires `error` too, so it needs no separate test; an image already showing the
+ * placeholder is left alone, so a placeholder that cannot load (it always can) does not loop.
+ *
+ * @param {Element} host
+ * @param {AbortSignal} signal
+ */
+export function placeholderBrokenImages(host: Element, signal: AbortSignal): void {
+  host.addEventListener(
+    "error",
+    (event) => {
+      const { target } = event;
+      if (target instanceof HTMLImageElement && target.getAttribute("src") !== PLACEHOLDER_IMG) {
+        target.setAttribute("src", PLACEHOLDER_IMG);
+        target.removeAttribute("srcset");
+        target.dataset.placeholder = "";
+      }
+    },
+    { capture: true, signal },
+  );
+}
 
 // Prop/attribute names that feed an <img>/background, so a ${...} binding would otherwise render a
 // Broken image in edit mode. Matched by exact name or common camelCase suffix (featuredImage, heroBg).

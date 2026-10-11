@@ -63,6 +63,7 @@ import {
   bufferWrites,
   commitBufferWrites,
 } from "../services/monaco-buffer";
+import { noteTyping } from "../tabs/typing";
 import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/model-uri";
 import { renderWelcome } from "../surfaces/welcome";
 import { emptyState } from "../surfaces/empty-state";
@@ -800,8 +801,10 @@ async function mountSourceEditor(
       return;
     }
     // A keystroke: the buffer is ahead of the document until the commit lands, and the text is the
-    // User's own — which is the narrower fact the close and quit gates read.
+    // User's own — which is the narrower fact the close and quit gates read. Noted for Save too, which
+    // Must not read disabled over text the commit has not parsed yet.
     writes.markTyped();
+    noteTyping(tab.id);
     writes.arm(BUFFER_COMMIT, 600, async () => {
       /* `tab` is the tab this editor was MOUNTED for, captured above and never re-read. It used to
          be `activeTab.value` — whatever was focused when the timer fired — which is the same

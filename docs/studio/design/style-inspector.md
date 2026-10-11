@@ -37,7 +37,7 @@ Every segment is a control, and the sentence always reads in the same order: ele
 - **The element**: the tag these edits are pointed at. Click it to open the **[Outline](/docs/studio/design/layers)** and find the element there.
 - **The breakpoint**: **Base**, or `@Tablet` when a breakpoint is active. You choose it on the pane's **Context** control (or by clicking a canvas panel's header); clicking the segment opens **Settings › Contexts**, where breakpoints are defined. See **[Breakpoints](/docs/studio/design/breakpoints)**.
 - **The colour scheme**: a `Dark variant` segment joins the line while the Context control forces a scheme your project declares, because edits then land in that scheme's overrides: `⌖ h1 · Base · Dark variant · :hover`. It appears at **Base** only (a breakpoint is always breakpoint-scoped), and setting the control back to **Auto** returns you to base styles.
-- **The selector**: the last segment, reading **base rule** for the element's normal look. It is the one segment with a menu of its own: `:hover`, `:focus`, or a selector you write. See **[Hover states and selectors](/docs/studio/design/states-and-selectors)**.
+- **The selector**: the last segment, reading **base rule** for the element's normal look. It is the one segment with a menu of its own: `:hover`, `:focus`, or a selector you write. In [Project Styles](/docs/studio/design/stylebook) the menu lists the selected element type's own states, such as `a :hover` and `a :visited` for links, and choosing one styles that state for every element of the type. See **[Hover states and selectors](/docs/studio/design/states-and-selectors)**.
 
 ## The scope chip
 

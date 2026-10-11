@@ -456,6 +456,69 @@ describe("renderActivityBar", () => {
   });
 });
 
+// ─── The Library button ───────────────────────────────────────────────────────
+
+describe("the Library button", () => {
+  /** A registry declaring `library.open`, gated on an open project, like the real record. */
+  function installLibraryRegistry(projectOpen: boolean) {
+    const ran: string[] = [];
+    const registry = createCommandRegistry({
+      getContext: () => {
+        const ctx = emptyContext();
+        ctx.project.open = projectOpen;
+        return ctx;
+      },
+      mac: true,
+    });
+    registry.register({
+      id: "library.open",
+      title: "Open Library",
+      category: "Project",
+      level: "project",
+      menus: ["palette"],
+      when: (ctx) => ctx.project.open,
+      run: () => {
+        ran.push("library.open");
+      },
+    });
+    setActiveRegistry(registry);
+    return ran;
+  }
+
+  test("sits in the foot with a project open, and runs library.open", async () => {
+    const ran = installLibraryRegistry(true);
+    await render();
+    const library = footerButton("Library");
+    expect(library).toBeDefined();
+    // A glyph the kit ships: a name it lacked would draw an empty path.
+    expect(library?.querySelector('[part="icon"] jx-icon path')?.getAttribute("d")).toBeTruthy();
+    controlOf(library)!.click();
+    await flush();
+    expect(ran).toEqual(["library.open"]);
+  });
+
+  test("is absent when the command is not live, or not registered at all", async () => {
+    installLibraryRegistry(false);
+    await render();
+    expect(footerButton("Library")).toBeUndefined();
+    installPreferencesRegistry();
+    await render();
+    expect(footerButton("Library")).toBeUndefined();
+  });
+
+  test("is pressed while the Library tab is the focused one", async () => {
+    installLibraryRegistry(true);
+    const { libraryTabId } = await import("../src/browse/library-source");
+    resetWorkspaceWithTab({ tagName: "div" });
+    await render();
+    expect(footerButton("Library")?.dataset.selected).toBeUndefined();
+    const { openTab } = await import("../src/workspace/workspace");
+    openTab({ document: { tagName: "div" }, documentPath: null, id: libraryTabId() });
+    await render();
+    expect(footerButton("Library")?.dataset.selected).toBeDefined();
+  });
+});
+
 // ─── mount / unmount ──────────────────────────────────────────────────────────
 
 describe("mount", () => {

@@ -420,6 +420,20 @@ describe("gating", () => {
     expect(registry.isEnabled("edit.undo")).toBe(false);
     expect(registry.disabledReason("edit.undo")).toBe("a change to undo");
   });
+
+  test("Save is disabled on a clean document and enabled once it is dirty", () => {
+    let dirty = false;
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ document: { open: true, dirty } }),
+      mac: true,
+    });
+    registry.registerAll(defaultCommandSet());
+    expect(registry.isVisible("file.save")).toBe(true);
+    expect(registry.isEnabled("file.save")).toBe(false);
+    expect(registry.disabledReason("file.save")).toBe("unsaved changes");
+    dirty = true;
+    expect(registry.isEnabled("file.save")).toBe(true);
+  });
 });
 
 describe("the implementations", () => {

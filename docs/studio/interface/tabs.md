@@ -58,7 +58,7 @@ A single click from the file tree or the palette opens a document in **preview**
 
 Jx Studio does **not** auto-save. Edits live in the open document until you save:
 
-- A **●** marks unsaved changes, and the **Save** button in the Command Bar lights up.
+- A **●** marks unsaved changes, and the **Save** button in the Command Bar lights up. With nothing to save it stays greyed out, and it lights up with your first keystroke, including typing in the Code view that has not reached the document yet.
 - Save with :kbd[⌘S] or the **Save** button, and the **●** clears.
 
 Closing a document with unsaved changes asks first, and the question has three answers: **Save** writes the file and then closes, **Close Without Saving** throws the edits away, and **Cancel** leaves the tab where it was. A save that fails leaves the tab open and still unsaved, with the reason in [Problems](/docs/studio/interface/problems-and-progress). The close never outruns the write. :kbd[⌘W] and the tab's **×** ask the same question. Studio skips it only when a collaborator is still in the document, because the shared session keeps the edits.

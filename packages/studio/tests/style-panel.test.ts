@@ -291,6 +291,30 @@ describe("stylebook mode", () => {
     expect(chip(c, "textAlign")?.textContent).toContain("from site tokens");
   });
 
+  test("the selector menu offers the TAG's states, and choosing one writes under the tag", async () => {
+    const tab = setupTab({});
+    // Project Styles writes into the DOCUMENT's root style.
+    tab.doc.document.style = { a: { ":focus": { outline: "none" } } } as JxStyle;
+    shell.stylebook.selection = "a";
+    tab.session.ui.activeSelector = "a";
+    await renderPanel("stylebook");
+    const rows = await selectorRows();
+    const values = rows.map((el) => el.dataset.commandId);
+    // `a`'s own states, including the link-only ones, spelled as the paths they write.
+    expect(values).toContain("a :hover");
+    expect(values).toContain("a :visited");
+    expect(listRow(rows, "a :focus")?.getAttribute("aria-checked")).toBe("true");
+    expect(values).not.toContain(":hover");
+
+    click(listRow(rows, "a :hover"));
+    await settle();
+    expect(tab.session.ui.activeSelector).toBe("a :hover");
+    // The base entry returns to the tag, never to the document root.
+    click(listRow(await selectorRows(), "__base__"));
+    await settle();
+    expect(tab.session.ui.activeSelector).toBe("a");
+  });
+
   test("a layout's stylebook rule is project-wide, and the band says how wide", async () => {
     setupTab({});
     resetStudioState();

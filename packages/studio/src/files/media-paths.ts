@@ -134,5 +134,7 @@ export function previewFileSrc(path: string): string {
   if (space === "repo") {
     return withVersion(`${fileBaseUrl}${encodeProjectPath(normalized)}`, versionOf(normalized));
   }
-  return loopbackAssetSrc(mediaSiteUrl(normalized));
+  /* Encoded per segment for the `src` only. `mediaSiteUrl` is also what an author's document is
+     given, and stays as typed; a `#` or `?` in a filename would cut this URL short. */
+  return loopbackAssetSrc(`/${encodeProjectPath(mediaSiteUrl(normalized).slice(1))}`);
 }

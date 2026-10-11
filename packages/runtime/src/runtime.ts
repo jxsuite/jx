@@ -1,16 +1,17 @@
 /// <reference lib="dom" />
 /**
  * Jx — JSON-native reactive web component runtime
- * @version 3.0.0
- * @license MIT
  *
  * Four-step pipeline:
- *   1. resolve    — fetch JSON source (or accept raw object)
- *   2. buildScope — state detection + reactive proxy construction
- *   3. render     — walk resolved tree, build DOM, wire reactive effects
- *   4. output     — append to target
+ *
+ * 1. `resolve` — fetch JSON source (or accept raw object)
+ * 2. `buildScope` — state detection + reactive proxy construction
+ * 3. `render` — walk resolved tree, build DOM, wire reactive effects
+ * 4. `output` — append to target
  *
  * @module jx
+ * @license MIT
+ * @version 3.0.0
  */
 
 import {
@@ -939,7 +940,8 @@ export async function buildScope(
     }
   }
 
-  // Fifth pass: timing: "server" entries (dev mode — execute client-side, boundary unenforced)
+  /* Fifth pass: timing: "server" entries, each called through the host's /__jx_server__ proxy, or
+     in process only when the host registered the module itself (spec.md §11.4) */
   if (!(ctx?.skipServerFunctions ?? _serverFnConfig.skip)) {
     for (const [key, def] of Object.entries(defs)) {
       if (isServerFnDef(def)) {
@@ -1084,6 +1086,14 @@ type ModuleLoader = () => Promise<Record<string, unknown>>;
 const _moduleLoaders = new Map<string, ModuleLoader | Promise<ImportedModule>>();
 
 /**
+ * The specifiers a host registered through `preloadModule`, in either form. Kept apart from
+ * `_moduleCache` because that cache is shared: a Function entry's `$src` import lands there too,
+ * and a `timing: "server"` entry naming the same specifier must still not run in the browser
+ * (spec.md §11.4). Only the host's own registration admits a server module in process.
+ */
+const _hostSeeded = new Set<string>();
+
+/**
  * Seed the `$src` module cache with a module the host already imported, under the specifier the
  * document spells. A bundled document cannot have its sidecar fetched by URL — the bundler saw
  * neither the string nor the file — so the host imports the sidecar itself and registers it here,
@@ -1095,6 +1105,9 @@ const _moduleLoaders = new Map<string, ModuleLoader | Promise<ImportedModule>>()
  * canvas frame registers every kit behaviour this way, so a page that uses no kit element loads
  * none of them (embedding.md §6).
  *
+ * A registered module is also how a host runs a `timing: "server"` entry in process; for any
+ * specifier not registered here, the runtime calls the host's `/__jx_server__` proxy instead.
+ *
  * @param {string} specifier - The `$src` value as written in the document
  * @param {Record<string, unknown> | (() => Promise<Record<string, unknown>>)} mod - The imported
  *   module namespace, or a loader that imports it on first use
@@ -1103,6 +1116,7 @@ export function preloadModule(
   specifier: string,
   mod: Record<string, unknown> | ModuleLoader,
 ): void {
+  _hostSeeded.add(specifier);
   if (typeof mod === "function") {
     _moduleCache.delete(specifier);
     _moduleLoaders.set(specifier, mod);
@@ -3368,13 +3382,59 @@ async function resolveViaDevProxy(def: JxPrototypeDef, state: JxScope, key: stri
   return s;
 }
 
-// ─── Server function resolution (dev mode) ────────────────────────────────────
+// ─── Server function resolution ───────────────────────────────────────────────
 
 /**
- * Resolve a timing: "server" entry in dev mode by executing the function client-side. In
- * production, the compiler replaces this with a fetch to the generated server handler.
+ * Start one `timing: "server"` entry's calls, wherever they run. Each call takes the next number,
+ * and only the latest may write the entry or report a failure: the answer to a call whose arguments
+ * have since changed is dropped whenever it arrives, and a failed call keeps the entry's last
+ * value. A call that throws before it returns a promise (an argument the proxy cannot serialize, or
+ * a host function that throws synchronously) fails the same way, rather than out of whichever state
+ * write started it. The proxy and a host-registered module share it, so a reactive entry's calls
+ * are ordered and reported the same way on either path.
  *
- * @param {JxScope} def
+ * @param {Ref<unknown>} s - The entry's value
+ * @param {(args: JxScope) => unknown} invoke - One call, with resolved arguments: it may return a
+ *   value or a promise, or throw
+ * @param {string} label - The `console.error` prefix a failed call is reported under
+ * @returns {(args: JxScope) => void} Starts a call
+ */
+function latestServerCall(
+  s: Ref<unknown>,
+  invoke: (args: JxScope) => unknown,
+  label: string,
+): (args: JxScope) => void {
+  let seq = 0;
+  return (args: JxScope) => {
+    seq += 1;
+    const n = seq;
+    /* The executor runs before the constructor returns, so the call still starts synchronously,
+       and a throw inside it rejects this promise instead of escaping to the caller. */
+    new Promise<unknown>((settle) => {
+      settle(invoke(args));
+    })
+      .then((result: unknown) => {
+        if (n === seq) {
+          s.value = result;
+        }
+      })
+      .catch((error: unknown) => {
+        if (n === seq) {
+          console.error(label, error);
+        }
+      });
+  };
+}
+
+/**
+ * Resolve a timing: "server" entry. The runtime never imports a server module itself: every call is
+ * a POST to the host's `/__jx_server__` proxy, which runs the function server-side with `env`, so
+ * the runtime never requests the module's source (spec.md §11.4). A host may still serve that file
+ * at its URL, which is why a secret belongs in `env` and never in the module body. The one
+ * exception is the host's own act: a module it registered with `preloadModule` (embedding.md §6) is
+ * called in process, and a reactive entry's calls are ordered there as the proxy orders them.
+ *
+ * @param {JxServerFnDef} def
  * @param {JxScope} state
  * @param {string} key
  * @param {string} [base]
@@ -3389,30 +3449,13 @@ async function resolveServerFunction(
   const src = def.$src;
   const exportName = def.$export;
 
-  let mod: ImportedModule;
-  const seeded = seededModule(src);
-  if (seeded instanceof Promise) {
-    mod = await seeded;
-  } else if (seeded) {
-    mod = seeded;
-  } else {
-    try {
-      mod = (await import(src)) as ImportedModule;
-    } catch {
-      if (base) {
-        try {
-          const resolvedSrc = new URL(src, base).href;
-          mod = (await import(resolvedSrc)) as ImportedModule;
-        } catch {
-          // Module cannot run in the browser — fall back to dev server proxy
-          return resolveServerFunctionViaProxy(def, state, key, base);
-        }
-      } else {
-        return resolveServerFunctionViaProxy(def, state, key, base);
-      }
-    }
-    _moduleCache.set(src, mod);
+  /* The host-seeded set, not the module cache: a Function entry's own `$src` import lands in that
+     cache too, and reusing it here would put a server module in the browser after all. */
+  const seeded = _hostSeeded.has(src) ? seededModule(src) : undefined;
+  if (!seeded) {
+    return resolveServerFunctionViaProxy(def, state, key, base);
   }
+  const mod = seeded instanceof Promise ? await seeded : seeded;
 
   const candidate = mod[exportName] ?? mod.default?.[exportName];
   if (!candidate) {
@@ -3421,7 +3464,7 @@ async function resolveServerFunction(
   if (typeof candidate !== "function") {
     throw new TypeError(`Jx: "${exportName}" from "${src}" is not a function`);
   }
-  const fn = candidate as (args: JxScope) => Promise<unknown>;
+  const fn = candidate as (args: JxScope) => unknown;
 
   const rawArgs = def.arguments ?? {};
   const hasReactiveArg = Object.values(rawArgs).some((v: unknown) => isRefObj(v));
@@ -3436,14 +3479,11 @@ async function resolveServerFunction(
   // Always wrap in ref for reactivity
   const s: Ref<unknown> = ref(null);
   if (hasReactiveArg) {
+    const call = latestServerCall(s, fn, "Jx server function:");
     effect(() => {
       const args = resolveArgs();
       onEffectCleanup(() => {});
-      fn(args)
-        .then((result: unknown) => {
-          s.value = result;
-        })
-        .catch(() => {});
+      call(args);
     });
   } else {
     s.value = await fn(resolveArgs());
@@ -3452,9 +3492,12 @@ async function resolveServerFunction(
 }
 
 /**
- * Dev-mode fallback: when a timing: "server" module cannot run in the browser, proxy the function
- * call through the Jx dev server (POST /**jx_server**). Supports reactive $ref arguments via Vue
- * effect().
+ * Call a timing: "server" entry through the host's `/__jx_server__` proxy, which imports the module
+ * server-side and calls the export with `env` (server.md §3.3). This is the only path an
+ * interpreting runtime takes for a module the host did not register. A `$ref` argument makes the
+ * call reactive: it re-posts from an `effect()` when the reference changes. A failed call leaves
+ * the entry's last value and logs, and the answer to a superseded call is dropped, so a slow answer
+ * to an earlier call can never overwrite a later one (`latestServerCall`).
  *
  * @param {JxScope} def
  * @param {JxScope} state
@@ -3499,22 +3542,15 @@ async function resolveServerFunctionViaProxy(
 
   // Always wrap in ref for reactivity
   const s: Ref<unknown> = ref(null);
+  const call = latestServerCall(s, doResolve, "Jx server proxy:");
   if (hasReactiveArg) {
     effect(() => {
       const args = resolveArgs();
       onEffectCleanup(() => {});
-      doResolve(args)
-        .then((result: unknown) => {
-          s.value = result;
-        })
-        .catch((error: unknown) => console.error("Jx server proxy:", error));
+      call(args);
     });
   } else {
-    doResolve(resolveArgs())
-      .then((result: unknown) => {
-        s.value = result;
-      })
-      .catch((error: unknown) => console.error("Jx server proxy:", error));
+    call(resolveArgs());
   }
   return s;
 }

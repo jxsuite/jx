@@ -1,6 +1,6 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterEach, describe, test, expect, mock, spyOn } from "bun:test";
-import { buildScope, resolvePrototype, setResolveToken } from "../src/runtime";
+import { buildScope, preloadModule, resolvePrototype, setResolveToken } from "../src/runtime";
 import { reactive } from "@vue/reactivity";
 import type { JxDocument } from "@jxsuite/schema/types";
 
@@ -363,8 +363,39 @@ describe("resolveViaDevProxy", () => {
 
 // ─── resolveServerFunction (timing: "server") ────────────────────────────────
 
+/**
+ * Register the fixture module as a host does with `preloadModule`: the only way a server entry runs
+ * in process. Every other entry is a POST to the proxy, however importable its module is.
+ */
+async function seedServerFns() {
+  preloadModule(SERVER_SRC, await import(SERVER_SRC));
+}
+
+/**
+ * A fetch whose POSTs stay pending until the test settles them, so answers can arrive in any order.
+ * Returns the pending calls in the order they were made.
+ */
+function installDeferredFetch() {
+  const calls: {
+    body: Record<string, unknown>;
+    answer: (value: unknown) => void;
+    fail: (status: number) => void;
+  }[] = [];
+  global.fetch = mock((_url: string, init?: { body?: string }) => {
+    const { promise, resolve } = Promise.withResolvers<unknown>();
+    calls.push({
+      answer: (value) => resolve({ json: () => Promise.resolve(value), ok: true }),
+      body: JSON.parse(init?.body ?? "{}"),
+      fail: (status) => resolve({ ok: false, status }),
+    });
+    return promise;
+  }) as any;
+  return calls;
+}
+
 describe("resolveServerFunction", () => {
   test("static args: awaits result; second entry hits module cache", async () => {
+    await seedServerFns();
     const doc = {
       state: {
         echo: {
@@ -387,6 +418,7 @@ describe("resolveServerFunction", () => {
   });
 
   test("reactive $ref args re-invoke on change", async () => {
+    await seedServerFns();
     const doc = {
       state: {
         n: { default: 2 },
@@ -406,7 +438,9 @@ describe("resolveServerFunction", () => {
     expect(state.result).toBe(10);
   });
 
-  test("reactive args swallow rejections, recover when args change", async () => {
+  test("reactive args report a rejection, recover when args change", async () => {
+    await seedServerFns();
+    const err = spyOn(console, "error").mockImplementation(() => {});
     const doc = {
       state: {
         boom: { default: true },
@@ -421,32 +455,277 @@ describe("resolveServerFunction", () => {
     const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
     await wait(5);
     expect(state.result).toBe(null);
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(err.mock.calls[0]![0]).toBe("Jx server function:");
+    expect(String(err.mock.calls[0]![1])).toContain("boom");
     state.boom = false;
     await wait(5);
     expect(state.result).toBe("ok");
+    err.mockRestore();
   });
 
-  test("missing export throws", () => {
+  test("a host-registered module's superseded answer is dropped, as the proxy's is", async () => {
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    const calls: { n: unknown; settle: PromiseWithResolvers<unknown> }[] = [];
+    preloadModule("jx-test:/race-server.js", {
+      slow: (args: Record<string, unknown>) => {
+        const settle = Promise.withResolvers<unknown>();
+        calls.push({ n: args.n, settle });
+        return settle.promise;
+      },
+    });
+    const doc = {
+      state: {
+        n: { default: 1 },
+        result: {
+          $export: "slow",
+          $src: "jx-test:/race-server.js",
+          arguments: { n: { $ref: "#/state/n" } },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    state.n = 2;
+    expect(calls.map((c) => c.n)).toEqual([1, 2]);
+
+    // The second call answers first, then the first call's late answer arrives and is dropped.
+    calls[1]!.settle.resolve("second");
+    await wait(5);
+    expect(state.result).toBe("second");
+    calls[0]!.settle.resolve("first");
+    await wait(5);
+    expect(state.result).toBe("second");
+
+    // A superseded call's failure is dropped; the current call's keeps the value and is reported.
+    state.n = 3;
+    state.n = 4;
+    calls[2]!.settle.reject(new Error("stale"));
+    calls[3]!.settle.reject(new Error("current"));
+    await wait(5);
+    expect(state.result).toBe("second");
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(String(err.mock.calls[0]![1])).toContain("current");
+    err.mockRestore();
+  });
+
+  test("a host-registered function may answer or throw synchronously", async () => {
+    // One call, one outcome: a synchronous throw is reported, never thrown out of the state write.
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    preloadModule("jx-test:/sync-server.js", {
+      twice: (args: Record<string, unknown>) => {
+        if (args.n === 0) {
+          throw new Error("zero");
+        }
+        return (args.n as number) * 2;
+      },
+    });
+    const doc = {
+      state: {
+        n: { default: 2 },
+        result: {
+          $export: "twice",
+          $src: "jx-test:/sync-server.js",
+          arguments: { n: { $ref: "#/state/n" } },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    await wait(5);
+    expect(state.result).toBe(4);
+    expect(() => {
+      state.n = 0;
+    }).not.toThrow();
+    await wait(5);
+    expect(state.result).toBe(4);
+    expect(err).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  test("missing export throws", async () => {
+    await seedServerFns();
     const doc = {
       state: {
         r: { $export: "ghost", $src: SERVER_SRC, timing: "server" },
       },
     };
-    expect(buildScope(doc as unknown as JxDocument, {}, BASE)).rejects.toThrow(
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(buildScope(doc as unknown as JxDocument, {}, BASE)).rejects.toThrow(
       'export "ghost" not found',
     );
   });
 
-  test("non-function export throws", () => {
+  test("non-function export throws", async () => {
+    await seedServerFns();
     const doc = {
       state: {
         r: { $export: "notFn", $src: SERVER_SRC, timing: "server" },
       },
     };
-    expect(buildScope(doc as unknown as JxDocument, {}, BASE)).rejects.toThrow("is not a function");
+    // oxlint-disable-next-line typescript/await-thenable -- see above
+    await expect(buildScope(doc as unknown as JxDocument, {}, BASE)).rejects.toThrow(
+      "is not a function",
+    );
   });
 
-  test("unimportable module with base falls back to /__jx_server__ proxy", async () => {
+  test("an importable module is posted to the proxy, never imported", async () => {
+    /* Before the runtime was proxy-only, a relative $src that failed to import from the runtime's
+       own location was retried against the base, and a `file:` base made that second import
+       succeed: the module ran in the browser. The tripwire flags any load of the module at all. */
+    const tripwire = globalThis as { __jxTripwire?: boolean };
+    const tripped = () => tripwire.__jxTripwire === true;
+    delete tripwire.__jxTripwire;
+    const posts = installFetch({ proxyValue: () => "proxied" });
+    const doc = {
+      state: {
+        remote: {
+          $export: "trip",
+          $src: "./_server_fn_tripwire.js",
+          arguments: { a: 1 },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    await wait(5);
+    expect(state.remote).toBe("proxied");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.url).toBe("/__jx_server__");
+    expect(posts[0]!.body.$src).toBe("./_server_fn_tripwire.js");
+    expect(posts[0]!.body.$base).toBe(BASE);
+    expect(tripped()).toBe(false);
+
+    // The tripwire can fire: that $src resolved against the same base loads the module.
+    await import(new URL("_server_fn_tripwire.js", BASE).href);
+    expect(tripped()).toBe(true);
+    delete tripwire.__jxTripwire;
+  });
+
+  test("a module the runtime imported for a Function entry is not reused", async () => {
+    /* The Function entry (third pass) imports the specifier and caches it under that spelling; the
+       server entry (fifth pass) names the same specifier, and still goes to the proxy, because only
+       a host registration admits a server module in process. */
+    const posts = installFetch({ proxyValue: () => "proxied" });
+    const doc = {
+      state: {
+        dbl: { $export: "double", $prototype: "Function", $src: "./_gaps_server_fns.js" },
+        remote: {
+          $export: "double",
+          $src: "./_gaps_server_fns.js",
+          arguments: { n: 2 },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    await wait(5);
+    expect(await (state.dbl as Promise<number>)).toBe(0);
+    expect(state.remote).toBe("proxied");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.body.$src).toBe("./_gaps_server_fns.js");
+    expect(posts[0]!.body.arguments).toEqual({ n: 2 });
+  });
+
+  test("a superseded proxy answer is dropped", async () => {
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    const calls = installDeferredFetch();
+    const doc = {
+      state: {
+        n: { default: 1 },
+        remote: {
+          $export: "fn6",
+          $src: "./__gaps_missing_server_6__.js",
+          arguments: { n: { $ref: "#/state/n" } },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    state.n = 2;
+    expect(calls.map((c) => (c.body.arguments as Record<string, unknown>).n)).toEqual([1, 2]);
+
+    // The second call answers first, then the first call's late answer arrives and is dropped.
+    calls[1]!.answer("second");
+    await wait(5);
+    expect(state.remote).toBe("second");
+    calls[0]!.answer("first");
+    await wait(5);
+    expect(state.remote).toBe("second");
+
+    // A superseded call's failure is dropped too: neither stored nor reported.
+    state.n = 3;
+    state.n = 4;
+    calls[3]!.answer("fourth");
+    calls[2]!.fail(500);
+    await wait(5);
+    expect(state.remote).toBe("fourth");
+    expect(err).not.toHaveBeenCalled();
+
+    // The current call's failure keeps the entry's last value, and is reported.
+    state.n = 5;
+    calls[4]!.fail(500);
+    await wait(5);
+    expect(state.remote).toBe("fourth");
+    expect(err).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
+
+  test("an argument the proxy cannot serialize is reported, never thrown out of the write", async () => {
+    /* The request body is serialized before the fetch starts, so a BigInt fails synchronously. That
+       is still one failed call: reported once, with the entry keeping its last value. */
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    const posts = installFetch({ proxyValue: (b) => (b.arguments as Record<string, unknown>).n });
+    const doc = {
+      state: {
+        n: { default: 1 },
+        remote: {
+          $export: "fn7",
+          $src: "./__gaps_missing_server_7__.js",
+          arguments: { n: { $ref: "#/state/n" } },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, "file:///nonexistent/d7/");
+    await wait(5);
+    expect(state.remote).toBe(1);
+    expect(() => {
+      state.n = 10n;
+    }).not.toThrow();
+    await wait(5);
+    expect(state.remote).toBe(1);
+    expect(posts).toHaveLength(1);
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(err.mock.calls[0]![0]).toBe("Jx server proxy:");
+    expect(String(err.mock.calls[0]![1])).toContain("BigInt");
+    err.mockRestore();
+  });
+
+  test("a static argument the proxy cannot serialize leaves the entry null", async () => {
+    // A document built in code can carry one; buildScope still resolves, and the call is reported.
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    const posts = installFetch({ proxyValue: () => "unreachable" });
+    const doc = {
+      state: {
+        remote: {
+          $export: "fn8",
+          $src: "./__gaps_missing_server_8__.js",
+          arguments: { n: 10n },
+          timing: "server",
+        },
+      },
+    };
+    const state = await buildScope(doc as unknown as JxDocument, {}, "file:///nonexistent/d8/");
+    await wait(5);
+    expect(state.remote).toBe(null);
+    expect(posts).toHaveLength(0);
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(err.mock.calls[0]![0]).toBe("Jx server proxy:");
+    err.mockRestore();
+  });
+
+  test("posts $src, $export and $base to the /__jx_server__ proxy", async () => {
     const posts = installFetch({
       proxyValue: (b) => ({ r: (b.arguments as Record<string, unknown>).a }),
     });
@@ -465,9 +744,11 @@ describe("resolveServerFunction", () => {
     expect(state.remote).toEqual({ r: "x" });
     expect(posts[0]!.url).toBe("/__jx_server__");
     expect(posts[0]!.body.$export).toBe("anyFn");
+    expect(posts[0]!.body.$src).toBe("./__gaps_missing_server__.js");
+    expect(posts[0]!.body.$base).toBe("file:///nonexistent/dir/");
   });
 
-  test("unimportable module without base falls back to proxy", async () => {
+  test("posts to the proxy without a base", async () => {
     const posts = installFetch({ proxyValue: () => "no-base-proxied" });
     const doc = {
       state: {

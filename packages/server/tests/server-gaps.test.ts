@@ -5,6 +5,18 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const FIXTURES = resolve(import.meta.dir, "_server_gaps_fixtures");
 
+/** A server function returning the project its env came from and that project's own variable. */
+const READ_ENV_FN =
+  "export function readEnv(args, env) { return { root: env.JX_PROJECT_ROOT, value: env.JX_GAPS_VAR }; }";
+
+/**
+ * The `$base` Studio's canvas sends for a document: the canvas origin, then the document's absolute
+ * path (`documentBase` in packages/studio), so a POSIX path arrives as `//abs/...`.
+ */
+function canvasBase(absDocPath: string) {
+  return new URL(`http://127.0.0.1:1/${absDocPath}`).href;
+}
+
 function setupFixtures() {
   rmSync(FIXTURES, { force: true, recursive: true });
   mkdirSync(FIXTURES, { recursive: true });
@@ -24,6 +36,13 @@ function setupFixtures() {
   mkdirSync(join(FIXTURES, "proj", "public"), { recursive: true });
   writeFileSync(join(FIXTURES, "proj", "data.txt"), "project data");
   writeFileSync(join(FIXTURES, "proj", "public", "pub.txt"), "public data");
+
+  // A server function in that project, and the project's own .dev.vars
+  writeFileSync(join(FIXTURES, "proj", ".dev.vars"), "JX_GAPS_VAR=from-proj\n");
+  writeFileSync(join(FIXTURES, "proj", "env-fn.js"), READ_ENV_FN);
+  // And one beside a page, which a page document names relative to itself
+  mkdirSync(join(FIXTURES, "proj", "pages"), { recursive: true });
+  writeFileSync(join(FIXTURES, "proj", "pages", "page-fn.js"), READ_ENV_FN);
 
   // Npm packages for bare-specifier bundling
   mkdirSync(join(FIXTURES, "node_modules", "tinypkg"), { recursive: true });
@@ -290,6 +309,36 @@ describe("createDevServer", () => {
       expect(await res.text()).toBe("project data");
     });
 
+    test("the server-function proxy's env carries the active project's .dev.vars", async () => {
+      // $src resolves against the server root; env is the active project's, as the mounts' is.
+      const res = await fetch(`${base}/__jx_server__`, {
+        body: JSON.stringify({ $export: "readEnv", $src: "./proj/env-fn.js" }),
+        method: "POST",
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ root: join(FIXTURES, "proj"), value: "from-proj" });
+    });
+
+    test("the proxy imports the module the canvas's absolute-path base names", async () => {
+      /* Studio's canvas addresses the active project by absolute path. The static lane serves the
+         module at that URL, and the proxy, now the only way the runtime calls it, finds the same
+         file rather than a path under the server root. */
+      const pageDoc = join(FIXTURES, "proj", "pages", "page.json");
+      const served = await fetch(new URL("page-fn.js", `${base}/${pageDoc}`));
+      expect(served.status).toBe(200);
+
+      const res = await fetch(`${base}/__jx_server__`, {
+        body: JSON.stringify({
+          $base: canvasBase(pageDoc),
+          $export: "readEnv",
+          $src: "./page-fn.js",
+        }),
+        method: "POST",
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ root: join(FIXTURES, "proj"), value: "from-proj" });
+    });
+
     test("routes /__studio/code/* to handleCodeApi", async () => {
       const res = await fetch(`${base}/__studio/code/format`, {
         body: JSON.stringify({ code: "const x=1" }),
@@ -339,6 +388,60 @@ describe("createDevServer", () => {
       expect(payload.root).toBeNull();
       res = await fetch(`${base}/data.txt`);
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe("with a project activated outside the server root", () => {
+    /* Studio may activate a project the server root does not contain (an allowed root, here). The
+       static lanes serve that project's files at their absolute paths, so the server-function
+       proxy must import its modules too, with its env. */
+    const SERVER_ROOT = resolve(import.meta.dir, "_server_gaps_proxy_root");
+    const OUTSIDE = resolve(import.meta.dir, "_server_gaps_proxy_project");
+    let server: { port: number | undefined; stop: () => void };
+    let base: string;
+
+    beforeAll(async () => {
+      for (const dir of [SERVER_ROOT, OUTSIDE]) {
+        rmSync(dir, { force: true, recursive: true });
+      }
+      mkdirSync(SERVER_ROOT, { recursive: true });
+      mkdirSync(join(OUTSIDE, "pages"), { recursive: true });
+      writeFileSync(join(OUTSIDE, ".dev.vars"), "JX_GAPS_VAR=from-outside\n");
+      writeFileSync(join(OUTSIDE, "pages", "page-fn.js"), READ_ENV_FN);
+      server = await createDevServer({
+        allowedRoots: [OUTSIDE],
+        port: 0,
+        root: SERVER_ROOT,
+        watch: false,
+      });
+      base = `http://localhost:${server.port}`;
+    });
+
+    afterAll(() => {
+      server.stop();
+      for (const dir of [SERVER_ROOT, OUTSIDE]) {
+        rmSync(dir, { force: true, recursive: true });
+      }
+    });
+
+    test("the proxy imports a module of that project, with the project's env", async () => {
+      const activated = await fetch(`${base}/__studio/activate`, {
+        body: JSON.stringify({ root: OUTSIDE }),
+        method: "POST",
+      });
+      expect(((await activated.json()) as { root: string }).root).toBe(OUTSIDE);
+
+      const pageDoc = join(OUTSIDE, "pages", "page.json");
+      const res = await fetch(`${base}/__jx_server__`, {
+        body: JSON.stringify({
+          $base: canvasBase(pageDoc),
+          $export: "readEnv",
+          $src: "./page-fn.js",
+        }),
+        method: "POST",
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ root: OUTSIDE, value: "from-outside" });
     });
   });
 
