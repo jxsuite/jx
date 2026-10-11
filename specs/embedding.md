@@ -2,9 +2,9 @@
 
 ## Mounting Documents in an Imperative Host
 
-**Version:** 0.1.4\
+**Version:** 0.1.5\
 **Status:** Implemented\
-**Updated:** 2026-09-11\
+**Updated:** 2026-10-11\
 **License:** MIT
 
 Companion to [spec.md](./spec.md) §4, §13 and §16. Defines how an application written in ordinary TypeScript hosts Jx documents: how it mounts one into a node it owns, how its own state and functions reach the document, how the document reaches back, and what a mount may configure for itself rather than for the page. Jx Studio's chrome is the first such host; a site that embeds a Jx component beside a foreign framework is the second.
@@ -180,6 +180,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.5** (2026-10-11) — §6: preloadModule is the only way a server-timed entry runs in process.
 - **0.1.4** (2026-09-11) — preloadModule accepts a loader: a lazy registration that imports on first use, once, shared by concurrent resolvers, and retried after a failed load (§6).
 - **0.1.3** (2026-09-10) — §2.4 the node hooks: onNodeCreated fires before a node's bindings are applied, and there is no detach counterpart.
 - **0.1.2** (2026-09-02) — A second realm forwards redefineElement across its bridge and re-renders (§7).
@@ -188,4 +189,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Embedding Specification v0.1.4_
+_Jx Embedding Specification v0.1.5_
