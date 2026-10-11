@@ -2,7 +2,8 @@
  * Dev-vars — `<project>/.dev.vars` parsing (wrangler convention, specs/extensions.md §13).
  *
  * Secret VALUES never enter project.json; locally they live in the git-ignored .dev.vars file and
- * the dev server merges them over process.env when constructing mount environments. The format is
+ * the dev server merges them over process.env when constructing the `env` it hands project code:
+ * the extension mounts' and the server-function proxy's (`projectDevEnv`). The format is
  * dotenv-shaped: KEY=VALUE lines, `#` comments, optional single/double quotes. The compiler CLI
  * keeps its own tiny copy (db-push.ts) — the compiler cannot depend on this package.
  */
@@ -58,4 +59,17 @@ export function loadDevVars(projectRoot: string): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+/**
+ * The `env` a development host hands project code that runs server-side: `process.env` merged under
+ * the project's `.dev.vars`, plus `JX_PROJECT_ROOT`. The extension mounts (server.md §3) and the
+ * server-function proxy (server.md §3.3) both build theirs here, so a server function reads the
+ * same secrets a mount does.
+ *
+ * @param {string} root - Absolute project root
+ * @returns {Record<string, string | undefined>}
+ */
+export function projectDevEnv(root: string): Record<string, string | undefined> {
+  return { ...process.env, ...loadDevVars(root), JX_PROJECT_ROOT: root };
 }
