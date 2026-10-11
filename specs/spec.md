@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.26-draft\
+**Version:** 0.6.27-draft\
 **Status:** Partial\
-**Updated:** 2026-09-29\
+**Updated:** 2026-10-11\
 **License:** MIT
 
 ---
@@ -2659,6 +2659,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.27-draft** (2026-10-11) — §11.3, §11.4: an interpreting host calls a server entry only through the dev proxy and never imports its module in the browser, so §11.3's marker drops the clause saying the function can run there.
 - **0.6.26-draft** (2026-09-29) — §5.7 is marked Partial: the interpreter and the compiled targets use different predicates to decide that a state object is a pure type definition, so the same entry can hold a value in one tier and none in the other.
 - **0.6.25-draft** (2026-09-29) — Census against the code: thirty-seven sections now lead with Partial where the interpreter, a compiled target or the text diverges, the stale Implemented cells of the §11.2 prototype table and the §11.3 timing table now read Partial and name their compiled gap, the §7.4, §8.6, §16.8 and §21.1 markers say what ships, and §21 closes as Implemented.
 - **0.6.24-draft** (2026-09-29) — §8.4 is marked Partial: content spliced in by a computed-children template is evaluated as templates instead of kept literal.
@@ -2749,4 +2750,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.26-draft — subject to revision_
+_Jx Specification v0.6.27-draft — subject to revision_

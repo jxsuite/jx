@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.13.20-draft\
+**Version:** 0.13.21-draft\
 **Status:** Partial\
-**Updated:** 2026-10-06\
+**Updated:** 2026-10-11\
 **License:** MIT
 
 ---
@@ -1945,6 +1945,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.13.21-draft** (2026-10-11) — §4.3: every zoom holds a point still (cursor for the wheel, stage middle for buttons and chords; Edit re-measures the hovered element after reflow). §4.4: the Block Action Bar rests on the element box, not the caret. §5.1: Library button in the rail foot above Settings. §7.2/§7.4: the link specimen keeps its href, and the state menu offers the tag's own states. §9.1.2: five doors to the Library; previews draw placeholders for images that cannot load. §10: Save is enabled only while the document is dirty.
 - **0.13.20-draft** (2026-10-06) — §6.2 the button-group row is a single-select radiogroup whose buttons bind checked and never toggle, so the document is the only writer of the drawn choice.
 - **0.13.19-draft** (2026-10-06) — §16.2 The status bar's DOCUMENT field is now the jump bar: a breadcrumb trail of the focused pane's address (file › ancestors › element), every step a button, replacing the path, view and save readouts; §18.3 pane cells no longer draw a per-pane jump bar.
 - **0.13.18-draft** (2026-10-06) — §11.1 Bundle Layout: the repo dev server moved from the root server.js to scripts/dev.ts.
@@ -2106,4 +2107,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.13.20-draft_
+_`@jxsuite/studio` Specification v0.13.21-draft_
