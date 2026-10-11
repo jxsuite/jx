@@ -32,6 +32,7 @@ import { shell } from "../shell";
 import { activeTab, workspace } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
 import { canRedo, canUndo } from "../tabs/transact";
+import { hasTyping } from "../tabs/typing";
 import { collabState } from "../collab/collab-state";
 
 import { canvasViewForMode, editorKindForMode, emptyContext } from "./context";
@@ -133,7 +134,8 @@ export function createLiveContext(sources: LiveContextSources): () => CommandCon
     ctx.git.dirtyCount = shell.git.status?.files.length ?? 0;
 
     ctx.document.open = tab !== null;
-    ctx.document.dirty = tab?.doc.dirty === true;
+    // Typing still in a source buffer is unsaved work too, though the document has not seen it.
+    ctx.document.dirty = tab ? tab.doc.dirty === true || hasTyping(tab.id) : false;
     ctx.document.mode = tab?.doc.mode ?? "";
     ctx.document.canUndo = tab ? canUndo(tab) : false;
     ctx.document.canRedo = tab ? canRedo(tab) : false;

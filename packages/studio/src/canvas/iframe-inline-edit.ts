@@ -309,6 +309,9 @@ export function startIframeInlineEdit(
     }
   };
 
+  /** Whether this typing burst's first keystroke has been announced (`editInput`). */
+  let inputAnnounced = false;
+
   const enterEditAt = (el: HTMLElement, path: JxPath) => {
     // Show raw `${expr}` syntax for editing (the render displays it as ❪ expr ❫).
     restoreTemplateExpressions(el);
@@ -316,14 +319,16 @@ export function startIframeInlineEdit(
     startEditing(el, path, {
       // `inPlace` rides along only when set: a release commit is the common case and the flag is
       // Optional, so omitting it keeps the message shape unchanged for every non-tick commit.
-      onCommit: (p, children, textContent, inPlace) =>
+      onCommit: (p, children, textContent, inPlace) => {
+        inputAnnounced = false;
         channel.post({
           children,
           kind: "editCommit",
           path: p,
           textContent,
           ...(inPlace ? { inPlace: true } : {}),
-        }),
+        });
+      },
       onEnd: () => {
         clearHighlight();
         lastNonEmptyRange = null;
@@ -383,14 +388,16 @@ export function startIframeInlineEdit(
       el,
       hostPath,
       {
-        onCommit: (p, _children, textContent, inPlace) =>
+        onCommit: (p, _children, textContent, inPlace) => {
+          inputAnnounced = false;
           channel.post({
             kind: "editCommitProp",
             path: p,
             prop,
             value: textContent ?? "",
             ...(inPlace ? { inPlace: true } : {}),
-          }),
+          });
+        },
         onEnd: () => {
           clearHighlight();
           lastNonEmptyRange = null;
@@ -572,6 +579,16 @@ export function startIframeInlineEdit(
       refreshSlashMenu();
     }
   };
+  /* Typed text reaches the document on the idle tick, half a second later. The parent hears about
+     the burst on its first keystroke instead, so its Save is not disabled over words a save would
+     keep. Once per burst: the flag re-arms when the burst commits. */
+  const onEditInput = () => {
+    if (!inputAnnounced) {
+      inputAnnounced = true;
+      channel.post({ kind: "editInput" });
+    }
+  };
+  container.addEventListener("input", onEditInput);
   container.addEventListener("keydown", onSlashKey);
   container.addEventListener("input", onSlashInput);
   doc.addEventListener("mouseup", onMouseUp, true);
@@ -639,6 +656,7 @@ export function startIframeInlineEdit(
   return () => {
     container.removeEventListener("keydown", onSlashKey);
     container.removeEventListener("input", onSlashInput);
+    container.removeEventListener("input", onEditInput);
     doc.removeEventListener("mouseup", onMouseUp, true);
     doc.removeEventListener("keyup", onKeyUp, true);
     doc.removeEventListener("blur", onBlurCapture, true);

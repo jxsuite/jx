@@ -99,6 +99,50 @@ export function createDevServerPlatform() {
   let _collabConnection: Promise<WsCollabConnection> | null = null;
 
   /**
+   * Bind the server to `root` — the binding its rootless routes and its static fallback (every
+   * media thumbnail, every canvas image) resolve against.
+   *
+   * **The binding is one per SERVER, not per tab.** So an empty root posts nothing: a Studio tab
+   * opened with no project used to post `{ root: "" }` at boot, which unbound the server for every
+   * other tab and turned their images into 404s. And a tab re-claims it (see
+   * {@link reclaimBinding}) whenever it could have been taken.
+   */
+  async function postActivate(root: string): Promise<void> {
+    if (!root) {
+      return;
+    }
+    const res = await fetch("/__studio/activate", {
+      body: JSON.stringify({ root }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (!res.ok) {
+      const body = (await readJson<ErrorBody>(res).catch(() => ({}))) as ErrorBody;
+      throw new Error(
+        `Could not open ${root}: ${problemDetail(body) ?? `activation failed (${res.status})`}`,
+      );
+    }
+  }
+
+  /**
+   * Re-bind the server to this tab's project. Two events can take the binding away without this tab
+   * hearing of it: another Studio tab activating ITS project, and a restarted `bun run dev`, which
+   * comes back bound to nothing. So a tab re-claims it when the author comes back to it (focus) and
+   * when the reload stream reconnects (a restart). Only a tab with a project claims anything.
+   */
+  function reclaimBinding(): void {
+    if (!_projectRoot) {
+      return;
+    }
+    _activation = postActivate(_projectRoot).catch((error: unknown) => {
+      console.error("Project re-activation failed:", error);
+    });
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("focus", reclaimBinding);
+  }
+
+  /**
    * Prefix a project-relative path with the active project root for server API calls.
    *
    * @param {string} rel
@@ -162,18 +206,7 @@ export function createDevServerPlatform() {
      * @param {string} [root]
      */
     async activate(root?: string) {
-      const r = root ?? _projectRoot;
-      const res = await fetch("/__studio/activate", {
-        body: JSON.stringify({ root: r }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
-      if (!res.ok) {
-        const body = (await readJson<ErrorBody>(res).catch(() => ({}))) as ErrorBody;
-        throw new Error(
-          `Could not open ${r}: ${problemDetail(body) ?? `activation failed (${res.status})`}`,
-        );
-      }
+      await postActivate(root ?? _projectRoot);
     },
 
     // ─── Project opening ──────────────────────────────────────────────────
@@ -514,6 +547,8 @@ export function createDevServerPlatform() {
       es.addEventListener("open", () => {
         opens += 1;
         if (opens > 1) {
+          // A reconnect is usually a restarted server, which comes back bound to no project.
+          reclaimBinding();
           options?.onResync?.("reconnect");
         }
       });

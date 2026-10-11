@@ -107,6 +107,7 @@ const {
   currentDragSession,
   endDragSession,
   getEditBarAnchorRect,
+  pointerAnchor,
   getEditSnapshot,
   hostDragGeometry,
   hostForCanvas,
@@ -1880,7 +1881,7 @@ describe("iframe canvas format-toolbar bridge", () => {
     expect(channels[0]!.posts.some((p) => p.kind === "applyFormat")).toBe(false);
   });
 
-  test("getEditBarAnchorRect adds the iframe viewport offset to the snapshot rect", async () => {
+  test("getEditBarAnchorRect falls back to the caret snapshot rect (+ iframe offset) with no element rect", async () => {
     const canvasEl = await mountReady();
     const iframe = canvasEl.querySelector("iframe")!;
     stubRect(iframe, { height: 480, left: 100, top: 50, width: 800 });
@@ -1901,12 +1902,49 @@ describe("iframe canvas format-toolbar bridge", () => {
     endActiveSession();
   });
 
+  test("pointerAnchor holds the hovered node: where it is now, and where it went", async () => {
+    const canvasEl = await mountReady();
+    const iframe = canvasEl.querySelector("iframe")!;
+    stubRect(iframe, { height: 480, left: 100, top: 50, width: 800 });
+    // Nothing hovered, nothing to hold.
+    expect(pointerAnchor(canvasEl)).toBeNull();
+
+    channels[0]!.deliver({
+      hit: { path: ["children", 0], rect: { height: 10, width: 20, x: 5, y: 30 } },
+      kind: "hover",
+    });
+    const anchor = pointerAnchor(canvasEl)!;
+    expect(anchor.top).toBe(80);
+
+    const settled = anchor.settle();
+    const measure = channels[0]!.posts.findLast((p) => p.kind === "measure") as {
+      paths: (string | number)[][];
+      reqId: number;
+    };
+    expect(measure.paths).toEqual([["children", 0]]);
+    // The zoom reflowed the frame: the node now sits 40 px lower.
+    channels[0]!.deliver({
+      hits: [{ path: ["children", 0], rect: { height: 10, width: 20, x: 5, y: 70 } }],
+      kind: "geometry",
+      reqId: measure.reqId,
+    });
+    expect(await settled).toBe(120);
+  });
+
+  test("editInput marks the host's tab dirty ahead of the commit", async () => {
+    await mountReady();
+    const tab = activeTab.value!;
+    tab.doc.dirty = false;
+    channels[0]!.deliver({ kind: "editInput" });
+    expect(tab.doc.dirty).toBe(true);
+  });
+
   test("getEditBarAnchorRect returns null with no active edit host", async () => {
     await mountReady();
     expect(getEditBarAnchorRect()).toBeNull();
   });
 
-  test("getEditBarAnchorRect falls back to the last selection rect + iframe offset", async () => {
+  test("getEditBarAnchorRect anchors to the selected element, not the caret, while editing", async () => {
     const canvasEl = await mountReady();
     const iframe = canvasEl.querySelector("iframe")!;
     stubRect(iframe, { height: 480, left: 200, top: 60, width: 800 });
@@ -1916,7 +1954,7 @@ describe("iframe canvas format-toolbar bridge", () => {
       hit: { path: ["children", 0], rect: { height: 14, width: 40, x: 5, y: 9 } },
       kind: "hit",
     });
-    // Editing with a snapshot that has a NULL rect → anchor falls back to lastSelectionRect.
+    // Editing with the caret on a later line: the bar still rests on the element's box.
     channels[0]!.deliver({ kind: "editStart", path: ["children", 0] });
     channels[0]!.deliver({
       activeTags: [],
@@ -1925,7 +1963,7 @@ describe("iframe canvas format-toolbar bridge", () => {
       link: { active: false, href: null },
       localScope: null,
       path: ["children", 0],
-      rect: null,
+      rect: { height: 10, width: 2, x: 30, y: 40 },
       seq: 1,
     });
 

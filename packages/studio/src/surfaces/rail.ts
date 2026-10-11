@@ -14,9 +14,11 @@
  * record's `railLabel` when it declares one (Source Control's is "Source", because the full title
  * ellipsed in the 48px label box), and the full `title` stays the accessible name and the tooltip.
  *
- * The foot is the ⚙ **Settings** menu, a menu button rendered from the `settings/menu` placement: a
- * record joins the gear by declaring the placement and there is nothing here to update in step.
- * With no registry, or one that declares nothing for it, there is no foot.
+ * The foot holds the two buttons that open no Navigator panel. **Library** runs `library.open`: the
+ * Library is a canvas tab, not a panel, and its button is pressed while that tab is the focused
+ * one. Below it is the ⚙ **Settings** menu, a menu button rendered from the `settings/menu`
+ * placement: a record joins the gear by declaring the placement and there is nothing here to update
+ * in step. With no registry, or one that declares nothing for either, the foot is empty.
  *
  * What this adapter owns is the projection and the two decisions: which panel a button toggles, and
  * where the gear's menu opens. The scope is reactive, so the surface follows `shell` through one
@@ -31,6 +33,7 @@ import { refreshGitStatus } from "../panels/git-panel";
 import { panelContext, railGroups } from "../panels/panel-registry";
 import { registerNavigatorPanels } from "../panels/navigator-panels";
 import { activeRegistry } from "../commands/active-registry";
+import { runActiveReported } from "../commands/run-reported";
 import {
   dismissSettingsMenu,
   isSettingsMenuOpen,
@@ -38,6 +41,8 @@ import {
   SETTINGS_MENU_PLACEMENT,
 } from "../panels/settings-menu";
 import { mountSurface, registerSurface } from "../ui/surface";
+import { libraryTabId } from "../browse/library-source";
+import { activeTab } from "../workspace/workspace";
 import railDoc from "./rail.json";
 
 import type { EffectScope } from "@vue/reactivity";
@@ -71,6 +76,9 @@ interface RailScope extends Record<string, unknown> {
   groups: RailGroupProjection[];
   settingsVisible: boolean;
   settingsOpen: boolean;
+  libraryVisible: boolean;
+  libraryOpen: boolean;
+  openLibrary: () => void;
   toggle: (id: string) => void;
   openSettings: (anchor: unknown) => void;
 }
@@ -104,7 +112,12 @@ export function toggleRailPanel(panel: PanelRecord): void {
 }
 
 /** The rail, as the surface reads it, from the registry and the shell as they stand now. */
-function project(): { groups: RailGroupProjection[]; settingsVisible: boolean } {
+function project(): {
+  groups: RailGroupProjection[];
+  settingsVisible: boolean;
+  libraryVisible: boolean;
+  libraryOpen: boolean;
+} {
   const ctx = panelContext();
   const groups = railGroups(ctx).map((group, index) => ({
     dividerAbove: index > 0,
@@ -122,13 +135,24 @@ function project(): { groups: RailGroupProjection[]; settingsVisible: boolean } 
   const registry = activeRegistry();
   const settingsVisible =
     registry !== null && registry.forPlacement(SETTINGS_MENU_PLACEMENT).length > 0;
-  return { groups, settingsVisible };
+  const libraryVisible =
+    registry?.get(LIBRARY_COMMAND) !== undefined && registry.isVisible(LIBRARY_COMMAND);
+  const libraryOpen = activeTab.value?.id === libraryTabId();
+  return { groups, libraryOpen, libraryVisible, settingsVisible };
 }
+
+/** The command the Library button runs: the record decides when it can, and what opening means. */
+const LIBRARY_COMMAND = "library.open";
 
 /** The reactive scope the surface reads, made once. */
 function state(): RailScope {
   _state ??= reactive({
     groups: [],
+    libraryOpen: false,
+    libraryVisible: false,
+    openLibrary: () => {
+      void runActiveReported(LIBRARY_COMMAND, undefined, "Navigator rail");
+    },
     openSettings: (anchor: unknown) => {
       if (!(anchor instanceof HTMLElement)) {
         return;
@@ -161,6 +185,8 @@ export function renderActivityBar(): void {
   const next = project();
   scope.groups = next.groups;
   scope.settingsVisible = next.settingsVisible;
+  scope.libraryVisible = next.libraryVisible;
+  scope.libraryOpen = next.libraryOpen;
   scope.settingsOpen = isSettingsMenuOpen();
   ensureMounted();
 }

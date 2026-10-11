@@ -30,6 +30,7 @@
 
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
+import { placeholderBrokenImages } from "../utils/edit-display";
 import libraryDoc from "./library-pane.json";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
@@ -267,6 +268,10 @@ export function mountLibrarySurface(
   actions: LibraryActions,
 ): LibrarySurfaceHandle {
   host.replaceChildren();
+  // A file that will not load, or a preview image with nothing to bind, draws a placeholder rather
+  // Than the browser's broken-image glyph.
+  const listening = new AbortController();
+  placeholderBrokenImages(host, listening.signal);
   const scope = reactive<LibraryScope>({
     bannerState: "hidden",
     bannerText: "",
@@ -355,6 +360,7 @@ export function mountLibrarySurface(
     },
     dispose() {
       disposed = true;
+      listening.abort();
       mounted?.dispose();
       mounted = null;
     },

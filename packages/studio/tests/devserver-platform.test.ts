@@ -208,6 +208,31 @@ describe("devserver platform basics", () => {
     expect(callsTo("/__studio/activate")[0]!.body).toEqual({ root: "some/dir" });
   });
 
+  test("activate with no root posts nothing — it must not unbind another tab's project", async () => {
+    const p = createDevServerPlatform();
+    await p.activate();
+    await p.activate("");
+    expect(callsTo("/__studio/activate").length).toBe(0);
+  });
+
+  test("a tab re-claims the server binding when it regains focus", async () => {
+    route("/__studio/activate", () => json({ ok: true }));
+    const p = createDevServerPlatform();
+    // Counted by root: every platform an earlier case made is listening for focus too.
+    const mine = () =>
+      callsTo("/__studio/activate").filter(
+        (call) => (call.body as { root?: string }).root === "focus/site",
+      ).length;
+    window.dispatchEvent(new Event("focus"));
+    // No project, nothing to claim.
+    expect(mine()).toBe(0);
+    p.projectRoot = "focus/site";
+    expect(mine()).toBe(1);
+    window.dispatchEvent(new Event("focus"));
+    expect(mine()).toBe(2);
+    p.projectRoot = "";
+  });
+
   test("activate throws when the server refuses the root", async () => {
     // A swallowed refusal is the dangerous case: the endpoints that take no dir fall back to the
     // Server's own root, so the session would silently act on the tree the dev server serves.
@@ -830,6 +855,26 @@ describe("file operations", () => {
       es?.emit("open", "");
       expect(reasons).toEqual(["reconnect", "reconnect"]);
       stop();
+    } finally {
+      (globalThis as { EventSource?: unknown }).EventSource = original;
+    }
+  });
+
+  test("a reconnect re-binds the server to this tab's project (a restart comes back unbound)", () => {
+    const original = (globalThis as { EventSource?: unknown }).EventSource;
+    (globalThis as { EventSource?: unknown }).EventSource = FakeEventSource;
+    try {
+      route("/__studio/activate", () => json({ ok: true }));
+      const p = createDevServerPlatform();
+      p.projectRoot = "site";
+      const stop = p.subscribeFileEvents?.(() => {}) ?? (() => {});
+      const es = FakeEventSource.last;
+      es?.emit("open", "");
+      expect(callsTo("/__studio/activate").length).toBe(1);
+      es?.emit("open", "");
+      expect(callsTo("/__studio/activate").length).toBe(2);
+      stop();
+      p.projectRoot = "";
     } finally {
       (globalThis as { EventSource?: unknown }).EventSource = original;
     }

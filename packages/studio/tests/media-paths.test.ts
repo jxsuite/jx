@@ -98,6 +98,8 @@ describe("previewFileSrc", () => {
 
   test("anything else loads from its own path", () => {
     expect(previewFileSrc("assets/logo.svg")).toBe("/assets/logo.svg");
+    // Encoded for the src: a `#` or `?` in a filename would otherwise cut the URL short.
+    expect(previewFileSrc("public/images/72 in #1?.jpg")).toBe("/images/72%20in%20%231%3F.jpg");
   });
 
   test("an empty path is returned as given, not as a lone slash", () => {

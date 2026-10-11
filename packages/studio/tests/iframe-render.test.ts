@@ -294,6 +294,24 @@ describe("canvas transpose + anchor de-link flags", () => {
     expect(previewAnchor.dataset.jxHref).toBeUndefined();
     previewHandle.dispose();
   });
+
+  test("Project Styles keeps its link specimen a real link, so link styles can match it", async () => {
+    const container = document.createElement("div");
+    const handle = await renderResolvedDocument({
+      container,
+      doc: {
+        children: [{ attributes: { href: "#" }, children: ["Visit"], tagName: "a" }],
+        tagName: "div",
+      } as never,
+      docBase: "http://localhost:3000/page.json",
+      mapperCtx: ctx,
+      mode: "stylebook",
+    });
+    const anchor = container.querySelector("a") as HTMLElement;
+    expect(anchor.getAttribute("href")).toBe("#");
+    expect(anchor.dataset.jxHref).toBeUndefined();
+    handle.dispose();
+  });
 });
 
 describe("prop-binding markers (inline prop editing)", () => {

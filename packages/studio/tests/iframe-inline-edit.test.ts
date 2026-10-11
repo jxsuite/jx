@@ -151,6 +151,26 @@ describe("startIframeInlineEdit", () => {
     stop();
   });
 
+  test("the first keystroke of a burst posts editInput once; a commit re-arms it", () => {
+    const { channel, deliver, posts } = fakeChannel();
+    const { container, el } = editableContainer();
+    boot(channel, container);
+
+    clickInto(el);
+    const inputs = () => posts.filter((p) => p.kind === "editInput").length;
+    el.textContent = "Typ";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.textContent = "Typed";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(inputs()).toBe(1);
+
+    // The burst commits (a flush stands in for the idle tick), so the next keystroke announces.
+    deliver({ kind: "flushEdits", reqId: 1 });
+    el.textContent = "Typed more";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(inputs()).toBe(2);
+  });
+
   test("an enterEdit message puts the caret in the given path", () => {
     const { channel, deliver, posts } = fakeChannel();
     const { container, el } = editableContainer();
