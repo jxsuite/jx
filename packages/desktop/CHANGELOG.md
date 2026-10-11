@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.4.6](https://github.com/jxsuite/jx/compare/desktop-v5.4.5...desktop-v5.4.6) (2026-10-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 5.1.2
+    * @jxsuite/create bumped to 1.3.14
+    * @jxsuite/parser bumped to 2.0.1
+    * @jxsuite/server bumped to 4.5.0
+    * @jxsuite/starters bumped to 2.0.1
+    * @jxsuite/studio bumped to 6.1.1
+  * devDependencies
+    * @jxsuite/server bumped to 4.5.0
+    * @jxsuite/ui bumped to 0.5.1
+
 ## [5.4.5](https://github.com/jxsuite/jx/compare/desktop-v5.4.4...desktop-v5.4.5) (2026-10-07)
 
 

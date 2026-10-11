@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.1.2](https://github.com/jxsuite/jx/compare/compiler-v5.1.1...compiler-v5.1.2) (2026-10-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.14
+    * @jxsuite/runtime bumped to 4.1.0
+    * @jxsuite/site bumped to 2.0.4
+  * devDependencies
+    * @jxsuite/parser bumped to 2.0.1
+
 ## [5.1.1](https://github.com/jxsuite/jx/compare/compiler-v5.1.0...compiler-v5.1.1) (2026-10-07)
 
 
