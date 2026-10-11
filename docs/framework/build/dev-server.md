@@ -97,7 +97,7 @@ When a document uses an external class (a `$prototype` entry with a `$src`), the
 
 ### Server functions (`POST /__jx_server__`)
 
-Functions marked `timing: "server"` never ship to the browser. In development the runtime posts the call instead:
+Functions marked `timing: "server"` never ship to the browser. In development the runtime never imports the module itself, even when the browser could load it. Posting the call here is the only path it takes:
 
 ```json
 {
@@ -107,7 +107,7 @@ Functions marked `timing: "server"` never ship to the browser. In development th
 }
 ```
 
-The server imports the module, invokes the export with the arguments object, and returns the result as JSON. In production the same calls hit the generated server handler (see [How compilation works](/docs/framework/build)).
+The server imports the module, invokes the export with the arguments object and an `env`, and returns the result as JSON. That `env` is `process.env` with your project's `.dev.vars` merged over it, plus `JX_PROJECT_ROOT`: the same environment the extension mounts below receive, so a function reads a local secret the way a mount does. The server keeps the module loaded once it has imported it, so after you edit a server module, restart the dev server (or the desktop app, which embeds its own) to run your change. In production the same calls hit the generated server handler (see [How compilation works](/docs/framework/build)).
 
 Extensions that declare server mounts (for example the data API) are served under `/_jx/*` with the same wire contract as the generated production worker, so data-backed documents work identically in both environments.
 

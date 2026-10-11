@@ -7,7 +7,8 @@
  *
  * Dev conveniences over the production worker:
  *
- * - `env` is process.env merged under the project's `.dev.vars` plus `JX_PROJECT_ROOT`;
+ * - `env` is process.env merged under the project's `.dev.vars` plus `JX_PROJECT_ROOT`
+ *   (`projectDevEnv`, which the server-function proxy shares);
  * - Connector classes with `local: "<provider>"` are stood in by the registry's class for that
  *   provider (e.g. D1 → sqlite at `<project>/.jx/data/<connection>.sqlite`);
  * - Mount options set `autoSync: true`, so table schemas sync additively on first touch.
@@ -18,7 +19,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
-import { loadDevVars } from "./dev-vars.ts";
+import { projectDevEnv } from "./dev-vars.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { FormatEntry } from "@jxsuite/schema/format-registry";
 import type { ProjectConfig } from "@jxsuite/schema/types";
@@ -121,11 +122,7 @@ async function buildRuntime(
   }
 
   const connectors = await resolveConnectorStandins(registry);
-  const env: Record<string, unknown> = {
-    ...process.env,
-    ...loadDevVars(projectRoot),
-    JX_PROJECT_ROOT: projectRoot,
-  };
+  const env: Record<string, unknown> = projectDevEnv(projectRoot);
 
   // One shared mutable context, passed to every mount in order (specs/extensions.md §11).
   const ctx: Record<string, unknown> = {};

@@ -73,8 +73,8 @@ An optional `arguments` field passes named parameters as a single object rather 
 
 Server credentials stay in the server process. The `env` parameter gives the function its platform bindings (databases, KV namespaces, secrets, email workers), and none of it crosses to the client: the browser receives only the function's serialized return value.
 
-:::doc-warning
-The boundary is enforced by the **compiled** output. During development, the runtime may execute a server entry client-side (falling back to the dev server's proxy when the module can't load in a browser), so don't treat dev behavior as proof that a secret is hidden. Build and deploy to exercise the boundary.
+:::doc-note
+During development the runtime never requests a server module's source: every call runs server-side, on the dev server or in the desktop app's own backend, with your project's `.dev.vars` in `env`. Those servers still serve your project's files at their URLs, so keep secrets out of the module body and read them from `env` inside the function.
 :::
 
 ## Compiler

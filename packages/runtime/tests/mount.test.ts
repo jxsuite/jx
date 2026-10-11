@@ -564,8 +564,8 @@ describe("preloadModule with a loader", () => {
   });
 
   test('a timing: "server" function is served by its loader', async () => {
-    /* A server function whose module cannot import falls back to the dev proxy, which would be a
-       POST this fetch refuses — so a summed value proves the loader's namespace was awaited. */
+    /* A server function the host did not register goes to the dev proxy, which would be a POST
+       this fetch refuses, so a summed value proves the loader's namespace was awaited. */
     const fetchMock = noNetwork();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     let loads = 0;

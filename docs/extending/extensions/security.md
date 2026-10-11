@@ -31,7 +31,7 @@ The same rule extends to everything derived from config: schema fragments descri
 
 Where the values actually live:
 
-- **Local development**: `<project>/.dev.vars`, git-ignored (the wrangler convention). The dev server merges it over `process.env` when constructing mount environments (`packages/server/src/dev-vars.ts`).
+- **Local development**: `<project>/.dev.vars`, git-ignored (the wrangler convention). The dev server merges it over `process.env` when constructing mount environments, and a `timing: "server"` function called through the dev proxy gets the same environment (`projectDevEnv` in `packages/server/src/dev-vars.ts`).
 - **Production**: `wrangler secret put <NAME>`, or the hosting platform's secret store.
 - **Studio**: secret entry goes through the platform's secrets surface (`/__studio/secrets`); its list endpoint returns **names only**, never values. The `"secret"` [settings form control](/docs/extending/extensions/project-sections) writes there, never to `project.json`. The user-facing walkthrough is [Auth and secrets](/docs/studio/data/auth-and-secrets).
 

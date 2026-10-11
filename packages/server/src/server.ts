@@ -359,9 +359,11 @@ export async function createDevServer(options: {
         return handleResolve(req, absRoot, activeProjectRoot);
       }
 
-      // Timing: "server" function proxy
+      /* Timing: "server" function proxy. Its `env` carries the active project's `.dev.vars`, as the
+         extension mounts' does below, and a module under that project imports even when it sits
+         outside absRoot, as the static lanes below serve it. */
       if (path === "/__jx_server__" && req.method === "POST") {
-        return handleServerFunction(req, absRoot);
+        return handleServerFunction(req, absRoot, activeProjectRoot ?? absRoot);
       }
 
       // Extension server mounts (/_jx/data etc.) — registry-driven, same wire contract as the

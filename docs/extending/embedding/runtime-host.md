@@ -115,6 +115,8 @@ preloadModule("jx-ui:/behaviors/menu.ts", () => import("./behaviors/menu.ts"));
 
 The kit ships this table ready-made as `KIT_LOADERS` from `@jxsuite/ui/loaders`, the same specifiers as `KIT_MODULES` with every entry a thunk.
 
+`preloadModule` is also the only way a `timing: "server"` entry runs in your process. For any specifier you have not registered, the runtime posts the call to your host's `/__jx_server__` proxy and never imports the module. A host that answers no proxy leaves such an entry `null` and logs the failed call, and `skipServerFunctions` (below) skips the entries without a request.
+
 ## Configure each mount
 
 Options that used to be page-wide settings are read per mount:

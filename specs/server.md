@@ -118,17 +118,20 @@ This avoids CORS issues, enables Node.js-only dependencies (e.g. `glob`, `fs`), 
 
 ### 3.3 Server Function Proxy (`POST /__jx_server__`)
 
-Executes `timing: "server"` functions during development. The runtime sends:
+Executes `timing: "server"` functions during development. It is the only way an interpreting runtime calls a server function, unless the host registered the module itself with `preloadModule` (spec.md §11.4, embedding.md §6). The runtime sends:
 
 ```json
 {
   "$src": "./dashboard.server.js",
   "$export": "fetchMetrics",
+  "$base": "http://localhost:3000/pages/dashboard.json",
   "arguments": { "userId": 42 }
 }
 ```
 
-The server imports the module and calls the exported function as `fn(args, env)` — the arguments object plus an environment binding (`process.env` in the dev proxy, matching the compiled production route's `fn(args, c.env)`) — then returns the result as JSON. Reactive re-execution (`signal: true`) is driven runtime-side via `effect()`.
+A relative `$src` resolves against the directory of the document `$base` names, percent-decoded. A site URL's path names a directory under the server root, even when it would also read as an absolute POSIX path. Studio's canvas addresses a project by its absolute filesystem path instead, so its base arrives as `//abs/path/…`, or `/C:/path/…` with a Windows drive letter, the spelling the static file lanes also serve, and a `file:` URL's path is a filesystem path too. Those name the path itself when it lies under the server root or the active project, and are read as a site URL otherwise. The module must lie under one of the two, or the call is refused with 403.
+
+The server imports the module and calls the exported function as `fn(args, env)` — the arguments object plus an environment binding (`process.env` merged under the project's `.dev.vars`, plus `JX_PROJECT_ROOT`, as for the extension mounts (§3), matching the compiled production route's `fn(args, c.env)`) — then returns the result as JSON. Reactive re-execution (`signal: true`) is driven runtime-side via `effect()`. The imported module stays cached for as long as the server runs, so an edit to it takes effect when the server restarts.
 
 > **Status: Implemented.** `src/resolve.ts` `handleServerFunction()`.
 
