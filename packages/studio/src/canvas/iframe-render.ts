@@ -1018,8 +1018,11 @@ export async function renderResolvedDocument(opts: {
   // Sections feeding back into an ever-growing height. Set every render (the iframe always wants it).
   setCanvasViewportTranspose(true);
   // De-link `<a href>` in design/edit so clicks select the anchor instead of navigating the iframe;
-  // Preview keeps real links live (mirrors the server-function gate above).
-  setCanvasDelinkAnchors(opts.mode !== "preview");
+  // Preview keeps real links live (mirrors the server-function gate above). So does Project Styles:
+  // An `<a>` without `href` is not a link, so `:link`, `:any-link` and the UA's link colour could
+  // Never match its specimen, and a project could not see the link styles it was setting there.
+  // Its clicks are refused in the frame instead (`iframe-interaction.ts`).
+  setCanvasDelinkAnchors(opts.mode !== "preview" && opts.mode !== "stylebook");
   /* De-popover in the same modes and for the same reason: an OPEN popover is in the top layer,
      whose containing block is the viewport — a fiction here, since the frame is sized to its own
      content — and which contributes to no ancestor's scrollable overflow, so the artboard could

@@ -12,6 +12,7 @@ import {
   standUpPaneGrid,
   stubRect,
 } from "./harness";
+import { hasTyping } from "../src/tabs/typing";
 import { displayTagName } from "@jxsuite/schema/guards";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
@@ -1126,6 +1127,8 @@ describe("source mode", () => {
       // — says there is nothing to lose.
       expect(tab.doc.dirty).toBe(false);
       expect(tabBufferUnsaved(tab)).toBe(true);
+      // …but Save is told, so it is enabled before the commit lands.
+      expect(hasTyping(tab.id)).toBe(true);
 
       await commitTabBuffers(tab);
       expect(parseSourceForPathMock).toHaveBeenCalledWith("/project/post.md", "# Never saved");

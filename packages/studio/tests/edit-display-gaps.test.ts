@@ -4,6 +4,8 @@ import { describe, expect, test } from "bun:test";
 import {
   computeEmptyPlaceholderClass,
   EMPTY_PLACEHOLDER_CLASSES,
+  PLACEHOLDER_IMG,
+  placeholderBrokenImages,
   prepareForEditMode,
   restoreTemplateExpressions,
   templateToEditDisplay,
@@ -429,5 +431,44 @@ describe("prepareForEditMode empty placeholders", () => {
   test("identical non-layout empty span still gets text placeholder", () => {
     const out = prep({ style: { height: "3px" }, tagName: "span" });
     expect(out.className).toBe("empty-text-placeholder");
+  });
+});
+
+// ─── placeholderBrokenImages ──────────────────────────────────────────────────
+
+describe("placeholderBrokenImages", () => {
+  test("a nested image that fails to load becomes the placeholder, until the signal aborts", () => {
+    const host = document.createElement("div");
+    const card = document.createElement("section");
+    const img = document.createElement("img");
+    img.setAttribute("src", "/missing.jpg");
+    img.setAttribute("srcset", "/missing-2x.jpg 2x");
+    card.append(img);
+    host.append(card);
+    const listening = new AbortController();
+    placeholderBrokenImages(host, listening.signal);
+
+    // `error` does not bubble; the capture listener on the host still sees it.
+    img.dispatchEvent(new Event("error"));
+    expect(img.getAttribute("src")).toBe(PLACEHOLDER_IMG);
+    expect(img.hasAttribute("srcset")).toBe(false);
+    expect(img.dataset.placeholder).toBe("");
+
+    const later = document.createElement("img");
+    later.setAttribute("src", "/also-missing.jpg");
+    host.append(later);
+    listening.abort();
+    later.dispatchEvent(new Event("error"));
+    expect(later.getAttribute("src")).toBe("/also-missing.jpg");
+  });
+
+  test("errors from anything but an image are ignored", () => {
+    const host = document.createElement("div");
+    const video = document.createElement("video");
+    video.setAttribute("src", "/missing.mp4");
+    host.append(video);
+    placeholderBrokenImages(host, new AbortController().signal);
+    video.dispatchEvent(new Event("error"));
+    expect(video.getAttribute("src")).toBe("/missing.mp4");
   });
 });

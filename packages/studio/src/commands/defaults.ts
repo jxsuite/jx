@@ -236,7 +236,10 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       group: "1_file",
       undo: "none",
       when: documentOpen,
-      requires: "an open document",
+      // Nothing to save is a disabled button, not a no-op one. A disabled chord is still claimed,
+      // So ⌘S on a clean document never falls through to the browser's own Save Page.
+      enablement: (ctx) => ctx.document.dirty,
+      requires: "unsaved changes",
       run: () => deps.saveDocument(),
     },
     {

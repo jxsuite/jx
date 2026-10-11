@@ -52,6 +52,7 @@ import { globalEntries, namedFormulaEntries } from "../ui/formula-catalog";
 import { notify } from "../services/notify";
 
 import type { BufferWrites } from "../services/monaco-buffer";
+import { noteTyping } from "../tabs/typing";
 import type { OxLintDiagnostic } from "../services/code-services";
 import type { JxPrototypeDef } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
@@ -500,8 +501,9 @@ async function mountFunctionEditor(
     // Stated as a fact rather than left to be read off the timer, because the timer is only ONE of
     // The ways a buffer gets ahead and the other one is invisible to it. `markTyped` rather than
     // `markAhead`: this text is the AUTHOR'S, so it is also the text a close would destroy, and
-    // Format-on-open's (below) is not.
+    // Format-on-open's (below) is not. Noted for Save too, so it is enabled ahead of the commit.
     writes.markTyped();
+    noteTyping(tab.id);
 
     writes.arm(BUFFER_COMMIT, 500, () => {
       editor._commitBody?.(editor.getValue());

@@ -447,6 +447,22 @@ describe("preview link interception", () => {
     expect(posts.some((p) => p.kind === "hit")).toBe(true);
   });
 
+  test("Project Styles refuses the live specimen link's navigation and still selects it", () => {
+    const { channel, posts } = fakeChannel();
+    const { inner } = stampedAnchor("#");
+    stop = startInteraction(channel, document, {
+      getMode: () => "stylebook",
+      getShadowDoc: () => null,
+    });
+
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    inner.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(posts.some((p) => p.kind === "previewNavigate")).toBe(false);
+    expect(posts.some((p) => p.kind === "hit")).toBe(true);
+  });
+
   test("an in-page fragment is left to the browser", () => {
     const { channel, posts } = fakeChannel();
     const { inner } = stampedAnchor("#section-2");

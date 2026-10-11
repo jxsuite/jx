@@ -464,9 +464,22 @@ describe("the bootstrap's saveDocument hook", () => {
       },
     }));
 
-    installMockPlatform();
+    /* A backend that refuses the boot's warm-up activation still gets its render: the refusal is
+       reported, never an unhandled rejection. */
+    const consoleError = console.error;
+    const logged: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    installMockPlatform({
+      activate: async () => {
+        throw new Error("refused");
+      },
+    });
     await import("../src/studio");
     await flush();
+    console.error = consoleError;
+    expect(logged.some((args) => args[0] === "Boot activation failed:")).toBe(true);
 
     const hook = hooks as unknown as {
       saveDocument: (...args: unknown[]) => Promise<unknown>;
@@ -474,13 +487,15 @@ describe("the bootstrap's saveDocument hook", () => {
     expect(hook).not.toBeNull();
 
     /* The registry calls its hooks with whatever a command's argument record carried. `saveFile`
-       takes an OPTIONAL tab and would treat that as the document to write, so the wrapper's job is
-       to arrive empty-handed. */
+       takes an OPTIONAL tab and would treat that as the document to write, so the wrapper names the
+       ACTIVE tab itself and ignores what it was handed. */
+    openTab({ document: { tagName: "div" }, id: "save-hook-tab" });
     const sentinel = { id: "not-a-tab" };
     const answer = await hook!.saveDocument(sentinel, "and-another");
 
     expect(saveFileSpy).toHaveBeenCalledTimes(1);
-    expect(saveFileSpy.mock.calls[0]).toEqual([]);
+    expect(saveFileSpy.mock.calls[0]).toHaveLength(1);
+    expect((saveFileSpy.mock.calls[0]![0] as { id: string }).id).toBe("save-hook-tab");
     // And it does not forward the verdict either — the hook's contract is Promise<void>.
     expect(answer).toBeUndefined();
   });

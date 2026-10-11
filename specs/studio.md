@@ -284,13 +284,15 @@ The design canvas supports pan and zoom:
 
 **Ctrl/⌘+wheel is a different gesture, and no surface hands it to the browser.** Studio blocks page zoom everywhere and exempts only a stage, because a stage answers the gesture with a zoom of its own; a stage with none to give — every mode named above, and a trackpad pinch arrives as exactly this event — blocks it like the rest of the chrome rather than scaling the whole window around a form. Preview blocks it in the FRAME: a cross-origin canvas frame's wheel never reaches the host, and preview is the one mode that forwards nothing, so the block has to be where the gesture lands.
 
+**Every zoom holds a point still.** Ctrl/⌘+wheel zooms around the cursor; the zoom pod's −/+ and the zoom chords zoom around the middle of the stage. In Design and Stylebook the point is measured from the artboard's own drawn box, never from the stage's: the artboard centres itself in the stage, so cursor-minus-stage arithmetic drifted toward the middle of the viewport by exactly that offset. Edit's content zoom reflows rather than scales, so no arithmetic on the old layout can say where a line will land: each wheel step is corrected by arithmetic at once, and then the element the pointer last hovered is measured again in the reflowed frame and the scroller takes back whatever it moved, so the element under the cursor stays under it.
+
 **Edit has no pan and no zoom of that kind, and now has a gesture of its own.** Its stage is a centred column, not a transformed surface, so what a drag on its edge changes is the page's real width (§6.2) rather than a scale — the two are not merged, and `ui.editZoom` keeps its own browser-page-zoom meaning beside it.
 
 **Entering a pan/zoom mode fits the artboard.** Design and Stylebook apply a fit on the mode transition, capped at 100% so a narrow artboard is never magnified, and skipped when the pane has no measurable width (fitting an unlaid-out pane would land on the 5% floor). Without it a 1280px artboard opened at 100% in a ~700px pane and was cut off mid-word. The fit is a default, not a policy: any zoom the author sets by hand — the tab bar's −/+/100%/Fit controls, Ctrl+scroll, or the zoom chords — is recorded against that tab's document for the session, and re-entering the mode restores it instead of re-fitting. Preview takes no part in any of this (§4.2).
 
 ### 4.4 Block Action Bar
 
-Unified floating action bar (Gutenberg-style) attached to the selected element:
+Unified floating action bar (Gutenberg-style) attached to the selected element. It rests on the element's box (just above its top edge, flipping below when there is no room) during a caret session as well as on a plain selection. It does not follow the caret: anchored to the caret's line, it hopped as the author typed and sat over the very text being edited. The caret's state still drives the format group; it never drives the position.
 
 | Control           | Description                                          |
 | ----------------- | ---------------------------------------------------- |
@@ -316,7 +318,7 @@ Formatting applies to a range, so the buttons are disabled for a collapsed caret
 
 ### 5.1 Activity Bar
 
-> **Status: Partial.** The level-grouped rail, the rail-less Insert and Languages panels and the bottom-anchored Settings menu ship (`packages/studio/src/panels/navigator-panels.ts`, `panels/settings-menu.ts`). Search does not: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach. The Icon column is stale: the records use `stack`, `file`, `database` and `cube` for Outline, Page, Data and Packages.
+> **Status: Partial.** The level-grouped rail, the rail-less Insert and Languages panels, the Library button and the bottom-anchored Settings menu ship (`packages/studio/src/panels/navigator-panels.ts`, `panels/settings-menu.ts`). Search does not: its record is registered with `when: NOT_YET_BUILT` and a placeholder render, so there is no Search surface to reach. The Icon column is stale: the records use `stack`, `file`, `database` and `cube` for Outline, Page, Data and Packages.
 
 Vertical tab strip for switching panel views, drawn from the panel registry in two labelled groups. A panel's `level` decides its group, so the rail says what a panel writes to before you open it: **Project** panels change the project, **Document** panels change the open document.
 
@@ -333,7 +335,9 @@ A record's `title` is the button's accessible name, its tooltip and the panel he
 
 Three more panels are registered `rail: false` — **Search** (`search`, project level), **Insert** (`insert`, document level, the HTML element palette and the project's component library) and **Languages** (`i18n`, project level, §20.4). They have records, regions and `panel.focus.<id>` commands like any other panel; what they give up is a rail button, because the group is a glance and a glance does not scale.
 
-**The rail's foot holds one control: ⚙ Settings**, and it opens a **menu** rather than running a command. Its rows are `forPlacement("settings/menu")` — today `app.preferences` (⌘,), `settings.open` (⌘⇧,) and `styles.open` — ordered by level with a divider at the boundary, and each row with a `section` argument offers that argument's values as a submenu, so a section of Preferences or of Project Settings is one click deep.
+**The rail's foot holds the two controls that open no Navigator panel: Library, then ⚙ Settings.** Every button above them toggles a Navigator panel; these two do not, so they sit together at the foot rather than among the panels. **Library** runs `library.open` (§9.1.2) and is shown while that command is, which is while a project is open. The Library is a canvas tab rather than a panel, so the button is pressed while that tab is the focused one and is not a toggle: pressing it again does not close the tab.
+
+**⚙ Settings** opens a **menu** rather than running a command. Its rows are `forPlacement("settings/menu")` — today `app.preferences` (⌘,), `settings.open` (⌘⇧,) and `styles.open` — ordered by level with a divider at the boundary, and each row with a `section` argument offers that argument's values as a submenu, so a section of Preferences or of Project Settings is one click deep.
 
 It is a menu because the two settings families sit at two levels. A **pinned slot** has room for one thing and must lie about the rest by omission: for a release the foot ran `app.preferences` alone, and project configuration was reachable only from the ⬢ menu and the palette, so the control most people press when looking for settings could not offer the project's. A menu prints each row's own name, chord and gate, so it can hold both and say which is which — the same reason `commandbar/overflow` admits three levels (`studio-ui-guidelines.md` §12.1). The rail's **panel** groups above it stay single-level, because a panel has no row to explain itself with.
 
@@ -773,6 +777,8 @@ The project's design tokens and element defaults, edited as a **document** (§17
 
 Elements rendered as full-width cards with live DOM previews. Components rendered via the runtime (`defineElement` + `createElement`). Root document styles (`$style`) applied to all elements for consistent theming.
 
+**The link specimen is a real link.** Every other canvas mode de-links `<a href>` onto `data-jx-href` so a click selects instead of navigating, but an `<a>` without `href` matches neither `:link` nor `:any-link`, so the user-agent link colour, the underline and every link rule the project writes could never show on it. Project Styles keeps its specimens' `href`s and refuses the navigation in the frame instead, so a click still selects the specimen.
+
 ### 7.3 Layers Panel (Nested Tree)
 
 > **Status: Partial.** The nested tree, selection from its rows and from the canvas, pan-to-card and the Style tab ship (`packages/studio/src/panels/stylebook-layers-panel.ts`, `panels/stylebook-panel.ts`). The mechanics differ from the text: `selectStylebookTag` sets `activeSelector` to the bare tag path (`ul li`), canvas hits decode through the specimen document's path map, and `stylebookElToTag` no longer exists. The row's customised marker reads `& <tag>` keys through the layers panel's own `hasTagStyle`, not the exported one in `panels/stylebook-doc.ts` that reads bare nested keys, while Stylebook edits write bare tag keys (§7.4), so it never lights for Stylebook's own edits.
@@ -794,6 +800,8 @@ Editing styles in stylebook mode writes nested CSS rules (`& tag`) to the docume
 The site-settings design-token editor is scheme-aware for color tokens: each color row carries a per-scheme override field writing into the project style's scheme block. Declaring a scheme is not done here — the token editor links to Project Settings › Contexts (§17.1), which is the single definition site for breakpoints and colour schemes, and which is why adding one no longer costs the author their element selection. Token edits push to live page canvases as an in-place site-style sheet replace (no re-render).
 
 Stylebook's own compound target is stated by the Target Line (§6.2), whose scope chip is what tells the author, before the first keystroke, that an edit here lands on every element of a tag rather than on one.
+
+**A tag's states are the tag's own.** The Target Line's selector menu offers the selected tag's states (the common pseudo-classes plus the tag's own, so `:visited` and `:target` for `a`) and any the document already declares under it, each spelled as the path it writes: `a :hover` edits `style.a[":hover"]`. Its base entry returns to the tag itself, and a custom state is nested under the tag. The menu used to offer the document root's states and replace the tag with the one chosen, so `:hover` edited the root and there was no way to style `a:hover` from Project Styles at all.
 
 ---
 
@@ -1033,7 +1041,9 @@ Two rules, and both are about the stack rather than about any one target.
 
 ### 9.1.2 The Library
 
-Every page, layout, component, content entry and asset in one browsable tab, with live previews. Reached by `⌘⇧E`, by name from the palette, from the Command Bar's overflow, and from the Files tree's context menu — four doors, because it is the content surface for a site with a collection and a palette search is not a door a reader finds.
+Every page, layout, component, content entry and asset in one browsable tab, with live previews. Reached by the **Library** button at the rail's foot (§5.1), by `⌘⇧E`, by name from the palette, from the Command Bar's overflow, and from the Files tree's context menu — five doors, because it is the content surface for a site with a collection and a palette search is not a door a reader finds.
+
+**A preview that cannot draw an image draws a placeholder.** A media file that will not load, a component whose image prop is a `${}` binding with nothing to bind, and a document whose `src` is empty all show the canvas's grey placeholder rather than the browser's broken-image glyph.
 
 ### 9.1.3 Importing a component
 
@@ -1159,6 +1169,8 @@ A `.json` document is written back in the layout its file was read in, so a one-
 | `Cmd+D` / `Ctrl+D`             | Duplicate selected node                       |
 | `Cmd+Shift+O` / `Ctrl+Shift+O` | Open in Browser (§10.1)                       |
 | `Cmd+0` / `Cmd+=` / `Cmd+-`    | Zoom reset / in / out                         |
+
+**Save is enabled only while there is something to save.** `file.save` gates on `enablement: ctx.document.dirty` (`requires: "unsaved changes"`), so the Command Bar's Save is disabled on a clean document and its tooltip says why. The flag is raised by the first keystroke of a burst, not when the burst's text reaches the document: the canvas frame posts `editInput` on a typing burst's first keystroke, which dirties the tab, and a keystroke in a Monaco buffer notes its tab in a reactive typing set (`tabs/typing.ts`) that the enablement reads beside `dirty`, so Save is never disabled over words a save would keep. `doc.dirty` itself stays the DOCUMENT's flag: a buffer's text, which may not even parse, is not the document's until its commit lands. Saving commits the tab's buffers first, and clears the typing note only when no buffer is still ahead. A disabled chord is still claimed, so ⌘S on a clean document does nothing rather than opening the browser's Save Page.
 
 **Whether a caret is active is a bridge fact, not a local one.** The editing session runs inside the canvas iframe, so the shell cannot see the caret in its own realm — it derives `caret.active` from the session messages the bridge already carries (`editStart` opens it, `selectionChanged` proves it is still live, `editEnd` closes it), and treats a frame that has left the document as having no caret, since a frame torn down mid-session never posts `editEnd`. Reading a shell-local editing flag instead is what let the element-level clipboard handlers steal `Cmd+C` / `Cmd+X` / `Cmd+V` from a live caret: copying a phrase copied the whole block, and cutting mid-sentence deleted the paragraph.
 

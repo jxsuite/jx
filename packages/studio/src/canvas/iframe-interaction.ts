@@ -278,7 +278,8 @@ export function startInteraction(
      * rather than replacing the canvas with a half-loaded page.
      *
      * Design/edit never reach this: the runtime de-links anchors onto `data-jx-href` there, so there
-     * is no navigation to intercept and a click means "select this element".
+     * is no navigation to intercept and a click means "select this element". Project Styles keeps
+     * its specimens' links live and refuses the navigation just below.
      */
     if (isPreview()) {
       if (e.target instanceof Element) {
@@ -291,6 +292,11 @@ export function startInteraction(
       }
       // No hit post: a click in preview is a click on the page, never a selection.
       return;
+    }
+    // Project Styles keeps its link specimen live (`iframe-render.ts`), so a click on it must
+    // Select it rather than follow it.
+    if (deps?.getMode?.() === "stylebook" && e.target instanceof Element && e.target.closest("a")) {
+      e.preventDefault();
     }
     const hit = nearestHit(e.target);
     if (hit) {

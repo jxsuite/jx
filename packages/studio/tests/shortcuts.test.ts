@@ -27,6 +27,7 @@ import { notifyModule } from "./notify-mock";
 import type { CommandContext } from "../src/commands/context";
 import type { InspectorTabId } from "../src/shell";
 import type { ProjectOpenOutcome, ProjectOpenTarget } from "../src/editor/shortcuts";
+import type { PointerAnchor } from "../src/canvas/iframe-host";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 import { paneCommands } from "../src/workspace/workspace";
 
@@ -34,6 +35,15 @@ import { paneCommands } from "../src/workspace/workspace";
 
 const openQuickSearch = mock(() => {});
 void mock.module("../src/panels/quick-search.js", () => ({ openQuickSearch }));
+
+/* The Edit zoom's anchor is the frame's to measure, and this fixture has no frame. Everything else
+   in the module is the real one. */
+let anchorUnderPointer: PointerAnchor | null = null;
+const realIframeHost = await import("../src/canvas/iframe-host");
+void mock.module("../src/canvas/iframe-host.js", () => ({
+  ...realIframeHost,
+  pointerAnchor: () => anchorUnderPointer,
+}));
 
 const copyNode = mock(async () => {});
 const cutNode = mock(async () => {});
@@ -271,10 +281,15 @@ function pressDoc(key: string, init: KeyboardEventInit = {}) {
 
 function wheel(target: EventTarget, init: WheelEventInit = {}) {
   const e = new WheelEvent("wheel", { bubbles: true, cancelable: true, ...init });
-  // Happy-dom's WheelEvent constructor drops modifier-key init fields; force them.
+  // Happy-dom's WheelEvent constructor drops modifier-key and pointer init fields; force them.
   for (const k of ["ctrlKey", "metaKey", "shiftKey"] as const) {
     if (init[k]) {
       Object.defineProperty(e, k, { value: true });
+    }
+  }
+  for (const k of ["clientX", "clientY"] as const) {
+    if (init[k] !== undefined) {
+      Object.defineProperty(e, k, { value: init[k] });
     }
   }
   target.dispatchEvent(e);
@@ -342,13 +357,24 @@ function childCount(): number {
 // ─── Wheel handler ────────────────────────────────────────────────────────────
 
 describe("wheel handler", () => {
-  test("ctrl+wheel zooms toward the cursor", () => {
-    const e = wheel(wrapEl(), { clientX: 100, clientY: 80, ctrlKey: true, deltaY: -100 });
+  test("ctrl+wheel zooms toward the cursor, measured from the wrap's drawn box", () => {
+    const stage = surfaceForPane("primary");
+    const wrap = stage.panzoomWrap ?? document.createElement("div");
+    stage.panzoomWrap = wrap;
+    stage.panX = 40;
+    stage.panY = 10;
+    /* The wrap's LAYOUT origin is (100, 50) inside the stage (it centres itself with
+       `margin-block: auto`), so its drawn box starts at layout + pan. The old arithmetic measured
+       the cursor from the stage and drifted by exactly that offset. */
+    stubRect(wrap, { height: 400, left: 140, top: 60, width: 600 });
+    const e = wheel(wrapEl(), { clientX: 240, clientY: 160, ctrlKey: true, deltaY: -100 });
     expect(e.defaultPrevented).toBe(true);
     // OldZoom 1, delta = 0.5 → newZoom 1.5
     expect(activeTab.value!.session.ui.zoom).toBeCloseTo(1.5);
-    expect(setPan).toHaveBeenCalled();
-    expect(applyTransform).toHaveBeenCalled();
+    // The content point 100 px into the box is 150 px in after the zoom; the pan takes the 50 back.
+    expect(stage.panX).toBeCloseTo(-10);
+    expect(stage.panY).toBeCloseTo(-40);
+    expect(wrap.style.transform).toContain("scale(1.5)");
   });
 
   test("ctrl+wheel clamps zoom to max 5", () => {
@@ -652,6 +678,67 @@ test("window resize re-applies the edit zoom from the live column width", () => 
   sc.remove();
 });
 
+test("ctrl+wheel in edit mode keeps the content line under the cursor", async () => {
+  canvasMode = "edit";
+  activeTab.value!.session.ui.editZoom = 1;
+  const sc = document.createElement("div");
+  sc.setAttribute("part", "edit-canvas");
+  const column = document.createElement("div");
+  column.setAttribute("part", "edit-column");
+  const viewport = document.createElement("div");
+  const canvas = document.createElement("div");
+  const iframe = document.createElement("iframe");
+  canvas.append(iframe);
+  viewport.append(canvas);
+  column.append(viewport);
+  sc.append(column);
+  wrapEl().append(sc);
+  stubRect(column, { width: 600 });
+  stubRect(canvas, { height: 2000, top: 100 });
+  surface.panels.push({ _width: null, canvas, viewport } as never);
+
+  // The cursor is 200 layout px into the canvas; at 1.5× that line draws 300 px in, so the
+  // Scroller takes the 100 px back.
+  wheel(wrapEl(), { clientY: 300, ctrlKey: true, deltaY: -100 });
+  await new Promise((resolve) => {
+    setTimeout(resolve, 5);
+  });
+  expect(activeTab.value!.session.ui.editZoom).toBeCloseTo(1.5);
+  expect(sc.scrollTop).toBeCloseTo(100);
+  sc.remove();
+});
+
+test("an Edit zoom re-measures the hovered element after the reflow and scrolls it back", async () => {
+  canvasMode = "edit";
+  activeTab.value!.session.ui.editZoom = 1;
+  const sc = document.createElement("div");
+  sc.setAttribute("part", "edit-canvas");
+  const column = document.createElement("div");
+  column.setAttribute("part", "edit-column");
+  const viewport = document.createElement("div");
+  const canvas = document.createElement("div");
+  canvas.append(document.createElement("iframe"));
+  viewport.append(canvas);
+  column.append(viewport);
+  sc.append(column);
+  wrapEl().append(sc);
+  stubRect(column, { width: 600 });
+  stubRect(canvas, { height: 2000, top: 100 });
+  surface.panels.push({ _width: null, canvas, viewport } as never);
+  /* The reflow put the hovered heading 40 px lower than the arithmetic did, and scrolling moves it
+     back up one for one — so a second measurement finds it home and moves nothing. */
+  anchorUnderPointer = { settle: async () => 340 - (sc.scrollTop - 100), top: 300 };
+
+  wheel(wrapEl(), { clientY: 300, ctrlKey: true, deltaY: -100 });
+  await new Promise((resolve) => {
+    setTimeout(resolve, 400);
+  });
+  // 100 from the arithmetic, then the 40 the measurement found.
+  expect(sc.scrollTop).toBeCloseTo(140);
+  anchorUnderPointer = null;
+  sc.remove();
+});
+
 test("window resize outside edit mode leaves the canvas untouched", () => {
   canvasMode = "design";
   expect(() => window.dispatchEvent(new Event("resize"))).not.toThrow();
@@ -667,8 +754,16 @@ test("window resize outside edit mode leaves the canvas untouched", () => {
 
 describe("the old dispatch — twelve modifier chords", () => {
   test('⌘S saves (`case "s"`)', () => {
+    activeTab.value!.doc.dirty = true;
     pressDoc("s", { ctrlKey: true });
     expect(saveFile).toHaveBeenCalledTimes(1);
+  });
+
+  test("⌘S on a clean document saves nothing, and is still claimed from the browser", () => {
+    activeTab.value!.doc.dirty = false;
+    const e = pressDoc("s", { ctrlKey: true });
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(true);
   });
 
   test('⌘O opens a project (`case "o"`)', () => {
@@ -952,6 +1047,7 @@ describe("the old dispatch — the three blanket guards", () => {
     activeTab.value!.session.selection = [["children", 0]];
 
     pressDoc("p", { ctrlKey: true });
+    activeTab.value!.doc.dirty = true;
     pressDoc("s", { ctrlKey: true });
     const del = pressDoc("Delete");
     expect(openQuickSearch).not.toHaveBeenCalled();
@@ -1000,6 +1096,8 @@ describe("the old dispatch — the three blanket guards", () => {
       ["p", () => expect(openQuickSearch).toHaveBeenCalledTimes(1)],
       ["s", () => expect(saveFile).toHaveBeenCalledTimes(1)],
     ])("⌘%s still passes through", (key, assert) => {
+      // Unsaved work, so the Save case has something to save.
+      activeTab.value!.doc.dirty = true;
       pressDoc(key, { ctrlKey: true });
       assert();
     });
@@ -1044,6 +1142,7 @@ describe("the old dispatch — the three blanket guards", () => {
       ["a focused jx-textfield", () => focusKitField()],
     ])("%s: ⌘S still saves", (_label, arrange) => {
       arrange();
+      activeTab.value!.doc.dirty = true;
       pressDoc("s", { ctrlKey: true });
       expect(saveFile).toHaveBeenCalledTimes(1);
     });
@@ -1107,6 +1206,7 @@ describe("the old dispatch — Preview refuses to edit", () => {
   });
 
   test("⌘S still saves", () => {
+    activeTab.value!.doc.dirty = true;
     pressDoc("s", { ctrlKey: true });
     expect(saveFile).toHaveBeenCalledTimes(1);
   });
@@ -1151,6 +1251,7 @@ describe("deliberate divergences", () => {
   /* 3. `mod` is ONE modifier per platform. The old switch tested `e.ctrlKey || e.metaKey`, so ⌘S
         fired on Linux and Ctrl+S on a mac. This registry is pinned to `mac: false`. */
   test("Meta is not a modifier on a non-mac platform", () => {
+    activeTab.value!.doc.dirty = true;
     pressDoc("s", { metaKey: true });
     expect(saveFile).not.toHaveBeenCalled();
   });
@@ -1263,6 +1364,7 @@ describe("deliberate divergences", () => {
     expect(childCount()).toBe(3);
     expect(e.defaultPrevented).toBe(false);
     // App-level chords still are.
+    activeTab.value!.doc.dirty = true;
     pressDoc("s", { ctrlKey: true });
     expect(saveFile).toHaveBeenCalledTimes(1);
   });

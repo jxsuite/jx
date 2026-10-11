@@ -200,7 +200,8 @@ import * as chatPanelMod from "./panels/chat-panel";
 import { setProjectAdopter } from "./services/project-adoption";
 import { setImportHandoff } from "./services/import-seed";
 import { watchConnection } from "./services/connection";
-import { tabBufferUnsaved } from "./services/monaco-buffer";
+import { commitTabBuffers, tabBufferUnsaved } from "./services/monaco-buffer";
+import { clearTyping } from "./tabs/typing";
 import * as leftPanelMod from "./panels/left-panel";
 import * as tabStrip from "./panels/tab-strip";
 import * as paneContext from "./panels/pane-context";
@@ -1492,7 +1493,18 @@ registerStudioCommands(
     // Whether the bytes landed, and a hook that neither supplies one nor reads the answer must not
     // Silently forward its own first argument as the tab to save.
     saveDocument: async () => {
-      await saveFile();
+      const tab = activeTab.value;
+      if (!tab) {
+        return;
+      }
+      // What a source buffer holds goes into the document first, or ⌘S inside the commit's
+      // Debounce would save the text from before the last keystrokes.
+      await commitTabBuffers(tab);
+      await saveFile(tab);
+      // Text that would not parse is still only in the buffer, so it is still unsaved.
+      if (!tabBufferUnsaved(tab)) {
+        clearTyping(tab.id);
+      }
     },
   },
   stageContext,

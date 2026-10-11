@@ -13,7 +13,9 @@ code:
 
 # The Library
 
-The Library is your project seen whole: every page, layout, component, content entry and asset, in one place, with live previews. Press :kbd[⌘⇧E] to open it. It is also on :kbd[⌘K] as **Open Library**, in the **⬢ menu** in the Command Bar, and in the right-click menu of the Files tree.
+The Library is your project seen whole: every page, layout, component, content entry and asset, in one place, with live previews. Click **Library** at the foot of the Navigator rail, just above Settings, or press :kbd[⌘⇧E]. It is also on :kbd[⌘K] as **Open Library**, in the **⬢ menu** in the Command Bar, and in the right-click menu of the Files tree.
+
+An image a preview cannot draw shows as a grey placeholder: a media file that will not load, a component whose image comes from a property with nothing filled in, or an image with no source yet.
 
 It opens as a document tab like any other, which is the useful part. It sits in the strip beside the page you were working on, one click away for the rest of the session, and :kbd[⌘\] moves it into a second pane so you can browse the project with a page still live beside it.
 

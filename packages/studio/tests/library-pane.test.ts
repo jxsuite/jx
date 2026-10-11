@@ -772,6 +772,15 @@ describe("layouts", () => {
     expect(part("doc-preview")).toBeNull();
   });
 
+  test("a thumbnail that will not load draws the placeholder, not a broken image", async () => {
+    await mount();
+    setLibraryLayout("media");
+    await flush();
+    const thumb = host.querySelector<HTMLImageElement>('img[part="thumb"]')!;
+    thumb.dispatchEvent(new Event("error"));
+    expect(thumb.getAttribute("src")).toStartWith("data:image/svg+xml");
+  });
+
   test("the category buttons run the same state change the command does", async () => {
     await mount();
     host.querySelector<HTMLElement>('[part="category"][data-category="pages"]')!.click();

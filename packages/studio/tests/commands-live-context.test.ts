@@ -26,6 +26,7 @@ import {
   workspace,
 } from "../src/workspace/workspace";
 import { setPaneDerivation } from "../src/workspace/pane-derive";
+import { clearTyping, noteTyping } from "../src/tabs/typing";
 import { componentRegistry } from "../src/files/components";
 import { setProjectState } from "../src/store";
 import { transactDoc, mutateRemoveNode } from "../src/tabs/transact";
@@ -162,6 +163,16 @@ describe("document and editor", () => {
 
     transactDoc(tab, (t) => mutateRemoveNode(t, ["children", 0]));
     expect(context().document.canUndo).toBe(true);
+  });
+
+  test("typing still in a source buffer counts as unsaved, though the document is clean", () => {
+    const tab = activeTab.value!;
+    tab.doc.dirty = false;
+    expect(context().document.dirty).toBe(false);
+    noteTyping(tab.id);
+    expect(context().document.dirty).toBe(true);
+    clearTyping(tab.id);
+    expect(context().document.dirty).toBe(false);
   });
 
   test("no tab is a closed document in no editor — but still one pane", () => {
