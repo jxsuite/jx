@@ -1,5 +1,23 @@
 # Changelog
 
+## [6.1.1](https://github.com/jxsuite/jx/compare/studio-v6.1.0...studio-v6.1.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **studio:** cursor-anchored zoom, dirty-gated Save, Library rail button, and four more fixes ([#444](https://github.com/jxsuite/jx/issues/444)) ([a97eaab](https://github.com/jxsuite/jx/commit/a97eaab2852a8e375dc01701bf6243a43a56b7c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.3.14
+    * @jxsuite/formulas bumped to 0.0.21
+    * @jxsuite/runtime bumped to 4.1.0
+    * @jxsuite/site bumped to 2.0.4
+    * @jxsuite/ui bumped to 0.5.1
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/studio-v6.0.0...studio-v6.1.0) (2026-10-07)
 
 
