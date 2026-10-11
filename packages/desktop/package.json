@@ -43,7 +43,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.5",
+    "@happy-dom/global-registrator": "^20.14.6",
     "@jxsuite/server": "workspace:^",
     "@jxsuite/ui": "workspace:^",
     "electrobun": "2.0.2",
