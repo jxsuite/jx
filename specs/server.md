@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.2.29\
+**Version:** 0.2.30\
 **Status:** Implemented\
-**Updated:** 2026-10-04\
+**Updated:** 2026-10-11\
 **License:** MIT
 
 ---
@@ -345,6 +345,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.30** (2026-10-11) — §3.3: the server-function proxy is the only interpreted call path, its env merges the project .dev.vars as the mounts do, it resolves a relative $src against the absolute-path base Studio's canvas sends or a file: URL while a single-slash path stays a site URL.
 - **0.2.29** (2026-10-04) — §4.1 the files listing may carry an optional opaque content version per entry; the dev server sets none.
 - **0.2.28** (2026-10-01) — §4.1 the AI proxy derives a prompt-cache affinity from the client's X-Jx-Ai-Session header under the local scope (ai.md §2.5).
 - **0.2.27** (2026-10-01) — §4.1 the reference server deliberately does not serve the optional batch read (POST /__studio/files/read): it exists for backends whose reads cross a network.
@@ -388,4 +389,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.2.29_
+_`@jxsuite/server` Specification v0.2.30_
