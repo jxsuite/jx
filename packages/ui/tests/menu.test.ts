@@ -645,11 +645,11 @@ describe("jx-menu", () => {
   test("ensureCaret leaves a caret that is already inside the menu where it is", async () => {
     const { menu, rows } = await open();
     key(menu, "End");
-    expect(document.activeElement).toBe(rows[5]!);
+    expect(document.activeElement).toBe(rows.at(-1)!);
     ensureCaret(menu);
     // Only a caret that has GONE is put back; moving a live one would yank focus off the row the
     // Reader is on every time the rows re-render under them.
-    expect(document.activeElement).toBe(rows[5]!);
+    expect(document.activeElement).toBe(rows.at(-1)!);
   });
 
   test("a submenu is shown FROM its row, so a mousedown on that row does not dismiss it", async () => {
