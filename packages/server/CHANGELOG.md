@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.5.0](https://github.com/jxsuite/jx/compare/server-v4.4.5...server-v4.5.0) (2026-10-11)
+
+
+### Features
+
+* **runtime:** call a server-timed entry only through the host's proxy ([#445](https://github.com/jxsuite/jx/issues/445)) ([505e7fb](https://github.com/jxsuite/jx/commit/505e7fbbb08b0c22684aab0ee422023f08be5077))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 5.1.2
+    * @jxsuite/create bumped to 1.3.14
+    * @jxsuite/import bumped to 0.40.9
+    * @jxsuite/runtime bumped to 4.1.0
+    * @jxsuite/site bumped to 2.0.4
+    * @jxsuite/starters bumped to 2.0.1
+  * devDependencies
+    * @jxsuite/parser bumped to 2.0.1
+
 ## [4.4.5](https://github.com/jxsuite/jx/compare/server-v4.4.4...server-v4.4.5) (2026-10-07)
 
 

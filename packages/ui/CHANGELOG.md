@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1](https://github.com/jxsuite/jx/compare/ui-v0.5.0...ui-v0.5.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **studio:** cursor-anchored zoom, dirty-gated Save, Library rail button, and four more fixes ([#444](https://github.com/jxsuite/jx/issues/444)) ([a97eaab](https://github.com/jxsuite/jx/commit/a97eaab2852a8e375dc01701bf6243a43a56b7c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 4.1.0
+
 ## [0.5.0](https://github.com/jxsuite/jx/compare/ui-v0.4.1...ui-v0.5.0) (2026-10-07)
 
 

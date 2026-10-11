@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/jxsuite/jx/compare/runtime-v4.0.3...runtime-v4.1.0) (2026-10-11)
+
+
+### Features
+
+* **runtime:** call a server-timed entry only through the host's proxy ([#445](https://github.com/jxsuite/jx/issues/445)) ([505e7fb](https://github.com/jxsuite/jx/commit/505e7fbbb08b0c22684aab0ee422023f08be5077))
+
 ## [4.0.3](https://github.com/jxsuite/jx/compare/runtime-v4.0.2...runtime-v4.0.3) (2026-10-06)
 
 
