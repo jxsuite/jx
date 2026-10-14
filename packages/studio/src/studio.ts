@@ -120,6 +120,7 @@ import {
   openProject as _openProject,
   findHomePage,
   loadDirectory,
+  loadProjectDirectories,
   openFileInPane,
   openFileInTab,
   openLastSessionOrHome,
@@ -1036,31 +1037,9 @@ if (_projectParam) {
           await ensureDependenciesInstalled();
           await loadComponentRegistry();
 
-          // Load directory tree and populate projectDirs from conventional dirs found
-          const conventionalDirs = new Set([
-            "pages",
-            "layouts",
-            "components",
-            "content",
-            "data",
-            "public",
-            "styles",
-          ]);
-          /* Through `loadDirectory`, not `platform.listDirectory`: this is the second copy of the
-             conventional-dir walk (the first is `openProject` in files/files.ts), and the loader is
-             what reads the `.gitignore` chain governing each directory. Listing around it left the
-             `?project=` boot as the one door into a project whose tree knew no ignore rules. */
-          await loadDirectory(".");
-          const dirEntries = requireProjectState().dirs.get(".") ?? [];
-          const foundDirs = [];
-          for (const e of dirEntries) {
-            if (e.type === "directory" && conventionalDirs.has(e.name)) {
-              foundDirs.push(e.name);
-              requireProjectState().expanded.add(e.path || e.name);
-              await loadDirectory(e.path || e.name);
-            }
-          }
-          requireProjectState().projectDirs = foundDirs;
+          /* Through `loadDirectory` (inside `loadProjectDirectories`), not `platform.listDirectory`:
+             the loader is what reads the `.gitignore` chain governing each directory. */
+          await loadProjectDirectories();
           void maybePromptJxsuiteUpdate(siteCtx.sitePath);
         }
 
@@ -1375,25 +1354,8 @@ async function openRecentProject(root: string) {
     activity.step("Install dependencies");
     await ensureDependenciesInstalled();
     activity.step("Read the project");
-    await loadDirectory(".");
+    await loadProjectDirectories();
     await loadComponentRegistry();
-
-    const conventionalDirs = new Set([
-      "pages",
-      "layouts",
-      "components",
-      "content",
-      "data",
-      "public",
-      "styles",
-    ]);
-    const entries = requireProjectState().dirs.get(".") || [];
-    for (const e of entries) {
-      if (e.type === "directory" && conventionalDirs.has(e.name)) {
-        requireProjectState().expanded.add(e.path || e.name);
-        await loadDirectory(e.path || e.name);
-      }
-    }
 
     addRecentProject(requireProjectState().name, root);
     setActivityTab("files");
