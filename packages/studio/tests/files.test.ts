@@ -323,7 +323,37 @@ describe("loadProject", () => {
     const st = requireProjectState();
     expect(st.name).toBe("meta-name");
     expect(st.projectConfig).toBeNull();
-    expect(st.projectDirs).toEqual([]);
+    expect(st.projectDirs).toEqual(["pages"]);
+  });
+
+  /**
+   * The desktop probe reports no `directories` — it reads `project.json` and nothing else. The
+   * Library scans `projectDirs`, so a window booted that way showed a full file tree beside a
+   * Library that said the project had no files. The directories come from the tree, whatever the
+   * probe said.
+   */
+  test("a probe that reports no directories still records the ones on disk", async () => {
+    installFsPlatform(
+      {
+        "components/card.json": "{}",
+        "node_modules/x/index.js": "",
+        "pages/index.json": JSON.stringify({ tagName: "div" }),
+        "public/logo.svg": "<svg/>",
+      },
+      {
+        probeRootProject: async () => ({
+          info: { directories: [], isSiteProject: true, projectConfig: { name: "Desk" } },
+          meta: { name: "desk", root: "/srv/desk" },
+        }),
+      },
+    );
+
+    await loadProject();
+
+    const st = requireProjectState();
+    expect(st.projectDirs).toEqual(["components", "pages", "public"]);
+    expect([...st.expanded]).toEqual(["components", "pages", "public"]);
+    expect(st.dirs.get("pages")).toBeDefined();
   });
 
   test("probe failure leaves project features disabled", async () => {

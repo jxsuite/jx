@@ -140,6 +140,42 @@ export async function loadDirectory(dirPath: string) {
   }
 }
 
+/** The project directories the Library scans and the tree opens expanded, when present. */
+const CONVENTIONAL_DIRS = new Set([
+  "pages",
+  "layouts",
+  "components",
+  "content",
+  "data",
+  "public",
+  "styles",
+]);
+
+/**
+ * Load the project root, expand and load each conventional directory it holds, and record them as
+ * `projectDirs` — the list the Library scans.
+ *
+ * One function because there are four doors into a project (the folder picker, a recent project,
+ * the `?project=` boot and the root probe a fresh window runs), and each used to carry its own copy
+ * of this walk. Two of the copies expanded the directories without recording them, so on desktop
+ * the file tree was full and the Library said the project had no files.
+ */
+export async function loadProjectDirectories(): Promise<void> {
+  if (!projectState) {
+    return;
+  }
+  await loadDirectory(".");
+  const found: string[] = [];
+  for (const entry of projectState.dirs.get(".") ?? []) {
+    if (entry.type === "directory" && CONVENTIONAL_DIRS.has(entry.name)) {
+      found.push(entry.name);
+      projectState.expanded.add(entry.path || entry.name);
+      await loadDirectory(entry.path || entry.name);
+    }
+  }
+  projectState.projectDirs = found;
+}
+
 /**
  * Whether the tree currently draws the files `.gitignore` masks.
  *
@@ -200,7 +236,7 @@ export async function loadProject() {
         await loadFormats();
         refreshExtensionUi(platform);
       }
-      await loadDirectory(".");
+      await loadProjectDirectories();
       await loadComponentRegistry();
       await openLastSessionOrHome();
       void maybePromptJxsuiteUpdate(meta.root);
@@ -272,29 +308,8 @@ export async function openProject({
       await loadFormats();
       refreshExtensionUi(platform);
     }
-    await loadDirectory(".");
+    await loadProjectDirectories();
     await loadComponentRegistry();
-
-    // Auto-expand key directories and populate projectDirs for Browse view
-    const conventionalDirs = new Set([
-      "pages",
-      "layouts",
-      "components",
-      "content",
-      "data",
-      "public",
-      "styles",
-    ]);
-    const entries = requireProjectState().dirs.get(".") || [];
-    const foundDirs = [];
-    for (const e of entries) {
-      if (e.type === "directory" && conventionalDirs.has(e.name)) {
-        foundDirs.push(e.name);
-        requireProjectState().expanded.add(e.path || e.name);
-        await loadDirectory(e.path || e.name);
-      }
-    }
-    requireProjectState().projectDirs = foundDirs;
 
     // Source control, the stylebook selection and the settings tab describe the project being
     // Left behind. The poll timer goes with them; the panel re-arms it on its next render.
