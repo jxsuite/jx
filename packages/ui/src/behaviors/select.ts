@@ -38,10 +38,23 @@
  * @docs extending/ui-kit
  */
 
-/** A row as the element draws it. Only `value` and `label` are ever read here. */
-interface UnlistedRow {
+/**
+ * A row as the element draws it: the value the control reports back, and the label the reader sees.
+ * Only `value` and `label` are ever read here.
+ */
+export interface SelectRow {
   value: string;
   label: string;
+}
+
+/** The reactive scope a `jx-select` document hands its sidecar. */
+export interface SelectState {
+  /** The value the element holds; null when a host clears the reflected `value` attribute. */
+  value?: string | null;
+  /** The stand-in row for a value no listed row holds: empty, or exactly one row. */
+  unlisted?: SelectRow[];
+  /** This element's own id stem, minted at mount. */
+  uid?: string;
 }
 
 /** How many stems have been minted, so no two instances share one. */
@@ -89,17 +102,17 @@ function isListed(sel: HTMLSelectElement, want: string): boolean {
  * @param state The element's reactive scope.
  * @param sel The element's own `<select>`.
  */
-export function syncSelect(state: Record<string, unknown>, sel: HTMLSelectElement): void {
-  const want = String(state["value"] ?? "");
-  const rows = (state["unlisted"] as UnlistedRow[] | undefined) ?? [];
+export function syncSelect(state: SelectState, sel: HTMLSelectElement): void {
+  const want = String(state.value ?? "");
+  const rows = state.unlisted ?? [];
   /* The empty string is a legal value — the inherit row — rather than absence, so it is never
      stood in for: a blank row labelled with a blank value would say nothing about what is held. */
   if (want !== "" && !isListed(sel, want)) {
     if (rows.length !== 1 || rows[0]?.value !== want) {
-      state["unlisted"] = [{ label: want, value: want }];
+      state.unlisted = [{ label: want, value: want }];
     }
   } else if (rows.length > 0) {
-    state["unlisted"] = [];
+    state.unlisted = [];
   }
   if ([...sel.options].some((option) => option.value === want)) {
     if (sel.value !== want || sel.selectedIndex < 0) {
@@ -120,9 +133,9 @@ export function syncSelect(state: Record<string, unknown>, sel: HTMLSelectElemen
  * @param state The element's reactive scope, whose `uid` and `unlisted` this writes.
  * @param host The `jx-select` element.
  */
-export function mountSelect(state: Record<string, unknown>, host: HTMLElement): void {
+export function mountSelect(state: SelectState, host: HTMLElement): void {
   minted += 1;
-  state["uid"] = `jx-select-${minted}`;
+  state.uid = `jx-select-${minted}`;
   const sel = controlOf(host);
   if (!sel) {
     return;

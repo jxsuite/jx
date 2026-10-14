@@ -27,26 +27,55 @@
  * this — an id outside a declared set — and one refusal shape is easier to catch than two.
  */
 
+import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
+/**
+ * One received argument: a JSON value, or `undefined` for a key a caller left out. Every surface
+ * that sends arguments speaks JSON (a palette prompt, a manifest step, an AI tool call), and an
+ * explicit `undefined` is how a programmatic caller spells "absent" — JSON cannot carry one.
+ */
+export type CommandArgValue = JsonValue | undefined;
+
 /** Arguments as they arrive from a palette prompt, a manifest step or an AI tool call. */
-export type CommandArgValues = Record<string, unknown>;
+export type CommandArgValues = Record<string, CommandArgValue>;
 
 /** `command "<id>" argument "<key>": <problem>` — the one sentence shape every failure here uses. */
 function refuse(commandId: string, key: string, problem: string): RangeError {
   return new RangeError(`command "${commandId}" argument "${key}": ${problem}`);
 }
 
+/**
+ * The `typeof` word for a non-string JSON value, as every refusal sentence has always printed it:
+ * `null`, arrays and objects are all `object` to `typeof`, so they are all `object` here.
+ */
+function typeWordOf(value: JsonValue): string {
+  if (isNumber(value)) {
+    return "number";
+  }
+  if (isBoolean(value)) {
+    return "boolean";
+  }
+  return isString(value) ? "string" : "object";
+}
+
 /** How a received value is quoted back to the caller. Strings keep their quotes; nothing is elided. */
-function describe(value: unknown): string {
+function describe(value: CommandArgValue): string {
   if (value === undefined) {
     return "missing";
   }
-  return typeof value === "string" ? `"${value}"` : `${typeof value} ${JSON.stringify(value)}`;
+  return isString(value) ? `"${value}"` : `${typeWordOf(value)} ${JSON.stringify(value)}`;
+}
+
+/** Whether a value is a `JxPath`: an array whose every segment is a string key or a numeric index. */
+function isPathSegments(value: CommandArgValue): value is (string | number)[] {
+  return Array.isArray(value) && value.every((segment) => isString(segment) || isNumber(segment));
 }
 
 /** A required string argument. */
 export function stringArg(commandId: string, args: CommandArgValues, key: string): string {
   const value = args[key];
-  if (typeof value !== "string" || value === "") {
+  if (!isString(value) || value === "") {
     throw refuse(commandId, key, `expected a non-empty string, got ${describe(value)}`);
   }
   return value;
@@ -67,7 +96,7 @@ export function optionalStringArg(
 /** A required finite number argument. `NaN` and `Infinity` are refusals, not values. */
 export function numberArg(commandId: string, args: CommandArgValues, key: string): number {
   const value = args[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
+  if (!isNumber(value) || !Number.isFinite(value)) {
     throw refuse(commandId, key, `expected a finite number, got ${describe(value)}`);
   }
   return value;
@@ -84,7 +113,7 @@ export function numberArg(commandId: string, args: CommandArgValues, key: string
  */
 export function integerArg(commandId: string, args: CommandArgValues, key: string): number {
   const value = args[key];
-  if (typeof value !== "number" || !Number.isInteger(value)) {
+  if (!isNumber(value) || !Number.isInteger(value)) {
     throw refuse(commandId, key, `expected an integer, got ${describe(value)}`);
   }
   return value;
@@ -116,7 +145,7 @@ export function boundedNumberArg(
 /** A required boolean argument. A setter's whole point is that `false` is a value, so no default. */
 export function booleanArg(commandId: string, args: CommandArgValues, key: string): boolean {
   const value = args[key];
-  if (typeof value !== "boolean") {
+  if (!isBoolean(value)) {
     throw refuse(commandId, key, `expected a boolean, got ${describe(value)}`);
   }
   return value;
@@ -136,7 +165,9 @@ export function enumArg<T extends string>(
   declared: readonly T[],
 ): T {
   const value = args[key];
-  if (typeof value !== "string" || !(declared as readonly string[]).includes(value)) {
+  // `find` hands back the DECLARED entry, typed `T`, which is the same string the caller sent.
+  const match = isString(value) ? declared.find((entry) => entry === value) : undefined;
+  if (match === undefined) {
     // `none` for an empty set: a derived enum (`derivedEnumProperty`) is honestly empty before the
     // Project supplies its values, and "declared: " with nothing after it reads as a truncation.
     throw refuse(
@@ -145,7 +176,7 @@ export function enumArg<T extends string>(
       `${describe(value)} is not declared — declared: ${declared.join(", ") || "none"}`,
     );
   }
-  return value as T;
+  return match;
 }
 
 /**
@@ -160,17 +191,14 @@ export function pathArg(
   key: string,
 ): (string | number)[] {
   const value = args[key];
-  if (
-    !Array.isArray(value) ||
-    !value.every((s) => typeof s === "string" || typeof s === "number")
-  ) {
+  if (!isPathSegments(value)) {
     throw refuse(
       commandId,
       key,
       `expected an array of path segments (strings or numbers), got ${describe(value)}`,
     );
   }
-  return value as (string | number)[];
+  return value;
 }
 
 /** A path argument that may be `null` — "select nothing" is a state a user can be in. */
@@ -203,17 +231,14 @@ export function pathListArg(
     throw refuse(commandId, key, `expected an array of document paths, got ${describe(value)}`);
   }
   return value.map((entry, i) => {
-    if (
-      !Array.isArray(entry) ||
-      !entry.every((s) => typeof s === "string" || typeof s === "number")
-    ) {
+    if (!isPathSegments(entry)) {
       throw refuse(
         commandId,
         key,
         `entry ${i} is not a document path — expected an array of segments, got ${describe(entry)}`,
       );
     }
-    return entry as (string | number)[];
+    return entry;
   });
 }
 
@@ -224,11 +249,39 @@ export function pathListArg(
 // Them ONE call site, so a schema that disagrees with its coercion is now a refusal rather than a
 // Defect a reviewer has to spot — which is what this module exists to prevent.
 
+/**
+ * The JSON Schema keywords a command property uses — what the builders below write and what
+ * {@link coerceArgs} reads. Read loosely: a keyword with no reader (`description`, `default`) is
+ * carried for the palette and the AI tool, and never consulted by the coercion.
+ */
+export interface PropertySchema {
+  description?: string;
+  title?: string;
+  default?: JsonValue;
+  type?: string | readonly string[];
+  /** Strings only: the `enum` row is {@link enumArg}, which admits nothing but a declared string. */
+  enum?: readonly string[];
+  const?: JsonValue;
+  oneOf?: readonly PropertySchema[];
+  items?: PropertySchema;
+  minimum?: number;
+  maximum?: number;
+}
+
+/** The object schema {@link argsSchema} writes, as {@link coerceArgs} reads it. */
+export interface CommandArgsSchema {
+  additionalProperties?: boolean;
+  properties?: Record<string, PropertySchema>;
+  required?: readonly string[];
+  /** Always `"object"` as {@link argsSchema} writes it; the coercion never reads it. */
+  type?: string;
+}
+
 /** `{ type: "object", properties, required, additionalProperties: false }` in one call. */
 export function argsSchema(
-  properties: Record<string, object>,
+  properties: Record<string, PropertySchema>,
   required: readonly string[] = Object.keys(properties),
-): object {
+): CommandArgsSchema {
   return {
     additionalProperties: false,
     properties,
@@ -238,7 +291,7 @@ export function argsSchema(
 }
 
 /** A string property constrained to a declared set, with the human sentence the palette shows. */
-export function enumProperty(declared: readonly string[], description: string): object {
+export function enumProperty(declared: readonly string[], description: string): PropertySchema {
   return { description, enum: [...declared], type: "string" };
 }
 
@@ -261,7 +314,7 @@ export function enumProperty(declared: readonly string[], description: string): 
 export function derivedEnumProperty(
   declared: () => readonly string[],
   description: string,
-): object {
+): PropertySchema {
   return {
     description,
     get enum() {
@@ -275,17 +328,17 @@ export function derivedEnumProperty(
 export function numberProperty(
   description: string,
   bounds: { minimum?: number; maximum?: number } = {},
-): object {
+): PropertySchema {
   return { description, type: "number", ...bounds };
 }
 
 /** A boolean property. Named `open`/`enabled`/… by the caller; the description carries the sense. */
-export function booleanProperty(description: string): object {
+export function booleanProperty(description: string): PropertySchema {
   return { description, type: "boolean" };
 }
 
 /** A `JxPath` property — an array of string keys and numeric indexes. */
-export function pathProperty(description: string, nullable = false): object {
+export function pathProperty(description: string, nullable = false): PropertySchema {
   const path = {
     items: { type: ["string", "number"] },
     type: "array",
@@ -294,7 +347,7 @@ export function pathProperty(description: string, nullable = false): object {
 }
 
 /** A property holding a LIST of `JxPath`s — an array of arrays of segments. */
-export function pathListProperty(description: string): object {
+export function pathListProperty(description: string): PropertySchema {
   return {
     description,
     items: { items: { type: ["string", "number"] }, type: "array" },
@@ -303,7 +356,7 @@ export function pathListProperty(description: string): object {
 }
 
 /** A free-form string property. */
-export function stringProperty(description: string): object {
+export function stringProperty(description: string): PropertySchema {
   return { description, type: "string" };
 }
 
@@ -313,24 +366,6 @@ export function stringProperty(description: string): object {
 // The one the `run` body would have produced — the readers are the same functions, not a second
 // Validator that agrees with them today. What the schema cannot say (a breakpoint the document
 // Defines, a path that addresses a node) stays in `run`; the schema owns the shape.
-
-/** The JSON Schema keywords a command property uses. Read loosely; unknown keywords are ignored. */
-interface PropertySchema {
-  type?: string | readonly string[];
-  enum?: readonly unknown[];
-  const?: unknown;
-  oneOf?: readonly PropertySchema[];
-  items?: PropertySchema;
-  minimum?: number;
-  maximum?: number;
-}
-
-/** The object schema `argsSchema` writes, as {@link coerceArgs} reads it. */
-interface ArgsSchemaShape {
-  properties?: Record<string, PropertySchema>;
-  required?: readonly string[];
-  additionalProperties?: boolean;
-}
 
 /**
  * The rows of {@link coerceArgs}'s dispatch table, by name.
@@ -361,7 +396,7 @@ function isPathSegmentTypes(types: readonly string[]): boolean {
 
 /** A single JSON type name, or the list form `["number", "null"]`, as a list. */
 function typesOf(type: string | readonly string[]): readonly string[] {
-  return Array.isArray(type) ? type : [type as string];
+  return isString(type) ? [type] : type;
 }
 
 /**
@@ -371,8 +406,8 @@ function typesOf(type: string | readonly string[]): readonly string[] {
  * getter, and this function only classifies. The getter is read by the `enum` row when the value is
  * coerced, which is what makes the list live at that moment rather than at classification.
  */
-export function describeShape(property: object): CoercionRow {
-  const p = property as PropertySchema;
+export function coercionRowOf(property: PropertySchema): CoercionRow {
+  const p = property;
   if ("enum" in p) {
     return "enum";
   }
@@ -427,28 +462,28 @@ export function describeShape(property: object): CoercionRow {
 }
 
 /** Whether a value is of one JSON type. `number` means FINITE, as {@link numberArg} already insists. */
-function isJsonType(type: string, value: unknown): boolean {
+function isJsonType(type: string, value: CommandArgValue): boolean {
   switch (type) {
     case "null": {
       return value === null;
     }
     case "boolean": {
-      return typeof value === "boolean";
+      return isBoolean(value);
     }
     case "string": {
-      return typeof value === "string";
+      return isString(value);
     }
     case "number": {
-      return typeof value === "number" && Number.isFinite(value);
+      return isNumber(value) && Number.isFinite(value);
     }
     case "integer": {
-      return typeof value === "number" && Number.isInteger(value);
+      return isNumber(value) && Number.isInteger(value);
     }
     case "array": {
       return Array.isArray(value);
     }
     case "object": {
-      return typeof value === "object" && value !== null && !Array.isArray(value);
+      return isNonNullObject(value) && !Array.isArray(value);
     }
     default: {
       break;
@@ -478,17 +513,18 @@ export function typedArg(
   args: CommandArgValues,
   key: string,
   types: readonly string[],
-): unknown {
+): JsonValue {
   const value = args[key];
-  if (!types.some((type) => isJsonType(type, value))) {
+  // `undefined` is admitted by no JSON type, so the first test only states what the second proves.
+  if (value === undefined || !types.some((type) => isJsonType(type, value))) {
     throw refuse(commandId, key, `expected ${listTypes(types)}, got ${describe(value)}`);
   }
   return value;
 }
 
 /** One line per row, for the sentence a `oneOf` refusal prints when no branch admits the value. */
-function shapeOf(property: PropertySchema): string {
-  switch (describeShape(property)) {
+function expectedValueText(property: PropertySchema): string {
+  switch (coercionRowOf(property)) {
     case "enum": {
       return `one of ${(property.enum ?? []).map((v) => describe(v)).join(" | ")}`;
     }
@@ -496,7 +532,7 @@ function shapeOf(property: PropertySchema): string {
       return `the constant ${describe(property.const)}`;
     }
     case "one-of": {
-      return (property.oneOf ?? []).map((branch) => shapeOf(branch)).join(" or ");
+      return (property.oneOf ?? []).map((branch) => expectedValueText(branch)).join(" or ");
     }
     case "typed": {
       return listTypes(typesOf(property.type ?? []));
@@ -545,7 +581,7 @@ function oneOfArg(
   args: CommandArgValues,
   key: string,
   branches: readonly PropertySchema[],
-): unknown {
+): CommandArgValue {
   const value = args[key];
   const refusals: unknown[] = [];
   for (const branch of branches) {
@@ -567,7 +603,7 @@ function oneOfArg(
   throw refuse(
     commandId,
     key,
-    `expected ${branches.map((branch) => shapeOf(branch)).join(" or ")}, got ${describe(value)}`,
+    `expected ${branches.map((branch) => expectedValueText(branch)).join(" or ")}, got ${describe(value)}`,
   );
 }
 
@@ -577,11 +613,11 @@ function coerceProperty(
   args: CommandArgValues,
   key: string,
   property: PropertySchema,
-): unknown {
-  switch (describeShape(property)) {
+): CommandArgValue {
+  switch (coercionRowOf(property)) {
     case "enum": {
       // The read of `property.enum` is HERE — a derived list is resolved at coercion time.
-      return enumArg(commandId, args, key, (property.enum ?? []) as readonly string[]);
+      return enumArg(commandId, args, key, property.enum ?? []);
     }
     case "const": {
       const value = args[key];
@@ -652,12 +688,8 @@ function coerceProperty(
  * `run` body keeps its own `stringArg(...)` lines as typed readers and can never disagree with this
  * pass, because they are the same functions reading the same values.
  */
-export function coerceArgs(
-  commandId: string,
-  schema: object,
-  args: CommandArgValues,
-): CommandArgValues {
-  const spec = schema as ArgsSchemaShape;
+export function coerceArgs(commandId: string, schema: CommandArgsSchema, args: CommandArgValues) {
+  const spec = schema;
   const properties = spec.properties ?? {};
   const declared = Object.keys(properties);
   const required = spec.required ?? [];

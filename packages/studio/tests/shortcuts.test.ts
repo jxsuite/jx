@@ -28,6 +28,8 @@ import type { CommandContext } from "../src/commands/context";
 import type { InspectorTabId } from "../src/shell";
 import type { ProjectOpenOutcome, ProjectOpenTarget } from "../src/editor/shortcuts";
 import type { PointerAnchor } from "../src/canvas/iframe-host";
+import type { CanvasPanel } from "../src/types";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 import { paneCommands } from "../src/workspace/workspace";
 
@@ -126,7 +128,7 @@ const surface = activeCanvasSurface();
 const { initShellRefs } = store;
 const { activeTab, closeAllTabs, openTab, workspace } = await import("../src/workspace/workspace");
 const { initLayers, isModalOpen } = await import("../src/ui/layers");
-const { registerShellViewCommands, shell, resetProjectShell, setDockCollapsed } =
+const { isInspectorTabId, registerShellViewCommands, shell, resetProjectShell, setDockCollapsed } =
   await import("../src/shell");
 
 /**
@@ -137,7 +139,8 @@ const { registerShellViewCommands, shell, resetProjectShell, setDockCollapsed } 
  * value and write another and the test would still pass.
  */
 function inspectorTab(): InspectorTabId {
-  return (activeTab.value?.session.ui.rightTab ?? "properties") as InspectorTabId;
+  const stored = activeTab.value?.session.ui.rightTab;
+  return isInspectorTabId(stored) ? stored : "properties";
 }
 
 function setInspectorTab(tab: InspectorTabId): void {
@@ -148,10 +151,10 @@ function setInspectorTab(tab: InspectorTabId): void {
 
 // ─── Environment setup ────────────────────────────────────────────────────────
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 /** Live accessor — surfaceForPane("primary").wrap is assigned by initShellRefs() in beforeAll. */
 function wrapEl(): HTMLElement {
@@ -207,9 +210,8 @@ beforeAll(async () => {
   // A site project, so `view.openInBrowser`'s `when` holds — ⌘⇧O is one of the chords the port adds.
   resetStudioState({ isSiteProject: true });
   // Happy-dom's pointer capture needs an active pointer; stub it out.
-  (wrapEl() as unknown as { setPointerCapture: (id: number) => void }).setPointerCapture = () => {};
-  (wrapEl() as unknown as { releasePointerCapture: (id: number) => void }).releasePointerCapture =
-    () => {};
+  wrapEl().setPointerCapture = () => {};
+  wrapEl().releasePointerCapture = () => {};
 
   /*
    * `mac: false` pins `mod` to Ctrl. On a real mac the same registry resolves ⌘ instead — that is
@@ -350,8 +352,25 @@ function focusKitField(): HTMLElement {
   return input;
 }
 
+/** The open document's children, which `freshDoc` seeds as a plain array. */
+function documentChildren(): (JxMutableNode | string)[] {
+  const { children } = activeTab.value!.doc.document;
+  if (!Array.isArray(children)) {
+    throw new TypeError("the document's children are not a plain array");
+  }
+  return children;
+}
+
 function childCount(): number {
-  return (activeTab.value!.doc.document.children as unknown[]).length;
+  return documentChildren().length;
+}
+
+/** A canvas panel as the Edit zoom reads one: its `canvas`, its `viewport` and its `_width`. */
+function editZoomPanel(canvas: HTMLElement, viewport: HTMLElement): CanvasPanel {
+  /* SAFETY: `applyEditZoom`, which the resize listener and the ctrl+wheel path both reach, reads a
+     panel's `canvas`, `viewport` and `_width` and nothing else, so the members this stand-in omits
+     are never touched. */
+  return { _width: null, canvas, viewport } as CanvasPanel;
 }
 
 // ─── Wheel handler ────────────────────────────────────────────────────────────
@@ -646,7 +665,7 @@ describe("middle-mouse panning", () => {
     expect(e.defaultPrevented).toBe(false);
     expect(setPan).not.toHaveBeenCalled();
     wheel(wrapEl(), { ctrlKey: true, deltaY: -100 });
-    expect(activeTab.value!.session.ui.zoom ?? 1).toBe(1);
+    expect(activeTab.value!.session.ui.zoom).toBe(1);
   });
 });
 
@@ -668,7 +687,7 @@ test("window resize re-applies the edit zoom from the live column width", () => 
   sc.append(column);
   wrapEl().append(sc);
   stubRect(column, { width: 600 });
-  surface.panels.push({ _width: null, canvas, viewport } as never);
+  surface.panels.push(editZoomPanel(canvas, viewport));
 
   window.dispatchEvent(new Event("resize"));
 
@@ -695,7 +714,7 @@ test("ctrl+wheel in edit mode keeps the content line under the cursor", async ()
   wrapEl().append(sc);
   stubRect(column, { width: 600 });
   stubRect(canvas, { height: 2000, top: 100 });
-  surface.panels.push({ _width: null, canvas, viewport } as never);
+  surface.panels.push(editZoomPanel(canvas, viewport));
 
   // The cursor is 200 layout px into the canvas; at 1.5× that line draws 300 px in, so the
   // Scroller takes the 100 px back.
@@ -724,7 +743,7 @@ test("an Edit zoom re-measures the hovered element after the reflow and scrolls 
   wrapEl().append(sc);
   stubRect(column, { width: 600 });
   stubRect(canvas, { height: 2000, top: 100 });
-  surface.panels.push({ _width: null, canvas, viewport } as never);
+  surface.panels.push(editZoomPanel(canvas, viewport));
   /* The reflow put the hovered heading 40 px lower than the arithmetic did, and scrolling moves it
      back up one for one — so a second measurement finds it home and moves nothing. */
   anchorUnderPointer = { settle: async () => 340 - (sc.scrollTop - 100), top: 300 };
@@ -755,8 +774,10 @@ test("window resize outside edit mode leaves the canvas untouched", () => {
 describe("the old dispatch — twelve modifier chords", () => {
   test('⌘S saves (`case "s"`)', () => {
     activeTab.value!.doc.dirty = true;
-    pressDoc("s", { ctrlKey: true });
+    const e = pressDoc("s", { ctrlKey: true });
     expect(saveFile).toHaveBeenCalledTimes(1);
+    // The chord is claimed, so the browser's own Save Page dialog never opens over the save.
+    expect(e.defaultPrevented).toBe(true);
   });
 
   test("⌘S on a clean document saves nothing, and is still claimed from the browser", () => {
@@ -769,11 +790,15 @@ describe("the old dispatch — twelve modifier chords", () => {
   test('⌘O opens a project (`case "o"`)', () => {
     pressDoc("o", { ctrlKey: true });
     expect(openProject).toHaveBeenCalledTimes(1);
+    // One window and no picker that leaves it alone, so there is no choice to offer.
+    expect(openProject).toHaveBeenCalledWith("thisWindow");
   });
 
   test('⌘P opens the palette (`case "p"`)', () => {
     pressDoc("p", { ctrlKey: true });
     expect(openQuickSearch).toHaveBeenCalledTimes(1);
+    // ⌘P is the FILES palette; ⌘K and ⌘⇧P open the other two modes.
+    expect(openQuickSearch).toHaveBeenCalledWith("files");
   });
 
   /* AWAITED, and every ⌘W below it too. `requestClose` flushes the tab's Monaco buffers before it
@@ -799,12 +824,12 @@ describe("the old dispatch — twelve modifier chords", () => {
     pressDoc("w", { ctrlKey: true });
     await flush();
     const dialog = topDialog()!;
-    expect(dialog?.getAttribute("headline")).toBe("Unsaved Changes");
+    expect(dialog.getAttribute("headline")).toBe("Unsaved Changes");
     // ⌘W calls `requestClose` rather than re-implementing it, so it is the SAME dialog the × opens
     // — Save included. Copying the ×'s wording into this file is how the two drifted last time.
-    expect(dialog?.getAttribute("confirm-label")).toBe("Save");
-    expect(dialog?.getAttribute("secondary-label")).toBe("Close Without Saving");
-    dialog!.dispatchEvent(new Event("secondary"));
+    expect(dialog.getAttribute("confirm-label")).toBe("Save");
+    expect(dialog.getAttribute("secondary-label")).toBe("Close Without Saving");
+    dialog.dispatchEvent(new Event("secondary"));
     await flush();
     expect(workspace.tabOrder).toEqual(["test-tab"]);
   });
@@ -848,8 +873,10 @@ describe("the old dispatch — twelve modifier chords", () => {
     ["v", () => pasteNode],
   ])('⌘%s reaches the clipboard action (`case "c"/"x"/"v"`)', (key, handler) => {
     activeTab.value!.session.selection = [["children", 0]];
-    pressDoc(key, { ctrlKey: true });
+    const e = pressDoc(key, { ctrlKey: true });
     expect(handler()).toHaveBeenCalledTimes(1);
+    // Claimed, so the browser does not also copy, cut or paste the page's own text selection.
+    expect(e.defaultPrevented).toBe(true);
   });
 
   /* ⌘0 is `pane.focusPrimary` now, pairing with `pane.focusSecondary`'s ⌘⌥0 — the re-bind
@@ -920,9 +947,13 @@ describe("the old dispatch — seven bare keys", () => {
   test.each(["Delete", "Backspace"])("%s removes the selected node", (key) => {
     activeTab.value!.session.selection = [["children", 0]];
     pressDoc(key);
-    const children = activeTab.value!.doc.document.children as { textContent?: string }[];
+    const children = documentChildren();
     expect(children.length).toBe(2);
-    expect(children[0]!.textContent).toBeUndefined();
+    // The first paragraph is gone, so the `<div>` that followed it is first now.
+    expect(children[0]).toEqual({
+      children: [{ tagName: "span", textContent: "inner" }],
+      tagName: "div",
+    });
   });
 
   test("Delete on a multi-selection removes every selected node in ONE undo step", () => {
@@ -968,7 +999,7 @@ describe("the old dispatch — seven bare keys", () => {
     const tab = activeTab.value!;
     tab.session.selection = [["children", 0]];
     pressDoc("Enter");
-    const children = tab.doc.document.children as { tagName?: string; textContent?: string }[];
+    const children = documentChildren();
     expect(children.length).toBe(4);
     expect(children[1]).toEqual({ tagName: "p", textContent: "" });
     // The new node is selected; the iframe canvas re-enters inline edit for it via its own posted
@@ -993,7 +1024,7 @@ describe("the old dispatch — seven bare keys", () => {
   test("ArrowDown without a selection selects the document element", () => {
     activeTab.value!.session.selection = [];
     pressDoc("ArrowDown");
-    expect(activeTab.value!.session.selection as unknown).toEqual([[]]);
+    expect(activeTab.value!.session.selection).toEqual([[]]);
   });
 
   test("ArrowDown with the document element selected is a no-op", () => {
@@ -1082,6 +1113,7 @@ describe("the old dispatch — the three blanket guards", () => {
     bare.remove();
     pressDoc("p", { ctrlKey: true });
     expect(openQuickSearch).toHaveBeenCalledTimes(1);
+    expect(openQuickSearch).toHaveBeenCalledWith("files");
   });
 
   /* Guard 2: the grid allow-list `["o","p","s","w","z","Z"]`. Now the `grid` scope stack, whose
@@ -1098,8 +1130,10 @@ describe("the old dispatch — the three blanket guards", () => {
     ])("⌘%s still passes through", (key, assert) => {
       // Unsaved work, so the Save case has something to save.
       activeTab.value!.doc.dirty = true;
-      pressDoc(key, { ctrlKey: true });
+      const e = pressDoc(key, { ctrlKey: true });
       assert();
+      // Passing through to the APP means claiming it from the browser, grid or not.
+      expect(e.defaultPrevented).toBe(true);
     });
 
     test("⌘W still closes the document", async () => {
@@ -1117,7 +1151,7 @@ describe("the old dispatch — the three blanket guards", () => {
       expect(cutNode).not.toHaveBeenCalled();
       expect(pasteNode).not.toHaveBeenCalled();
       expect(childCount()).toBe(3);
-      expect(activeTab.value!.session.ui.zoom ?? 1).toBe(1);
+      expect(activeTab.value!.session.ui.zoom).toBe(1);
     });
 
     test.each(["Delete", "Backspace", "Enter", "Escape", "ArrowUp", "ArrowDown"])(
@@ -1143,8 +1177,9 @@ describe("the old dispatch — the three blanket guards", () => {
     ])("%s: ⌘S still saves", (_label, arrange) => {
       arrange();
       activeTab.value!.doc.dirty = true;
-      pressDoc("s", { ctrlKey: true });
+      const e = pressDoc("s", { ctrlKey: true });
       expect(saveFile).toHaveBeenCalledTimes(1);
+      expect(e.defaultPrevented).toBe(true);
     });
 
     test.each([
@@ -1196,7 +1231,7 @@ describe("the old dispatch — Preview refuses to edit", () => {
     expect(pasteNode).not.toHaveBeenCalled();
     expect(childCount()).toBe(3);
     // A phantom `ui.zoom` written here would be waiting for the author back in Design.
-    expect(activeTab.value!.session.ui.zoom ?? 1).toBe(1);
+    expect(activeTab.value!.session.ui.zoom).toBe(1);
   });
 
   test.each(["Delete", "Backspace", "Enter"])("%s does not mutate the document", (key) => {
@@ -1207,8 +1242,9 @@ describe("the old dispatch — Preview refuses to edit", () => {
 
   test("⌘S still saves", () => {
     activeTab.value!.doc.dirty = true;
-    pressDoc("s", { ctrlKey: true });
+    const e = pressDoc("s", { ctrlKey: true });
     expect(saveFile).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
   });
 });
 
@@ -1252,8 +1288,10 @@ describe("deliberate divergences", () => {
         fired on Linux and Ctrl+S on a mac. This registry is pinned to `mac: false`. */
   test("Meta is not a modifier on a non-mac platform", () => {
     activeTab.value!.doc.dirty = true;
-    pressDoc("s", { metaKey: true });
+    const e = pressDoc("s", { metaKey: true });
     expect(saveFile).not.toHaveBeenCalled();
+    // Unbound, so it is the browser's to act on.
+    expect(e.defaultPrevented).toBe(false);
   });
 
   /* 4. Consequence of caret shadowing: `global`-scoped chords are live while typing, because the
@@ -1264,8 +1302,10 @@ describe("deliberate divergences", () => {
     focusTextField();
     pressDoc("p", { ctrlKey: true });
     expect(openQuickSearch).toHaveBeenCalledTimes(1);
+    expect(openQuickSearch).toHaveBeenCalledWith("files");
     pressDoc("o", { ctrlKey: true });
     expect(openProject).toHaveBeenCalledTimes(1);
+    expect(openProject).toHaveBeenCalledWith("thisWindow");
   });
 
   test("⌘W from a text field closes the document instead of being eaten", async () => {
@@ -1290,8 +1330,10 @@ describe("deliberate divergences", () => {
   test("⌘C no longer copies an invisible Preview selection", () => {
     canvasMode = "preview";
     activeTab.value!.session.selection = [["children", 0]];
-    pressDoc("c", { ctrlKey: true });
+    const e = pressDoc("c", { ctrlKey: true });
     expect(copyNode).not.toHaveBeenCalled();
+    // The canvas scope is gone, so the browser copies whatever the reader selected in the frame.
+    expect(e.defaultPrevented).toBe(false);
   });
 
   /* 6. A chord bound to a VISIBLE but DISABLED command is swallowed rather than falling through:
@@ -1318,6 +1360,9 @@ describe("deliberate divergences", () => {
     pressDoc("k", { ctrlKey: true });
     pressDoc("P", { ctrlKey: true, shiftKey: true });
     expect(openQuickSearch).toHaveBeenCalledTimes(2);
+    // ⌘K is the picker and ⌘⇧P the command list: two modes, not one palette opened twice.
+    expect(openQuickSearch).toHaveBeenNthCalledWith(1, "picker");
+    expect(openQuickSearch).toHaveBeenNthCalledWith(2, "commands");
     pressDoc("O", { ctrlKey: true, shiftKey: true });
     expect(openInBrowser).toHaveBeenCalledTimes(1);
   });
@@ -1493,7 +1538,7 @@ describe("nextRegion", () => {
 
   test("skips regions that are not on screen", () => {
     const present = (region: string) => region !== "navigator" && region !== "pane";
-    expect(nextRegion("rail", 1, present as never)).toBe("inspector");
+    expect(nextRegion("rail", 1, present)).toBe("inspector");
   });
 
   test("returns null when nothing is on screen", () => {
@@ -1538,7 +1583,10 @@ describe("focusShellRegion", () => {
   });
 
   test("a bare host is made programmatically focusable rather than skipped", () => {
-    const host = document.querySelector("#statusbar") as HTMLElement;
+    const host = document.querySelector("#statusbar");
+    if (!(host instanceof HTMLElement)) {
+      throw new TypeError("the shell tree drew no #statusbar host");
+    }
     expect(focusShellRegion("status")).toBe(true);
     expect(host.tabIndex).toBe(-1);
   });
@@ -1567,8 +1615,8 @@ describe("openProjectFlow", () => {
   /** A platform that can BOTH open a window elsewhere and pick a project without binding to it. */
   function multiWindowPlatform() {
     installMockPlatform({
-      openProjectInNewWindow: (async () => ({ focused: false })) as never,
-      pickProject: (async () => ({ name: "Other", root: "/other" })) as never,
+      openProjectInNewWindow: async () => ({ focused: false }),
+      pickProject: async () => ({ name: "Other", root: "/other" }),
     });
   }
 
@@ -1618,6 +1666,8 @@ describe("openProjectFlow", () => {
     await pending;
     expect(openProject).not.toHaveBeenCalled();
     expect(notified).not.toHaveBeenCalled();
+    // And the question it asked is gone with the answer.
+    expect(dialogWrapper()).toBeNull();
   });
 
   /* The report describes what HAPPENED. Announcing the target instead is how "Opening the project
@@ -1652,7 +1702,7 @@ describe("openProjectFlow", () => {
      which is exactly the state this dialog shipped in: asked, collected, and then routed into the
      path that replaces the asking window's project. Nothing to honour it with, nothing asked. */
   test("no picker that leaves this window alone means no choice is offered", async () => {
-    installMockPlatform({ openProjectInNewWindow: (async () => ({ focused: false })) as never });
+    installMockPlatform({ openProjectInNewWindow: async () => ({ focused: false }) });
     const hooks = { buildSite: mock(() => {}), openInBrowser, openProject, saveDocument: saveFile };
     await openProjectFlow(hooks);
     expect(dialogWrapper()).toBeNull();

@@ -29,7 +29,8 @@ describe("shell boot — a panel id that changed docks", () => {
 
   test("it migrates to nothing — there is no Navigator name for it to become", () => {
     expect(migratePanelId("problems")).toBeNull();
-    expect([...NAVIGATOR_PANEL_IDS] as string[]).not.toContain("problems");
+    const declared: readonly string[] = NAVIGATOR_PANEL_IDS;
+    expect(declared).not.toContain("problems");
   });
 
   test("and the list itself is still one chord away, in the dock that now hosts it", () => {

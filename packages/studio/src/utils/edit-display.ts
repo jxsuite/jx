@@ -5,11 +5,14 @@
  * placeholders).
  */
 
-import type { JxMutableNode } from "@jxsuite/schema/types";
-import { displayTagName } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import { displayTagName, isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isDocumentContainer } from "./strip-events";
+import type { RebuiltNode } from "./strip-events";
 
 const mediaTags = new Set(["img", "video", "source", "iframe", "audio"]);
-const TRANSPARENT_PX =
+/** A 1×1 transparent GIF: what an unresolvable `src` binding shows in edit mode. */
+export const TRANSPARENT_PX =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 // A neutral, visible gray placeholder for image-like bindings in edit mode (e.g. a component `image`
 // Prop bound to ${...}). The component renders <img src={prop}> internally, so a transparent pixel
@@ -161,6 +164,7 @@ export function templateToEditDisplay(str: string) {
 export function restoreTemplateExpressions(el: HTMLElement) {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
+    // SAFETY: the walker was created with NodeFilter.SHOW_TEXT, so every node it stops on is Text.
     const node = walker.currentNode as Text;
     if (node.data.includes("\u276A")) {
       node.data = node.data.replaceAll(/\u276A\s*(.*?)\s*\u276B/g, "${$1}");
@@ -175,52 +179,64 @@ export function restoreTemplateExpressions(el: HTMLElement) {
  * edit-only device — it is never compiled or rendered in preview.
  *
  * @param {JxMutableNode} arrayObj
- * @returns {Record<string, unknown>}
+ * @returns {JxMutableNode}
  */
-function arrayToPerimeter(arrayObj: JxMutableNode): Record<string, unknown> {
+function arrayToPerimeter(arrayObj: JxMutableNode): JxMutableNode {
   const template = arrayObj.map;
   return {
-    children:
-      template && typeof template === "object"
-        ? [prepareForEditMode(template as JxMutableNode)]
-        : [],
+    children: isNonNullObject(template) ? [prepareForEditMode(template)] : [],
     className: "repeater-perimeter",
     tagName: "div",
   };
 }
 
 /**
+ * The text a `$ref` binding shows in edit mode: its pointer, with the `#/state/` prefix dropped.
+ *
+ * @param {string} ref
+ */
+function refDisplayLabel(ref: string): string {
+  const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
+  return `{${label}}`;
+}
+
+/**
  * Prepare a document for edit-mode rendering. Replaces template strings with readable literal text,
  * $prototype:Array with placeholders, and $ref bindings with display labels. Preserves state so the
- * runtime can still initialise scope.
+ * runtime can still initialise scope. Arrays are prepared member by member, and primitives and a
+ * cleared (`undefined`) key return unchanged, so the walker can recurse through any document
+ * value.
  *
  * @param {JxMutableNode} node
  * @returns {JxMutableNode}
  */
-export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
-  if (!node || typeof node !== "object") {
-    return node;
-  }
+export function prepareForEditMode(node: JxMutableNode): JxMutableNode;
+export function prepareForEditMode(node: JxDocumentValue): JxDocumentValue;
+export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumentValue | undefined;
+export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumentValue | undefined {
   if (Array.isArray(node)) {
     // Arrays of nodes round-trip element-wise; the array itself is not a node.
-    return (node as JxMutableNode[]).map((n) => prepareForEditMode(n)) as unknown as JxMutableNode;
+    return node.map((n) => prepareForEditMode(n));
+  }
+  if (!isNodeObject(node)) {
+    return node;
   }
 
   // A mapped-array node itself → its edit-mode perimeter (e.g. when the patcher re-renders an
   // Array node directly). Members inside a children array funnel here via the children branch.
-  if ((node as Record<string, unknown>).$prototype === "Array") {
-    return arrayToPerimeter(node) as unknown as JxMutableNode;
+  if (node.$prototype === "Array") {
+    return arrayToPerimeter(node);
   }
 
-  const /** @type {Record<string, unknown>} */ obj = node as Record<string, unknown>;
+  const obj = node;
 
-  const out: Record<string, unknown> = {};
+  const out: RebuiltNode = {};
   let needsMediaPlaceholder = false;
-  const isMediaElement = mediaTags.has((obj.tagName as string) || "");
+  const isMediaElement = isString(obj.tagName) && mediaTags.has(obj.tagName);
 
   // Check if this media element lacks a resolvable src (top-level or in attributes)
   if (isMediaElement) {
-    const attrs = obj.attributes as Record<string, unknown> | undefined;
+    const attrs = obj.attributes;
     const topSrc = obj.src;
     const attrSrc = attrs?.src;
     const topPoster = obj.poster;
@@ -235,11 +251,11 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
   for (const [k, v] of Object.entries(obj)) {
     if (k === "state" || k === "$media" || k === "$elements") {
       out[k] = v; // Preserve as-is for runtime resolution
-    } else if (k === "$props" && v && typeof v === "object") {
+    } else if (k === "$props" && isDocumentContainer(v)) {
       // Process $props values: convert template strings to display format
-      const propsOut: Record<string, unknown> = {};
+      const propsOut: RebuiltNode = {};
       for (const [pk, pv] of Object.entries(v)) {
-        if (typeof pv === "string" && pv.includes("${")) {
+        if (isString(pv) && pv.includes("${")) {
           // Image-like prop → neutral placeholder (the component renders it as an <img src>); link
           // Targets → inert ""; everything else → the readable ❪ expr ❫ binding text.
           if (isImageUrlKey(pk)) {
@@ -249,10 +265,8 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
           } else {
             propsOut[pk] = templateToEditDisplay(pv);
           }
-        } else if (pv && typeof pv === "object" && (pv as Record<string, unknown>).$ref) {
-          const ref = (pv as Record<string, unknown>).$ref as string;
-          const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
-          propsOut[pk] = `{${label}}`;
+        } else if (isNodeObject(pv) && pv.$ref) {
+          propsOut[pk] = refDisplayLabel(pv.$ref);
         } else {
           propsOut[pk] = pv;
         }
@@ -262,25 +276,21 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
       if (Array.isArray(v)) {
         // Each member recurses; array pseudo-elements become a single repeater-perimeter element
         // (via the top-level array case) so they stay a 1:1 DOM node among their siblings.
-        out.children = v.map((c) => prepareForEditMode(c as JxMutableNode));
-      } else if (
-        v &&
-        typeof v === "object" &&
-        (v as Record<string, unknown>).$prototype === "Array"
-      ) {
+        out.children = v.map((c) => prepareForEditMode(c));
+      } else if (isNodeObject(v) && v.$prototype === "Array") {
         // Legacy whole-children repeater → a single perimeter as the sole child.
-        out.children = [prepareForEditMode(v as JxMutableNode)];
+        out.children = [prepareForEditMode(v)];
       } else {
-        out.children = prepareForEditMode(v as JxMutableNode);
+        out.children = prepareForEditMode(v);
       }
-    } else if (k === "cases" && obj.$switch && v && typeof v === "object") {
+    } else if (k === "cases" && obj.$switch && isDocumentContainer(v)) {
       // Replace $switch cases with a placeholder showing the first case or a label
-      const caseKeys = Object.keys(v);
-      if (caseKeys.length > 0) {
-        const firstCase = (v as Record<string, unknown>)[caseKeys[0]!];
+      const [firstEntry] = Object.entries(v);
+      if (firstEntry) {
+        const [, firstCase] = firstEntry;
         out.children =
-          firstCase && typeof firstCase === "object" && !(firstCase as Record<string, unknown>).$ref
-            ? [prepareForEditMode(firstCase as JxMutableNode)]
+          isDocumentContainer(firstCase) && !(isNodeObject(firstCase) && firstCase.$ref)
+            ? [prepareForEditMode(firstCase)]
             : [
                 {
                   style: {
@@ -294,29 +304,26 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
                     padding: "6px 10px",
                   },
                   tagName: "div",
-                  textContent: `[$switch: ${caseKeys.join(" | ")}]`,
+                  textContent: `[$switch: ${Object.keys(v).join(" | ")}]`,
                 },
               ];
       }
-    } else if (k === "attributes" && isMediaElement && v && typeof v === "object") {
+    } else if (k === "attributes" && isMediaElement && isDocumentContainer(v)) {
       // Process attributes for media elements: replace src/poster with transparent pixel
-      const attrs = v as Record<string, unknown>;
-      const processed: Record<string, unknown> = {};
-      for (const [ak, av] of Object.entries(attrs)) {
+      const processed: RebuiltNode = {};
+      for (const [ak, av] of Object.entries(v)) {
         if (ak === "src" || ak === "poster") {
-          if (typeof av === "string" && av !== "" && !av.includes("${")) {
+          if (isString(av) && av !== "" && !av.includes("${")) {
             processed[ak] = av;
           } else {
             needsMediaPlaceholder = true;
             processed[ak] = TRANSPARENT_PX;
           }
-        } else if (typeof av === "string" && av.includes("${")) {
+        } else if (isString(av) && av.includes("${")) {
           const isUrlAttr = ak === "href" || ak === "action";
           processed[ak] = isUrlAttr ? "" : templateToEditDisplay(av);
-        } else if (av && typeof av === "object" && (av as Record<string, unknown>).$ref) {
-          const ref = (av as Record<string, unknown>).$ref as string;
-          const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
-          processed[ak] = `{${label}}`;
+        } else if (isNodeObject(av) && av.$ref) {
+          processed[ak] = refDisplayLabel(av.$ref);
         } else {
           processed[ak] = av;
         }
@@ -327,10 +334,10 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
          cannot be resolved; omitting the property lets the cascade answer, which is exactly what
          the `""` this used to write meant while declarations went inline. As a RULE, `color: ` is
          a malformed declaration instead of a no-op. Mirrored by iframe-patch's editModeStyle. */
-      if (v && typeof v === "object") {
-        const s: Record<string, unknown> = {};
+      if (isDocumentContainer(v)) {
+        const s: RebuiltNode = {};
         for (const [sk, sv] of Object.entries(v)) {
-          if (typeof sv !== "string" || !sv.includes("${")) {
+          if (!isString(sv) || !sv.includes("${")) {
             s[sk] = sv;
           }
         }
@@ -338,10 +345,9 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
       } else {
         out.style = v;
       }
-    } else if (typeof v === "string" && v.includes("${")) {
+    } else if (isString(v) && v.includes("${")) {
       // Template string in a display property → show raw expression
-      const isMediaSrc =
-        (k === "src" || k === "poster") && mediaTags.has((obj.tagName as string) || "");
+      const isMediaSrc = (k === "src" || k === "poster") && isMediaElement;
       if (isMediaSrc) {
         needsMediaPlaceholder = true;
         out[k] = TRANSPARENT_PX;
@@ -349,42 +355,36 @@ export function prepareForEditMode(node: JxMutableNode): JxMutableNode {
         const isUrlAttr = k === "src" || k === "href" || k === "poster" || k === "action";
         out[k] = isUrlAttr ? "" : templateToEditDisplay(v);
       }
-    } else if (v && typeof v === "object" && (v as Record<string, unknown>).$ref) {
+    } else if (isNodeObject(v) && v.$ref) {
       // $ref binding → show ref path as literal text
-      const ref = (v as Record<string, unknown>).$ref as string;
-      const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
-      const isMediaSrc =
-        (k === "src" || k === "poster") && mediaTags.has((obj.tagName as string) || "");
+      const label = refDisplayLabel(v.$ref);
+      const isMediaSrc = (k === "src" || k === "poster") && isMediaElement;
       if (isMediaSrc) {
         needsMediaPlaceholder = true;
         out[k] = TRANSPARENT_PX;
       } else {
-        out[k] = `{${label}}`;
+        out[k] = label;
       }
     } else {
       // Empty src/poster on media elements → use transparent pixel placeholder
-      if (
-        (k === "src" || k === "poster") &&
-        v === "" &&
-        mediaTags.has((obj.tagName as string) || "")
-      ) {
+      if ((k === "src" || k === "poster") && v === "" && isMediaElement) {
         needsMediaPlaceholder = true;
         out[k] = TRANSPARENT_PX;
       } else {
-        out[k] = prepareForEditMode(v as JxMutableNode);
+        out[k] = prepareForEditMode(v);
       }
     }
   }
 
   // Mark empty elements with placeholder classes for design-mode visibility
-  const placeholderClass = computeEmptyPlaceholderClass(out as JxMutableNode);
+  const placeholderClass = computeEmptyPlaceholderClass(out);
   if (placeholderClass) {
     out.className = out.className ? `${out.className} ${placeholderClass}` : placeholderClass;
   }
 
   // Media elements with missing/dynamic src get a placeholder class
   if (needsMediaPlaceholder) {
-    const cls = (out.className as string) || "";
+    const cls = isString(out.className) ? out.className : "";
     if (!cls.includes("empty-media-placeholder")) {
       out.className = cls ? `${cls} empty-media-placeholder` : "empty-media-placeholder";
     }

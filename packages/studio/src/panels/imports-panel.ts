@@ -21,6 +21,7 @@
  * turn, where a Navigator repaint is a frame away and would rebuild far more than one field.
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { nothing } from "lit-html";
 import { componentRegistry } from "../files/components";
 import {
@@ -46,9 +47,9 @@ import type {
   ImportsActions,
   ImportsView,
   PackageRow,
-  PickerOption,
 } from "../surfaces/panel-imports";
-import type { JxElement, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { SurfaceOption } from "../ui/surface";
 
 /** What the panel is drawn against. `left-panel.ts`'s context, reduced to what this reads. */
 export interface ImportsContext {
@@ -105,17 +106,19 @@ function groupByPackage() {
     if (comp.source !== "npm" || !comp.package || !comp.modulePath) {
       continue;
     }
-    if (!groups.has(comp.package)) {
-      groups.set(comp.package, []);
+    let group = groups.get(comp.package);
+    if (!group) {
+      group = [];
+      groups.set(comp.package, group);
     }
-    groups.get(comp.package)?.push(comp);
+    group.push(comp);
   }
   return groups;
 }
 
 /** The project's `$elements`, as the site-level mood reads and rewrites it. */
 function siteElements(): ElementsEntry[] {
-  return (projectState?.projectConfig?.$elements ?? []) as ElementsEntry[];
+  return projectState?.projectConfig?.$elements ?? [];
 }
 
 /**
@@ -163,19 +166,15 @@ function siteView(): ImportsView {
 /** The document-level mood: this document's component imports, and what it could still import. */
 function documentView(ctx: ImportsContext): ImportsView {
   const { documentElements, documentPath } = ctx;
-  const refs = documentElements
-    .filter(
-      (entry): entry is { $ref: string } =>
-        Boolean(entry) &&
-        typeof entry === "object" &&
-        typeof (entry as { $ref?: unknown }).$ref === "string",
-    )
-    .map((entry) => ({ ref: entry.$ref }));
+  const refs = documentElements.flatMap((entry) => {
+    const ref = isNonNullObject(entry) ? entry.$ref : undefined;
+    return isString(ref) ? [{ ref }] : [];
+  });
   /* The checkbox reads the STRING entries only. A `$ref` is a project component and is listed
      above; letting it answer here would tick an npm box for a file that happens to share a name. */
-  const npmEntries = documentElements.filter((entry) => typeof entry === "string");
+  const npmEntries = documentElements.filter((entry) => isString(entry));
   const imported = new Set(refs.map((entry) => entry.ref));
-  const available: PickerOption[] = componentRegistry
+  const available: SurfaceOption[] = componentRegistry
     .filter(
       (comp: ComponentEntry) =>
         comp.source !== "npm" &&
@@ -276,7 +275,7 @@ async function onRemovePackage(pkg: string): Promise<void> {
     const updated = removePackageElements(siteElements(), pkg);
     const { loadComponentRegistry } = await import("../files/components.js");
     await loadComponentRegistry();
-    await updateSiteConfig({ $elements: updated as (string | JxElement)[] });
+    await updateSiteConfig({ $elements: updated });
     context()?.renderLeftPanel();
   } catch (error) {
     console.error("Failed to remove package:", error);
@@ -301,17 +300,15 @@ async function onToggleComponent(id: string, checked: boolean): Promise<void> {
     const updated = checked
       ? enableElement(before, comp, null)
       : disableElement(before, comp, null);
-    await updateSiteConfig({ $elements: updated as (string | JxElement)[] });
+    await updateSiteConfig({ $elements: updated });
     ctx.renderLeftPanel();
     return;
   }
   ctx.applyMutation((doc: JxMutableNode) => {
-    const before = (doc.$elements ?? []) as ElementsEntry[];
-    doc.$elements = (
-      checked
-        ? enableElement(before, comp, ctx.documentPath)
-        : disableElement(before, comp, ctx.documentPath)
-    ) as (string | JxElement)[];
+    const before = doc.$elements ?? [];
+    doc.$elements = checked
+      ? enableElement(before, comp, ctx.documentPath)
+      : disableElement(before, comp, ctx.documentPath);
   });
   ctx.renderLeftPanel();
 }
@@ -339,11 +336,7 @@ function onPick(value: string): void {
   /* Through the service, which is also what makes this idempotent: it checked nothing and pushed a
      second `$ref` every time you chose the same component. */
   ctx.applyMutation((doc: JxMutableNode) => {
-    doc.$elements = enableElement(
-      (doc.$elements ?? []) as ElementsEntry[],
-      comp,
-      ctx.documentPath,
-    ) as (string | JxElement)[];
+    doc.$elements = enableElement(doc.$elements ?? [], comp, ctx.documentPath);
   });
   ctx.renderLeftPanel();
 }
@@ -355,10 +348,7 @@ function onRemoveRef(elementRef: string): void {
     return;
   }
   ctx.applyMutation((doc: JxMutableNode) => {
-    doc.$elements = removeElementRef((doc.$elements ?? []) as ElementsEntry[], elementRef) as (
-      | string
-      | JxElement
-    )[];
+    doc.$elements = removeElementRef(doc.$elements ?? [], elementRef);
   });
   ctx.renderLeftPanel();
 }
@@ -435,20 +425,6 @@ export function renderImportsPanel(host: HTMLElement, ctx: ImportsContext): void
  */
 function contentArea(body: HTMLElement): HTMLElement {
   return body.querySelector<HTMLElement>(".panel-content") ?? body;
-}
-
-/**
- * The Navigator no longer draws this panel with lit.
- *
- * The record below returns `nothing` and mounts its document in `afterRender`, so this is a stub:
- * it survives only because `NavigatorPanelDeps` still declares the injection and `studio.ts` still
- * passes it. Both go in the change that deletes this.
- *
- * @deprecated The panel is `surfaces/panel-imports.json`; call {@link renderImportsPanel}.
- * @returns {typeof nothing}
- */
-export function renderImportsTemplate(_against: ImportsContext): typeof nothing {
-  return nothing;
 }
 
 /**

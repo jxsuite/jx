@@ -18,9 +18,10 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { toPosixPath } from "../scripts/lib/posix-path";
-import { documents as kitDocuments } from "@jxsuite/ui/documents";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import { documents } from "@jxsuite/ui/documents";
 
-type Json = Record<string, unknown>;
+import type { JsonObject, JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /** One place a style block sets `user-select` to something other than `none`. */
 type OptIn = readonly [file: string, rule: string, value: string];
@@ -79,24 +80,21 @@ const ALLOWED: readonly OptIn[] = [
   ["src/surfaces/about.json", '& [part="package-row"]', "text"],
 ];
 
-const isObject = (value: unknown): value is Json =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * Every `user-select` a style block declares, with the chain of keys that reaches it.
  *
  * @yields {[string, string]} The rule (its selector keys, space-joined; empty for the block's own
  *   declarations) and the value.
  */
-function* declarationsOf(block: Json, rule = ""): Generator<[string, string]> {
+function* declarationsOf(block: JsonObject, rule = ""): Generator<[string, string]> {
   for (const [key, value] of Object.entries(block)) {
-    if (PROPERTIES.has(key) && typeof value === "string") {
+    if (PROPERTIES.has(key) && isString(value)) {
       yield [rule, value.trim()];
-    } else if (isObject(value)) {
+    } else if (isJsonObject(value)) {
       yield* declarationsOf(value, rule === "" ? key : `${rule} ${key}`);
     } else if (Array.isArray(value)) {
       for (const item of value) {
-        if (isObject(item)) {
+        if (isJsonObject(item)) {
           yield* declarationsOf(item, rule === "" ? key : `${rule} ${key}`);
         }
       }
@@ -108,20 +106,20 @@ function* declarationsOf(block: Json, rule = ""): Generator<[string, string]> {
  * Every style block in a document: the root's own and any node's inline `style`, each with the JSON
  * Pointer that reaches it.
  *
- * @yields {[string, Json]} The block's pointer and the block.
+ * @yields {[string, JsonObject]} The block's pointer and the block.
  */
-function* styleBlocksOf(value: unknown, pointer = ""): Generator<[string, Json]> {
+function* styleBlocksOf(value: JsonValue, pointer = ""): Generator<[string, JsonObject]> {
   if (Array.isArray(value)) {
     for (const [index, item] of value.entries()) {
       yield* styleBlocksOf(item, `${pointer}/${index}`);
     }
     return;
   }
-  if (!isObject(value)) {
+  if (!isJsonObject(value)) {
     return;
   }
   for (const [key, child] of Object.entries(value)) {
-    if (key === "style" && isObject(child)) {
+    if (key === "style" && isJsonObject(child)) {
       yield [`${pointer}/style`, child];
     } else {
       yield* styleBlocksOf(child, `${pointer}/${key}`);
@@ -134,7 +132,7 @@ function* styleBlocksOf(value: unknown, pointer = ""): Generator<[string, Json]>
  * named by its selector alone, which is how the allowlist reads; one anywhere else carries the
  * pointer to its block in front.
  */
-function optInsOf(file: string, doc: unknown): OptIn[] {
+function optInsOf(file: string, doc: JsonValue): OptIn[] {
   const found: OptIn[] = [];
   for (const [pointer, block] of styleBlocksOf(doc)) {
     for (const [rule, value] of declarationsOf(block)) {
@@ -146,7 +144,24 @@ function optInsOf(file: string, doc: unknown): OptIn[] {
   return found;
 }
 
-const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
+/** A JSON file's tree. `JSON.parse` can only ever produce a JSON value. */
+const readJson = (path: string): JsonValue => JSON.parse(readFileSync(path, "utf8"));
+
+/** `value[key]` when `value` is an object, else `undefined`: a step down a tree read off disk. */
+const valueAt = (value: JsonValue | undefined, key: string): JsonValue | undefined =>
+  isJsonObject(value) ? value[key] : undefined;
+
+/** `value[key]` as a list, or an empty one when it is missing or not an array. */
+const listAt = (value: JsonValue | undefined, key: string): JsonValue[] => {
+  const list = valueAt(value, key);
+  return Array.isArray(list) ? list : [];
+};
+
+/** A kit document as the JSON tree it was imported from. */
+const asJsonTree = (doc: JxDocument): JsonObject =>
+  /* SAFETY: every entry of `documents` is `kitDocument(<components/*.json import>)`, which only
+     retypes the imported JSON object, so the value really is a plain JSON tree. */
+  doc as JsonObject;
 
 /**
  * A source file with its comments removed, so the guards below judge code and not prose.
@@ -178,14 +193,14 @@ const jsonIn = (dir: string): string[] =>
 const byKey = (a: OptIn, b: OptIn) => a.join("\0").localeCompare(b.join("\0"));
 
 /** Every `part` a document's nodes carry, split on whitespace. */
-function partsOf(value: unknown, into = new Set<string>()): Set<string> {
+function partsOf(value: JsonValue, into = new Set<string>()): Set<string> {
   if (Array.isArray(value)) {
     for (const item of value) {
       partsOf(item, into);
     }
-  } else if (isObject(value)) {
-    const part = isObject(value["attributes"]) ? value["attributes"]["part"] : undefined;
-    if (typeof part === "string") {
+  } else if (isJsonObject(value)) {
+    const part = valueAt(value["attributes"], "part");
+    if (isString(part)) {
       for (const name of part.split(/\s+/).filter(Boolean)) {
         into.add(name);
       }
@@ -201,11 +216,12 @@ function partsOf(value: unknown, into = new Set<string>()): Set<string> {
 
 describe("the selection policy", () => {
   test("the root turns selection off, and a modal dialog is told again", () => {
-    const tokens = readJson(join(STYLES, "tokens.json")) as { style: Json };
-    expect(tokens.style["user-select"]).toBe("none");
-    expect((tokens.style["& dialog"] as Json)["user-select"]).toBe("none");
+    const style = valueAt(readJson(join(STYLES, "tokens.json")), "style");
+    expect(valueAt(style, "user-select")).toBe("none");
+    const dialogRule = valueAt(style, "& dialog");
+    expect(valueAt(dialogRule, "user-select")).toBe("none");
     // The restatement explains itself, because the reason for it is a UA rule nobody can see.
-    expect(String((tokens.style["& dialog"] as Json)["$description"])).toContain("showModal()");
+    expect(String(valueAt(dialogRule, "$description"))).toContain("showModal()");
   });
 
   test("only the listed parts turn selection back on, in any surface or stylesheet source", () => {
@@ -230,17 +246,17 @@ describe("the selection policy", () => {
   });
 
   test("the dialog's message and island are where the opt-in selectors find them", () => {
-    const dialog = readJson(join(SURFACES, "dialog.json")) as { children: Json[] };
-    const slot = dialog.children.find(
-      (child) => (child["attributes"] as Json | undefined)?.["part"] === "message-slot",
+    const children = listAt(readJson(join(SURFACES, "dialog.json")), "children");
+    const slot = children.find(
+      (child) => valueAt(valueAt(child, "attributes"), "part") === "message-slot",
     );
-    const message = ((slot?.["cases"] as Json | undefined)?.["true"] ?? {}) as Json;
-    expect(message["tagName"]).toBe("p");
-    expect((message["attributes"] as Json)["part"]).toBe("message");
-    const island = dialog.children.find(
-      (child) => (child["attributes"] as Json | undefined)?.["part"] === "island",
+    const message = valueAt(valueAt(slot, "cases"), "true");
+    expect(valueAt(message, "tagName")).toBe("p");
+    expect(valueAt(valueAt(message, "attributes"), "part")).toBe("message");
+    const island = children.find(
+      (child) => valueAt(valueAt(child, "attributes"), "part") === "island",
     );
-    expect(island?.["tagName"]).toBe("div");
+    expect(valueAt(island, "tagName")).toBe("div");
   });
 
   test("a document MOUNTED in the island is not the message, and the opt-in cannot reach it", () => {
@@ -259,7 +275,8 @@ describe("the selection policy", () => {
       );
     }
     for (const guest of ["grid-open.json", "push-plan.json"]) {
-      expect((readJson(join(SURFACES, guest)) as Json)["tagName"], guest).toBe("div");
+      const root = readJson(join(SURFACES, guest));
+      expect(valueAt(root, "tagName"), guest).toBe("div");
     }
   });
 
@@ -313,7 +330,7 @@ describe("the selection policy", () => {
   test("the kit reopens nothing inside Studio either", () => {
     /* Kit elements render in Studio's light DOM, so a kit rule that set `text` would reopen
        selection inside every surface that uses the element. Today the kit only ever turns it off. */
-    const found = Object.entries(kitDocuments).flatMap(([tag, doc]) => optInsOf(tag, doc));
+    const found = Object.entries(documents).flatMap(([tag, doc]) => optInsOf(tag, asJsonTree(doc)));
     expect(found).toEqual([]);
   });
 

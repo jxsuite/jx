@@ -50,6 +50,8 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+
 /** The tag of the tree. */
 const TREE = "jx-tree";
 /** The tag of one row. */
@@ -100,7 +102,6 @@ export interface TreeState {
   anchor?: string;
   padtop?: number;
   padbottom?: number;
-  [key: string]: unknown;
 }
 
 /** A row element with the property accessors its own document installs. */
@@ -153,9 +154,7 @@ const handoffs = new WeakMap<HTMLElement, Handoff>();
 /** The tree an event's `currentTarget` is. */
 function hostOf(event: Event): TreeElement | null {
   const target = event.currentTarget;
-  return target instanceof HTMLElement && target.localName === TREE
-    ? (target as TreeElement)
-    : null;
+  return target instanceof HTMLElement && target.localName === TREE ? target : null;
 }
 
 /** Whether `tree` is the nearest tree around `node` — a key inside a nested tree is its own. */
@@ -209,7 +208,7 @@ function isDisabled(item: ItemElement): boolean {
  */
 function labelOf(item: ItemElement): string {
   const named = propOf(item, "label", "label");
-  return named === "" ? (item.textContent ?? "") : named;
+  return named === "" ? item.textContent : named;
 }
 
 /**
@@ -255,12 +254,12 @@ export function itemsOf(
  *
  * @param tree The `jx-tree` element.
  */
-export function syncTree(tree: HTMLElement): void {
+export function syncTree(tree: TreeElement): void {
   const items = itemsOf(tree, { includeDisabled: true });
   if (items.length === 0) {
     return;
   }
-  const current = String((tree as TreeElement).current ?? "");
+  const current = String(tree.current ?? "");
   const enabled = items.filter((item) => !isDisabled(item));
   const caret = enabled.find((item) => valueOf(item) === current) ?? enabled[0] ?? null;
   for (const item of items) {
@@ -425,8 +424,19 @@ function activeIndex(items: ItemElement[], target: EventTarget | null): number {
   );
 }
 
+/**
+ * What a tree event carries: a row's value for `change` and `activate`, else the event's own detail
+ * record.
+ */
+type TreeEventDetail =
+  | string
+  | TreeExpandDetail
+  | TreeMoveDetail
+  | TreeSelectDetail
+  | TreeTypeaheadDetail;
+
 /** Say a public thing, from the tree, so `e.target` is the element a host wrote. */
-function announce(host: HTMLElement, name: string, detail: unknown): void {
+function announce(host: HTMLElement, name: string, detail: TreeEventDetail): void {
   host.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
 }
 
@@ -441,7 +451,7 @@ function moveTo(host: HTMLElement, scope: TreeState, item: ItemElement): void {
   scope.current = valueOf(item);
   syncTree(host);
   item.focus();
-  if (typeof item.scrollIntoView === "function") {
+  if (isFunction(item.scrollIntoView)) {
     item.scrollIntoView({ block: "nearest" });
   }
   announce(host, "change", valueOf(item));

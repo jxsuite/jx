@@ -46,11 +46,10 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { openMenu } from "./menu";
 import targetLineDoc from "./target-line.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { MenuHandle, MenuRowProjection } from "./menu";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("target-line", targetLineDoc as unknown as JxDocument);
+registerSurface("target-line", targetLineDoc);
 
 /** The region the line stamps on itself, so a shot can crop it. */
 const REGION = "inspector/target";
@@ -108,7 +107,7 @@ export const BASE_SELECTOR_LABEL = "base rule";
 // ─── The projection ──────────────────────────────────────────────────────────
 
 /** One word of the sentence, as the document reads it. */
-interface ProjectedSegment extends Record<string, unknown> {
+interface ProjectedSegment {
   key: string;
   label: string;
   title: string;
@@ -119,7 +118,7 @@ interface ProjectedSegment extends Record<string, unknown> {
 }
 
 /** The scope `target-line.json` reads. */
-interface TargetLineScope extends Record<string, unknown> {
+interface TargetLineScope {
   region: string;
   segments: ProjectedSegment[];
   selectorLabel: string;
@@ -201,7 +200,7 @@ function scope(): TargetLineScope {
     toggleLabel: "Show affected",
     warn: false,
     warningText: "",
-  }) as TargetLineScope;
+  });
   return _scope;
 }
 
@@ -311,11 +310,11 @@ export function openSelectorMenu(): void {
       },
       title: BASE_SELECTOR_LABEL,
     },
-    ...selector.options.map((option, index) => ({
+    ...selector.options.map((option, index): MenuRowProjection => ({
       /* What the ● in the old menu said: this element already DECLARES this rule. Where you are is
          stated once, by the trigger's own label — a row that carried both facts would be two
          answers on one line. */
-      checked: (selector.declared.has(option) ? "true" : "false") as "true" | "false",
+      checked: selector.declared.has(option) ? "true" : "false",
       destructive: false,
       disabled: false,
       dividerAbove: index === 0,

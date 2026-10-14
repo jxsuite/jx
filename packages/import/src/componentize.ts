@@ -1,5 +1,5 @@
 import type { JxElement } from "@jxsuite/schema/types";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
 
 export interface ComponentizeOptions {
   minInstances?: number;
@@ -25,27 +25,27 @@ interface SubtreeLocation {
 }
 
 function nodeDepth(node: JxElement | string): number {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return 0;
   }
   let max = 0;
   if (Array.isArray(node.children)) {
     for (const c of node.children) {
-      max = Math.max(max, nodeDepth(c as JxElement | string));
+      max = Math.max(max, nodeDepth(c));
     }
   }
   return 1 + max;
 }
 
 function structuralHash(node: JxElement | string): string {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return "#text";
   }
   const tag = node.tagName ?? "div";
   const childHashes: string[] = [];
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      childHashes.push(structuralHash(child as JxElement | string));
+      childHashes.push(structuralHash(child));
     }
   }
   if (node.textContent) {
@@ -65,11 +65,13 @@ function structuralHash(node: JxElement | string): string {
 const PRESENTATION_ATTRS = new Set(["class", "className"]);
 
 function collectLeafValues(node: JxElement | string, prefix: string, out: Map<string, string>) {
-  if (typeof node === "string") {
+  if (isString(node)) {
     out.set(`${prefix}.$text`, node);
     return;
   }
   if (node.textContent) {
+    /* SAFETY: import trees come from `htmlToJx`, which sets `textContent` only from a lone string
+       child, so a truthy `textContent` here is a string and never a `$ref` binding. */
     out.set(`${prefix}.textContent`, node.textContent as string);
   }
   if (node.attributes) {
@@ -77,14 +79,14 @@ function collectLeafValues(node: JxElement | string, prefix: string, out: Map<st
       if (PRESENTATION_ATTRS.has(k)) {
         continue;
       }
-      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      if (isString(v) || isNumber(v) || isBoolean(v)) {
         out.set(`${prefix}.attr.${k}`, String(v));
       }
     }
   }
   if (Array.isArray(node.children)) {
-    for (let i = 0; i < node.children.length; i++) {
-      collectLeafValues(node.children[i] as JxElement | string, `${prefix}.${i}`, out);
+    for (const [i, child] of node.children.entries()) {
+      collectLeafValues(child, `${prefix}.${i}`, out);
     }
   }
 }
@@ -111,19 +113,11 @@ function leafPathToStateName(leafPath: string): string {
 }
 
 function applyStateInterpolation(
-  node: JxElement | string,
+  node: JxElement,
   prefix: string,
   varyingPaths: Set<string>,
   nameMap: Map<string, string>,
-): JxElement | string {
-  if (typeof node === "string") {
-    const key = `${prefix}.$text`;
-    if (varyingPaths.has(key)) {
-      return `\${state.${nameMap.get(key)}}`;
-    }
-    return node;
-  }
-
+): JxElement {
   const result: JxElement = { ...node };
 
   if (node.textContent) {
@@ -144,9 +138,14 @@ function applyStateInterpolation(
   }
 
   if (Array.isArray(node.children)) {
-    result.children = node.children.map((child, i) =>
-      applyStateInterpolation(child as JxElement | string, `${prefix}.${i}`, varyingPaths, nameMap),
-    ) as JxElement[];
+    result.children = node.children.map((child, i) => {
+      const childPrefix = `${prefix}.${i}`;
+      if (!isString(child)) {
+        return applyStateInterpolation(child, childPrefix, varyingPaths, nameMap);
+      }
+      const key = `${childPrefix}.$text`;
+      return varyingPaths.has(key) ? `\${state.${nameMap.get(key)}}` : child;
+    });
   }
 
   return result;
@@ -170,15 +169,17 @@ function setNodeAt(root: JxElement, path: number[], replacement: JxElement): JxE
 
   const result: JxElement = { ...root };
   if (Array.isArray(root.children)) {
-    result.children = [...root.children] as JxElement[];
+    const children = [...root.children];
+    result.children = children;
     const head = path[0]!;
     const rest = path.slice(1);
     if (rest.length === 0) {
-      (result.children as JxElement[])[head] = replacement;
+      children[head] = replacement;
     } else {
-      const child = result.children[head];
-      if (typeof child !== "string") {
-        (result.children as JxElement[])[head] = setNodeAt(child as JxElement, rest, replacement);
+      // Paths come from `collectSubtrees`, so `head` always indexes an existing child.
+      const child = children[head];
+      if (child !== undefined && !isString(child)) {
+        children[head] = setNodeAt(child, rest, replacement);
       }
     }
   }
@@ -231,10 +232,9 @@ function collectSubtrees(
     out.push({ pageRoute, path: [...path], node });
   }
   if (Array.isArray(node.children)) {
-    for (let i = 0; i < node.children.length; i++) {
-      const child = node.children[i];
-      if (typeof child !== "string") {
-        collectSubtrees(child as JxElement, pageRoute, [...path, i], minDepth, out);
+    for (const [i, child] of node.children.entries()) {
+      if (!isString(child)) {
+        collectSubtrees(child, pageRoute, [...path, i], minDepth, out);
       }
     }
   }
@@ -343,12 +343,7 @@ export function componentize(
       state[stateName] = allLeaves[0]!.get(leafPath) ?? "";
     }
 
-    const template = applyStateInterpolation(
-      unclaimed[0]!.node,
-      "root",
-      varyingPaths,
-      nameMap,
-    ) as JxElement;
+    const template = applyStateInterpolation(unclaimed[0]!.node, "root", varyingPaths, nameMap);
 
     const component: ExtractedComponent = {
       $id: pascalName,

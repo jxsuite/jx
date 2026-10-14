@@ -86,8 +86,11 @@ let standingStage: CanvasStageHandle | null = null;
    the ARTBOARDS are real now, drawn by `surfaces/canvas-stage.json` through the same seam
    `canvas-render.ts` uses. A hand-rolled `{ element, canvas }` pair would no longer prove anything:
    the whole point of the conversion is that the boards come from the stage document. */
-const ctx = {
-  applyTransform: mock(() => {}),
+const applyTransform = mock((_surface: CanvasSurface) => {});
+const observeCenterUntilStable = mock((_surface: CanvasSurface) => {});
+const updateActivePanelHeaders = mock((_surface: CanvasSurface) => {});
+const ctx: Parameters<typeof renderStylebookMode>[1] = {
+  applyTransform,
   canvasPanelEntry: (
     mediaName: string | null,
     label: string | null,
@@ -109,15 +112,13 @@ const ctx = {
     bindCanvasPanels(entries, handle);
     return handle;
   },
-  observeCenterUntilStable: mock(() => {}),
+  observeCenterUntilStable,
   stageHost: (_surface: CanvasSurface, part: string) => stageHosts.get(part) ?? null,
-  updateActivePanelHeaders: mock(() => {}),
-} as unknown as Parameters<typeof renderStylebookMode>[1];
+  updateActivePanelHeaders,
+};
 
-const ctxMocks = ctx as unknown as Record<string, ReturnType<typeof mock>>;
-
-function makeTab(doc: Record<string, unknown> = {}) {
-  return resetWorkspaceWithTab({ children: [], tagName: "div", ...doc } as JxMutableNode);
+function makeTab(doc: JxMutableNode = {}) {
+  return resetWorkspaceWithTab({ children: [], tagName: "div", ...doc });
 }
 
 // ─── The chrome bar, which is a document ──────────────────────────────────────
@@ -134,19 +135,19 @@ function chromeBar(): HTMLElement {
 /** The filter field's own control, a native input drawn by `jx-textfield`. */
 function filterControl(): HTMLInputElement {
   const el = chromeBar().querySelector('[part="filter"] [part="input"]');
-  if (!el) {
+  if (!(el instanceof HTMLInputElement)) {
     throw new Error("no control in the chrome bar's filter field");
   }
-  return el as HTMLInputElement;
+  return el;
 }
 
 /** The Customized toggle's own control, drawn by `jx-action-button`. */
 function customizedControl(): HTMLButtonElement {
   const el = chromeBar().querySelector('[part="customized"] [part="control"]');
-  if (!el) {
+  if (!(el instanceof HTMLButtonElement)) {
     throw new Error("no control in the chrome bar's Customized toggle");
   }
-  return el as HTMLButtonElement;
+  return el;
 }
 
 beforeEach(() => {
@@ -165,8 +166,8 @@ beforeEach(() => {
   mounts.length = 0;
   pans.length = 0;
   stage.renderGeneration = 7;
-  for (const key of ["applyTransform", "observeCenterUntilStable", "updateActivePanelHeaders"]) {
-    ctxMocks[key]!.mockClear();
+  for (const fn of [applyTransform, observeCenterUntilStable, updateActivePanelHeaders]) {
+    fn.mockClear();
   }
 });
 
@@ -186,12 +187,12 @@ describe("renderStylebookMode", () => {
     expect(mounts).toHaveLength(1);
     expect(mounts[0]!.gen).toBe(7);
     expect(mounts[0]!.widthPx).toBeNull();
-    expect(mounts[0]!.canvasEl).toBe(canvasPanels[0]!.canvas as HTMLElement);
+    expect(mounts[0]!.canvasEl).toBe(canvasPanels[0]!.canvas);
     // The generated specimen doc reached the mount intact (sb-root + path maps).
-    expect((mounts[0]!.generated.doc.attributes as Record<string, string>).class).toBe("sb-root");
+    expect(mounts[0]!.generated.doc.attributes?.class).toBe("sb-root");
     expect(mounts[0]!.generated.tagToCardPath.has("h1")).toBe(true);
-    expect(ctxMocks.applyTransform).toHaveBeenCalled();
-    expect(ctxMocks.observeCenterUntilStable).toHaveBeenCalled();
+    expect(applyTransform).toHaveBeenCalled();
+    expect(observeCenterUntilStable).toHaveBeenCalled();
   });
 
   test("$media breakpoints → base + one panel per breakpoint, SAME generated doc for all", async () => {
@@ -201,7 +202,7 @@ describe("renderStylebookMode", () => {
     expect(mounts).toHaveLength(2);
     expect(mounts[0]!.generated).toBe(mounts[1]!.generated);
     expect(mounts[1]!.widthPx).toBe(768);
-    expect(ctxMocks.updateActivePanelHeaders).toHaveBeenCalled();
+    expect(updateActivePanelHeaders).toHaveBeenCalled();
   });
 
   test("the chrome bar filter narrows the generated doc; Customized toggles the session flag", async () => {
@@ -239,9 +240,9 @@ describe("renderStylebookMode", () => {
     expect(chromeBar().getAttribute("role")).toBe("toolbar");
     expect(chromeBar().getAttribute("aria-label")).toBe(PROJECT_STYLES_TITLE);
 
-    const input = filterControl();
-    expect(input.getAttribute("aria-label")).toBe(`Filter the ${PROJECT_STYLES_TITLE} catalogue`);
-    expect(input.getAttribute("aria-label")).not.toContain(PROJECT_STYLES_VIEW);
+    const inputLabel = filterControl().getAttribute("aria-label");
+    expect(inputLabel).toBe(`Filter the ${PROJECT_STYLES_TITLE} catalogue`);
+    expect(inputLabel).not.toContain(PROJECT_STYLES_VIEW);
 
     const toggle = customizedControl();
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
@@ -292,9 +293,9 @@ describe("renderStylebookMode", () => {
 describe("the Project Styles chrome bar", () => {
   /** Every control the toolbar roves, paired with the roving `tabindex` a Tab would land on. */
   const stops = () =>
-    [...chromeBar().querySelectorAll<HTMLElement>('[part="control"], [part="input"]')]
-      .filter((el) => el.closest('[part="clear"]') === null)
-      .map((el) => el.getAttribute("tabindex"));
+    [...chromeBar().querySelectorAll<HTMLElement>('[part="control"], [part="input"]')].flatMap(
+      (el) => (el.closest('[part="clear"]') === null ? [el.getAttribute("tabindex")] : []),
+    );
 
   test("the role and the name are the element's, and two controls are ONE tab stop", async () => {
     /* The bar wrote `role="toolbar"` and its own `aria-label` on a `<div>` — a container role with

@@ -15,17 +15,15 @@ import type { CollabIdentity } from "../src/provider.ts";
 const IDENTITY: CollabIdentity = { color: "#4f9cf9", login: "octocat", permission: "write" };
 
 /** A server-side socket that decodes every outbound frame into an inspectable log. */
-function recordingSocket(): { socket: RoomSocket; frames: CollabFrame[] } {
+function recordingSocket() {
   const frames: CollabFrame[] = [];
-  return {
-    frames,
-    socket: {
-      close: () => {},
-      send: (data) => {
-        frames.push(decodeFrame(data));
-      },
+  const socket: RoomSocket = {
+    close: () => {},
+    send: (data) => {
+      frames.push(decodeFrame(data));
     },
   };
+  return { frames, socket };
 }
 
 function controls(frames: CollabFrame[]): ControlMessage[] {

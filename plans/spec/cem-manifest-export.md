@@ -20,7 +20,7 @@ size: M
 
 `specs/spec.md` §16.8, marker at line 1763 (the census kept Partial and corrected the sentence; a forward from the `studio.md` census narrowed "Studio's CEM editors" to the ones that exist):
 
-> **Status: Partial.** The schema fields ship, and Studio edits `parameters`, `emits` and a typed entry's `attribute` and `reflects` (`packages/studio/src/panels/signals-panel.ts`), but nothing in `packages/studio/src` reads or writes the root `observedAttributes` array (studio.md §6.5). A per-document CEM 2.1.0 generator exists (`exportCemManifest` in `packages/studio/src/services/cem-export.ts`), but nothing calls it (`studio.ts` imports it as `_exportCemManifest`), no build emits a project `custom-elements.json`, and the generator maps only typed state entries carrying `attribute` into CEM `attributes`, not `observedAttributes`.
+> **Status: Partial.** The schema fields ship, and Studio edits `parameters`, `emits` and a typed entry's `attribute` and `reflects` (`packages/studio/src/panels/signals-panel.ts`), but nothing in `packages/studio/src` reads or writes the root `observedAttributes` array (studio.md §6.5). A per-document CEM 2.1.0 generator exists (`exportCemManifest` in `packages/studio/src/services/cem-export.ts`), but nothing calls it, no build emits a project `custom-elements.json`, and the generator maps only typed state entries carrying `attribute` into CEM `attributes`, not `observedAttributes`.
 
 Every clause holds at 84735a9f. §16.8's body only lists the four annotations; it says nothing about a manifest, so the export has to be specified as well as built. The Studio half of the marker is studio.md §6.5's item (`plan:studio/cem-contract-editors`), not §16.8's.
 
@@ -77,7 +77,6 @@ Every clause holds at 84735a9f. §16.8's body only lists the four annotations; i
 5. `packages/studio`:
    - Delete `exportCemManifest` and `collectSlots`; rename `src/services/cem-export.ts` to `src/services/component-slots.ts` (`git mv`), keeping `validateComponentSlots`, which now reads `collectSlotDefs(doc).map((s) => s.name)` from `@jxsuite/schema/component-meta`; drop the `/// <reference lib="dom" />` line and the now-unused imports.
    - `src/editor/convert-to-component.ts` and `src/files/file-ops.ts`: import from `../services/component-slots`.
-   - `src/studio.ts`: delete the `_exportCemManifest` import (line 140).
    - `tests/reachability.test.ts`: delete the `"services/cem-export.ts"` entry.
    - `signals-panel.ts`'s `collectCssParts` and the Logic tab's lists are untouched; they are `plan:studio/cem-contract-editors`'s surface.
 6. `plans/`: delete this file and remove `spec/cem-manifest-export` from `plan:studio/cem-contract-editors`'s `requires`, re-reading its steps 1 and 2 (which extend `guards.ts` and `cem-manifest.ts`) against what landed; its spec.md §16.5 addition is already only the sentence this plan does not add.

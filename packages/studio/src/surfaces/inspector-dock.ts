@@ -23,14 +23,15 @@
  * @docs studio/interface
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import inspectorDockDoc from "./inspector-dock.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JsonObject, JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("inspector-dock", inspectorDockDoc as unknown as JxDocument);
+registerSurface("inspector-dock", inspectorDockDoc);
 
 /** One tab of the dock, as the document draws it. Every field is a value. */
 export interface InspectorTabView {
@@ -81,7 +82,7 @@ export interface InspectorDockHandle {
 }
 
 /** The scope the document reads. */
-interface InspectorDockScope extends Record<string, unknown>, InspectorDockValues {
+interface InspectorDockScope extends InspectorDockValues {
   selectTab: (id: string) => void;
 }
 
@@ -95,15 +96,15 @@ function project(scope: InspectorDockScope, values: InspectorDockValues): void {
 
 /** The `part` a node was declared with, or the empty string. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `$map` item a node was rendered inside, if it was rendered inside one. */
-function mapItem(state: JxScope | undefined): Record<string, unknown> | null {
-  const map = state?.["$map"] as { item?: unknown } | undefined;
-  const item = map?.item;
-  return item !== null && typeof item === "object" ? (item as Record<string, unknown>) : null;
+function mapItem(state: JxScope | undefined): JsonObject | null {
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  return isJsonObject(item) ? item : null;
 }
 
 /**
@@ -119,10 +120,10 @@ export function mountInspectorDock(
   actions: InspectorDockActions,
   options: InspectorDockOptions,
 ): InspectorDockHandle {
-  const scope = reactive<InspectorDockScope>({
+  const scope: InspectorDockScope = reactive<InspectorDockScope>({
     ...values,
     selectTab: actions.selectTab,
-  }) as InspectorDockScope;
+  });
 
   container.textContent = "";
   // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
@@ -136,7 +137,7 @@ export function mountInspectorDock(
         return;
       }
       const key = mapItem(state)?.["key"];
-      if (typeof key === "string" && key !== "") {
+      if (isString(key) && key !== "") {
         options.onBody(key, element);
       }
     },

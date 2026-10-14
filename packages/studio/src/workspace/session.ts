@@ -26,8 +26,16 @@
  */
 
 import { PRIMARY_PANE, SECONDARY_PANE, focusPane, workspace } from "./workspace";
+import {
+  isBoolean,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isString,
+} from "@jxsuite/schema/guards";
 import { isWellFormedLocale } from "@jxsuite/schema/locale";
-import type { Tab } from "../tabs/tab";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { Tab, TabUi } from "../tabs/tab";
 
 /** One pane's share of a session. */
 export interface PersistedPane {
@@ -46,7 +54,7 @@ export interface PersistedTabUi {
   zoom?: number;
   editZoom?: number;
   activeMedia?: string | null;
-  previewColorScheme?: string;
+  previewColorScheme?: TabUi["previewColorScheme"];
   /** BCP 47 tag, or `null` for "the document's own language". */
   previewLocale?: string | null;
   showLayout?: boolean;
@@ -62,7 +70,12 @@ export interface PersistedSession {
 }
 
 const PANE_IDS = new Set([PRIMARY_PANE, SECONDARY_PANE]);
-const SCHEMES = new Set(["auto", "light", "dark"]);
+const SCHEMES: ReadonlySet<string> = new Set(["auto", "light", "dark"]);
+
+/** Whether a stored value is one of the three schemes a tab's preview may be forced into. */
+function isColorScheme(value: JsonValue | undefined): value is TabUi["previewColorScheme"] {
+  return isString(value) && SCHEMES.has(value);
+}
 
 /** The view settings this tab was left in — the ones a person chose, not the ones derived. */
 function uiOf(tab: Tab): PersistedTabUi {
@@ -118,40 +131,42 @@ export function captureSession(): PersistedSession {
 }
 
 /** Whether a parsed value is a usable {@link PersistedTabUi}. Hand-edited storage is input. */
-function readTabUi(value: unknown): PersistedTabUi {
-  if (typeof value !== "object" || value === null) {
+function readTabUi(value: JsonValue | undefined): PersistedTabUi {
+  if (!isJsonObject(value)) {
     return {};
   }
-  const raw = value as Record<string, unknown>;
   const out: PersistedTabUi = {};
-  if (typeof raw.canvasMode === "string") {
-    out.canvasMode = raw.canvasMode;
+  if (isString(value.canvasMode)) {
+    out.canvasMode = value.canvasMode;
   }
-  if (typeof raw.preview === "boolean") {
-    out.preview = raw.preview;
+  if (isBoolean(value.preview)) {
+    out.preview = value.preview;
   }
-  if (typeof raw.zoom === "number" && Number.isFinite(raw.zoom)) {
-    out.zoom = raw.zoom;
+  if (isNumber(value.zoom) && Number.isFinite(value.zoom)) {
+    out.zoom = value.zoom;
   }
-  if (typeof raw.editZoom === "number" && Number.isFinite(raw.editZoom)) {
-    out.editZoom = raw.editZoom;
+  if (isNumber(value.editZoom) && Number.isFinite(value.editZoom)) {
+    out.editZoom = value.editZoom;
   }
-  if (raw.activeMedia === null || typeof raw.activeMedia === "string") {
-    out.activeMedia = raw.activeMedia;
+  if (value.activeMedia === null || isString(value.activeMedia)) {
+    out.activeMedia = value.activeMedia;
   }
-  if (typeof raw.previewColorScheme === "string" && SCHEMES.has(raw.previewColorScheme)) {
-    out.previewColorScheme = raw.previewColorScheme;
+  if (isColorScheme(value.previewColorScheme)) {
+    out.previewColorScheme = value.previewColorScheme;
   }
   /* `null` is a value here, not an absence: it is "the document's own language", so a pane put
      deliberately back onto its own file's language would otherwise restore the tag it left.
      A tag is checked for WELL-FORMEDNESS only — whether the project still declares it is a
      question about `project.json`, which the reader cannot see and which changes between sessions;
      the control refuses an undeclared tag on the way in and the render falls back on the way out. */
-  if (raw.previewLocale === null || isWellFormedLocale(raw.previewLocale)) {
-    out.previewLocale = raw.previewLocale as string | null;
+  if (
+    value.previewLocale === null ||
+    (isString(value.previewLocale) && isWellFormedLocale(value.previewLocale))
+  ) {
+    out.previewLocale = value.previewLocale;
   }
-  if (typeof raw.showLayout === "boolean") {
-    out.showLayout = raw.showLayout;
+  if (isBoolean(value.showLayout)) {
+    out.showLayout = value.showLayout;
   }
   return out;
 }
@@ -159,35 +174,28 @@ function readTabUi(value: unknown): PersistedTabUi {
 /**
  * Validate a stored session. Returns `null` for anything that is not one — a corrupt record
  * restores nothing rather than restoring half a workspace.
+ *
+ * The input is whatever `JSON.parse` gave back for the stored record (or `undefined` when the
+ * project record has no session), so every field is decoded here rather than trusted.
  */
-export function readSession(value: unknown): PersistedSession | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-  const raw = value as Partial<PersistedSession>;
-  if (!Array.isArray(raw.panes)) {
+export function readSession(value: JsonValue | undefined): PersistedSession | null {
+  if (!isJsonObject(value) || !Array.isArray(value.panes)) {
     return null;
   }
   const panes: PersistedPane[] = [];
-  for (const entry of raw.panes) {
-    if (typeof entry !== "object" || entry === null) {
-      continue;
-    }
-    const pane = entry as Partial<PersistedPane>;
-    if (typeof pane.id !== "string" || !PANE_IDS.has(pane.id)) {
+  for (const pane of value.panes) {
+    if (!isJsonObject(pane) || !isString(pane.id) || !PANE_IDS.has(pane.id)) {
       continue;
     }
     const files = Array.isArray(pane.files)
-      ? pane.files.filter((file): file is string => typeof file === "string" && file !== "")
+      ? pane.files.filter((file): file is string => isString(file) && file !== "")
       : [];
     if (files.length === 0) {
       continue;
     }
     panes.push({
       activeFile:
-        typeof pane.activeFile === "string" && files.includes(pane.activeFile)
-          ? pane.activeFile
-          : null,
+        isString(pane.activeFile) && files.includes(pane.activeFile) ? pane.activeFile : null,
       files,
       id: pane.id,
     });
@@ -196,15 +204,17 @@ export function readSession(value: unknown): PersistedSession | null {
     return null;
   }
   const ui: Record<string, PersistedTabUi> = {};
-  if (typeof raw.ui === "object" && raw.ui !== null) {
-    for (const [path, entry] of Object.entries(raw.ui as Record<string, unknown>)) {
+  /* `isNonNullObject`, not `isJsonObject`: a hand-edited array here has always been read entry by
+     entry under its index keys, and this decoder keeps that rather than silently dropping it. */
+  if (isNonNullObject(value.ui)) {
+    for (const [path, entry] of Object.entries(value.ui)) {
       ui[path] = readTabUi(entry);
     }
   }
   return {
     focusedPane:
-      typeof raw.focusedPane === "string" && PANE_IDS.has(raw.focusedPane)
-        ? raw.focusedPane
+      isString(value.focusedPane) && PANE_IDS.has(value.focusedPane)
+        ? value.focusedPane
         : PRIMARY_PANE,
     panes,
     ui,
@@ -288,7 +298,7 @@ export async function restoreSession(
       ui.activeMedia = stored.activeMedia;
     }
     if (stored.previewColorScheme !== undefined) {
-      ui.previewColorScheme = stored.previewColorScheme as "auto" | "dark" | "light";
+      ui.previewColorScheme = stored.previewColorScheme;
     }
     if (stored.previewLocale !== undefined) {
       ui.previewLocale = stored.previewLocale;

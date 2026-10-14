@@ -8,20 +8,25 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CapturedStyle } from "../src/style-capture.ts";
-import type { ImportBrowser } from "../src/capture.ts";
+import type { CapturedStyle, StyleCaptureResult } from "../src/style-capture.ts";
+import type { ImportBrowser, ImportPage } from "../src/capture.ts";
 import type { ImportIo } from "../src/io.ts";
+import type { ExtractMediaOptions, MediaExtractionResult } from "../src/media-extract.ts";
 import { createLocalIo } from "../src/io.ts";
 
-type FakeSite = Record<string, { title: string; bodyHtml: string; links: string[] }>;
+interface FakeRoute {
+  title: string;
+  bodyHtml: string;
+  links: string[];
+}
 
-let site: FakeSite = {};
+let site = new Map<string, FakeRoute>();
 const pageScreenshot = mock((_opts?: { fullPage?: boolean; type?: string }) =>
   Promise.resolve(new Uint8Array([1, 2, 3])),
 );
 
 const capturePage = mock((url: string) => {
-  const entry = site[url];
+  const entry = site.get(url);
   if (!entry) {
     return Promise.reject(new Error(`no route for ${url}`));
   }
@@ -38,30 +43,35 @@ const capturePage = mock((url: string) => {
 });
 void mock.module("../src/capture.ts", () => ({ capturePage }));
 
-/** The crawl is handed a browser now; it never launches one. Nothing here is a puppeteer object. */
-const browser = { newPage: () => Promise.resolve({}) } as unknown as ImportBrowser;
+/**
+ * The crawl is handed a browser now; it never launches one. Nothing here is a puppeteer object, and
+ * the crawl only hands the browser to the mocked capturePage, so no page is ever opened on it.
+ */
+const browser: ImportBrowser = {
+  newPage: () => Promise.reject(new Error("crawlSite opened a page outside capturePage")),
+};
 
-const captureStyles = mock(() =>
+const captureStyles = mock((_page: ImportPage): Promise<StyleCaptureResult> =>
   Promise.resolve({
-    elements: [] as CapturedStyle[],
-    uaDefaults: {} as Record<string, Record<string, string>>,
+    elements: [],
+    uaDefaults: {},
     mediaQueries: ["(max-width: 768px)"],
-    customProperties: {} as Record<string, string>,
-    documentStyles: { "background-color": "rgb(9, 9, 9)" } as Record<string, string>,
+    customProperties: {},
+    documentStyles: { "background-color": "rgb(9, 9, 9)" },
   }),
 );
 void mock.module("../src/style-capture.ts", () => ({ captureStyles }));
 
 const extractMedia = mock(
   (
-    _page?: unknown,
-    _base?: unknown,
-    _uaDefaults?: unknown,
-    _queries?: readonly string[],
-    _options?: Record<string, unknown>,
-  ) =>
+    _page: ImportPage,
+    _base: CapturedStyle[],
+    _uaDefaults: Record<string, Record<string, string>>,
+    _queries: readonly string[],
+    _options?: ExtractMediaOptions,
+  ): Promise<MediaExtractionResult> =>
     Promise.resolve({
-      breakpoints: { "--md": "(max-width: 768px)" } as Record<string, string>,
+      breakpoints: { "--md": "(max-width: 768px)" },
       deltas: {},
     }),
 );
@@ -94,6 +104,13 @@ void mock.module("../src/asset-download.ts", () => ({ downloadAssets }));
 const { crawlSite, fetchRobotsTxt } = await import("../src/crawl.ts");
 
 const realFetch = globalThis.fetch;
+
+/** A `fetch` that answers through `answer`, with the global's own `preconnect` beside it. */
+function fetchDouble(
+  answer: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(answer, { preconnect: realFetch.preconnect });
+}
 let robotsBody: string | null = "";
 
 beforeEach(() => {
@@ -103,15 +120,15 @@ beforeEach(() => {
   collectAssets.mockClear();
   downloadAssets.mockClear();
   robotsBody = "";
-  globalThis.fetch = mock((input: string | URL | Request) => {
+  globalThis.fetch = fetchDouble((input) => {
     if (String(input).endsWith("/robots.txt")) {
       if (robotsBody === null) {
         return Promise.reject(new Error("network down"));
       }
       return Promise.resolve(new Response(robotsBody, { status: 200 }));
     }
-    return realFetch(input as string);
-  }) as unknown as typeof fetch;
+    return realFetch(input);
+  });
 });
 
 function freshIo(): ImportIo {
@@ -121,29 +138,38 @@ function freshIo(): ImportIo {
 
 const HOME = "https://crawl.example/";
 
-function seedSite() {
-  site = {
-    [HOME]: {
-      title: "Home",
-      bodyHtml: "<div><h1>Home</h1></div>",
-      links: [
-        "https://crawl.example/about",
-        "https://crawl.example/about", // Duplicate — deduped by normalizeUrl
-        "https://crawl.example/admin/panel",
-        "https://other.example/away", // Cross-origin — never enqueued
-      ],
-    },
-    "https://crawl.example/about": {
-      title: "About",
-      bodyHtml: "<div><h2>About</h2></div>",
-      links: ["https://crawl.example/deep"],
-    },
-    "https://crawl.example/deep": {
-      title: "Deep",
-      bodyHtml: "<div><h3>Deep</h3></div>",
-      links: [],
-    },
-  };
+function seedSite(): void {
+  site = new Map<string, FakeRoute>([
+    [
+      HOME,
+      {
+        title: "Home",
+        bodyHtml: "<div><h1>Home</h1></div>",
+        links: [
+          "https://crawl.example/about",
+          "https://crawl.example/about", // Duplicate — deduped by normalizeUrl
+          "https://crawl.example/admin/panel",
+          "https://other.example/away", // Cross-origin — never enqueued
+        ],
+      },
+    ],
+    [
+      "https://crawl.example/about",
+      {
+        title: "About",
+        bodyHtml: "<div><h2>About</h2></div>",
+        links: ["https://crawl.example/deep"],
+      },
+    ],
+    [
+      "https://crawl.example/deep",
+      {
+        title: "Deep",
+        bodyHtml: "<div><h3>Deep</h3></div>",
+        links: [],
+      },
+    ],
+  ]);
 }
 
 describe("fetchRobotsTxt", () => {
@@ -166,9 +192,7 @@ Disallow:
   });
 
   test("allows everything on a non-ok robots.txt response", async () => {
-    globalThis.fetch = mock(() =>
-      Promise.resolve(new Response("gone", { status: 404 })),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = fetchDouble(() => Promise.resolve(new Response("gone", { status: 404 })));
     const disallowed = await fetchRobotsTxt("https://crawl.example");
     expect(disallowed.size).toBe(0);
   });
@@ -258,7 +282,7 @@ describe("crawlSite", () => {
 
   test("survives capture and style failures with warnings", async () => {
     seedSite();
-    delete site["https://crawl.example/about"]; // CapturePage will reject for this URL
+    site.delete("https://crawl.example/about"); // CapturePage will reject for this URL
     captureStyles.mockRejectedValueOnce(new Error("style boom"));
     const messages: string[] = [];
     const result = await crawlSite({
@@ -378,9 +402,7 @@ describe("crawlSite", () => {
 
     /* Every page gets the SAME plan. Planning per page would let page 2 keep a width page 1 folded
        away, so `$media` would end up the union of several plans — the very thing a limit is for. */
-    const plans = extractMedia.mock.calls.map(
-      (call) => (call[4] as { plan?: { name: string }[] } | undefined)?.plan,
-    );
+    const plans = extractMedia.mock.calls.map((call) => call[4]?.plan);
     expect(plans.length).toBeGreaterThan(1);
     for (const plan of plans) {
       expect(plan?.map((bp) => bp.name)).toEqual(["--520", "--767", "--1390"]);
@@ -442,7 +464,7 @@ describe("crawlSite", () => {
       if (captured >= 1) {
         controller.abort();
       }
-      const entry = site[url]!;
+      const entry = site.get(url)!;
       return Promise.resolve({
         url,
         title: entry.title,

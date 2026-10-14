@@ -16,6 +16,8 @@
  * @docs framework/concepts/references
  */
 
+import type { JxScope, JxScopeValue } from "./types.ts";
+
 /** `~1` is `/` and `~0` is `~`; RFC 6901 §4 fixes this order so `~01` becomes `~1`, not `/`. */
 export function unescapeToken(token: string): string {
   return token.replaceAll("~1", "/").replaceAll("~0", "~");
@@ -45,14 +47,18 @@ export function refSegments(path: string): string[] {
 /**
  * Walk a value along a `$ref` path, or `undefined` where the path leaves the object.
  *
- * @param {unknown} root
+ * @param {JxScopeValue} root - A scope, or any member read from one
  * @param {string} path
- * @returns {unknown}
+ * @returns {JxScopeValue}
  */
-export function readPath(root: unknown, path: string): unknown {
+export function readPath(root: JxScopeValue, path: string): JxScopeValue {
   let current = root;
   for (const key of refSegments(path)) {
-    current = (current as Record<string, unknown> | null | undefined)?.[key];
+    /* SAFETY: `?.` stops at null and undefined, and every other JavaScript value, primitives
+       included, answers a member read by name (a string's `length`, an array's index). Reading by
+       name is how the runtime sees any object, as the `JxScope` record of its members, so the
+       member it answers is one more scope member. */
+    current = (current as JxScope | null | undefined)?.[key];
   }
   return current;
 }

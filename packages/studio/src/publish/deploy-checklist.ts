@@ -75,7 +75,7 @@ export interface DeployStep {
 
 /** The active project's configuration, or null when no project is open. */
 function currentConfig(): ProjectConfig | null {
-  return (projectState?.projectConfig as ProjectConfig | undefined) ?? null;
+  return projectState?.projectConfig ?? null;
 }
 
 /**
@@ -152,6 +152,11 @@ function repoStep(): DeployStep {
       };
 }
 
+/** The remotes a host's git status actually carries: a host may omit the array altogether. */
+interface ReportedRemotes {
+  remotes?: string[] | undefined;
+}
+
 function remoteStep(): DeployStep {
   const { status } = shell.git;
   if (status === null || !status.isRepo) {
@@ -165,7 +170,8 @@ function remoteStep(): DeployStep {
   }
   // A GitStatus from a host that reports no remotes array is not a repo with remotes — it is a
   // Host that did not say. Reading through it took the whole status bar down with a TypeError.
-  if ((status.remotes ?? []).length === 0) {
+  const reported: ReportedRemotes = status;
+  if ((reported.remotes ?? []).length === 0) {
     return {
       command: "git.createGithubRepository",
       detail: "This repository is local only — nothing outside this machine can build it.",

@@ -12,10 +12,10 @@ describe("loadComponentRegistry", () => {
 
   test("populates the registry from platform discovery, scoped to projectRoot", async () => {
     resetStudioState({ projectRoot: "my-site" });
-    const discovered = [
-      { name: "Card", path: "components/card.json" },
-      { name: "Nav", path: "components/nav.json" },
-    ] as unknown as ComponentMeta[];
+    const discovered: ComponentMeta[] = [
+      { path: "components/card.json", tagName: "x-card" },
+      { path: "components/nav.json", tagName: "x-nav" },
+    ];
     const { state } = installMockPlatform({
       discoverComponents: async (dir?: string) => {
         state.calls.push(["discoverComponents", dir]);
@@ -60,7 +60,7 @@ describe("loadComponentRegistry", () => {
 
   test("keeps the previous registry and still marks loaded when discovery fails", async () => {
     resetStudioState({ projectRoot: "site" });
-    const seeded = [{ name: "Keep", path: "components/keep.json" }] as unknown as ComponentMeta[];
+    const seeded: ComponentMeta[] = [{ path: "components/keep.json", tagName: "x-keep" }];
     installMockPlatform({ discoverComponents: async () => seeded });
     await components.loadComponentRegistry();
     expect(components.componentRegistry).toEqual(seeded);

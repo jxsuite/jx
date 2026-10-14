@@ -19,7 +19,12 @@ import { collabState } from "./collab-state";
 import { isCollabEnabled, setCollabEnabled } from "./collab-session";
 import { notify } from "../services/notify";
 import { activeTab } from "../workspace/workspace";
-import { booleanArg, booleanProperty, stringProperty } from "../commands/command-args";
+import {
+  booleanArg,
+  booleanProperty,
+  optionalStringArg,
+  stringProperty,
+} from "../commands/command-args";
 
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { Tab } from "../tabs/tab";
@@ -173,7 +178,7 @@ export function collabCommands(): AnyCommand[] {
         if (!active) {
           return;
         }
-        const login = (args as { login?: string } | undefined)?.login;
+        const login = optionalStringArg("collab.follow", args, "login");
         const { peers } = collabState(active);
         const peer = login ? peers.find((p) => p.state.user.login === login) : peers[0];
         if (!peer) {

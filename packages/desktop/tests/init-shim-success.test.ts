@@ -9,7 +9,6 @@ import { expect, mock, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { launcherSignal } from "@jxsuite/studio/platform";
-import type { LauncherSignal } from "@jxsuite/studio/platform";
 
 try {
   GlobalRegistrator.register();
@@ -17,10 +16,16 @@ try {
   /* Already registered */
 }
 
-const request = new Proxy({} as Record<string, () => Promise<unknown>>, {
-  get: (_target, method) => () =>
-    Promise.resolve(method === "githubToken" ? { stored: true } : { ok: true }),
-});
+/** What the mocked bridge answers: the token probe's shape for `githubToken`, an ack for the rest. */
+type BridgeReply = { stored: boolean } | { ok: boolean };
+
+const request = new Proxy<Record<string, () => Promise<BridgeReply>>>(
+  {},
+  {
+    get: (_target, method) => () =>
+      Promise.resolve(method === "githubToken" ? { stored: true } : { ok: true }),
+  },
+);
 
 void mock.module("electrobun/view", () => ({
   Electroview: class {
@@ -33,15 +38,18 @@ void mock.module("electrobun/view", () => ({
 const hydrateGithubToken = mock((_stored: boolean) => {});
 void mock.module("@jxsuite/studio/github-auth-status", () => ({ hydrateGithubToken }));
 
-const g = globalThis as unknown as { __jxLauncher?: LauncherSignal; __jxPlatform?: unknown };
+/** Read through a call, so the `delete` below does not narrow what the shim later registers. */
+function registeredPlatform() {
+  return globalThis.__jxPlatform;
+}
 
 test("a working Electroview registers the desktop adapter and hydrates the token state", async () => {
-  delete g.__jxLauncher;
-  delete g.__jxPlatform;
+  delete globalThis.__jxLauncher;
+  delete globalThis.__jxPlatform;
 
   await import("../src/init");
 
-  expect((g.__jxPlatform as { id?: string } | undefined)?.id).toBe("desktop");
+  expect(registeredPlatform()?.id).toBe("desktop");
   expect(launcherSignal()).toEqual({ launcher: "electrobun" });
   expect(hydrateGithubToken).toHaveBeenCalledWith(true);
 });

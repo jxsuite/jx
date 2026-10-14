@@ -12,7 +12,15 @@
  */
 
 import type { ProjectState } from "./types";
-import { displayTagName, isRef } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isBoolean,
+  isMappedArray,
+  isNonNullObject,
+  isNumber,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 export type JxPath = (string | number)[];
@@ -20,23 +28,10 @@ export type JxPath = (string | number)[];
 // ─── Path utilities ───────────────────────────────────────────────────────────
 
 /**
- * Walk the document tree and return the node at the given path.
- *
- * @param {JxMutableNode} doc
- * @param {JxPath} path
- * @returns {JxMutableNode}
+ * Walk the document tree and return the node at the given path, or `undefined` when a step falls
+ * off the tree (a path gone stale since it was taken). One walk, shared with the document ops.
  */
-export function getNodeAtPath(doc: JxMutableNode, path: JxPath) {
-  let node = doc;
-  for (const key of path) {
-    if (node == null) {
-      return undefined as unknown as JxMutableNode;
-    }
-    // Paths address nodes by construction; non-node leaves surface as undefined above.
-    node = node[key] as JxMutableNode;
-  }
-  return node;
-}
+export { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 
 /**
  * The node's children when they are a static array (the edit-mode invariant); an empty array for
@@ -56,11 +51,11 @@ export function childList(node: JxMutableNode | null | undefined): (JxMutableNod
  * `$switch` cases. Runs once when a document is loaded into a tab so every in-studio doc — and its
  * history checkpoints — uses the member form before any mutation.
  *
- * @param {unknown} node
- * @returns {unknown} The same node (mutated)
+ * @param {T} node
+ * @returns {T} The same node (mutated)
  */
-export function normalizeArrayChildren(node: unknown): unknown {
-  if (!node || typeof node !== "object") {
+export function normalizeArrayChildren<T>(node: T): T {
+  if (!isNonNullObject(node)) {
     return node;
   }
   if (Array.isArray(node)) {
@@ -69,14 +64,12 @@ export function normalizeArrayChildren(node: unknown): unknown {
     }
     return node;
   }
+  /* SAFETY: A non-array object reached from a document root, a children array, a repeater `map` or
+     a `$switch` case is a node definition, and JxMutableNode is the editor's open node shape. */
   const n = node as JxMutableNode;
   const { children } = n;
-  if (
-    children &&
-    typeof children === "object" &&
-    !Array.isArray(children) &&
-    (children as JxMutableNode).$prototype === "Array"
-  ) {
+  if (isMappedArray(children)) {
+    // SAFETY: A legacy whole-children repeater is the same repeater node that becomes the member.
     n.children = [children as JxMutableNode];
   }
   if (Array.isArray(n.children)) {
@@ -84,10 +77,10 @@ export function normalizeArrayChildren(node: unknown): unknown {
       normalizeArrayChildren(child);
     }
   }
-  if (n.$prototype === "Array" && n.map && typeof n.map === "object") {
+  if (n.$prototype === "Array" && isNonNullObject(n.map)) {
     normalizeArrayChildren(n.map);
   }
-  if (n.cases && typeof n.cases === "object") {
+  if (isNonNullObject(n.cases)) {
     for (const caseDef of Object.values(n.cases)) {
       normalizeArrayChildren(caseDef);
     }
@@ -209,7 +202,7 @@ function collectRows(
   skipSelf: boolean,
 ): void {
   // Text node children: bare primitives get a "text" row
-  if (typeof doc === "string" || typeof doc === "number" || typeof doc === "boolean") {
+  if (isString(doc) || isNumber(doc) || isBoolean(doc)) {
     if (!skipSelf) {
       out.push({ depth, node: doc, nodeType: "text", path });
     }
@@ -220,13 +213,13 @@ function collectRows(
   // Recurse into its single template at `[...path, "map"]`. This is reached both when the array is
   // A member of a children array (path `[…, "children", i]`) and the legacy whole-children form
   // (path `[…, "children"]`).
-  if ((doc as JxMutableNode).$prototype === "Array") {
+  if (doc.$prototype === "Array") {
     if (!skipSelf) {
       out.push({ depth, node: doc, nodeType: "map", path });
     }
-    const mapDef = (doc as JxMutableNode).map;
-    if (mapDef && typeof mapDef === "object") {
-      collectRows(mapDef as JxMutableNode, [...path, "map"], depth + 1, out, false);
+    const mapDef = doc.map;
+    if (isNonNullObject(mapDef)) {
+      collectRows(mapDef, [...path, "map"], depth + 1, out, false);
     }
     return;
   }
@@ -247,36 +240,33 @@ function collectRows(
       const childPath = [...path, "children", i];
       collectRows(children[i]!, childPath, depth + 1, out, false);
     }
-  } else if (
-    children &&
-    typeof children === "object" &&
-    (children as JxMutableNode).$prototype === "Array"
-  ) {
+  } else if (isMappedArray(children)) {
     // Legacy whole-children repeater: the array occupies the children slot itself.
+    // SAFETY: The repeater in the children slot is the same repeater node a children member is.
     collectRows(children as JxMutableNode, [...path, "children"], depth + 1, out, false);
   }
 
   // $switch — emit each case as a virtual child
-  if (doc.$switch && doc.cases && typeof doc.cases === "object") {
+  if (doc.$switch && isNonNullObject(doc.cases)) {
     for (const [caseName, caseDef] of Object.entries(doc.cases)) {
       const casePath = [...path, "cases", caseName];
-      if (caseDef && typeof caseDef === "object" && (caseDef as JxMutableNode).$ref) {
+      if (isNonNullObject(caseDef) && caseDef.$ref) {
         out.push({
           depth: depth + 1,
-          node: caseDef as JxMutableNode,
+          node: caseDef,
           nodeType: "case-ref",
           path: casePath,
         });
-      } else if (caseDef && typeof caseDef === "object") {
+      } else if (isNonNullObject(caseDef)) {
         out.push({
           depth: depth + 1,
-          node: caseDef as JxMutableNode,
+          node: caseDef,
           nodeType: "case",
           path: casePath,
         });
         // Recurse into case children — skipSelf, because the "case" row above already stands in for
         // The case node itself (with its own nodeType).
-        collectRows(caseDef as JxMutableNode, casePath, depth + 2, out, true);
+        collectRows(caseDef, casePath, depth + 2, out, true);
       }
     }
   }
@@ -285,10 +275,10 @@ function collectRows(
 /**
  * Get a display label for a node (for layers + overlays).
  *
- * @param {JxMutableNode | null} node
+ * @param {JxMutableNode | null | undefined} node
  * @returns {string}
  */
-export function nodeLabel(node: JxMutableNode | null) {
+export function nodeLabel(node: JxMutableNode | null | undefined) {
   if (!node) {
     return "?";
   }
@@ -306,14 +296,14 @@ export function nodeLabel(node: JxMutableNode | null) {
   }
   if (node.tagName === "slot") {
     const name = node.attributes?.name;
-    return typeof name === "string" && name.trim() ? `slot: ${name.trim()}` : "slot";
+    return isString(name) && name.trim() ? `slot: ${name.trim()}` : "slot";
   }
   /* `displayTagName`, because a tag may be CHOSEN rather than written: this label reached the
      Outline row, the Inspector's header and the jump bar, and a raw read rendered `[object Object]`
      in all three. `a|div` is the honest answer — one element, tag decided at creation. */
   const tag = displayTagName(node.tagName) || "div";
   const suffix = node.$switch ? " ⇆" : "";
-  if (typeof node.textContent === "string" && node.textContent.length > 0) {
+  if (isString(node.textContent) && node.textContent.length > 0) {
     return `${tag} — ${node.textContent.slice(0, 24)}${suffix}`;
   }
   return tag + suffix;
@@ -340,5 +330,7 @@ export function setProjectState(ps: ProjectState | null) {
  * @returns {ProjectState}
  */
 export function requireProjectState() {
+  /* SAFETY: The contract above restricts callers to paths reached after `setProjectState` installed
+     a project (a project command, a panel that only mounts with one open); nothing here checks it. */
   return projectState as ProjectState;
 }

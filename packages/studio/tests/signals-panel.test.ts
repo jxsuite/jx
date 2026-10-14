@@ -19,6 +19,7 @@ import {
   resolveDefaultForCanvas,
 } from "../src/panels/signals-panel";
 import type { SignalDef } from "../src/panels/signals-panel";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── defCategory ──────────────────────────────────────────────────────────────
 
@@ -153,12 +154,12 @@ describe("defHint", () => {
 
 describe("isCustomElementDoc", () => {
   test("hyphenated tagName is a custom element", () => {
-    expect(isCustomElementDoc({ document: { tagName: "my-card" } } as never)).toBe(true);
+    expect(isCustomElementDoc({ document: { tagName: "my-card" } })).toBe(true);
   });
 
   test("plain tag / missing tagName is not", () => {
-    expect(isCustomElementDoc({ document: { tagName: "div" } } as never)).toBe(false);
-    expect(isCustomElementDoc({ document: {} } as never)).toBe(false);
+    expect(isCustomElementDoc({ document: { tagName: "div" } })).toBe(false);
+    expect(isCustomElementDoc({ document: {} })).toBe(false);
   });
 });
 
@@ -166,7 +167,7 @@ describe("isCustomElementDoc", () => {
 
 describe("collectCssParts", () => {
   test("collects part attributes recursively with tag names", () => {
-    const tree = {
+    const tree: JxMutableNode = {
       attributes: { part: "base" },
       children: [
         { attributes: { part: "label" }, tagName: "span" },
@@ -175,7 +176,7 @@ describe("collectCssParts", () => {
       ],
       tagName: "my-button",
     };
-    expect(collectCssParts(tree as never)).toEqual([
+    expect(collectCssParts(tree)).toEqual([
       { name: "base", tag: "my-button" },
       { name: "label", tag: "span" },
       { name: "icon", tag: "i" },
@@ -183,16 +184,14 @@ describe("collectCssParts", () => {
   });
 
   test("node without tagName defaults tag to div", () => {
-    expect(collectCssParts({ attributes: { part: "x" } } as never)).toEqual([
-      { name: "x", tag: "div" },
-    ]);
+    expect(collectCssParts({ attributes: { part: "x" } })).toEqual([{ name: "x", tag: "div" }]);
   });
 
   test("ignores empty / non-string part values and null nodes", () => {
     expect(collectCssParts(null)).toEqual([]);
-    expect(collectCssParts({ attributes: { part: "" }, tagName: "div" } as never)).toEqual([]);
-    expect(collectCssParts({ attributes: { part: 5 }, tagName: "div" } as never)).toEqual([]);
-    expect(collectCssParts({ tagName: "div" } as never)).toEqual([]);
+    expect(collectCssParts({ attributes: { part: "" }, tagName: "div" })).toEqual([]);
+    expect(collectCssParts({ attributes: { part: 5 }, tagName: "div" })).toEqual([]);
+    expect(collectCssParts({ tagName: "div" })).toEqual([]);
   });
 });
 
@@ -230,7 +229,7 @@ describe("resolveDefaultForCanvas", () => {
   });
 
   test("naked primitive state entry resolves to empty view", () => {
-    expect(resolveDefaultForCanvas({ $ref: "#/state/p" }, { p: 5 } as never)).toBe("");
+    expect(resolveDefaultForCanvas({ $ref: "#/state/p" }, { p: 5 })).toBe("");
   });
 
   test("computed def → ƒ(name)", () => {

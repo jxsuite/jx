@@ -1,9 +1,9 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { describe, test, expect, mock, spyOn } from "bun:test";
+import { describe, test, expect, spyOn } from "bun:test";
 import { reactive } from "@vue/reactivity";
 import { defineElement, Jx, renderNode as _renderNode } from "../src/runtime";
 import { elementCSS } from "./style-text.ts";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument, JxHeadEntry } from "@jxsuite/schema/types";
 
 try {
   GlobalRegistrator.register();
@@ -11,7 +11,24 @@ try {
   /* Already registered */
 }
 
-const renderNode: (...args: Parameters<typeof _renderNode>) => HTMLElement = _renderNode as any;
+/** Every definition these tests render is an element, so a Text result is a runtime regression. */
+function renderNode(...args: Parameters<typeof _renderNode>): HTMLElement {
+  const node = _renderNode(...args);
+  if (!(node instanceof HTMLElement)) {
+    throw new Error("renderNode returned a Text node for an element definition");
+  }
+  return node;
+}
+
+/** Serve `body` as a successful JSON response, the way the runtime's `$ref` loader reads it. */
+const jsonResponse = (body: JxDocument) => Response.json(body);
+
+/** Answer every `fetch` from `respond`, keeping Bun's `preconnect` so the stub is a whole `fetch`. */
+function stubFetch(respond: (url: string) => Response) {
+  const { preconnect } = fetch;
+  const stub = (input: RequestInfo | URL) => Promise.resolve(respond(String(input)));
+  spyOn(globalThis, "fetch").mockImplementation(Object.assign(stub, { preconnect }));
+}
 
 const wait = (ms = 0) =>
   new Promise((r) => {
@@ -33,19 +50,19 @@ describe("registerElements", () => {
       tagName: "gaps-reg-parent",
     };
     const noTagDoc = { children: [] };
-    global.fetch = mock((url: string) => {
-      const docs: Record<string, unknown> = {
-        "gaps-no-tag.json": noTagDoc,
-        "gaps-reg-child.json": childDoc,
-        "gaps-reg-parent.json": parentDoc,
-      };
+    const docs = {
+      "gaps-no-tag.json": noTagDoc,
+      "gaps-reg-child.json": childDoc,
+      "gaps-reg-parent.json": parentDoc,
+    };
+    stubFetch((url) => {
       for (const [k, d] of Object.entries(docs)) {
-        if (String(url).includes(k)) {
-          return Promise.resolve({ json: () => Promise.resolve(d), ok: true });
+        if (url.includes(k)) {
+          return jsonResponse(d);
         }
       }
-      return Promise.resolve({ ok: false, status: 404 });
-    }) as any;
+      return new Response(null, { status: 404 });
+    });
 
     const target = document.createElement("div");
     await Jx(
@@ -53,13 +70,13 @@ describe("registerElements", () => {
         $elements: [
           "totally-fake-gaps-pkg", // Bare package: import fails → warn
           "./gaps-relative-missing.js", // Relative side-effect import fails → warn
-          { notARef: true } as any, // Non-ref object: skipped
+          { notARef: true }, // Non-ref object: skipped
           { $ref: "http://localhost/gaps-no-tag.json" }, // No tagName: skipped
           { $ref: "http://localhost/gaps-reg-parent.json" }, // Registers child first (depth-first)
           { $ref: "http://localhost/gaps-reg-parent.json" }, // Already registered: skipped
         ],
         tagName: "div",
-      } as unknown as JxDocument,
+      },
       target,
     );
 
@@ -76,17 +93,17 @@ describe("Jx base option", () => {
   /** Register one document object and report the URL its `$elements` ref was fetched from. */
   async function fetchedRefUrl(tagName: string, base?: string) {
     const seen: string[] = [];
-    global.fetch = mock((url: string) => {
-      seen.push(String(url));
-      return Promise.resolve({ json: () => Promise.resolve({ children: [], tagName }), ok: true });
-    }) as any;
+    stubFetch((url) => {
+      seen.push(url);
+      return jsonResponse({ children: [], tagName });
+    });
     /* A ref per tag: `resolve()` memoises by resolved URL, so reusing one path would hand the
        second call the first call's document and quietly prove nothing. */
     await Jx(
       {
         $elements: [{ $ref: `./components/${tagName}.json` }],
         tagName: "div",
-      } as unknown as JxDocument,
+      },
       document.createElement("div"),
       base === undefined ? undefined : { base },
     );
@@ -116,9 +133,11 @@ describe("Jx base option", () => {
 describe("injectHead", () => {
   test("injects head entries, rewrites bare specifiers, dedupes, sets textContent", async () => {
     const target = document.createElement("div");
-    const headEntries = [
-      null, // Skipped
-      { attributes: {} }, // No tagName: skipped
+    /* SAFETY: these two entries are deliberately outside JxHeadEntry: `$head` arrives from document
+     * JSON, and injectHead must skip a null entry and one with no tagName rather than throw. */
+    const malformed = [null, { attributes: {} }] as JxHeadEntry[];
+    const headEntries: JxHeadEntry[] = [
+      ...malformed, // Null and no-tagName entries: skipped
       {
         attributes: { href: "some-gaps-pkg/style.css", rel: "stylesheet" },
         tagName: "link",
@@ -134,7 +153,7 @@ describe("injectHead", () => {
       },
       { attributes: { content: "gaps", name: "gaps-meta" }, tagName: "meta" },
     ];
-    await Jx({ $head: headEntries, tagName: "div" } as unknown as JxDocument, target);
+    await Jx({ $head: headEntries, tagName: "div" }, target);
 
     const links = document.head.querySelectorAll(
       'link[href="/node_modules/some-gaps-pkg/style.css"]',
@@ -154,7 +173,8 @@ describe("defineElement lifecycle gaps", () => {
       children: ["${state.greeting}"],
       state: { greeting: { default: "hi" } },
       tagName: "gaps-setter-el",
-    } as unknown as JxDocument);
+    });
+    // SAFETY: defineElement above gave gaps-setter-el a property accessor for its `greeting` state entry.
     const el = document.createElement("gaps-setter-el") as HTMLElement & {
       greeting: string;
     };
@@ -176,7 +196,9 @@ describe("defineElement lifecycle gaps", () => {
         wasAdopted: { default: false },
       },
       tagName: "gaps-adopted-el",
-    } as unknown as JxDocument);
+    });
+    /* SAFETY: gaps-adopted-el was defined above, so the instance is the generated custom element:
+     * its class implements adoptedCallback and exposes `wasAdopted` as a state accessor. */
     const el = document.createElement("gaps-adopted-el") as HTMLElement & {
       adoptedCallback: () => void;
       wasAdopted: boolean;
@@ -202,7 +224,7 @@ describe("renderCustomElementWithProps", () => {
         t: { default: "" },
       },
       tagName: "gaps-props-el",
-    } as unknown as JxDocument);
+    });
 
     const created: string[] = [];
     const parentState = reactive({ src: "ref-1", x: "tpl-1" });
@@ -215,11 +237,11 @@ describe("renderCustomElementWithProps", () => {
         },
         children: [{ tagName: "i" }],
         tagName: "gaps-props-el",
-      } as any,
+      },
       parentState,
       {
-        onNodeCreated: (n: HTMLElement) => created.push(n.tagName.toLowerCase()),
-      } as any,
+        onNodeCreated: (n) => created.push(n.nodeName.toLowerCase()),
+      },
     );
     expect(created).toContain("gaps-props-el");
     expect(created).toContain("i");
@@ -241,14 +263,14 @@ describe("renderCustomElementWithProps", () => {
       children: [],
       state: {},
       tagName: "gaps-host-el",
-    } as unknown as JxDocument);
+    });
     const el = renderNode(
       {
         $props: { anything: 1 },
         attributes: { "data-host": "yes" },
         style: { color: "red" },
         tagName: "gaps-host-el",
-      } as any,
+      },
       reactive({}),
     );
     expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { color: red }`);
@@ -271,7 +293,7 @@ describe("distributeSlots", () => {
       ],
       state: {},
       tagName: "gaps-slot-el",
-    } as unknown as JxDocument);
+    });
 
     const el = document.createElement("gaps-slot-el");
     const headChild = document.createElement("span");
@@ -289,11 +311,11 @@ describe("distributeSlots", () => {
        grandchild and silently stops matching. */
     expect(el.querySelector("slot")).toBeNull();
 
-    const header = el.querySelector("header") as HTMLElement;
-    expect(header.children.length).toBe(1);
-    expect(header.children[0]!.textContent).toBe("H");
+    const header = el.querySelector("header");
+    expect(header?.children.length).toBe(1);
+    expect(header?.children[0]?.textContent).toBe("H");
     // The slotted child is a DIRECT child of the node the definition put the slot in.
-    expect(header.children[0]!.parentElement).toBe(header);
+    expect(header?.children[0]?.parentElement).toBe(header);
 
     // An unmatched slot unwraps to its own fallback, which here is nothing at all.
     expect(el.textContent).toBe("HtxtB");
@@ -305,7 +327,7 @@ describe("distributeSlots", () => {
       children: [{ children: ["only-template"], tagName: "p" }],
       state: {},
       tagName: "gaps-noslot-el",
-    } as unknown as JxDocument);
+    });
     const el = document.createElement("gaps-noslot-el");
     el.append(document.createElement("em"));
     document.body.append(el);

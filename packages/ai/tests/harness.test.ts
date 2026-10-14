@@ -16,7 +16,7 @@ import {
 } from "../src/harness/index.ts";
 import type { HarnessEvent, ModelFn, ModelRequest, TurnInput } from "../src/harness/index.ts";
 import { createLedger, createToolDefinition, createToolRegistry } from "../src/tools.ts";
-import type { ToolContext, ToolRegistry, ToolResult } from "../src/tools.ts";
+import type { ToolContext, ToolDefinition, ToolRegistry, ToolResult } from "../src/tools.ts";
 import { SEAL_RELOADED } from "../src/messages/index.ts";
 import type { ChatMessage } from "../src/messages/index.ts";
 import type { StreamEvent, StreamingClient } from "../src/streaming-client.ts";
@@ -62,29 +62,35 @@ interface ToolOptions {
   interactive?: boolean;
   writes?: boolean;
   result?: ToolResult;
-  run?: (args: object, ctx: ToolContext) => void | Promise<void>;
+  run?: (...call: Parameters<ToolDefinition["execute"]>) => void | Promise<void>;
 }
 
 function registry(tools: Record<string, ToolOptions>): ToolRegistry {
   const reg = createToolRegistry();
   for (const [name, options] of Object.entries(tools)) {
-    reg.register(
-      createToolDefinition({
-        name,
-        description: name,
-        parameters: { type: "object", properties: {} },
-        ...(options.interactive ? { interactive: true } : {}),
-        async execute(args, ctx) {
-          await options.run?.(args, ctx);
-          if (options.writes) {
-            ctx.ledger.record({ disk: false, ok: true, path: `/${name}.json`, tool: name });
-          }
-          return options.result ?? { success: true, summary: `${name} done.` };
-        },
-      }),
-    );
+    const definition: Parameters<typeof createToolDefinition>[0] = {
+      name,
+      description: name,
+      parameters: { type: "object", properties: {} },
+      async execute(args, ctx) {
+        await options.run?.(args, ctx);
+        if (options.writes) {
+          ctx.ledger.record({ disk: false, ok: true, path: `/${name}.json`, tool: name });
+        }
+        return options.result ?? { success: true, summary: `${name} done.` };
+      },
+    };
+    if (options.interactive) {
+      definition.interactive = true;
+    }
+    reg.register(createToolDefinition(definition));
   }
   return reg;
+}
+
+/** How a tool reaches the turn that is running it, which exists only once `runTurn` returns. */
+interface TurnRef {
+  cancel?: () => void;
 }
 
 /** Run a turn to its end, collecting every event `onEvent` heard. */
@@ -112,7 +118,9 @@ describe("the event grammar", () => {
     const { events, outcome } = await run({ model, turnId: "t1" });
     expect(types(events)).toEqual(["turn_start", "round_start", "text", "round_end", "turn_end"]);
     expect(events.map((e) => e.seq)).toEqual([0, 1, 2, 3, 4]);
-    expect(events.every((e) => e.v === 1 && e.turnId === "t1")).toBe(true);
+    expect(events.map(({ turnId, v }) => ({ turnId, v }))).toEqual(
+      events.map(() => ({ turnId: "t1", v: 1 })),
+    );
     expect(outcome.kind).toBe("complete");
     expect(outcome.appended).toHaveLength(1);
     expect(outcome.anchorMessageId).toBe(outcome.appended[0]!.id);
@@ -423,7 +431,9 @@ describe("the model, once per round", () => {
   });
 
   test("a frame the engine does not know is ignored", async () => {
-    const unknown = { type: "stream_start", wire: 2 } as unknown as StreamEvent;
+    /* SAFETY: deliberately false. This is a frame from a newer wire that StreamEvent does not list,
+       parsed the way the streaming client parses every frame (`JSON.parse(data) as StreamEvent`). */
+    const unknown = JSON.parse('{"type":"stream_start","wire":2}') as StreamEvent;
     const { model } = scripted([[unknown, ...textRound("Hi.")]]);
     const { events, outcome } = await run({ model });
     expect(types(events)).toEqual(["turn_start", "round_start", "text", "round_end", "turn_end"]);
@@ -448,21 +458,17 @@ describe("the model, once per round", () => {
       throw new Error("chat URL lookup failed");
     };
     const turn = runTurn({ history: [USER], system: [], model, tools: registry({}), lock });
-    const rejected = await turn.outcome.then(
-      () => null,
-      (error: unknown) => error,
-    );
-    expect((rejected as Error).message).toBe("chat URL lookup failed");
+    const rejected = await Promise.allSettled([turn.outcome]);
+    expect(rejected).toEqual([{ status: "rejected", reason: new Error("chat URL lookup failed") }]);
     expect(lock.active).toBeNull();
-    const drained = await (async () => {
-      for await (const _event of turn) {
-        // Drain.
-      }
-    })().then(
-      () => null,
-      (error: unknown) => error,
-    );
-    expect((drained as Error).message).toBe("chat URL lookup failed");
+    const drained = await Promise.allSettled([
+      (async () => {
+        for await (const _event of turn) {
+          // Drain.
+        }
+      })(),
+    ]);
+    expect(drained).toEqual([{ status: "rejected", reason: new Error("chat URL lookup failed") }]);
   });
 });
 
@@ -736,7 +742,7 @@ describe("Stop", () => {
   });
 
   test("a Stop during the round's last call opens no further round", async () => {
-    const turnRef: { cancel?: () => void } = {};
+    const turnRef: TurnRef = {};
     const { model, requests } = scripted([callRound(["a", "only"]), textRound("never")]);
     const turn = runTurn({
       history: [USER],

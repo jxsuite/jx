@@ -14,12 +14,14 @@ import { invalidateLayoutCache } from "../src/site-context";
 import { loadComponentRegistry } from "../src/files/components";
 import { activateTab, activeTab, closeAllTabs, openTab } from "../src/workspace/workspace";
 
+import { isNodeObject, isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import type { Tab } from "../src/tabs/tab";
 
 // Happy-dom defaults to about:blank (origin "null"), which breaks docBase-relative URL math.
-const { happyDOM } = globalThis as unknown as {
-  happyDOM: { setURL: (u: string) => void; settings: Record<string, unknown> };
+/* SAFETY: harness imports with-dom first, whose GlobalRegistrator.register() copies happy-dom's
+   window members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
 };
 happyDOM.setURL("http://localhost:3000/");
 
@@ -45,6 +47,18 @@ afterEach(async () => {
   await loadComponentRegistry();
 });
 
+/**
+ * The element node at `index` of a resolved `children` or `$elements` slot. Throws when the slot is
+ * a whole-slot repeater or the entry is text or a bare ref, which no case here resolves to.
+ */
+function nodeAt(slot: JxMutableNode["children"] | JxMutableNode["$elements"], index: number) {
+  const entry = Array.isArray(slot) ? slot[index] : undefined;
+  if (!isNodeObject(entry)) {
+    throw new TypeError(`expected an element node at index ${index}`);
+  }
+  return entry;
+}
+
 const LAYOUT = {
   $elements: [{ tagName: "x-layout-marker" }],
   children: [
@@ -65,21 +79,21 @@ describe("resolveCanvasDocument", () => {
   async function resolve(docDef: JxMutableNode, opts: ResolveOpts = {}) {
     const tab = resetWorkspaceWithTab(docDef, {
       documentPath: opts.documentPath ?? "doc.json",
-    }) as Tab;
+    });
     if (opts.mode) {
       tab.doc.mode = opts.mode;
     }
     // Design unless the case says otherwise: these cases were written against an injected
     // `getCanvasMode()` that answered "design", and the mode is a tab field now.
     tab.session.ui.canvasMode = opts.canvasMode ?? "design";
-    return resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    return resolveCanvasDocument(tab.doc.document, tab);
   }
 
   test("resolves a simple page-less doc into renderDoc + docBase + mapperCtx", async () => {
     const result = await resolve({
       children: [{ children: ["hi"], tagName: "p" }],
       tagName: "div",
-    } as JxMutableNode);
+    });
     expect(result.renderDoc.tagName).toBe("div");
     expect(result.docBase).toContain("doc.json");
     expect(result.mapperCtx).toMatchObject({
@@ -93,7 +107,7 @@ describe("resolveCanvasDocument", () => {
 
   test("returns the project's site style", async () => {
     resetStudioState({ projectConfig: { style: { "--brand": "#0f0", color: "red" } } });
-    const result = await resolve({ children: [], tagName: "div" } as JxMutableNode);
+    const result = await resolve({ children: [], tagName: "div" });
     expect(result.siteStyle).toEqual({ "--brand": "#0f0", color: "red" });
   });
 
@@ -102,7 +116,7 @@ describe("resolveCanvasDocument", () => {
       {
         children: [{ $prototype: "Array", map: { tagName: "li" } }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { canvasMode: "edit" },
     );
     expect(result.mapperCtx.canvasMode).toBe("edit");
@@ -117,7 +131,7 @@ describe("resolveCanvasDocument", () => {
         $layout: "./layouts/base.json",
         children: [{ tagName: "p", textContent: "Page content" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/home.json" },
     );
     expect(result.mapperCtx.layoutWrapped).toBe(true);
@@ -134,23 +148,23 @@ describe("resolveCanvasDocument", () => {
         $layout: "./layouts/base.json",
         children: [{ tagName: "p", textContent: "Page content" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/home.json" },
     );
     const root = result.renderDoc;
     // The `./` prefix is stripped, so the marker's file is a path navigateToComponent can open.
     expect(root.$__layout).toEqual({ file: "layouts/base.json", path: [] });
-    const header = (root.children as JxMutableNode[])[0]!;
+    const header = nodeAt(root.children, 0);
     expect(header.tagName).toBe("header");
     expect(header.$__layout).toEqual({ file: "layouts/base.json", path: ["children", 0] });
     // …down through $elements too (component refs the layout brings with it).
-    expect((root.$elements as JxMutableNode[])[0]!.$__layout).toEqual({
+    expect(nodeAt(root.$elements, 0).$__layout).toEqual({
       file: "layouts/base.json",
       path: ["$elements", 0],
     });
     // The page's own node is NOT marked — that is the whole distinction.
-    const main = (root.children as JxMutableNode[])[1]!;
-    expect((main.children as JxMutableNode[])[0]!.$__layout).toBeUndefined();
+    const main = nodeAt(root.children, 1);
+    expect(nodeAt(main.children, 0).$__layout).toBeUndefined();
   });
 
   test("skips layout wrapping when the tab's showLayout toggle is off", async () => {
@@ -161,15 +175,18 @@ describe("resolveCanvasDocument", () => {
         $layout: "./layouts/base.json",
         children: [{ tagName: "p", textContent: "Page content" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/home.json" },
-    ) as Tab;
+    );
     tab.session.ui.showLayout = false;
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
     expect(result.mapperCtx.layoutWrapped).toBe(false);
     expect(result.mapperCtx.pageContentPrefix).toBeNull();
-    const children = result.renderDoc.children as JxMutableNode[];
-    expect(children.some((c) => c.tagName === "header")).toBe(false);
+    const { children } = result.renderDoc;
+    if (!Array.isArray(children)) {
+      throw new TypeError("expected the unwrapped page's children array");
+    }
+    expect(children.some((c) => !isString(c) && c.tagName === "header")).toBe(false);
   });
 
   test("effective preview mode keeps the raw doc (no edit-display tokens)", async () => {
@@ -177,11 +194,11 @@ describe("resolveCanvasDocument", () => {
       {
         children: [{ tagName: "p", textContent: "${state.x}" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { canvasMode: "preview" },
     );
     expect(result.mapperCtx.canvasMode).toBe("preview");
-    const p = (result.renderDoc.children as JxMutableNode[])[0]!;
+    const p = nodeAt(result.renderDoc.children, 0);
     // Preview passes the raw template through; design/edit would rewrite it to a display token.
     expect(p.textContent).toBe("${state.x}");
     expect(result.mapperCtx.arrayPaths).toEqual([]);
@@ -196,22 +213,21 @@ describe("resolveCanvasDocument", () => {
           product: { $prototype: "ContentEntry", id: { $ref: "#/$params/sku" } },
         },
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/products/[sku].json" },
-    ) as Tab;
+    );
     tab.session.ui.previewParams = { sku: "mini-trencher" };
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
 
-    const state = result.renderDoc.state as Record<string, Record<string, unknown>>;
-    expect(state.product!.id).toBe("mini-trencher");
-    expect(state.$page).toEqual({
+    const { state } = result.renderDoc;
+    expect(state?.product).toHaveProperty("id", "mini-trencher");
+    expect(state?.$page).toEqual({
       params: { sku: "mini-trencher" },
       title: "",
       url: "/products/:sku",
     });
     // The tab's source document keeps its $ref (it is what gets edited and saved).
-    const srcState = (tab.doc.document as { state: Record<string, Record<string, unknown>> }).state;
-    expect(srcState.product!.id).toEqual({ $ref: "#/$params/sku" });
+    expect(tab.doc.document.state?.product).toHaveProperty("id", { $ref: "#/$params/sku" });
   });
 
   test("substitution composes with layout wrapping", async () => {
@@ -223,15 +239,14 @@ describe("resolveCanvasDocument", () => {
         children: [{ tagName: "p", textContent: "Body" }],
         state: { entry: { id: { $ref: "#/$params/slug" } } },
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/docs/[slug].json" },
-    ) as Tab;
+    );
     tab.session.ui.previewParams = { slug: "intro" };
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
 
     expect(result.mapperCtx.layoutWrapped).toBe(true);
-    const state = result.renderDoc.state as Record<string, Record<string, unknown>>;
-    expect(state.entry!.id).toBe("intro");
+    expect(result.renderDoc.state?.entry).toHaveProperty("id", "intro");
   });
 
   test("seeds component test props into renderDoc.state, leaving the source doc intact (M6)", async () => {
@@ -244,33 +259,33 @@ describe("resolveCanvasDocument", () => {
           title: "Hello",
         },
         tagName: "x-card",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "components/x-card.json" },
-    ) as Tab;
+    );
     tab.session.ui.previewProps = { count: 7, greet: "never", title: "Test drive" };
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
 
-    const state = result.renderDoc.state as Record<string, unknown>;
+    const { state } = result.renderDoc;
     // Literal entries take the value; signal defs seed through `default` (what buildScope reads);
     // Behavioral entries are never overridden.
-    expect(state.title).toBe("Test drive");
-    expect(state.count).toEqual({ default: 7, type: "number" });
-    expect(state.greet).toEqual({ $prototype: "Function", body: "" });
+    expect(state?.title).toBe("Test drive");
+    expect(state?.count).toEqual({ default: 7, type: "number" });
+    expect(state?.greet).toEqual({ $prototype: "Function", body: "" });
     // The tab's source document keeps its authored defaults (it is what gets edited and saved).
-    const srcState = (tab.doc.document as { state: Record<string, unknown> }).state;
-    expect(srcState.title).toBe("Hello");
-    expect(srcState.count).toEqual({ default: 3, type: "number" });
+    const srcState = tab.doc.document.state;
+    expect(srcState?.title).toBe("Hello");
+    expect(srcState?.count).toEqual({ default: 3, type: "number" });
   });
 
   test("test props never touch a page document (previewParams territory)", async () => {
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     const tab = resetWorkspaceWithTab(
-      { children: [], state: { title: "Hello" }, tagName: "div" } as unknown as JxMutableNode,
+      { children: [], state: { title: "Hello" }, tagName: "div" },
       { documentPath: "pages/home.json" },
-    ) as Tab;
+    );
     tab.session.ui.previewProps = { title: "nope" };
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
-    expect((result.renderDoc.state as Record<string, unknown>).title).toBe("Hello");
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.renderDoc.state?.title).toBe("Hello");
   });
 
   test("auto-discovers project components in content mode and adds them to $elements", async () => {
@@ -281,12 +296,10 @@ describe("resolveCanvasDocument", () => {
     });
     await loadComponentRegistry();
     const result = await resolve(
-      { children: [{ tagName: "x-card-live" }], tagName: "div" } as JxMutableNode,
+      { children: [{ tagName: "x-card-live" }], tagName: "div" },
       { documentPath: "content/home.md", mode: "content" },
     );
-    const refs = ((result.renderDoc as { $elements?: { $ref?: string }[] }).$elements ?? []).map(
-      (e) => e.$ref,
-    );
+    const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? undefined : e.$ref));
     expect(refs.some((r) => r?.includes("components/x-card-live.json"))).toBe(true);
   });
 
@@ -300,12 +313,10 @@ describe("resolveCanvasDocument", () => {
     // A layout opened on its own is not a page (no layoutWrapped) and a plain .json file never
     // Sets content mode, yet its custom-element tags must still be registered for the canvas.
     const result = await resolve(
-      { children: [{ tagName: "x-card-live" }], tagName: "div" } as JxMutableNode,
+      { children: [{ tagName: "x-card-live" }], tagName: "div" },
       { documentPath: "layouts/base.json" },
     );
-    const refs = ((result.renderDoc as { $elements?: { $ref?: string }[] }).$elements ?? []).map(
-      (e) => e.$ref,
-    );
+    const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? undefined : e.$ref));
     expect(refs.some((r) => r?.includes("components/x-card-live.json"))).toBe(true);
   });
 });
@@ -328,12 +339,12 @@ describe("the resolution belongs to the tab it was given", () => {
     closeAllTabs();
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     const focused = openTab({
-      document: { children: [], tagName: "div" } as JxMutableNode,
+      document: { children: [], tagName: "div" },
       documentPath: "pages/index.json",
       id: "focused-page",
     });
     const side = openTab({
-      document: { children: [], state: { title: "Card" }, tagName: "x-card" } as JxMutableNode,
+      document: { children: [], state: { title: "Card" }, tagName: "x-card" },
       documentPath: "components/x-card.json",
       id: "side-component",
     });
@@ -351,7 +362,7 @@ describe("the resolution belongs to the tab it was given", () => {
     side.session.ui.canvasMode = "edit";
     side.session.ui.previewProps = { title: "Test drive" };
 
-    const result = await resolveCanvasDocument(side.doc.document as JxMutableNode, side);
+    const result = await resolveCanvasDocument(side.doc.document, side);
 
     console.log(
       `[canvas-live-render] focus=${activeTab.value?.documentPath} (preview) ` +
@@ -363,7 +374,7 @@ describe("the resolution belongs to the tab it was given", () => {
     // Edit, not the focused pane's "preview" — this is the value `setHostPreview` reads.
     expect(result.mapperCtx.canvasMode).toBe("edit");
     // And the component's own test props were seeded, which only happens on the `!isPage` path.
-    expect((result.renderDoc.state as Record<string, unknown>).title).toBe("Test drive");
+    expect(result.renderDoc.state?.title).toBe("Test drive");
   });
 
   test("the reverse: the focused pane in Edit does not make a previewed pane editable", async () => {
@@ -372,7 +383,7 @@ describe("the resolution belongs to the tab it was given", () => {
     side.session.ui.canvasMode = "design";
     side.session.ui.preview = true;
 
-    const result = await resolveCanvasDocument(side.doc.document as JxMutableNode, side);
+    const result = await resolveCanvasDocument(side.doc.document, side);
     expect(result.mapperCtx.canvasMode).toBe("preview");
   });
 
@@ -381,7 +392,7 @@ describe("the resolution belongs to the tab it was given", () => {
     closeAllTabs();
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     const focused = openTab({
-      document: { children: [], tagName: "div" } as JxMutableNode,
+      document: { children: [], tagName: "div" },
       documentPath: "pages/index.json",
       id: "focused-page",
     });
@@ -390,7 +401,7 @@ describe("the resolution belongs to the tab it was given", () => {
         $layout: "./layouts/base.json",
         children: [{ tagName: "p", textContent: "Body" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       documentPath: "pages/about.json",
       id: "side-page",
     });
@@ -398,7 +409,7 @@ describe("the resolution belongs to the tab it was given", () => {
     focused.session.ui.showLayout = true;
     activateTab(focused.id);
 
-    const result = await resolveCanvasDocument(side.doc.document as JxMutableNode, side);
+    const result = await resolveCanvasDocument(side.doc.document, side);
     expect(result.mapperCtx.layoutWrapped).toBe(false);
   });
 });

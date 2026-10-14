@@ -46,11 +46,10 @@ import { activeTab } from "../workspace/workspace";
 import railDoc from "./rail.json";
 
 import type { EffectScope } from "@vue/reactivity";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { PanelRecord } from "../panels/panel-registry";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("rail", railDoc as unknown as JxDocument);
+registerSurface("rail", railDoc);
 
 /** One rail button, as the surface reads it. */
 interface RailButton {
@@ -72,7 +71,13 @@ interface RailGroupProjection {
   panels: RailButton[];
 }
 
-interface RailScope extends Record<string, unknown> {
+/** The parts of the rail's scope recomputed from the registry and the shell on every render. */
+type RailProjection = Pick<
+  RailScope,
+  "groups" | "libraryOpen" | "libraryVisible" | "settingsVisible"
+>;
+
+interface RailScope {
   groups: RailGroupProjection[];
   settingsVisible: boolean;
   settingsOpen: boolean;
@@ -80,7 +85,7 @@ interface RailScope extends Record<string, unknown> {
   libraryOpen: boolean;
   openLibrary: () => void;
   toggle: (id: string) => void;
-  openSettings: (anchor: unknown) => void;
+  openSettings: (anchor: EventTarget | null) => void;
 }
 
 let _scope: EffectScope | null = null;
@@ -112,12 +117,7 @@ export function toggleRailPanel(panel: PanelRecord): void {
 }
 
 /** The rail, as the surface reads it, from the registry and the shell as they stand now. */
-function project(): {
-  groups: RailGroupProjection[];
-  settingsVisible: boolean;
-  libraryVisible: boolean;
-  libraryOpen: boolean;
-} {
+function project(): RailProjection {
   const ctx = panelContext();
   const groups = railGroups(ctx).map((group, index) => ({
     dividerAbove: index > 0,
@@ -146,14 +146,14 @@ const LIBRARY_COMMAND = "library.open";
 
 /** The reactive scope the surface reads, made once. */
 function state(): RailScope {
-  _state ??= reactive({
+  _state ??= reactive<RailScope>({
     groups: [],
     libraryOpen: false,
     libraryVisible: false,
     openLibrary: () => {
       void runActiveReported(LIBRARY_COMMAND, undefined, "Navigator rail");
     },
-    openSettings: (anchor: unknown) => {
+    openSettings: (anchor: EventTarget | null) => {
       if (!(anchor instanceof HTMLElement)) {
         return;
       }
@@ -175,7 +175,7 @@ function state(): RailScope {
         toggleRailPanel(panel);
       }
     },
-  }) as RailScope;
+  });
   return _state;
 }
 

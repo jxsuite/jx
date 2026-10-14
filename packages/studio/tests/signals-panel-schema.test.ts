@@ -25,6 +25,9 @@ import { resetSlotModeMemory } from "../src/ui/dynamic-slot";
 import { resetSchemaForms } from "../src/ui/schema-form";
 import { initLayers } from "../src/ui/layers";
 import { pluginSchemaCache } from "../src/services/code-services";
+import type { PluginSchema } from "../src/services/code-services";
+import { isBoolean, isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   const el = document.createElement("div");
@@ -32,8 +35,6 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   document.body.append(el);
 }
 initLayers();
-
-type ValueEl = HTMLElement & { value: string };
 
 /** The `$src` every plugin entry in this file is defined against. */
 const SRC = "./w.js";
@@ -45,16 +46,63 @@ function native(el: Element): Element {
   return el.querySelector('[part="input"], [part="control"]') ?? el;
 }
 
-function commitValue(el: Element, value: string): void {
+/** A control that carries a string `value`: a native input, select or textarea, or a kit field. */
+function hasValue(el: Element): el is Element & { value: string } {
+  return "value" in el && isString(el.value);
+}
+
+/** A control that carries a boolean `checked`: a native checkbox or a kit checkbox/switch. */
+function isCheckable(el: Element): el is Element & { checked: boolean } {
+  return "checked" in el && isBoolean(el.checked);
+}
+
+/** The string a control currently holds, or a throw naming the element that holds none. */
+function valueOf(el: Element): string {
+  if (!hasValue(el)) {
+    throw new Error(`<${el.localName}> carries no string value`);
+  }
+  return el.value;
+}
+
+/** Type `value` into a field's native control and fire `type` the way a reader's edit does. */
+function setValue(el: Element, value: string, type: "change" | "input"): void {
   const target = native(el);
-  (target as ValueEl).value = value;
-  target.dispatchEvent(new Event("change", { bubbles: true }));
+  if (!hasValue(target)) {
+    throw new Error(`<${target.localName}> carries no string value`);
+  }
+  target.value = value;
+  target.dispatchEvent(new Event(type, { bubbles: true }));
+}
+
+function commitValue(el: Element, value: string): void {
+  setValue(el, value, "change");
 }
 
 function inputValue(el: Element, value: string): void {
-  const target = native(el);
-  (target as ValueEl).value = value;
-  target.dispatchEvent(new Event("input", { bubbles: true }));
+  setValue(el, value, "input");
+}
+
+/** Tick or untick a checkbox and commit it the way a reader's click does. */
+function setChecked(el: Element, checked: boolean): void {
+  if (!isCheckable(el)) {
+    throw new Error(`<${el.localName}> carries no checked state`);
+  }
+  el.checked = checked;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** The `index`th match of `selector` under `scope`, or a throw naming what was not drawn. */
+function nth(scope: ParentNode, selector: string, index = 0): Element {
+  const el = scope.querySelectorAll(selector)[index];
+  if (!el) {
+    throw new Error(`no ${selector} #${index} drawn`);
+  }
+  return el;
+}
+
+/** `key` of a JSON object, or undefined for anything that is not one. */
+function member(value: JsonValue | undefined, key: string): JsonValue | undefined {
+  return isJsonObject(value) ? value[key] : undefined;
 }
 
 /** The values a row's option list offers, in order. */
@@ -64,15 +112,27 @@ function optionValues(scope: HTMLElement, prop: string): (string | null)[] {
   );
 }
 
-function pluginDef(): Record<string, unknown> {
+/** The `plugin` entry as the tab's document holds it now. */
+function pluginDef(): JsonObject {
   const tab = activeTab.value;
   if (!tab) {
     throw new Error("no active tab");
   }
-  return (tab.doc.document.state as Record<string, Record<string, unknown>>).plugin as Record<
-    string,
-    unknown
-  >;
+  const def = tab.doc.document.state?.["plugin"];
+  if (!isJsonObject(def)) {
+    throw new Error("the document has no plugin entry");
+  }
+  return def;
+}
+
+/** The `index`th row of the plugin's `columns`, or a throw naming what is there instead. */
+function column(index: number): JsonObject {
+  const { columns } = pluginDef();
+  const row = Array.isArray(columns) ? columns[index] : undefined;
+  if (!isJsonObject(row)) {
+    throw new Error(`no columns row ${index}`);
+  }
+  return row;
 }
 
 /** The last panel drawn, so a test can ask it for a repaint or read its counts. */
@@ -88,11 +148,11 @@ let redraw: () => void;
  * of the platform: the fetch path is exercised on its own below.
  */
 async function mountSchema(
-  schema: Record<string, unknown> | null,
-  def: Record<string, unknown>,
+  schema: PluginSchema | null,
+  def: JsonObject,
   documentPath?: string,
 ): Promise<HTMLElement> {
-  pluginSchemaCache.set(KEY, schema as never);
+  pluginSchemaCache.set(KEY, schema);
   const drawn = await drawSignals(
     { plugin: { $prototype: "Widget", $src: SRC, ...def } },
     ...(documentPath === undefined ? [] : [{ documentPath }]),
@@ -128,13 +188,13 @@ async function openSourceMenu(scope: HTMLElement, prop: string): Promise<HTMLEle
   pointer(chip, "click");
   await flush(6);
   const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu');
-  if (!menu) {
+  if (!(menu instanceof HTMLElement)) {
     throw new Error(`the value-source menu did not open for ${prop}`);
   }
-  return menu as HTMLElement;
+  return menu;
 }
 
-function fieldEl<T extends Element>(scope: HTMLElement, prop: string, selector: string): T {
+function fieldEl(scope: HTMLElement, prop: string, selector: string): Element {
   const row = scope.querySelector(`[data-prop="${prop}"]`);
   if (!row) {
     throw new Error(`no field row ${prop}`);
@@ -143,7 +203,7 @@ function fieldEl<T extends Element>(scope: HTMLElement, prop: string, selector: 
   if (!el) {
     throw new Error(`no ${selector} in row ${prop}`);
   }
-  return el as T;
+  return el;
 }
 
 beforeEach(() => {
@@ -209,9 +269,7 @@ describe("renderSchemaFieldsTemplate basics", () => {
       },
       {},
     );
-    expect(
-      (container.querySelector('[data-prop="title"]') as HTMLElement).dataset["required"],
-    ).toBeDefined();
+    expect(container.querySelector('[data-prop="title"][data-required]')).not.toBeNull();
     expect(optionValues(container, "kind")).toEqual(["a", "b"]);
   });
 
@@ -225,8 +283,8 @@ describe("renderSchemaFieldsTemplate basics", () => {
     await new Promise((r) => {
       setTimeout(r, 460);
     });
-    expect((pluginDef() as { source: string }).source).toBe("posts");
-    expect((pluginDef() as { empty?: string }).empty).toBeUndefined();
+    expect(pluginDef().source).toBe("posts");
+    expect(pluginDef().empty).toBeUndefined();
   });
 
   test("string field placeholder comes from default, falling back to examples", async () => {
@@ -257,16 +315,16 @@ describe("schema enums", () => {
       { properties: { layout: { enum: ["grid", "list"] } } },
       { layout: "grid" },
     );
-    const picker = fieldEl<ValueEl>(container, "layout", '[part="select"]');
-    expect((native(picker) as ValueEl).value).toBe("grid");
+    const picker = fieldEl(container, "layout", '[part="select"]');
+    expect(valueOf(native(picker))).toBe("grid");
     const values = optionValues(container, "layout");
     expect(values).toEqual(["__none__", "grid", "list"]);
 
     commitValue(picker, "list");
-    expect((pluginDef() as { layout: string }).layout).toBe("list");
+    expect(pluginDef().layout).toBe("list");
 
     commitValue(picker, "__none__");
-    expect((pluginDef() as { layout?: string }).layout).toBeUndefined();
+    expect(pluginDef().layout).toBeUndefined();
   });
 
   test("picker shows schema default when no value is set", async () => {
@@ -274,9 +332,8 @@ describe("schema enums", () => {
       { properties: { mode: { default: "auto", enum: ["auto", "manual"] } } },
       {},
     );
-    expect((native(fieldEl<ValueEl>(container, "mode", '[part="select"]')) as ValueEl).value).toBe(
-      "auto",
-    );
+    const picker = fieldEl(container, "mode", '[part="select"]');
+    expect(valueOf(native(picker))).toBe("auto");
   });
 
   test("$ref #/$context/content resolves project content type keys", async () => {
@@ -380,14 +437,8 @@ describe("schema enums", () => {
 describe("schema typed controls", () => {
   test("boolean renders a checkbox that commits checked state", async () => {
     const container = await mountSchema({ properties: { live: { type: "boolean" } } }, {});
-    const check = fieldEl<HTMLElement & { checked: boolean }>(
-      container,
-      "live",
-      '[part="checkbox"]',
-    );
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    expect((pluginDef() as { live: boolean }).live).toBe(true);
+    setChecked(fieldEl(container, "live", '[part="checkbox"]'), true);
+    expect(pluginDef().live).toBe(true);
   });
 
   test("integer and number fields parse after debounce; blank clears", async () => {
@@ -407,9 +458,9 @@ describe("schema typed controls", () => {
     await new Promise((r) => {
       setTimeout(r, 460);
     });
-    expect((pluginDef() as { limit: number }).limit).toBe(7);
-    expect((pluginDef() as { ratio: number }).ratio).toBe(2.5);
-    expect((pluginDef() as { old?: number }).old).toBeUndefined();
+    expect(pluginDef().limit).toBe(7);
+    expect(pluginDef().ratio).toBe(2.5);
+    expect(pluginDef().old).toBeUndefined();
   });
 
   test("array/object props render a JSON textfield committing parsed values", async () => {
@@ -427,47 +478,47 @@ describe("schema typed controls", () => {
     await new Promise((r) => {
       setTimeout(r, 560);
     });
-    expect((pluginDef() as { tags: string[] }).tags).toEqual(["a", "b"]);
+    expect(pluginDef().tags).toEqual(["a", "b"]);
     // Invalid JSON is ignored
-    expect((pluginDef() as { bad: unknown }).bad).toEqual({ keep: true } as never);
+    expect(pluginDef().bad).toEqual({ keep: true });
   });
 
   test("json-schema format shows property chips and commits parsed JSON", async () => {
     const container = await mountSchema(
-      { properties: { shape: { format: "json-schema", type: "object" } } },
-      { shape: { properties: { count: { type: "number" }, name: {} }, type: "object" } },
+      { properties: { itemSchema: { format: "json-schema", type: "object" } } },
+      { itemSchema: { properties: { count: { type: "number" }, name: {} }, type: "object" } },
     );
     const chips = [...container.querySelectorAll('[part="chip"]')].map((el) =>
-      el.textContent?.trim(),
+      el.textContent.trim(),
     );
     expect(chips).toContain("count: number");
     expect(chips).toContain("name: any");
 
     inputValue(
-      fieldEl(container, "shape", '[part="json-text"]'),
+      fieldEl(container, "itemSchema", '[part="json-text"]'),
       '{"type":"object","properties":{"x":{"type":"string"}}}',
     );
     await new Promise((r) => {
       setTimeout(r, 560);
     });
-    expect(
-      (pluginDef() as { shape: { properties: Record<string, unknown> } }).shape.properties,
-    ).toEqual({ x: { type: "string" } } as never);
+    expect(member(pluginDef().itemSchema, "properties")).toEqual({ x: { type: "string" } });
   });
 
   test("json-schema format with a $ref value hides chips; invalid input is ignored", async () => {
     const container = await mountSchema(
-      { properties: { shape: { format: "json-schema", type: "object" } } },
-      { shape: { $ref: "#/defs/thing" } },
+      { properties: { itemSchema: { format: "json-schema", type: "object" } } },
+      { itemSchema: { $ref: "#/defs/thing" } },
     );
     const chips = [...container.querySelectorAll('[part="chip"]')];
     expect(chips).toHaveLength(0);
 
-    inputValue(fieldEl(container, "shape", '[part="json-text"]'), "{broken");
+    inputValue(fieldEl(container, "itemSchema", '[part="json-text"]'), "{broken");
     await new Promise((r) => {
       setTimeout(r, 560);
     });
-    expect((pluginDef() as { shape: unknown }).shape).toEqual({ $ref: "#/defs/thing" } as never);
+    expect(pluginDef().itemSchema).toEqual({
+      $ref: "#/defs/thing",
+    });
   });
 });
 
@@ -496,8 +547,7 @@ describe("array-of-objects fields", () => {
     const container = await mountSchema(columnsSchema, {
       columns: [{ align: "left", label: "a", ratio: 0.5, visible: true, width: 2 }],
     });
-    const row = container.querySelector('[part="row"]') as HTMLElement;
-    expect(row).not.toBeNull();
+    const row = nth(container, '[part="row"]');
     expect(row.querySelector('[part="cell-select"]')).not.toBeNull();
     expect(row.querySelector('[part="cell-checkbox"]')).not.toBeNull();
     expect(row.querySelectorAll('[part="cell-number"]')).toHaveLength(2);
@@ -509,50 +559,47 @@ describe("array-of-objects fields", () => {
       columns: [{ align: "left", label: "a", visible: true, width: 2 }],
     };
     let container = await mountSchema(columnsSchema, def);
-    const row = () => container.querySelector('[part="row"]') as HTMLElement;
-    const cols = () => (pluginDef() as { columns: never[] }).columns;
+    const row = () => nth(container, '[part="row"]');
     // Remount with a plain clone — the tab document is a reactive proxy, which structuredClone
     // Cannot handle, so JSON round-trip instead.
     const remount = async () => {
       // oxlint-disable-next-line unicorn/prefer-structured-clone
-      const plainColumns = JSON.parse(JSON.stringify(cols()));
+      const plainColumns: JsonValue = JSON.parse(JSON.stringify(pluginDef().columns));
       container = await mountSchema(columnsSchema, { columns: plainColumns });
     };
 
-    inputValue(row().querySelector('[part="cell-text"]') as Element, "renamed");
-    expect((cols()[0]! as { label: string }).label).toBe("renamed");
+    inputValue(nth(row(), '[part="cell-text"]'), "renamed");
+    expect(column(0).label).toBe("renamed");
 
     await remount();
-    const sw = row().querySelector('[part="cell-checkbox"]') as HTMLElement & { checked: boolean };
-    sw.checked = false;
-    sw.dispatchEvent(new Event("change", { bubbles: true }));
-    expect((cols()[0]! as { visible: boolean }).visible).toBe(false);
+    setChecked(nth(row(), '[part="cell-checkbox"]'), false);
+    expect(column(0).visible).toBe(false);
 
     await remount();
-    commitValue(row().querySelectorAll('[part="cell-number"]')[1] as Element, "5");
-    expect((cols()[0]! as { width: number }).width).toBe(5);
+    commitValue(nth(row(), '[part="cell-number"]', 1), "5");
+    expect(column(0).width).toBe(5);
 
     await remount();
-    commitValue(row().querySelectorAll('[part="cell-number"]')[0] as Element, "1.5");
-    expect((cols()[0]! as { ratio: number }).ratio).toBe(1.5);
+    commitValue(nth(row(), '[part="cell-number"]', 0), "1.5");
+    expect(column(0).ratio).toBe(1.5);
 
     await remount();
-    commitValue(row().querySelectorAll('[part="cell-number"]')[1] as Element, "");
-    expect((cols()[0]! as { width?: number }).width).toBeUndefined();
+    commitValue(nth(row(), '[part="cell-number"]', 1), "");
+    expect(column(0).width).toBeUndefined();
 
     await remount();
-    commitValue(row().querySelector('[part="cell-select"]') as Element, "right");
-    expect((cols()[0]! as { align: string }).align).toBe("right");
+    commitValue(nth(row(), '[part="cell-select"]'), "right");
+    expect(column(0).align).toBe("right");
 
     await remount();
-    commitValue(row().querySelector('[part="cell-select"]') as Element, "__none__");
-    expect((cols()[0]! as { align?: string }).align).toBeUndefined();
+    commitValue(nth(row(), '[part="cell-select"]'), "__none__");
+    expect(column(0).align).toBeUndefined();
   });
 
   test("add button appends a row seeded with item defaults and repaints the panel", async () => {
     const container = await mountSchema(columnsSchema, {});
-    pointer(container.querySelector('[part="row-add"] [part="control"]') as Element, "click");
-    expect((pluginDef() as { columns: never[] }).columns).toEqual([{ label: "col" }] as never[]);
+    pointer(nth(container, '[part="row-add"] [part="control"]'), "click");
+    expect(pluginDef().columns).toEqual([{ label: "col" }]);
     // The form asks its host to repaint, and the host is this panel.
     expect(repaints.repaints).toBeGreaterThan(0);
   });
@@ -561,16 +608,15 @@ describe("array-of-objects fields", () => {
     let container = await mountSchema(columnsSchema, {
       columns: [{ label: "a" }, { label: "b" }],
     });
-    const delButtons = () =>
-      [...container.querySelectorAll('[part="row-remove"] [part="control"]')] as Element[];
-    pointer(delButtons()[0] as Element, "click");
-    expect((pluginDef() as { columns: never[] }).columns).toEqual([{ label: "b" }] as never[]);
+    const firstDelete = () => nth(container, '[part="row-remove"] [part="control"]');
+    pointer(firstDelete(), "click");
+    expect(pluginDef().columns).toEqual([{ label: "b" }]);
 
     container = await mountSchema(columnsSchema, {
       columns: [{ label: "only" }],
     });
-    pointer(delButtons()[0] as Element, "click");
-    expect((pluginDef() as { columns?: unknown }).columns).toBeUndefined();
+    pointer(firstDelete(), "click");
+    expect(pluginDef().columns).toBeUndefined();
   });
 
   test("inline enum with dependent contentType ref resolves against the row's parent def", async () => {
@@ -636,13 +682,13 @@ describe("binding a config field", () => {
   test("a plain string field can START a binding — the gesture that did not exist", async () => {
     const container = await mountSchema(stringSchema, { id: "abc" }, skuDoc);
     await chooseRung(container, "id", "ref");
-    expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/$params/sku" } as never);
+    expect(pluginDef().id).toEqual({ $ref: "#/$params/sku" });
   });
 
   test("a $ref value renders the pointer, never [object Object]", async () => {
     const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
-    const combo = fieldEl<ValueEl>(container, "id", '[part="pointer"]');
-    expect(combo.value).toBe("#/$params/sku");
+    const combo = fieldEl(container, "id", '[part="pointer"]');
+    expect(valueOf(combo)).toBe("#/$params/sku");
     expect(printedOf(container.querySelector('[data-prop="id"] [part="source"]'))).toBe(
       "From data…",
     );
@@ -656,33 +702,33 @@ describe("binding a config field", () => {
       "pages/[a]/[b].json",
     );
     commitValue(fieldEl(container, "id", '[part="pointer"]'), "#/$params/b");
-    expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/$params/b" } as never);
+    expect(pluginDef().id).toEqual({ $ref: "#/$params/b" });
   });
 
   test("a pointer outside the offered list is still accepted, and blank clears the key", async () => {
     const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
     commitValue(fieldEl(container, "id", '[part="pointer"]'), "#/other/path");
-    expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/other/path" } as never);
+    expect(pluginDef().id).toEqual({ $ref: "#/other/path" });
 
     const blank = await mountSchema(stringSchema, { id: { $ref: "#/custom/ref" } }, skuDoc);
     commitValue(fieldEl(blank, "id", '[part="pointer"]'), "  ");
-    expect((pluginDef() as { id?: unknown }).id).toBeUndefined();
+    expect(pluginDef().id).toBeUndefined();
   });
 
   test("going back to Fixed value drops the binding", async () => {
     const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
     await chooseRung(container, "id", "literal");
-    expect((pluginDef() as { id?: unknown }).id).toBeUndefined();
+    expect(pluginDef().id).toBeUndefined();
   });
 
   test("a document with no route params and no other signal offers no source", async () => {
     const container = await mountSchema(stringSchema, { id: "abc" }, "pages/index.json");
     expect(container.querySelector('[data-prop="id"] [part="source"]')).toBeNull();
-    expect(fieldEl<ValueEl>(container, "id", '[part="text"]').value).toBe("abc");
+    expect(valueOf(fieldEl(container, "id", '[part="text"]'))).toBe("abc");
   });
 
   test("a sibling signal is a source too, and the def never offers itself", async () => {
-    pluginSchemaCache.set(KEY, stringSchema as never);
+    pluginSchemaCache.set(KEY, stringSchema);
     const drawn = await drawSignals({
       count: { default: 0, type: "number" },
       plugin: { $prototype: "Widget", $src: SRC, id: "abc" },
@@ -690,7 +736,7 @@ describe("binding a config field", () => {
     ({ panel } = drawn);
     await openEntry(panel, "plugin");
     await chooseRung(schemaHost(), "id", "ref");
-    expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/state/count" } as never);
+    expect(pluginDef().id).toEqual({ $ref: "#/state/count" });
   });
 
   test("an enum prop keeps its choices and gains the binding rung, but never Mixed text", async () => {
@@ -706,12 +752,12 @@ describe("binding a config field", () => {
 
   test("json-schema format props keep their editor and get no chip", async () => {
     const container = await mountSchema(
-      { properties: { shape: { format: "json-schema", type: "object" } } },
-      { shape: { $ref: "#/defs/thing" } },
+      { properties: { itemSchema: { format: "json-schema", type: "object" } } },
+      { itemSchema: { $ref: "#/defs/thing" } },
       skuDoc,
     );
-    expect(container.querySelector('[data-prop="shape"] [part="json"]')).not.toBeNull();
-    expect(container.querySelector('[data-prop="shape"] [part="source"]')).toBeNull();
+    expect(container.querySelector('[data-prop="itemSchema"] [part="json"]')).not.toBeNull();
+    expect(container.querySelector('[data-prop="itemSchema"] [part="source"]')).toBeNull();
   });
 
   test("array-of-objects cell with a $ref shows the ref string and preserves the shape", async () => {
@@ -726,13 +772,13 @@ describe("binding a config field", () => {
     const container = await mountSchema(schema, {
       columns: [{ source: { $ref: "#/$params/sku" } }],
     });
-    const tf = container.querySelector('[part="row"] [part="cell-text"]') as ValueEl;
-    expect(tf.value).toBe("#/$params/sku");
+    const tf = nth(container, '[part="row"] [part="cell-text"]');
+    expect(valueOf(tf)).toBe("#/$params/sku");
     expect(container.textContent).not.toContain("[object Object]");
     commitValue(tf, "#/$params/other");
-    expect((pluginDef() as { columns: { source: unknown }[] }).columns[0]!.source).toEqual({
+    expect(column(0).source).toEqual({
       $ref: "#/$params/other",
-    } as never);
+    });
   });
 });
 
@@ -745,7 +791,7 @@ describe("binding a config field", () => {
  * holds at the end of a draw is the result rather than the setup.
  */
 async function mountExternal(
-  def: Record<string, unknown>,
+  def: JsonObject,
   opts: { documentPath?: string } = {},
 ): Promise<HTMLElement> {
   const drawn = await drawSignals(
@@ -777,13 +823,13 @@ describe("an external prototype's own rows", () => {
     pluginSchemaCache.set("./new.js::Widget", { properties: {} });
     const el = await mountExternal({ $prototype: "Widget", $src: SRC });
     commitValue(fieldEl(el, "Source", '[part="text"]'), "./new.js");
-    expect((pluginDef() as { $src: string }).$src).toBe("./new.js");
+    expect(pluginDef().$src).toBe("./new.js");
     expect(pluginSchemaCache.has("./new.js::Widget")).toBe(false);
 
     pluginSchemaCache.set("./new.js::Gadget", { properties: {} });
     await settle();
     commitValue(fieldEl(pluginEditor(), "Kind", '[part="text"]'), "Gadget");
-    expect((pluginDef() as { $prototype: string }).$prototype).toBe("Gadget");
+    expect(pluginDef().$prototype).toBe("Gadget");
     expect(pluginSchemaCache.has("./new.js::Gadget")).toBe(false);
   });
 
@@ -791,7 +837,7 @@ describe("an external prototype's own rows", () => {
     pluginSchemaCache.set(KEY, null);
     const el = await mountExternal({ $export: "make", $prototype: "Widget", $src: SRC });
     commitValue(fieldEl(el, "Export", '[part="text"]'), "build");
-    expect((pluginDef() as { $export: string }).$export).toBe("build");
+    expect(pluginDef().$export).toBe("build");
   });
 
   test("an imported prototype names itself instead of offering Source and Kind", async () => {
@@ -799,7 +845,7 @@ describe("an external prototype's own rows", () => {
     pluginSchemaCache.set("./plugins/widget.js::Widget", null);
     const el = await mountExternal({ $prototype: "Widget" });
     expect(el.querySelector('[data-prop="Source"]')).toBeNull();
-    expect(el.querySelector('[part="hint"]')?.textContent?.trim()).toBe("Widget");
+    expect(el.querySelector('[part="hint"]')?.textContent.trim()).toBe("Widget");
   });
 
   test("a cached schema draws its description and its config fields", async () => {
@@ -829,9 +875,9 @@ describe("an external prototype's own rows", () => {
     // Navigator repaints on every document change, and one request per repaint is a bug.
     let asked = 0;
     installMockPlatform({
-      fetchPluginSchema: async () => {
+      fetchPluginSchema: () => {
         asked += 1;
-        return new Promise(() => {}) as never;
+        return new Promise<JsonValue>(() => {});
       },
     });
     const el = await mountExternal(

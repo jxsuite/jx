@@ -13,10 +13,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import pushPlanDoc from "./push-plan.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("push-plan", pushPlanDoc as unknown as JxDocument);
+registerSurface("push-plan", pushPlanDoc);
 
 /** One step of the plan. `kind` colours the rule beside it; nothing here reads it otherwise. */
 export interface PushStepRow {
@@ -44,8 +43,6 @@ export interface PushPlanSurfaceHandle {
   dispose: () => void;
 }
 
-interface PushPlanScope extends Record<string, unknown>, PushPlanView {}
-
 /**
  * Mount the plan into `host`.
  *
@@ -54,20 +51,22 @@ interface PushPlanScope extends Record<string, unknown>, PushPlanView {}
  * @returns {PushPlanSurfaceHandle}
  */
 export function mountPushPlanSurface(host: HTMLElement, view: PushPlanView): PushPlanSurfaceHandle {
-  const scope = reactive<PushPlanScope>({
+  const scope: PushPlanView = reactive<PushPlanView>({
     errors: view.errors,
     steps: view.steps,
     warnings: view.warnings,
-  }) as PushPlanScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("push-plan", scope, host).then((surface) => {
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+    } else {
+      mounted = surface;
     }
-    mounted = surface;
+    /* SAFETY: `push-plan.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     return surface.root as HTMLElement;
   });
 

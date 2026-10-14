@@ -184,8 +184,9 @@ describe("localeNegotiationMiddleware", () => {
 
   // 301 would let a cache pin one visitor's language permanently, for everyone, forever.
   test("the redirect is temporary", () => {
-    expect(localeNegotiationMiddleware(SITE)).toContain("status: 302");
-    expect(localeNegotiationMiddleware(SITE)).not.toContain("status: 301");
+    const source = localeNegotiationMiddleware(SITE);
+    expect(source).toContain("status: 302");
+    expect(source).not.toContain("status: 301");
   });
 
   test("it registers as middleware on / so the chain can still serve the page", () => {
@@ -218,6 +219,9 @@ describe("the emitted worker copy agrees with the implementation", () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const body = `${source.slice(start, end)}\nreturn jxNegotiateLocale`;
+    /* SAFETY: `body` ends in `return jxNegotiateLocale`, the emitted port of `negotiateLocale`,
+       whose parameters are exactly (header, available, fallback) and which returns a locale tag;
+       the corpus tests below compare its answers against the typed implementation. */
     // oxlint-disable-next-line no-new-func -- evaluating the emitted artefact IS the assertion here.
     return new Function(body)() as (
       header: string | null | undefined,
@@ -251,6 +255,7 @@ describe("the emitted worker copy agrees with the implementation", () => {
     for (const routing of ["prefix-except-default", "prefix-always"] as const) {
       const i18n: ResolvedI18n = { ...SITE, routing };
       const source = localeNegotiationMiddleware(i18n);
+      // SAFETY: the emitter writes `JX_LOCALE_HOMES` as `JSON.stringify` of a locale-to-home-path map of strings.
       const baked = JSON.parse(
         source.match(/const JX_LOCALE_HOMES = (\{.*?\})\n/)?.[1] ?? "{}",
       ) as Record<string, string>;

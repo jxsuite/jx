@@ -14,13 +14,13 @@ import { resolve } from "node:path";
 import { applyBindingFragments } from "@jxsuite/create/scaffold";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
-import type { FormatEntry } from "@jxsuite/schema/format-registry";
+import type { DataPushRequest, FormatEntry } from "@jxsuite/schema/format-registry";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 
-export interface DbPushOptions {
-  dryRun?: boolean;
-  /** Restrict the push to one connection name. */
-  connection?: string;
-}
+/* `jx db push` takes the same request as the Studio data-push route, so the shape is declared once
+   in @jxsuite/schema; `DbPushOptions` stays this module's public name for it. */
+export type { DataPushRequest as DbPushOptions } from "@jxsuite/schema/format-registry";
 
 export interface ConnectionPushResult {
   connection: string;
@@ -38,6 +38,10 @@ export interface DbPushResult {
   wranglerPath: string | null;
 }
 
+/**
+ * How a push reads a connector's `deploySchema` answer (`DeploySchemaResult`): every member
+ * optional, and defaulted where it is read.
+ */
 interface DeployResultLike {
   statements?: string[];
   warnings?: string[];
@@ -48,19 +52,19 @@ interface DeployResultLike {
  * Push the project's table schemas to their connections' databases.
  *
  * @param {string} projectRoot - Absolute path to the project directory
- * @param {DbPushOptions} [options]
+ * @param {DataPushRequest} [options]
  * @returns {Promise<DbPushResult>}
  */
 export async function dbPush(
   projectRoot: string,
-  options: DbPushOptions = {},
+  options: DataPushRequest = {},
 ): Promise<DbPushResult> {
   const { dryRun = false, connection: only } = options;
   const { config } = loadProjectConfig(projectRoot);
   const registry = await buildProjectExtensionRegistry(projectRoot, config);
 
-  const connections = (config.connections ?? {}) as Record<string, Record<string, unknown>>;
-  const tables = (config.data ?? {}) as Record<string, { connection?: string }>;
+  const connections = isJsonObject(config.connections) ? config.connections : {};
+  const tables = isJsonObject(config.data) ? config.data : {};
 
   const names = Object.keys(connections).filter((name) => !only || name === only);
   if (only && names.length === 0) {
@@ -73,16 +77,20 @@ export async function dbPush(
     );
   }
 
-  const env: Record<string, unknown> = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...readDevVars(projectRoot),
     JX_PROJECT_ROOT: projectRoot,
   };
 
   const results: ConnectionPushResult[] = [];
-  const fragments: Record<string, unknown>[] = [];
+  const fragments: JsonObject[] = [];
   for (const name of names) {
-    const connection: Record<string, unknown> = { ...connections[name], $name: name };
+    const declared = connections[name];
+    // An entry that is not an object declares no provider, so it fails the lookup just below.
+    const connection: JsonObject = isJsonObject(declared)
+      ? { ...declared, $name: name }
+      : { $name: name };
     const provider = String(connection.provider ?? "");
     const entry = connectorByProvider(registry.connectors(), provider);
     if (!entry) {
@@ -91,17 +99,21 @@ export async function dbPush(
           `it (enable the extension in project.json "extensions")`,
       );
     }
-    const connectionTables: Record<string, unknown> = {};
+    const connectionTables: Record<string, JsonObject> = {};
     for (const [tableName, def] of Object.entries(tables)) {
-      if (def.connection === name) {
+      if (isJsonObject(def) && def.connection === name) {
         connectionTables[tableName] = def;
       }
     }
 
-    const deployed = (await entry.call("deploySchema", connectionTables, connection, {
-      dryRun,
-      env,
-    })) as DeployResultLike;
+    /* A connector's `deploySchema` answers `{ statements, applied, warnings }` (extensions.md §8);
+       this push reads each member as optional and defaults it where it is read. */
+    const deployed: DeployResultLike = await entry.call(
+      "deploySchema",
+      connectionTables,
+      connection,
+      { dryRun, env },
+    );
     results.push({
       applied: deployed.applied ?? !dryRun,
       connection: name,
@@ -112,8 +124,9 @@ export async function dbPush(
     });
 
     if (entry.capabilities.bindings) {
-      const fragment = (await entry.call("bindings", connection)) as Record<string, unknown>;
-      if (fragment && Object.keys(fragment).length > 0) {
+      // A connector's `bindings` answers with a wrangler config fragment (extensions.md §8).
+      const fragment = await entry.call("bindings", connection);
+      if (isJsonObject(fragment) && Object.keys(fragment).length > 0) {
         fragments.push(fragment);
       }
     }
@@ -152,7 +165,8 @@ export function readDevVars(projectRoot: string): Record<string, string> {
   if (!existsSync(path)) {
     return {};
   }
-  const out: Record<string, string> = {};
+  // A later line for the same key replaces an earlier one.
+  const vars = new Map<string, string>();
   for (const rawLine of readFileSync(path, "utf8").split("\n")) {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) {
@@ -171,8 +185,8 @@ export function readDevVars(projectRoot: string): Record<string, string> {
       value = value.slice(1, -1);
     }
     if (key !== "") {
-      out[key] = value;
+      vars.set(key, value);
     }
   }
-  return out;
+  return Object.fromEntries(vars);
 }

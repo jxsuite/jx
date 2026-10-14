@@ -1,10 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { generateClassSchema, generateProjectSchema, generateSchema } from "../src/schema";
+import { isJsonObject } from "../src/guards";
+import {
+  generateClassSchema,
+  generateProjectSchema,
+  generateSchema,
+  generateSchemaString,
+} from "../src/schema";
+import type { JsonValue } from "../types";
+
+/** Walk emitted schema JSON by keys, reading `undefined` past any step that is not an object. */
+function pick(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
+}
 
 // ─── generateProjectSchema ──────────────────────────────────────────────────
 
 describe("generateProjectSchema", () => {
-  const schema = generateProjectSchema() as any;
+  const schema = generateProjectSchema();
 
   test("returns valid JSON Schema 2020-12", () => {
     expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
@@ -79,7 +95,7 @@ describe("generateProjectSchema", () => {
 // ─── generateClassSchema ────────────────────────────────────────────────────
 
 describe("generateClassSchema", () => {
-  const schema = generateClassSchema() as any;
+  const schema = generateClassSchema();
 
   test("returns valid JSON Schema 2020-12", () => {
     expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
@@ -111,8 +127,8 @@ describe("generateClassSchema", () => {
   test("extends accepts string or $ref object", () => {
     const ext = schema.properties.extends;
     expect(ext.oneOf).toHaveLength(2);
-    expect(ext.oneOf[0].type).toBe("string");
-    expect(ext.oneOf[1].type).toBe("object");
+    expect(ext.oneOf[0]?.type).toBe("string");
+    expect(ext.oneOf[1]?.type).toBe("object");
   });
 
   test("$defs contains ClassParameterDef with required identifier", () => {
@@ -171,14 +187,14 @@ describe("generateClassSchema", () => {
 
 describe("generateSchema", () => {
   test("returns valid JSON Schema 2020-12 with web data", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     expect(schema.$id).toBe("https://jxsuite.com/schema/v1");
     expect(schema.type).toBe("object");
   });
 
   test("includes tag name examples from webref", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const tagExamples = schema.$defs.TagName.examples;
     expect(tagExamples).toContain("div");
     expect(tagExamples).toContain("span");
@@ -187,13 +203,13 @@ describe("generateSchema", () => {
   });
 
   test("includes CSS properties from webref", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const cssProps = Object.keys(schema.$defs.StyleObject.properties);
     expect(cssProps.length).toBeGreaterThan(50);
   });
 
   test("includes event handler properties", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const elementProps = Object.keys(schema.$defs.ElementDef.properties);
     expect(elementProps).toContain("onclick");
     expect(elementProps).toContain("onchange");
@@ -201,7 +217,7 @@ describe("generateSchema", () => {
   });
 
   test("includes top-level document properties", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const props = Object.keys(schema.properties);
     expect(props).toContain("$schema");
     expect(props).toContain("$id");
@@ -213,13 +229,13 @@ describe("generateSchema", () => {
   });
 
   test("StateEntry supports all value shapes", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const stateEntry = schema.$defs.StateEntry;
     expect(stateEntry.oneOf.length).toBeGreaterThanOrEqual(5);
   });
 
   test("FunctionDef requires $prototype and restricts to Function", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const funcDef = schema.$defs.FunctionDef;
     expect(funcDef.required).toContain("$prototype");
     expect(funcDef.properties.$prototype.const).toBe("Function");
@@ -227,52 +243,53 @@ describe("generateSchema", () => {
   });
 
   test("ExternalClassDef $prototype excludes Function", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const extDef = schema.$defs.ExternalClassDef;
     expect(extDef.properties.$prototype.not.const).toBe("Function");
   });
 
   test("$ref types include all reference patterns", async () => {
-    const schema = (await generateSchema()) as any;
-    expect(schema.$defs.InternalRef.pattern).toBe(String.raw`^#/\$defs/`);
+    const schema = await generateSchema();
+    expect<string>(schema.$defs.InternalRef.pattern).toBe(String.raw`^#/\$defs/`);
     expect(schema.$defs.StateRef.pattern).toBe("^#/state/");
-    expect(schema.$defs.MapRef.pattern).toBe(String.raw`^\$map/(item|index)(/.*)?$`);
+    expect<string>(schema.$defs.MapRef.pattern).toBe(String.raw`^\$map/(item|index)(/.*)?$`);
   });
 
   test("ExpressionEntry is defined in schema $defs", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     expect(schema.$defs.ExpressionEntry).toBeDefined();
     expect(schema.$defs.ExpressionEntry.required).toContain("$expression");
   });
 
   test("ExpressionNode enforces operator-specific constraints via oneOf", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const node = schema.$defs.ExpressionNode;
     expect(node.oneOf.length).toBeGreaterThanOrEqual(7);
   });
 
   test("StateEntry includes ExpressionEntry (Shape 5)", async () => {
-    const schema = (await generateSchema()) as any;
+    const schema = await generateSchema();
     const stateEntry = schema.$defs.StateEntry;
-    const refs = stateEntry.oneOf
-      .filter(/** @param {any} e */ (e: any) => e.$ref)
-      .map(/** @param {any} e */ (e: any) => e.$ref);
+    const refs = stateEntry.oneOf.flatMap((branch) => ("$ref" in branch ? [branch.$ref] : []));
     expect(refs).toContain("#/$defs/ExpressionEntry");
   });
 
   test("event handlers accept ExpressionEntry inline", async () => {
-    const schema = (await generateSchema()) as any;
-    const { onclick } = schema.$defs.ElementDef.properties;
-    const refs = onclick.oneOf.map(/** @param {any} e */ (e: any) => e.$ref);
+    /* The handlers are injected from webref data, so the generator's static type cannot name them;
+       read them from the emitted JSON, as every consumer does. */
+    const emitted: JsonValue = JSON.parse(await generateSchemaString());
+    const oneOf = pick(emitted, "$defs", "ElementDef", "properties", "onclick", "oneOf");
+    const refs = Array.isArray(oneOf) ? oneOf.map((branch) => pick(branch, "$ref")) : [];
     expect(refs).toContain("#/$defs/ExpressionEntry");
     expect(refs).toContain("#/$defs/RefObject");
   });
 
   test("ExpressionEntry plain object exclusion prevents false match", async () => {
-    const schema = (await generateSchema()) as any;
-    const plainObj = schema.$defs.StateEntry.oneOf.find(
-      /** @param {any} e */ (e: any) => e.type === "object" && e.not,
+    const schema = await generateSchema();
+    // The generator's own type proves the one branch carrying `not` is the `type: "object"` one.
+    const [exclusion] = schema.$defs.StateEntry.oneOf.flatMap((branch) =>
+      "not" in branch ? [branch.not] : [],
     );
-    expect(JSON.stringify(plainObj.not)).toContain("$expression");
+    expect(JSON.stringify(exclusion)).toContain("$expression");
   });
 });

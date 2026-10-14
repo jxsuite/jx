@@ -11,21 +11,46 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const require = createRequire(import.meta.url);
 
 const MANIFEST_PATH = resolve(import.meta.dir, "../jx-extension.json");
 
-function loadJson(path: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+/** The value at `keys` under `value`, or `undefined` where a step is not an object: `?.` for JSON. */
+function at(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
 }
 
-const manifest = loadJson(MANIFEST_PATH) as {
-  name: string;
-  title: string;
-  classes: Record<string, string>;
-  schemas: { project: string };
-};
+function objectOf(value: JsonValue | undefined, label: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new Error(`${label} is not a JSON object`);
+  }
+  return value;
+}
+
+function stringOf(value: JsonValue | undefined, label: string): string {
+  if (!isString(value)) {
+    throw new Error(`${label} is not a string`);
+  }
+  return value;
+}
+
+function loadJson(path: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(path, "utf8"));
+  return objectOf(parsed, path);
+}
+
+const manifest = loadJson(MANIFEST_PATH);
+const manifestClasses = objectOf(manifest.classes, "manifest.classes");
+const classRefs = Object.entries(manifestClasses).map(([name, ref]) =>
+  stringOf(ref, `manifest.classes.${name}`),
+);
 
 describe("jx-extension.json manifest", () => {
   test("validates against the extension-manifest schema", () => {
@@ -36,34 +61,30 @@ describe("jx-extension.json manifest", () => {
   });
 
   test("carries the package name and is wired through package.json", () => {
-    const pkg = loadJson(resolve(import.meta.dir, "../package.json")) as {
-      name: string;
-      jx: string;
-      exports: Record<string, string>;
-      files: string[];
-      dependencies: Record<string, string>;
-    };
+    const pkg = loadJson(resolve(import.meta.dir, "../package.json"));
     expect(manifest.name).toBe(pkg.name);
     expect(pkg.jx).toBe("./jx-extension.json");
-    expect(pkg.exports["./jx-extension.json"]).toBe("./jx-extension.json");
-    expect(pkg.exports["./worker"]).toBe("./src/worker.ts");
-    expect(pkg.exports["./schemas/project.fragment.schema.json"]).toBeDefined();
+    expect(at(pkg, "exports", "./jx-extension.json")).toBe("./jx-extension.json");
+    expect(at(pkg, "exports", "./worker")).toBe("./src/worker.ts");
+    expect(at(pkg, "exports", "./schemas/project.fragment.schema.json")).toBeDefined();
     expect(pkg.files).toContain("jx-extension.json");
     expect(pkg.files).toContain("schemas/");
     // Better Auth is intentionally unpinned so it tracks latest releases — guard against a
     // Regression to an exact-version lock (a bare "1.2.3" with no range operator).
-    expect(pkg.dependencies["better-auth"]).not.toMatch(/^\d/);
-    expect(pkg.dependencies["@jxsuite/connector"]).toBe("workspace:^");
+    expect(stringOf(at(pkg, "dependencies", "better-auth"), "better-auth range")).not.toMatch(
+      /^\d/,
+    );
+    expect(at(pkg, "dependencies", "@jxsuite/connector")).toBe("workspace:^");
     // Every class descriptor is addressable through the exports map.
-    for (const ref of Object.values(manifest.classes)) {
+    for (const ref of classRefs) {
       const exportKey = ref.replace("./src/", "./");
-      expect(pkg.exports[exportKey]).toBe(ref);
+      expect(at(pkg, "exports", exportKey)).toBe(ref);
     }
   });
 
   test("every classes entry points at an existing descriptor", () => {
-    expect(Object.keys(manifest.classes).toSorted()).toEqual(["Auth", "AuthActions", "Session"]);
-    for (const ref of Object.values(manifest.classes)) {
+    expect(Object.keys(manifestClasses).toSorted()).toEqual(["Auth", "AuthActions", "Session"]);
+    for (const ref of classRefs) {
       const classPath = resolve(dirname(MANIFEST_PATH), ref);
       expect(existsSync(classPath)).toBe(true);
     }
@@ -71,37 +92,35 @@ describe("jx-extension.json manifest", () => {
 
   test("admission blocks: the auth section owner mounts /_jx/auth at order 10", () => {
     const classDef = (name: string) =>
-      loadJson(resolve(dirname(MANIFEST_PATH), manifest.classes[name]!));
+      loadJson(
+        resolve(
+          dirname(MANIFEST_PATH),
+          stringOf(manifestClasses[name], `manifest.classes.${name}`),
+        ),
+      );
 
-    const auth = classDef("Auth") as {
-      project: { key: string };
-      server: { basePath: string; order: number; module: string };
-      $studio: { settings: { layout: string; entry: { ui: Record<string, unknown> } } };
-      $defs: { methods: Record<string, { role?: string; timing?: string[] }> };
-    };
-    expect(auth.project.key).toBe("auth");
+    const auth = classDef("Auth");
+    const methods = at(auth, "$defs", "methods");
+    expect(at(auth, "project", "key")).toBe("auth");
     expect(auth.server).toEqual({
       basePath: "/_jx/auth",
       module: "@jxsuite/auth/worker",
       order: 10,
     });
     // Order 10 < the connector data mount's 20: ctx.auth exists before the data mount reads it.
-    expect(auth.server.order).toBeLessThan(20);
-    expect(auth.$studio.settings.layout).toBe("form");
-    expect(auth.$studio.settings.entry.ui).toMatchObject({ secretEnv: { control: "secret" } });
-    expect(auth.$defs.methods.mount!.role).toBe("mount");
-    expect(auth.$defs.methods.mount!.timing).toEqual(["server"]);
-    expect(auth.$defs.methods.deploySchema!.role).toBe("deploySchema");
-    expect(auth.$defs.methods.projectData!.role).toBe("projectData");
+    expect(at(auth, "server", "order")).toBeLessThan(20);
+    expect(at(auth, "$studio", "settings", "layout")).toBe("form");
+    expect(at(auth, "$studio", "settings", "entry", "ui")).toMatchObject({
+      secretEnv: { control: "secret" },
+    });
+    expect(at(methods, "mount", "role")).toBe("mount");
+    expect(at(methods, "mount", "timing")).toEqual(["server"]);
+    expect(at(methods, "deploySchema", "role")).toBe("deploySchema");
+    expect(at(methods, "projectData", "role")).toBe("projectData");
 
     for (const stateClass of ["Session", "AuthActions"]) {
-      const def = classDef(stateClass) as {
-        $studio: { stateDefaults: Record<string, unknown> };
-        project?: unknown;
-        server?: unknown;
-        connector?: unknown;
-      };
-      expect(def.$studio.stateDefaults).toEqual({ timing: "client" });
+      const def = classDef(stateClass);
+      expect(at(def, "$studio", "stateDefaults")).toEqual({ timing: "client" });
       // Plain state classes: no admission blocks.
       expect(def.project).toBeUndefined();
       expect(def.server).toBeUndefined();
@@ -116,7 +135,7 @@ describe("project fragment", () => {
   test("is a standalone-valid 2020-12 document contributing the auth section", () => {
     expect(fragment.$id).toBe("https://jxsuite.com/schema/ext/auth/project/v1");
     expect(fragment.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
-    const properties = fragment.properties as Record<string, unknown>;
+    const properties = objectOf(fragment.properties, "fragment.properties");
     expect(Object.keys(properties)).toEqual(["auth"]);
     const ajv = new Ajv2020({ allErrors: true, strict: false });
     expect(() => ajv.compile(fragment)).not.toThrow();

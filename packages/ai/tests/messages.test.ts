@@ -26,39 +26,57 @@ import type {
   Block,
   ChatMessage,
   LiveMessage,
+  LiveToolCall,
+  OpenAIMessage,
   OpenAITool,
   ToolSpec,
 } from "../src/messages/index.ts";
+import type { JsonValue } from "../src/core-types.ts";
 
 const DIR = join(import.meta.dir, "fixtures", "v1", "transcripts");
 
 interface Fixture {
   file: string;
   messages: LiveMessage[];
-  wire: unknown[];
+  wire: JsonValue[];
 }
 
 const corpus: Fixture[] = readdirSync(DIR)
   .filter((file) => file.endsWith(".json"))
   .toSorted()
   .map((file) => {
+    /* SAFETY: v1-transcripts.test.ts records each file's `messages` from chat-state's own
+       messages and its `wire` from toMessagesArray (both JSON-normalized), and fails unless the
+       stored copies still match a replay, so they hold LiveMessage records and JSON exactly. */
     const data = JSON.parse(readFileSync(join(DIR, file), "utf8")) as Omit<Fixture, "file">;
     return { file, messages: data.messages, wire: data.wire };
   });
 
+/** The fields of a v1 message {@link declared} reads, `undefined` where its role has none. */
+interface DeclaredFields {
+  id: string;
+  role: LiveMessage["role"];
+  content: string;
+  timestamp: number;
+  reasoningContent?: string | undefined;
+  toolCalls?: Omit<LiveToolCall, "result">[] | undefined;
+  toolCallId?: string | undefined;
+}
+
 /** A JSON-only copy: `undefined` members dropped, as the wire drops them. */
-function plain(value: unknown): unknown {
+function plain(value: readonly (ChatMessage | DeclaredFields | LiveMessage | OpenAIMessage)[]) {
+  // SAFETY: the text JSON.stringify writes for an array always parses back to a JSON value.
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- JSON normalization is the point
-  return JSON.parse(JSON.stringify(value)) as unknown;
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
 /**
  * The fields a v1 message's role uses: its text for every role, its reasoning and calls (without
  * `result`) for an assistant, its call id for a tool reply. An empty call list says nothing.
  */
-function declared(message: LiveMessage): Record<string, unknown> {
+function declared(message: LiveMessage): DeclaredFields {
   const { id, role, content, reasoningContent, toolCalls, toolCallId, timestamp } = message;
-  const fields: Record<string, unknown> = { id, role, content, timestamp };
+  const fields: DeclaredFields = { id, role, content, timestamp };
   if (role === "assistant") {
     fields.reasoningContent = reasoningContent;
     fields.toolCalls = toolCalls?.length
@@ -174,11 +192,19 @@ describe("toChatMessages", () => {
   });
 });
 
+/** A restored message's fields as storage may really hold them: their own type, or any JSON. */
+type CorruptFields = {
+  [Field in Exclude<keyof LiveMessage, "id" | "timestamp">]?: LiveMessage[Field] | JsonValue;
+};
+
 /* A saved session is restored without being checked, so any field can hold anything. A value of
    the wrong type is read as absent: never turned into text, and never allowed to stop the send. */
 describe("a corrupt restored message", () => {
-  const corrupt = (fields: Record<string, unknown>) =>
-    ({ id: "x", timestamp: 1, ...fields }) as unknown as LiveMessage;
+  const corrupt = (fields: CorruptFields): LiveMessage =>
+    /* SAFETY: deliberately unchecked. The subject of these tests is a LiveMessage whose fields
+       may hold any JSON, as one restored without a check can; only `id` and `timestamp` are
+       guaranteed to be what LiveMessage declares. */
+    ({ id: "x", timestamp: 1, ...fields }) as LiveMessage;
 
   test("sends no chain of thought for a reasoning field that is not text", () => {
     for (const reasoningContent of [null, false, 0, { text: "t" }]) {

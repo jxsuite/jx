@@ -4,7 +4,7 @@
  * template creation, centering, transform application, zoom indicator, and fit-to-screen.
  */
 
-import type { CanvasPanel, JsonValue } from "../types";
+import type { CanvasPanel } from "../types";
 
 import { renderOnly } from "../store";
 import {
@@ -39,6 +39,7 @@ import {
 import type { CanvasStageHandle, CanvasStagePanelItem } from "../surfaces/canvas-stage";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
+import { isNumber, isString } from "@jxsuite/schema/guards";
 import type { Tab } from "../tabs/tab";
 
 /*
@@ -106,6 +107,22 @@ function setZoomOf(surface: CanvasSurface, zoom: number): void {
   }
 }
 
+/** The {@link CanvasPanel} fields that hold the board's drawn nodes. */
+type CanvasPanelNodeKey = "canvas" | "element" | "scrollContainer" | "viewport";
+
+/**
+ * A panel record as it may be before {@link bindCanvasPanels} has run: its DOM fields can still be
+ * null, because {@link canvasPanelEntry} builds them that way. A bound {@link CanvasPanel} is
+ * assignable to it, so a reader that must tolerate an unbound board takes this type.
+ */
+export type UnboundCanvasPanel = Omit<CanvasPanel, CanvasPanelNodeKey> &
+  Record<CanvasPanelNodeKey, HTMLElement | null>;
+
+/** Whether the stage has wired a board's canvas and viewport nodes into its record yet. */
+export function isPanelBound(panel: UnboundCanvasPanel): boolean {
+  return Boolean(panel.canvas && panel.viewport);
+}
+
 /**
  * One artboard: the record the geometry reads, and the item the stage document draws.
  *
@@ -139,7 +156,7 @@ export function canvasPanelEntry(
   fullWidth: boolean,
   width: number | null = null,
 ): CanvasPanelEntry {
-  const panel = {
+  const unbound: UnboundCanvasPanel = {
     _width: width || null,
     canvas: null,
     element: null,
@@ -148,7 +165,11 @@ export function canvasPanelEntry(
     renderScope: null,
     scrollContainer: null,
     viewport: null,
-  } as unknown as CanvasPanel;
+  };
+  /* SAFETY: the record is handed out unbound and filled in place by `bindCanvasPanels` once the
+     stage has drawn it; every reader that can run before that (`tabOfMountedPanel`, `applyEditZoom`,
+     `updateActivePanelHeaders`) reads it as an UnboundCanvasPanel and checks the nodes first. */
+  const panel = unbound as CanvasPanel;
   /* The viewport takes the declared width, the canvas takes it too — but a FULL-WIDTH board's
      viewport does not, because "full width" means "as wide as the box you are in". Carried as two
      custom properties rather than as `width:` so `applyEditZoom`'s inline write on the canvas still
@@ -186,9 +207,13 @@ export function canvasPanelEntry(
  */
 export function bindCanvasPanels(entries: CanvasPanelEntry[], stage: CanvasStageHandle): void {
   for (const { item, panel } of entries) {
-    panel.element = stage.panelNode(item.key, "panel") as HTMLElement;
-    panel.viewport = stage.panelNode(item.key, "panel-viewport") as HTMLElement;
-    panel.canvas = stage.panelNode(item.key, "panel-canvas") as HTMLElement;
+    /* SAFETY: callers bind only after `drawStage` has settled, and the stage document draws the
+       `panel`, `panel-viewport` and `panel-canvas` parts for every item it was given, keyed by
+       `item.key`, so each lookup finds its node. */
+    const node = (part: string) => stage.panelNode(item.key, part) as HTMLElement;
+    panel.element = node("panel");
+    panel.viewport = node("panel-viewport");
+    panel.canvas = node("panel-canvas");
   }
 }
 
@@ -349,7 +374,7 @@ export function applyEditZoom(
     return;
   }
   const [panel] = surface.panels;
-  if (!panel?.canvas || !panel.viewport) {
+  if (!panel || !isPanelBound(panel)) {
     return;
   }
   const canvasEl = panel.canvas;
@@ -571,18 +596,23 @@ export const FIT_WORDS: readonly string[] = ["width", "page", "none"];
  * assistant sees. It stays as the typed read the body needs (`args.fit` is `unknown`) and as the
  * refusal for a caller that reaches the body directly.
  */
-function fitArg(commandId: string, args: Record<string, unknown>, key: string): FitMode {
+function fitArg(commandId: string, args: CommandArgValues, key: string): FitMode {
   const value = args[key];
-  if (typeof value === "string" && FIT_WORDS.includes(value)) {
-    return value as FitMode;
+  if (isFitWord(value)) {
+    return value;
   }
-  if (typeof value === "number" && value >= PAN_ZOOM_MIN && value <= PAN_ZOOM_MAX) {
+  if (isNumber(value) && value >= PAN_ZOOM_MIN && value <= PAN_ZOOM_MAX) {
     return value;
   }
   throw new RangeError(
     `command "${commandId}" argument "${key}": expected ${FIT_WORDS.map((w) => `"${w}"`).join(" | ")} ` +
       `or a number in [${PAN_ZOOM_MIN}, ${PAN_ZOOM_MAX}], got ${JSON.stringify(value)}`,
   );
+}
+
+/** Whether a value is one of {@link FIT_WORDS}, the named (non-scale) fits. */
+function isFitWord(value: unknown): value is Exclude<FitMode, number> {
+  return isString(value) && FIT_WORDS.includes(value);
 }
 
 /** Declared fits, keyed per tab + document. */
@@ -641,7 +671,7 @@ export function applyFit(fit?: FitMode, surface: CanvasSurface = activeCanvasSur
     applyTransform(surface);
     return;
   }
-  if (typeof chosen === "number") {
+  if (isNumber(chosen)) {
     setZoomOf(surface, clampPanZoom(chosen));
     applyTransform(surface);
     return;
@@ -853,6 +883,11 @@ export type CanvasMode = (typeof CANVAS_MODES)[number];
 /** The base modes the preview flag composes with — the two the Canvas view axis shows it beside. */
 const PREVIEWABLE_BASE_MODES = new Set(["edit", "design"]);
 
+/** Whether a base mode is one the preview flag composes with: a member of PREVIEWABLE_BASE_MODES. */
+function isPreviewableBase(mode: string): mode is "edit" | "design" {
+  return PREVIEWABLE_BASE_MODES.has(mode);
+}
+
 // ─── The Canvas view (§4.2) ──────────────────────────────────────────────────
 // `Edit │ Design` is a radio and `Preview` is a TOGGLE beside it, because that is what the storage
 // Has always been: `preview` is not a base mode, it is a flag that composes with one.
@@ -913,7 +948,13 @@ export function canvasBaseViewsFor(tab: ViewableTab): CanvasView[] {
 /** The base view the tab returns to — what the radio marks while preview is on. */
 export function canvasBaseViewOf(tab: ViewableTab): CanvasView | null {
   const base = tab.session.ui.canvasMode;
-  return PREVIEWABLE_BASE_MODES.has(base) ? (base as CanvasView) : null;
+  return isPreviewableBase(base) ? base : null;
+}
+
+/** A tab's Preview toggle: whether it is offered, and whether it is pressed. */
+export interface PreviewState {
+  available: boolean;
+  on: boolean;
 }
 
 /**
@@ -922,7 +963,7 @@ export function canvasBaseViewOf(tab: ViewableTab): CanvasView | null {
  * `available` is a fact about the DOCUMENT (its declared modes) and about the base it is currently
  * in — `source` composes with no preview, so the toggle is not offered there.
  */
-export function previewStateOf(tab: ViewableTab): { available: boolean; on: boolean } {
+export function previewStateOf(tab: ViewableTab): PreviewState {
   return {
     available:
       tab.capabilities.modes.includes("preview") &&
@@ -1041,7 +1082,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
    * than the control it replaced, which is the opposite of the point.
    */
   function contextTab(commandId: string, args: CommandArgValues) {
-    const { pane } = args as { pane?: unknown };
+    const { pane } = args;
     if (pane === undefined) {
       return requireTab(commandId);
     }
@@ -1073,8 +1114,8 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
 
   /** The pane a rendering-context verb addresses, named or focused. {@link repaint}'s own rule. */
   function paneOfArgs(args: CommandArgValues): string {
-    const { pane } = args as { pane?: unknown };
-    return typeof pane === "string" ? pane : workspace.activePaneId;
+    const { pane } = args;
+    return isString(pane) ? pane : workspace.activePaneId;
   }
 
   return [
@@ -1258,9 +1299,9 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
        * so it simply renders at the pane's width — which is the same clamp the drag applies, arrived
        * at by CSS instead of by arithmetic. Refusing would make the verb depend on the window size.
        */
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const tab = contextTab("canvas.setEditWidth", args);
-        const { width } = args as { width?: unknown };
+        const { width } = args;
         if (width === null) {
           clearEditWidth(paneOfArgs(args));
           repaint(args);
@@ -1311,10 +1352,10 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       group: "3_canvas",
       requires: "an open document",
       when: documentOpen,
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const tab = contextTab("canvas.setBreakpoint", args);
-        const { media } = args as { media?: unknown };
-        if (media !== null && typeof media !== "string") {
+        const { media } = args;
+        if (media !== null && !isString(media)) {
           throw new RangeError(
             `command "canvas.setBreakpoint" argument "media": expected a breakpoint key or null`,
           );
@@ -1323,9 +1364,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
            that does not exist — the rule `data.expandRow` applies to a state entry's name.
            `getEffectiveMedia` and not `document.$media`: the popover offers the SITE's breakpoints
            too, and a command that refused what the control offers would be worse than no command. */
-        const declared = Object.keys(
-          getEffectiveMedia(tab.doc.document?.$media as Record<string, string> | undefined),
-        );
+        const declared = Object.keys(getEffectiveMedia(tab.doc.document.$media));
         if (media !== null && !declared.includes(media)) {
           throw new RangeError(
             `command "canvas.setBreakpoint" argument "media": "${media}" is not a breakpoint this ` +
@@ -1359,7 +1398,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
           args,
           "scheme",
           COLOR_SCHEMES,
-        ) as "auto" | "dark" | "light";
+        );
         repaint(args);
       },
       title: "Set Color Scheme",
@@ -1475,16 +1514,18 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       level: "document",
       menus: ["palette"],
       requires: "a popover in the open document",
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const tab = contextTab("canvas.setPopoverOpen", args);
-        const raw = (args ?? {}) as { open?: unknown; path?: JxPath };
+        /* SAFETY: `registry.run` coerces args against this record's schema before `run`, and the
+           schema declares `path` an array of strings and numbers, which is what a JxPath is. */
+        const explicitPath = args["path"] as JxPath | undefined;
         const open =
-          raw.open === undefined ? true : booleanArg("canvas.setPopoverOpen", args, "open");
-        if (!open && raw.path === undefined) {
+          args["open"] === undefined ? true : booleanArg("canvas.setPopoverOpen", args, "open");
+        if (!open && explicitPath === undefined) {
           deps.setOpenPopover(tab, null);
           return;
         }
-        const path = popoverPathFor(tab, raw.path);
+        const path = popoverPathFor(tab, explicitPath);
         /* REFUSES a path that is not a popover rather than opening nothing — the rule
            `canvas.setBreakpoint` applies to a breakpoint key. A <dialog> is refused with it: its UA
            rules key off `open`, not `popover`, so de-popovering one falls back to a different rule
@@ -1535,16 +1576,18 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       level: "document",
       menus: ["palette"],
       requires: "a dialog in the open document",
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const tab = contextTab("canvas.setDialogOpen", args);
-        const raw = (args ?? {}) as { open?: unknown; path?: JxPath };
+        /* SAFETY: `registry.run` coerces args against this record's schema before `run`, and the
+           schema declares `path` an array of strings and numbers, which is what a JxPath is. */
+        const explicitPath = args["path"] as JxPath | undefined;
         const open =
-          raw.open === undefined ? true : booleanArg("canvas.setDialogOpen", args, "open");
-        if (!open && raw.path === undefined) {
+          args["open"] === undefined ? true : booleanArg("canvas.setDialogOpen", args, "open");
+        if (!open && explicitPath === undefined) {
           deps.setOpenDialog(tab, null);
           return;
         }
-        const path = dialogPathFor(tab, raw.path);
+        const path = dialogPathFor(tab, explicitPath);
         /* REFUSES a path that is not a dialog, for the same reason its twin refuses a non-popover:
            the canvas would draw it under the wrong rule and with the wrong name. */
         if (path === null) {
@@ -1586,14 +1629,14 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
        * (`scripts/screenshots/README.md`) forbids outright. The pointer and the camera use the same
        * door.
        */
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         // Resolve the tab first, so a pane with no document refuses before anything opens.
         contextTab("canvas.setResolvingOpen", args);
-        const { open, pane } = args as { open?: unknown; pane?: unknown };
+        const { open, pane } = args;
         // `open` defaults to true and is never COERCED: `{ open: "no" }` would otherwise read as a
         // Close, the class of silent wrong answer this setter family exists to stop.
         deps.setResolvingOpen(
-          typeof pane === "string" ? pane : workspace.activePaneId,
+          isString(pane) ? pane : workspace.activePaneId,
           open === undefined || booleanArg("canvas.setResolvingOpen", args, "open"),
         );
       },
@@ -1636,26 +1679,24 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       group: "3_canvas",
       requires: "an open component document",
       when: documentOpen,
-      run: (_commandCtx, args) => {
+      run: (_commandCtx, args: CommandArgValues) => {
         const tab = contextTab("canvas.setTestProp", args);
         const name = stringArg("canvas.setTestProp", args, "name");
         // REFUSES a prop the component does not declare, rather than seeding a value nothing reads
         // — the rule `data.expandRow` and `canvas.setBreakpoint` both apply to their own names.
-        const declared = Object.keys(
-          (tab.doc.document?.state as Record<string, unknown> | undefined) ?? {},
-        );
+        const declared = Object.keys(tab.doc.document.state ?? {});
         if (!declared.includes(name)) {
           throw new RangeError(
             `command "canvas.setTestProp" argument "name": "${name}" is not a prop this component ` +
               `declares — it declares: ${declared.length > 0 ? declared.join(", ") : "nothing"}`,
           );
         }
-        const { value } = args as { value?: unknown };
+        const { value } = args;
         const next = { ...tab.session.ui.previewProps };
         if (value === null || value === undefined) {
           delete next[name];
         } else {
-          next[name] = value as JsonValue;
+          next[name] = value;
         }
         tab.session.ui.previewProps = Object.keys(next).length > 0 ? next : null;
         repaint(args);
@@ -1723,13 +1764,13 @@ export function registerCanvasViewCommands(
  */
 export function updateActivePanelHeaders(surface: CanvasSurface = activeCanvasSurface()) {
   const activeMedia = activeMediaOfPane(surface.paneId);
-  for (const p of surface.panels) {
+  // A board the stage has not bound yet has no header to mark.
+  const panels: readonly UnboundCanvasPanel[] = surface.panels;
+  for (const p of panels) {
     const header = p.element?.querySelector('[part="panel-header"]');
     if (header) {
       const isActive =
-        (activeMedia === null && p.mediaName === "base") ||
-        (activeMedia === null && p.mediaName === null) ||
-        activeMedia === p.mediaName;
+        (activeMedia === null && p.mediaName === "base") || activeMedia === p.mediaName;
       /* An ATTRIBUTE the document does not bind, written from outside it. Which board is current is
          a fact about the pane's session that changes without the stage being rebuilt — the same
          reason the pan transform is written rather than bound — so a reconcile can never disagree

@@ -4,7 +4,8 @@ import { getPlatform } from "../platform";
 import { projectState } from "../store";
 import type { ComponentMeta } from "../types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
 
 /** A discovered component: project components carry a file path; package components may not. */
 export interface ComponentEntry extends Omit<ComponentMeta, "path"> {
@@ -40,15 +41,17 @@ export async function loadComponentRegistry() {
  *
  * @param {string | null} path - The saved document's project-relative path; `null` for an unsaved
  *   draft, which no scan would have seen either.
- * @param {unknown} doc - The saved document.
+ * @param {JxMutableNode} doc - The saved document.
  * @returns {boolean} Whether the registry changed, so a caller knows to repaint what reads it.
  */
-export function noteComponentSaved(path: string | null, doc: unknown): boolean {
+export function noteComponentSaved(path: string | null, doc: JxMutableNode): boolean {
   if (!path) {
     return false;
   }
   const index = componentRegistry.findIndex((c) => c.path === path);
-  const meta = componentMetaFrom(doc, path);
+  /* SAFETY: a saved tab's document was parsed from JSON and has just been written back as JSON
+     (`serializeDocument`), so every value it holds is a JSON value — the model the extractor reads. */
+  const meta = componentMetaFrom(doc as JsonValue, path);
   if (!meta) {
     if (index === -1) {
       return false;
@@ -56,6 +59,8 @@ export function noteComponentSaved(path: string | null, doc: unknown): boolean {
     componentRegistry.splice(index, 1);
     return true;
   }
+  /* SAFETY: `componentMetaFrom` is the extractor every backend's `discoverComponents` scan runs to
+     Produce the registry's entries, so its output has the shape the registry already holds. */
   const entry = meta as ComponentEntry;
   if (index === -1) {
     componentRegistry.push(entry);
@@ -84,7 +89,7 @@ export function buildComponentInstance(comp: ComponentEntry): JxMutableNode {
     for (const child of structuredClone(slot.fallback ?? [])) {
       if (!slot.name) {
         children.push(child);
-      } else if (typeof child === "object" && child !== null && typeof child.tagName === "string") {
+      } else if (isNonNullObject(child) && isString(child.tagName)) {
         // Preserve an author-set slot attribute (slot forwarding inside fallback).
         child.attributes = { slot: slot.name, ...child.attributes };
         children.push(child);
@@ -94,11 +99,11 @@ export function buildComponentInstance(comp: ComponentEntry): JxMutableNode {
       }
     }
   }
-  return {
-    $props,
-    tagName: comp.tagName,
-    ...(children.length > 0 ? { children } : {}),
-  };
+  const instance: JxMutableNode = { $props, tagName: comp.tagName };
+  if (children.length > 0) {
+    instance.children = children;
+  }
+  return instance;
 }
 
 /**

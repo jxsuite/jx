@@ -10,7 +10,6 @@
 import { clearSeededSettings, flush, installMockPlatform } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
-import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
 import { runAgentLoop } from "../src/services/tool-executor";
 import {
@@ -24,10 +23,14 @@ installMockPlatform();
 
 let fetchImpl: () => Promise<Response> = async () => Response.json({ models: [] }, { status: 200 });
 const fetchCalls: string[] = [];
-(globalThis as Record<string, unknown>).fetch = (url: string) => {
-  fetchCalls.push(url);
-  return fetchImpl();
-};
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  (input: RequestInfo | URL) => {
+    fetchCalls.push(String(input));
+    return fetchImpl();
+  },
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 /** A client whose single round is one error frame. */
 function erroringClient(event: StreamEvent): StreamingClient {
@@ -46,7 +49,7 @@ async function runWith(event: StreamEvent) {
     chatState,
     streamingClient: erroringClient(event),
     systemPrompt: "",
-    toolRegistry: createToolRegistry() as ToolRegistry,
+    toolRegistry: createToolRegistry(),
   });
   await flush();
   return chatState;

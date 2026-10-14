@@ -10,4 +10,4 @@ export * from "./problems";
 export * from "./routes";
 export type * from "./types";
 // The one runtime value types.ts carries: the batch-read limit a backend and a client both size to.
-export { READ_FILES_MAX_PATHS } from "./types";
+export { IMPORT_MAX_BREAKPOINTS, IMPORT_MAX_PAGES, READ_FILES_MAX_PATHS } from "./types";

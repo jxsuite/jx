@@ -21,7 +21,13 @@
  * @docs studio/logic/data
  */
 
-import { displayTagName } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isJsonObject,
+  isNonNullObject,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
 import { dynamicRouteParams } from "../page-params";
 import { projectState } from "../state";
 import type { JsonValue } from "../types";
@@ -52,12 +58,15 @@ import { mountMediaPicker } from "../ui/media-picker";
 import { renderOnly } from "../store";
 import { mountSchemaForm } from "../ui/schema-form";
 import { resolveContextPointer } from "../services/context-resolver";
+import type { ResolveContextOptions } from "../services/context-resolver";
 import { mountSignalsSurface } from "../surfaces/panel-signals";
-import type { JsonSchema } from "../ui/schema-form";
-import type { TabUi } from "../tabs/tab";
+import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
+import type { Tab, TabUi } from "../tabs/tab";
 import type {
   CemEvent,
   CemParameter,
+  JsonObject,
+  JxDocumentValue,
   JxMutableNode,
   JxStatement,
   JxStateDefinition,
@@ -74,19 +83,19 @@ import type {
   SignalChipView,
   SignalFieldKind,
   SignalFieldView,
-  SignalOptionGroup,
   SignalRowView,
   SignalsActions,
   SignalsSurfaceHandle,
   SignalsView,
 } from "../surfaces/panel-signals";
+import type { SurfaceOptionGroup } from "../ui/surface";
 
 interface SignalsPanelState {
   document: JxMutableNode;
-  ui?: TabUi | Record<string, unknown>;
+  ui?: TabUi;
   mode?: string;
   selection?: (string | number)[][];
-  canvas?: Record<string, unknown> | null;
+  canvas?: Tab["session"]["canvas"] | null;
   _collapsedSignalCats?: Set<string>;
   documentPath?: string | null | undefined;
 }
@@ -117,15 +126,15 @@ export interface SignalDef {
   $export?: string;
   $compute?: string;
   $deps?: string[];
-  $expression?: Record<string, unknown>;
+  $expression?: JsonObject;
   $handler?: string;
   type?: string;
-  default?: unknown;
-  body?: string | unknown[];
-  parameters?: string[];
+  default?: JsonValue;
+  body?: string | JxStatement[];
+  parameters?: (string | CemParameter)[];
   timing?: string;
   description?: string;
-  fields?: Record<string, unknown>;
+  fields?: JsonObject;
   url?: string;
   method?: string;
   key?: string;
@@ -138,7 +147,7 @@ export interface SignalDef {
   deprecated?: string | boolean;
   format?: string;
   emits?: CemEvent[];
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 // ─── Module-local state ─────────────────────────────────────────────────────
@@ -155,22 +164,25 @@ let renameError: { name: string; message: string } | null = null;
 /** Track which functions have the advanced param editor open. */
 const advancedParamOpen = new Set<string>();
 
-/** Default templates for creating new signal definitions. */
-const DEF_TEMPLATES = {
-  computed: { $compute: "", $deps: [] },
-  cookie: { $prototype: "Cookie", default: "", name: "" },
-  expression: { $expression: { operator: "=", target: null } },
-  external: { $prototype: "", $src: "" },
-  formData: { $prototype: "FormData", fields: {} },
-  function: { $prototype: "Function", body: "", parameters: [] },
-  indexedDB: { $prototype: "IndexedDB", database: "", store: "", version: 1 },
-  localStorage: { $prototype: "LocalStorage", default: null, key: "" },
-  map: { $prototype: "Map", default: {} },
-  request: { $prototype: "Request", method: "GET", timing: "client", url: "" },
-  sessionStorage: { $prototype: "SessionStorage", default: null, key: "" },
-  set: { $prototype: "Set", default: [] },
-  state: { default: "", type: "string" },
-} as Record<string, SignalDef>;
+/** A field write: the def members to set, with `undefined` dropping one (`mutateUpdateDef`). */
+type DefPatch = Record<string, JxDocumentValue | undefined>;
+
+/** Default templates for creating new signal definitions, by the add picker's value. */
+const DEF_TEMPLATES = new Map<string, JsonObject>([
+  ["computed", { $compute: "", $deps: [] }],
+  ["cookie", { $prototype: "Cookie", default: "", name: "" }],
+  ["expression", { $expression: { operator: "=", target: null } }],
+  ["external", { $prototype: "", $src: "" }],
+  ["formData", { $prototype: "FormData", fields: {} }],
+  ["function", { $prototype: "Function", body: "", parameters: [] }],
+  ["indexedDB", { $prototype: "IndexedDB", database: "", store: "", version: 1 }],
+  ["localStorage", { $prototype: "LocalStorage", default: null, key: "" }],
+  ["map", { $prototype: "Map", default: {} }],
+  ["request", { $prototype: "Request", method: "GET", timing: "client", url: "" }],
+  ["sessionStorage", { $prototype: "SessionStorage", default: null, key: "" }],
+  ["set", { $prototype: "Set", default: [] }],
+  ["state", { default: "", type: "string" }],
+]);
 
 /** Keys handled by the framework — skip when rendering schema fields. */
 const STUDIO_RESERVED_KEYS = new Set([
@@ -194,23 +206,27 @@ const DEBOUNCE_MS = 500;
 
 // ─── Signals / defs helpers ──────────────────────────────────────────────────
 
+/** One manifest state class the add picker offers, with the def fields it seeds. */
+export interface ExtensionStateClass {
+  name: string;
+  stateDefaults?: JsonObject;
+}
+
 /**
  * Extension-manifest state classes for the add-state picker: plain `$prototype` targets (no
  * admission blocks) across the enabled extensions, each with its `$studio.stateDefaults` hint
  * (specs/extensions.md §10). Manifest classes need no `$src` — the registry resolves them.
  */
-export function extensionStateClasses(): {
-  name: string;
-  stateDefaults?: Record<string, unknown>;
-}[] {
-  const out: { name: string; stateDefaults?: Record<string, unknown> }[] = [];
+export function extensionStateClasses(): ExtensionStateClass[] {
+  const out: ExtensionStateClass[] = [];
   for (const ext of getExtensions()) {
     for (const cls of ext.classes ?? []) {
       if (cls.state) {
-        out.push({
-          name: cls.name,
-          ...(cls.stateDefaults === undefined ? {} : { stateDefaults: cls.stateDefaults }),
-        });
+        const entry: ExtensionStateClass = { name: cls.name };
+        if (cls.stateDefaults !== undefined) {
+          entry.stateDefaults = cls.stateDefaults;
+        }
+        out.push(entry);
       }
     }
   }
@@ -220,24 +236,25 @@ export function extensionStateClasses(): {
 /**
  * View a state entry through the panel's flattened editing lens. Naked primitive and array entries
  * surface as an empty view — the builders guard every field access.
- *
- * @param {import("@jxsuite/schema/types").JxStateDefinition} def
- * @returns {SignalDef}
  */
-function asSignalDef(def: JxStateDefinition): SignalDef {
-  return (typeof def === "object" && def !== null && !Array.isArray(def) ? def : {}) as SignalDef;
+function asSignalDef(def: SignalDef | JxStateDefinition): SignalDef {
+  if (!isNonNullObject(def) || Array.isArray(def)) {
+    return {};
+  }
+  /* SAFETY: `def` is one of a state entry's object shapes (function, prototype, expression, server
+     function or plain object), and SignalDef is their union flattened into one all-optional record.
+     The two places it is narrower than a shape are read only behind the branch that owns them:
+     `body` as statements or source for a Function entry, and `$expression` (a JSON node) for an
+     expression entry, which is all `expressionHint` and the expression editor take it as. */
+  return def as SignalDef;
 }
 
-/**
- * Classify a state entry into a category string.
- *
- * @param {SignalDef | unknown} def
- */
-export function defCategory(def: SignalDef | unknown) {
+/** Classify a state entry into a category string. */
+export function defCategory(def: SignalDef | JxStateDefinition | undefined) {
   if (!def) {
     return "state";
   }
-  const d = def as SignalDef;
+  const d = asSignalDef(def);
   if (d.$expression) {
     return "expression";
   }
@@ -253,16 +270,12 @@ export function defCategory(def: SignalDef | unknown) {
   return "state";
 }
 
-/**
- * Badge label for a def category.
- *
- * @param {SignalDef | unknown} def
- */
-export function defBadgeLabel(def: SignalDef | unknown) {
+/** Badge label for a def category. */
+export function defBadgeLabel(def: SignalDef | JxStateDefinition | undefined) {
   if (!def) {
     return "S";
   }
-  const d = def as SignalDef;
+  const d = asSignalDef(def);
   if (d.$expression) {
     return "E";
   }
@@ -350,12 +363,12 @@ export function collectCssParts(
   parts: { name: string; tag: string }[] = [],
 ) {
   const part = node?.attributes?.part;
-  if (typeof part === "string" && part) {
-    parts.push({ name: part, tag: displayTagName(node?.tagName) || "div" });
+  if (isString(part) && part) {
+    parts.push({ name: part, tag: displayTagName(node.tagName) || "div" });
   }
   if (Array.isArray(node?.children)) {
     for (const c of node.children) {
-      if (typeof c !== "string") {
+      if (!isString(c)) {
         collectCssParts(c, parts);
       }
     }
@@ -367,17 +380,18 @@ export function collectCssParts(
  * Resolve a $ref value to a display string using signal defaults. Used by the canvas to show real
  * values instead of raw refs.
  *
- * @param {unknown} value
- * @param {Record<string, SignalDef> | null | undefined} defs
+ * @param {JsonValue | undefined} value
+ * @param {Record<string, JxStateDefinition> | null | undefined} defs
  */
 export function resolveDefaultForCanvas(
-  value: unknown,
+  value: JsonValue | undefined,
   defs: Record<string, JxStateDefinition> | null | undefined,
 ) {
-  if (!value || typeof value !== "object" || !(value as Record<string, unknown>).$ref) {
+  // Anything but a `{ $ref }` with a non-empty pointer is a literal, shown as it is.
+  if (!isRef(value) || !value.$ref) {
     return value;
   }
-  const ref = (value as Record<string, unknown>).$ref as string;
+  const ref = value.$ref;
   /** @type {string | undefined} */
   let defName;
   if (ref.startsWith("#/state/")) {
@@ -397,7 +411,7 @@ export function resolveDefaultForCanvas(
   // State signal → use default
   if (!def.$compute && !def.$prototype) {
     if (def.default !== undefined && def.default !== null) {
-      if (typeof def.default === "object") {
+      if (isNonNullObject(def.default)) {
         return JSON.stringify(def.default);
       }
       return String(def.default);
@@ -415,7 +429,7 @@ export function resolveDefaultForCanvas(
   // Storage → use default or key
   if (def.$prototype === "LocalStorage" || def.$prototype === "SessionStorage") {
     if (def.default !== undefined && def.default !== null) {
-      if (typeof def.default === "object") {
+      if (isNonNullObject(def.default)) {
         return JSON.stringify(def.default);
       }
       return String(def.default);
@@ -430,14 +444,14 @@ export function resolveDefaultForCanvas(
 
 /** Normalize a parameter entry to a CEM object. */
 export function normParam(p: string | CemParameter): CemParameter {
-  return typeof p === "string" ? { name: p } : p;
+  return isString(p) ? { name: p } : p;
 }
 
 /** Extract the display text from a CEM `{ text }` type value, if present. */
 function cemTypeText(type: JsonValue | undefined): string {
-  if (typeof type === "object" && type !== null && !Array.isArray(type)) {
+  if (isJsonObject(type)) {
     const { text } = type;
-    if (typeof text === "string") {
+    if (isString(text)) {
       return text;
     }
   }
@@ -445,11 +459,11 @@ function cemTypeText(type: JsonValue | undefined): string {
 }
 
 /** A value as a field shows it: JSON for a structure, the string for anything else. */
-function asText(value: unknown, indent = false): string {
+function asText(value: JsonValue | undefined, indent = false): string {
   if (value === undefined || value === null) {
     return "";
   }
-  if (typeof value === "object") {
+  if (isNonNullObject(value)) {
     return indent ? JSON.stringify(value, null, 2) : JSON.stringify(value);
   }
   return String(value);
@@ -621,7 +635,7 @@ function nameField(S: SignalsPanelState, name: string): SignalFieldView {
 
 /** A plain value entry: its type, its default, and the CEM facts a custom element adds. */
 function stateFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
-  const patch = (value: Record<string, JsonValue | undefined>): void => {
+  const patch = (value: DefPatch): void => {
     transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
   };
   const defaultVal = asText(def.default);
@@ -661,7 +675,7 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
   } else {
     out.push(
       textField(name, "default", "Default", defaultVal, (v: string) => {
-        let parsed: unknown = v;
+        let parsed: JsonValue = v;
         if (def.type === "integer") {
           parsed = Math.trunc(Number(v)) || 0;
         } else if (def.type === "number") {
@@ -670,12 +684,13 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
           parsed = v === "true";
         } else if (def.type === "array" || def.type === "object") {
           try {
-            parsed = JSON.parse(v);
+            // SAFETY: whatever `JSON.parse` returns without throwing is a JSON value.
+            parsed = JSON.parse(v) as JsonValue;
           } catch {
             parsed = v;
           }
         }
-        patch({ default: parsed as JsonValue });
+        patch({ default: parsed });
       }),
     );
   }
@@ -708,7 +723,7 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
         name,
         "deprecated",
         "Deprecated",
-        typeof def.deprecated === "string" ? def.deprecated : "",
+        isString(def.deprecated) ? def.deprecated : "",
         (v) => patch({ deprecated: v || undefined }),
       ),
     );
@@ -760,7 +775,7 @@ function computedFields(name: string, def: SignalDef): SignalFieldView[] {
 
 /** A fetched, stored or constructed value — one case per `$prototype`. */
 function dataFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
-  const patch = (value: Record<string, JsonValue | undefined>): void => {
+  const patch = (value: DefPatch): void => {
     transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
   };
   const proto = def.$prototype;
@@ -800,8 +815,8 @@ function dataFields(S: SignalsPanelState, name: string, def: SignalDef): SignalF
           value: stored,
           write: (v: string) => {
             try {
-              // `JSON.parse` answers `any`; the value written is a document default, which is a
-              // `JsonValue` by construction — naming it keeps the assignment checked.
+              /* SAFETY: `JSON.parse` answers `any`, but whatever it returns without throwing is a
+                 JSON value — and a document default is exactly that. */
               patch({ default: JSON.parse(v) as JsonValue });
             } catch {
               patch({ default: v });
@@ -846,6 +861,7 @@ function dataFields(S: SignalsPanelState, name: string, def: SignalDef): SignalF
           value: text,
           write: (v: string) => {
             try {
+              // SAFETY: whatever `JSON.parse` returns without throwing is a JSON value.
               patch({ [key]: JSON.parse(v) as JsonValue });
             } catch {}
           },
@@ -863,7 +879,7 @@ function dataFields(S: SignalsPanelState, name: string, def: SignalDef): SignalF
  * and the fetch's resolution is what repaints the panel with the form in it.
  */
 function externalFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
-  const patch = (value: Record<string, JsonValue | undefined>): void => {
+  const patch = (value: DefPatch): void => {
     transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
   };
   const importedPath = def.$prototype
@@ -928,6 +944,9 @@ function externalFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
   }
   out.push(field({ key: "schema", kind: "slot", signal: name, slot: "schema" }));
   islands.set(`${name}/schema`, (host) => {
+    /* SAFETY: the cache holds what `fetchPluginSchema` read from the plugin's own schema export,
+       which is a JSON Schema object; `JsonSchema` is the form's all-optional view of those same
+       keywords. */
     placeSchemaForm(host, schema as JsonSchema, def, name, S);
   });
   return out;
@@ -944,9 +963,13 @@ function writeCemField<T extends CemParameter | CemEvent>(
   }
   if (column === "type") {
     const { type: _type, ...rest } = entry;
+    /* SAFETY: `rest` is `entry` less `type`, which CemParameter and CemEvent both declare optional,
+       so it is still a `T` whether `type` comes back as `{ text }` or stays dropped. */
     return (value ? { ...rest, type: { text: value } } : rest) as T;
   }
   const { description: _description, ...rest } = entry;
+  /* SAFETY: `rest` is `entry` less `description`, which CemParameter and CemEvent both declare
+     optional, so it is still a `T` whether `description` comes back or stays dropped. */
   return (value ? { ...rest, description: value } : rest) as T;
 }
 
@@ -1091,7 +1114,7 @@ function parameterField(name: string, def: SignalDef): SignalFieldView {
 
 /** The CEM emits editor — the same table shape, over `emits`. */
 function emitsField(name: string, def: SignalDef): SignalFieldView {
-  const emits = def.emits || ([] as CemEvent[]);
+  const emits = def.emits ?? [];
   const write = (next: CemEvent[]): void => {
     transactDoc(activeTab.value, (t) =>
       mutateUpdateDef(t, name, { emits: next.length > 0 ? next : undefined }),
@@ -1145,7 +1168,7 @@ function emitsField(name: string, def: SignalDef): SignalFieldView {
  * change, nothing is converted.
  */
 function functionFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
-  const patch = (value: Record<string, JsonValue | undefined>): void => {
+  const patch = (value: DefPatch): void => {
     transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
   };
   const out: SignalFieldView[] = [
@@ -1168,7 +1191,8 @@ function functionFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
     return out;
   }
 
-  const statements = Array.isArray(def.body);
+  const statementBody = Array.isArray(def.body) ? def.body : null;
+  const statements = statementBody !== null;
   out.push(
     field(
       {
@@ -1224,14 +1248,14 @@ function functionFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
     ),
   );
 
-  if (statements) {
+  if (statementBody) {
     out.push(field({ key: "statements", kind: "slot", signal: name, slot: "statements" }));
     islands.set(`${name}/statements`, (host) => {
       mountStatementEditor(
         host,
-        def.body as JxStatement[],
+        statementBody,
         (next) => {
-          patch({ body: next as unknown as JsonValue });
+          patch({ body: next });
           repaint();
         },
         {
@@ -1246,7 +1270,7 @@ function functionFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
     });
     return out;
   }
-  const source = typeof def.body === "string" ? def.body : "";
+  const source = isString(def.body) ? def.body : "";
   out.push(
     field(
       {
@@ -1302,10 +1326,10 @@ function expressionFields(S: SignalsPanelState, name: string, def: SignalDef): S
     mountExpressionEditor(
       host,
       exprNode,
-      (newNode: unknown) =>
+      (newNode) =>
         transactDoc(activeTab.value, (t) =>
-          // Expression editors emit JSON expression nodes.
-          mutateUpdateDef(t, name, { $expression: newNode as JsonValue }),
+          // Expression editors emit JSON expression nodes, written back as the editor built them.
+          mutateUpdateDef(t, name, { $expression: newNode }),
         ),
       {
         allowEventRef: false,
@@ -1316,6 +1340,9 @@ function expressionFields(S: SignalsPanelState, name: string, def: SignalDef): S
         ),
         onInsertDef: (defName, vendored) =>
           transactDoc(activeTab.value, (t) =>
+            /* SAFETY: the one caller is `applyCatalogPick`, vending a packaged formula's entry
+               (`packagedFormulaEntries` in ui/formula-catalog.ts): the object literal
+               `{ $description, $expression, parameters }`, copied from the formulas' JSON. */
             mutateAddDef(t, defName, vendored as Record<string, JsonValue>),
           ),
         stateDefs: Object.keys(S.document.state || {}),
@@ -1360,22 +1387,23 @@ function editorFields(S: SignalsPanelState, name: string, def: SignalDef): Signa
  * the `#/$context/content` root, while the deprecated `"$contentTypes"` string sentinel and the
  * legacy `#/$context/contentTypes` root keep resolving bit-for-bit for old class descriptors.
  *
- * @param {string} pointer
- * @param {Record<string, unknown>} [scope] - Parent def for `{@param}` substitution
- * @returns {unknown}
+ * Typed by the schema form's own context contract, which owns both what a `scope` is (the form's
+ * value record, for `{@param}` substitution) and what an answer may be.
  */
-function resolveSignalsContextPointer(pointer: string, scope?: Record<string, unknown>): unknown {
+const resolveSignalsContextPointer: SchemaFormContext["resolvePointer"] = (pointer, scope) => {
   if (pointer === "#/$context/content") {
     return projectState?.projectConfig?.content ?? {};
   }
   if (pointer === "$contentTypes" || pointer === "#/$context/contentTypes") {
     return projectState?.projectConfig?.contentTypes ?? {};
   }
-  return resolveContextPointer(pointer, {
-    projectConfig: (projectState?.projectConfig ?? {}) as Record<string, unknown>,
-    ...(scope !== undefined && { scope }),
-  });
-}
+  const options: ResolveContextOptions = { projectConfig: projectState?.projectConfig ?? {} };
+  // The form hands over its own value record — the def being configured — for `{@param}` lookups.
+  if (isJsonObject(scope)) {
+    options.scope = scope;
+  }
+  return resolveContextPointer(pointer, options);
+};
 
 /**
  * Put the shared schema form into the node the document made for it.
@@ -1405,22 +1433,19 @@ function placeSchemaForm(
   const properties = Object.fromEntries(
     Object.entries(schema.properties).filter(([prop]) => !STUDIO_RESERVED_KEYS.has(prop)),
   );
-  const form = mountSchemaForm(
-    `signal:${name}`,
-    { ...schema, properties },
-    def as Record<string, unknown>,
-    {
-      context: {
-        fieldKeyPrefix: name,
-        params: dynamicRouteParams(S.documentPath),
-        resolvePointer: resolveSignalsContextPointer,
-        // A config value may point at any signal but this one — a def that reads itself is a cycle.
-        signals: bindableSignalNames(S.document).filter((signal) => signal !== name),
-      },
-      onChange: (patch) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, patch)),
-      rerender: repaint,
+  /* SAFETY: `def` is a state entry read from the parsed document (JSON on disk), so every member
+     is JSON; the typed members SignalDef names are views of those same JSON values. */
+  const form = mountSchemaForm(`signal:${name}`, { ...schema, properties }, def as JsonObject, {
+    context: {
+      fieldKeyPrefix: name,
+      params: dynamicRouteParams(S.documentPath),
+      resolvePointer: resolveSignalsContextPointer,
+      // A config value may point at any signal but this one — a def that reads itself is a cycle.
+      signals: bindableSignalNames(S.document).filter((signal) => signal !== name),
     },
-  );
+    onChange: (patch) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, patch)),
+    rerender: repaint,
+  });
   if (form.parentNode !== host) {
     host.replaceChildren(form);
   }
@@ -1450,9 +1475,9 @@ function placeSchemaForm(
 function summary(
   name: string,
   def: SignalDef,
-  live: unknown,
+  live: JsonValue | undefined,
   resolved: boolean,
-): { summary: string; summaryTitle: string; summaryTone: string } {
+): Pick<SignalRowView, "summary" | "summaryTitle" | "summaryTone"> {
   const holdsNoValue =
     defCategory(def) === "function" ||
     (def.$expression != null && isActionExpression(def.$expression));
@@ -1482,7 +1507,7 @@ const CATEGORY_LABELS: readonly { key: string; label: string }[] = [
  * GROUPED rather than divided: `jx-select` draws both halves of a group's delimiter, so the three
  * unlabelled `sp-menu-divider`s this replaces are named runs a reader can aim at.
  */
-const ADD_GROUPS: readonly SignalOptionGroup[] = [
+const ADD_GROUPS: readonly SurfaceOptionGroup[] = [
   {
     id: "values",
     label: "Values",
@@ -1524,8 +1549,10 @@ export function signalsView(S: SignalsPanelState, ctx: SignalsPanelCtx): Signals
   const defs = S.document.state || {};
   const entries = Object.entries(defs);
   /* What the canvas actually resolved these to. `S.canvas` is the session's canvas record, so this
-     costs a property read — the panel already had the scope in hand. */
-  const liveScope = (S.canvas?.scope ?? null) as Record<string, unknown> | null;
+     costs a property read — the panel already had the scope in hand.
+     SAFETY: the canvas scope's one writer (iframe-host.ts, on a `dataScope` message) stores that
+     message's `scope`, a JsonObject of deep-cloned values (serialize-scope.ts). */
+  const liveScope = (S.canvas?.scope ?? null) as JsonObject | null;
   const scope = liveScope ?? {};
   /* A Refresh is out and the canvas has not answered. Read off the tab, so it survives the repaints
      between the press and the `dataScope` that ends it. */
@@ -1542,7 +1569,7 @@ export function signalsView(S: SignalsPanelState, ctx: SignalsPanelCtx): Signals
     grouped.get(defCategory(raw))?.push([name, asSignalDef(raw)]);
   }
 
-  S._collapsedSignalCats ||= new Set();
+  S._collapsedSignalCats ??= new Set();
   const collapsed = S._collapsedSignalCats;
 
   const categories: SignalCategoryView[] = [];
@@ -1625,14 +1652,12 @@ function freeName(S: SignalsPanelState, base: string): string {
  * by the "+ Add…" picker and the panel's empty state, so both create the same thing.
  */
 function addTemplateDef(type: string, S: SignalsPanelState): void {
-  const template = DEF_TEMPLATES[type];
+  const template = DEF_TEMPLATES.get(type);
   if (!template) {
     return;
   }
   const name = freeName(S, type === "function" ? "newFunction" : "$newSignal");
-  transactDoc(activeTab.value, (t) =>
-    mutateAddDef(t, name, structuredClone(template) as Record<string, JsonValue>),
-  );
+  transactDoc(activeTab.value, (t) => mutateAddDef(t, name, structuredClone(template)));
   setDataRowExpanded(name, true);
   repaint();
 }
@@ -1658,7 +1683,7 @@ function addSignalOfType(type: string): void {
       mutateAddDef(t, name, {
         $prototype: proto,
         ...cls?.stateDefaults,
-      } as Record<string, JsonValue>),
+      }),
     );
     setDataRowExpanded(name, true);
     repaint();
@@ -1671,9 +1696,7 @@ function addSignalOfType(type: string): void {
   if (type.startsWith("import:")) {
     const proto = type.slice(7);
     const name = prototypeName(S, proto);
-    transactDoc(activeTab.value, (t) =>
-      mutateAddDef(t, name, { $prototype: proto } as Record<string, JsonValue>),
-    );
+    transactDoc(activeTab.value, (t) => mutateAddDef(t, name, { $prototype: proto }));
     setDataRowExpanded(name, true);
     repaint();
     return;
@@ -1877,8 +1900,7 @@ function definedSignalNames(): string[] {
 export function signalsCommands(): AnyCommand[] {
   /** The named entry, or a refusal listing what the document does define. */
   function requireDef(commandId: string, name: string): SignalDef {
-    const defs = (activeTab.value?.doc.document?.state ?? {}) as Record<string, SignalDef>;
-    const def = defs[name];
+    const def = activeTab.value?.doc.document?.state?.[name];
     if (!def) {
       const defined = definedSignalNames();
       throw new RangeError(
@@ -1886,7 +1908,7 @@ export function signalsCommands(): AnyCommand[] {
           `defines — it defines: ${defined.length > 0 ? defined.join(", ") : "nothing"}`,
       );
     }
-    return def;
+    return asSignalDef(def);
   }
 
   return [

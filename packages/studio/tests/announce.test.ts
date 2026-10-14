@@ -24,13 +24,16 @@ afterEach(() => {
 describe("announce", () => {
   test("creates a region that assistive technology can actually reach", async () => {
     announce("Saved");
-    const node = document.querySelector("#jx-live-polite")!;
+    const node = document.querySelector("#jx-live-polite");
+    if (!(node instanceof HTMLElement)) {
+      throw new TypeError("announce() created no polite live region");
+    }
     expect(node.getAttribute("aria-live")).toBe("polite");
     expect(node.getAttribute("role")).toBe("status");
     expect(node.getAttribute("aria-atomic")).toBe("true");
     // Not display:none — that removes it from the accessibility tree, announcing nothing.
-    expect((node as HTMLElement).style.display).not.toBe("none");
-    expect((node as HTMLElement).style.position).toBe("absolute");
+    expect(node.style.display).not.toBe("none");
+    expect(node.style.position).toBe("absolute");
     expect(await spoken("polite")).toBe("Saved");
   });
 

@@ -25,6 +25,9 @@
  * @docs extending/ui-kit
  */
 
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /** An sRGB colour. `r`, `g` and `b` are 0-255 and need not be integers; `a` is 0-1. */
 export interface Rgb {
   r: number;
@@ -64,6 +67,18 @@ export function clamp(value: number, min: number, max: number): number {
   }
   return value < min ? min : value > max ? max : value;
 }
+
+/**
+ * Which way each arrow key moves a colour element's value: Up and Right increase, Down and Left
+ * decrease. `jx-color-area` measures its vertical axis upward from the bottom edge, so ArrowUp
+ * raising brightness is the same rule as ArrowUp raising a slider's value.
+ */
+export const ARROW_SIGN: ReadonlyMap<string, -1 | 1> = new Map([
+  ["ArrowDown", -1],
+  ["ArrowLeft", -1],
+  ["ArrowRight", 1],
+  ["ArrowUp", 1],
+]);
 
 /**
  * `value` snapped to the grid `step` describes, measured from `min` and held inside `[min, max]`.
@@ -427,7 +442,7 @@ export function preferredInk(rgb: Rgb): "black" | "white" {
  * @param color The colour, as it was written.
  * @returns `"black"`, `"white"`, or `""`.
  */
-export function inkOn(color: unknown): string {
-  const parsed = typeof color === "string" ? parseColor(color) : null;
+export function inkOn(color: JsonValue | undefined): string {
+  const parsed = isString(color) ? parseColor(color) : null;
   return parsed ? preferredInk({ ...parsed, a: 1 }) : "";
 }

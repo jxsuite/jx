@@ -33,30 +33,27 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { JsonObject } from "@jxsuite/schema/types";
+
 import { findAngleTags } from "../commitlint.config.ts";
+import type { WorkflowStep } from "./lib/workflow-syntax.ts";
 
 const WORKFLOWS = join(import.meta.dir, "../.github/workflows");
 const LANE = "electrobun-vendor.yml";
 const SOURCE = readFileSync(join(WORKFLOWS, LANE), "utf8");
 
-interface Step {
-  name?: string;
-  id?: string;
-  if?: string;
-  uses?: string;
-  with?: Record<string, string>;
-  env?: Record<string, string>;
-  run?: string;
-}
 interface Workflow {
-  on: Record<string, unknown>;
+  on: JsonObject;
   permissions: Record<string, string>;
-  jobs: Record<string, { if?: string; steps: Step[] }>;
+  jobs: Record<string, { if?: string; steps: WorkflowStep[] }>;
 }
 
+/* SAFETY: SOURCE is the committed electrobun-vendor.yml, and GitHub Actions only runs a workflow whose
+ * `on`, `permissions` and `jobs.<id>.steps` are laid out as Workflow describes; `step()` below throws
+ * by name when a step this suite reads is missing. */
 const workflow = Bun.YAML.parse(SOURCE) as Workflow;
 const { steps } = workflow.jobs.move!;
-const step = (id: string): Step => {
+const step = (id: string): WorkflowStep => {
   const found = steps.find((s) => s.id === id);
   if (!found) {
     throw new Error(`${LANE} has no step with id '${id}'`);

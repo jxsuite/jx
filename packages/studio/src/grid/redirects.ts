@@ -26,6 +26,7 @@
  */
 
 import { REDIRECT_STATUSES } from "@jxsuite/schema/defs";
+import { isString } from "@jxsuite/schema/guards";
 import { parseCsv } from "./csv-codec";
 
 /** One redirect rule, flattened out of `project.json`'s two accepted spellings. */
@@ -128,17 +129,17 @@ export function routePattern(route: string): string {
 /** Flatten `project.json`'s redirects map into rules, in declaration order. */
 export function rulesFromConfig(config: RedirectConfig | undefined): RedirectRule[] {
   return Object.entries(config ?? {}).map(([source, target]) => {
-    if (typeof target === "string") {
+    if (isString(target)) {
       return { destination: target, source, status: DEFAULT_REDIRECT_STATUS };
     }
     if ("rewrite" in target) {
       return { destination: target.destination, source, status: REWRITE };
     }
-    return {
-      destination: target.destination,
-      source,
-      status: (target.status ?? DEFAULT_REDIRECT_STATUS) as RedirectTarget,
-    };
+    /* SAFETY: project.json's schema declares `status` as `enum: [...REDIRECT_STATUSES]`, the same
+       constant RedirectTarget is built from. A hand-edited file that breaks it is still caught:
+       every rule passes the grid's `ruleErrors` status check before anything is written back. */
+    const status = (target.status ?? DEFAULT_REDIRECT_STATUS) as RedirectTarget;
+    return { destination: target.destination, source, status };
   });
 }
 
@@ -151,7 +152,7 @@ export function rulesFromConfig(config: RedirectConfig | undefined): RedirectRul
  * level down. A later duplicate source wins, which is what a JSON object means anyway; the grid
  * refuses duplicates before they get here.
  */
-export function configFromRules(rules: readonly RedirectRule[]): RedirectConfig {
+export function configFromRules(rules: readonly RedirectRule[]) {
   const config: RedirectConfig = {};
   for (const rule of rules) {
     if (rule.status === REWRITE) {
@@ -189,11 +190,14 @@ function ruleFor(rules: readonly RedirectRule[], path: string): RedirectRule | u
   );
 }
 
+/** The path a chain of rules walks, and whether it came back to a source it already visited. */
+interface RedirectWalk {
+  path: string[];
+  looped: boolean;
+}
+
 /** Follow destinations from a rule until they stop resolving. Returns the path walked. */
-function walk(
-  rules: readonly RedirectRule[],
-  start: RedirectRule,
-): { path: string[]; looped: boolean } {
+function walk(rules: readonly RedirectRule[], start: RedirectRule): RedirectWalk {
   const path = [start.source];
   const seen = new Set([normalizePath(start.source)]);
   let current = start;
@@ -309,9 +313,7 @@ function parseStatus(token: string | undefined): RedirectTarget | null {
     return REWRITE;
   }
   const value = Number(raw);
-  return (REDIRECT_STATUSES as readonly number[]).includes(value)
-    ? (value as RedirectTarget)
-    : null;
+  return REDIRECT_STATUSES.find((status) => status === value) ?? null;
 }
 
 /** Netlify/Cloudflare `_redirects`: `source destination [status]`, `#` comments, blank lines. */

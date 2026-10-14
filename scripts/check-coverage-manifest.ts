@@ -58,6 +58,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
 import { toPosixPath } from "./lib/posix-path";
 
 // Files exempt from the every-source-file-is-tested rule: pure type
@@ -253,14 +254,23 @@ export function coverageThreshold(pkgDir: string): Partial<Ratios> {
     return {};
   }
   try {
-    const parsed = Bun.TOML.parse(readFileSync(bunfig, "utf8")) as {
-      test?: { coverageThreshold?: number | Partial<Ratios> };
-    };
-    const threshold = parsed.test?.coverageThreshold;
-    if (typeof threshold === "number") {
+    const parsed = Bun.TOML.parse(readFileSync(bunfig, "utf8"));
+    const test = "test" in parsed ? parsed.test : undefined;
+    const threshold = isJsonObject(test) ? test.coverageThreshold : undefined;
+    if (isNumber(threshold)) {
       return { functions: threshold, lines: threshold };
     }
-    return threshold ?? {};
+    // The table form carries one bar per metric; only the two `clears()` compares are read.
+    const bar: Partial<Ratios> = {};
+    if (isJsonObject(threshold)) {
+      if (isNumber(threshold.functions)) {
+        bar.functions = threshold.functions;
+      }
+      if (isNumber(threshold.lines)) {
+        bar.lines = threshold.lines;
+      }
+    }
+    return bar;
   } catch {
     return {};
   }

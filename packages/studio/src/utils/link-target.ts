@@ -71,7 +71,7 @@ export function classifyHref(href = ""): LinkTarget {
  * @param value The bare value for that kind (address/number/fragment/path/href)
  */
 export function composeHref(kind: LinkKind, value: string): string {
-  const bare = (value ?? "").trim();
+  const bare = value.trim();
   if (!bare) {
     return "";
   }

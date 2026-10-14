@@ -12,19 +12,20 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const roots: string[] = [];
 
 interface Options {
   trailingSlash?: "always" | "never";
   url?: string;
-  extraPages?: Record<string, unknown>;
+  extraPages?: Record<string, JsonValue>;
 }
 
 async function build({ trailingSlash, url, extraPages = {} }: Options): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "jx-md-alternate-"));
   roots.push(root);
-  const write = (path: string, contents: unknown) => {
+  const write = (path: string, contents: JsonValue) => {
     const full = join(root, path);
     mkdirSync(join(full, ".."), { recursive: true });
     writeFileSync(full, JSON.stringify(contents), "utf8");

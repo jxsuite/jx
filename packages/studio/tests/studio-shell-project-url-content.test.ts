@@ -6,6 +6,8 @@ import "./harness";
 import { describe, expect, test } from "bun:test";
 import { bootStudio, waitFor } from "./studio-shell-fixture";
 import { activeTab } from "../src/workspace/workspace";
+import { toRaw } from "../src/reactivity";
+import type { FormatActionRequest } from "../src/types";
 
 const MARKDOWN_FORMAT = {
   capabilities: { parse: { identifier: "parse", timing: ["server"] } },
@@ -20,17 +22,17 @@ const MARKDOWN_FORMAT = {
 
 await bootStudio({
   overrides: {
-    formatAction: (async (payload: Record<string, unknown>) => {
+    formatAction: async (payload: FormatActionRequest) => {
       if (payload.action === "parse") {
         return {
           children: [{ children: [], tagName: "p", textContent: "Hello world" }],
           title: "Hello",
         };
       }
-      throw new Error(`unexpected format action: ${String(payload.action)}`);
-    }) as any,
-    listFormats: (async () => [MARKDOWN_FORMAT]) as any,
-    resolveSiteContext: (async () => ({ sitePath: null })) as any,
+      throw new Error(`unexpected format action: ${payload.action}`);
+    },
+    listFormats: async () => [MARKDOWN_FORMAT],
+    resolveSiteContext: async () => ({ sitePath: null }),
   },
   seedFiles: {
     "posts/hello.md": "# Hello\n\nHello world",
@@ -45,13 +47,14 @@ describe("?project= with a format-parsed content file", () => {
     const tab = activeTab.value!;
     expect(tab.id).toBe("posts/hello.md");
     expect(tab.doc.sourceFormat).toBe("Markdown");
-    expect((tab.doc.document as any).children[0].textContent).toBe("Hello world");
+    // The raw document: the reactive proxy is not something `toMatchObject` can walk.
+    expect(toRaw(tab.doc.document)).toMatchObject({ children: [{ textContent: "Hello world" }] });
   });
 
   test("separates frontmatter and switches the tab into content mode", () => {
     const tab = activeTab.value!;
     expect(tab.doc.mode).toBe("content");
-    expect((tab.doc.document as any).title).toBeUndefined();
-    expect((tab.doc.content?.frontmatter as any)?.title).toBe("Hello");
+    expect(tab.doc.document.title).toBeUndefined();
+    expect(tab.doc.content.frontmatter["title"]).toBe("Hello");
   });
 });

@@ -27,7 +27,11 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 initLayers();
 
 function modalLayer(): HTMLElement {
-  return document.querySelector("#layer-dialog") as HTMLElement;
+  const layer = document.querySelector("#layer-dialog");
+  if (!(layer instanceof HTMLElement)) {
+    throw new Error("#layer-dialog is created at the top of this file");
+  }
+  return layer;
 }
 
 function modal(): HTMLElement | null {
@@ -81,7 +85,9 @@ describe("openAboutModal", () => {
     await open();
     const links = [...(modal()?.querySelectorAll('[part="links"] a') ?? [])];
     expect(links.map((a) => a.textContent)).toEqual(["GitHub", "Documentation", "License"]);
-    expect(links.every((a) => (a as HTMLAnchorElement).href.startsWith("https://"))).toBe(true);
+    expect(
+      links.every((a) => a instanceof HTMLAnchorElement && a.href.startsWith("https://")),
+    ).toBe(true);
   });
 
   test("loads the package list lazily, saying which of the three states it is in", async () => {
@@ -196,7 +202,7 @@ describe("closing", () => {
     await open();
     const footer = modal()?.querySelector('[part="footer"]');
     const buttons = [...(footer?.querySelectorAll("button") ?? [])].map((b) =>
-      b.textContent?.trim(),
+      b.textContent.trim(),
     );
     expect(buttons).toEqual(["Close"]);
     expect(modal()?.querySelector('[part="confirm"]')).toBeNull();
@@ -214,8 +220,10 @@ describe("closing", () => {
 
   test("the Close button closes it", async () => {
     await open();
-    const btn = modal()?.querySelector('[part="cancel"]') as HTMLElement;
-    expect(btn).not.toBeNull();
+    const btn = modal()?.querySelector('[part="cancel"]');
+    if (!btn) {
+      throw new Error("the About dialog draws no Close button");
+    }
     pointer(btn, "click");
     await flush();
     expect(modal()).toBeNull();
@@ -259,7 +267,7 @@ describe("the help.about record", () => {
 
   test("running it opens the dialog", async () => {
     const [record] = aboutCommands();
-    await record!.run(emptyContext(), undefined as never);
+    await record!.run(emptyContext());
     await flush();
     await flush();
     expect(modal()).not.toBeNull();

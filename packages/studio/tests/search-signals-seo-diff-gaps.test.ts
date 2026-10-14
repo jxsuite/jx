@@ -26,7 +26,6 @@ import { seoCommands } from "../src/panels/seo-modal";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 
 beforeEach(() => {
   clearSignalPanels();
@@ -55,14 +54,17 @@ describe("attachJumpBarHost", () => {
   }
 
   /* Parts, not classes: the bar is `src/surfaces/jump-bar.json` now, and a document emits none. */
-  function crumbsIn(el: HTMLElement): (string | undefined)[] {
-    return [...el.querySelectorAll('[part="crumb"]')].map((c) => c.textContent?.trim());
+  function crumbsIn(el: HTMLElement): string[] {
+    return [...el.querySelectorAll('[part="crumb"]')].map((c) => c.textContent.trim());
   }
 
   beforeEach(() => {
-    resetWorkspaceWithTab({ children: [], tagName: "div" } as unknown as JxMutableNode, {
-      documentPath: "/p/index.json",
-    });
+    resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      {
+        documentPath: "/p/index.json",
+      },
+    );
   });
 
   afterEach(() => {
@@ -136,7 +138,7 @@ describe("the rename field's own name", () => {
   function alertText(panel: HTMLElement): string | undefined {
     return editorFor(panel, "$a")
       .querySelector('[part="field"][data-prop="Name"] [role="alert"]')
-      ?.textContent?.trim();
+      ?.textContent.trim();
   }
 
   async function commitName(panel: HTMLElement, value: string): Promise<void> {
@@ -165,9 +167,9 @@ describe("the rename field's own name", () => {
   test("it leaves the document exactly as it found it — no second entry, no reorder", async () => {
     const { panel, repaint } = await openRename();
     await commitName(panel, " $a ");
-    const state = (activeTab.value?.doc.document.state ?? {}) as Record<string, unknown>;
+    const state = activeTab.value?.doc.document.state ?? {};
     expect(Object.keys(state)).toEqual(["$a", "$b"]);
-    expect(state.$a).toEqual({ default: 1 } as never);
+    expect(state.$a).toEqual({ default: 1 });
     // And it is not refused either: an entry cannot collide with itself, which is what a fall
     // Through into the collision check would report.
     repaint();

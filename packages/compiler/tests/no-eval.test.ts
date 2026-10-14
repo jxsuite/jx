@@ -10,11 +10,9 @@ import type { JxDocument } from "@jxsuite/schema/types";
  * sites).
  */
 
-const asDoc = (d: unknown) => d as JxDocument;
-
 describe("compiled output contains no eval (spec §21.1)", () => {
   test("templates, computed bodies, and handlers emit no new Function / eval", () => {
-    const doc = {
+    const doc: JxDocument = {
       tagName: "div",
       state: {
         count: { default: 0, type: "integer" },
@@ -32,7 +30,7 @@ describe("compiled output contains no eval (spec §21.1)", () => {
       ],
     };
 
-    const result = compileClient(asDoc(doc), {
+    const result = compileClient(doc, {
       reactivitySrc: "https://esm.sh/@vue/reactivity@3.5.40",
       title: "NoEval",
     });

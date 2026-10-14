@@ -59,11 +59,10 @@ function rulesOf(el: HTMLElement): Map<string, string> {
  * specificity overrides it, which is the failure `rulesOf` cannot see.
  *
  * @param {HTMLElement} el - The element to read
- * @param {string} prop - A camelCase CSS property name
+ * @param {string} prop - A CSS property name, as a declaration spells it
  * @returns {string}
  */
-const computed = (el: HTMLElement, prop: string) =>
-  (getComputedStyle(el) as unknown as Record<string, string>)[prop] ?? "";
+const computed = (el: HTMLElement, prop: string) => getComputedStyle(el).getPropertyValue(prop);
 
 describe("jx-kbd", () => {
   test("is an ATOMIC INLINE box, which is the whole reason it is not the runtime's default", async () => {

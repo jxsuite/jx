@@ -5,6 +5,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { streamImport } from "../src/services/import-client";
 import type { ImportProgressEvent, ImportSiteOptions } from "../src/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const OPTS: ImportSiteOptions = {
   url: "https://clone.example/",
@@ -39,8 +41,37 @@ afterEach(() => {
 
 function stubFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>) {
   const fetchMock = mock(impl);
-  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = Object.assign(fetchMock, { preconnect: realFetch.preconnect });
   return fetchMock;
+}
+
+type FetchMock = ReturnType<typeof stubFetch>;
+
+/** The `RequestInit` the client passed on the `index`th fetch, failing the test when it sent none. */
+function sentInit(fetchMock: FetchMock, index = 0): RequestInit {
+  const init = fetchMock.mock.calls[index]?.[1];
+  if (!init) {
+    throw new Error(`fetch call ${index} carried no RequestInit`);
+  }
+  return init;
+}
+
+/** The headers of the `index`th request, read through the platform's own `Headers`. */
+function sentHeaders(fetchMock: FetchMock, index = 0): Headers {
+  return new Headers(sentInit(fetchMock, index).headers);
+}
+
+/** The JSON object the `index`th request carried as its body. */
+function sentBody(fetchMock: FetchMock, index = 0): JsonObject {
+  const { body } = sentInit(fetchMock, index);
+  if (!isString(body)) {
+    throw new Error(`fetch call ${index} did not send a string body`);
+  }
+  const parsed: JsonValue = JSON.parse(body);
+  if (!isJsonObject(parsed)) {
+    throw new Error(`fetch call ${index} did not send a JSON object`);
+  }
+  return parsed;
 }
 
 describe("streamImport", () => {
@@ -62,13 +93,12 @@ describe("streamImport", () => {
     // Heartbeats are swallowed; progress is forwarded with counts.
     expect(events).toEqual([{ phase: "capture", message: "Capturing...", current: 1, total: 5 }]);
 
-    const [endpoint, init] = fetchMock.mock.calls[0]!;
+    const [endpoint] = fetchMock.mock.calls[0]!;
     expect(endpoint).toBe("/__studio/import-site");
-    const headers = (init as RequestInit).headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBe("sk-test");
-    expect(headers["X-Api-Base-URL"]).toBe("http://llm.local/v1");
-    const body = JSON.parse((init as RequestInit).body as string);
-    expect(body).toEqual({
+    const headers = sentHeaders(fetchMock);
+    expect(headers.get("X-Api-Key")).toBe("sk-test");
+    expect(headers.get("X-Api-Base-URL")).toBe("http://llm.local/v1");
+    expect(sentBody(fetchMock)).toEqual({
       url: "https://clone.example/",
       directory: "clone",
       depth: 1,
@@ -91,9 +121,9 @@ describe("streamImport", () => {
       aiComponents: false,
     };
     await streamImport("/e", bare, () => {});
-    const headers = (fetchMock.mock.calls[0]![1] as RequestInit).headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBeUndefined();
-    expect(headers["X-Api-Base-URL"]).toBeUndefined();
+    const headers = sentHeaders(fetchMock);
+    expect(headers.has("X-Api-Key")).toBe(false);
+    expect(headers.has("X-Api-Base-URL")).toBe(false);
   });
 
   test("reassembles lines split across chunks", async () => {
@@ -109,7 +139,7 @@ describe("streamImport", () => {
     const events: ImportProgressEvent[] = [];
     const result = await streamImport("/e", OPTS, (e) => events.push(e));
     expect(events).toEqual([{ phase: "styles", message: "Diffing..." }]);
-    expect(result.config).toEqual({ name: "Split" } as never);
+    expect(result.config).toEqual<JsonObject>({ name: "Split" });
   });
 
   /*
@@ -208,7 +238,7 @@ describe("streamImport", () => {
     );
     const controller = new AbortController();
     await streamImport("/e", OPTS, () => {}, controller.signal);
-    expect((fetchMock.mock.calls[0]![1] as RequestInit).signal).toBe(controller.signal);
+    expect(sentInit(fetchMock).signal).toBe(controller.signal);
   });
 });
 
@@ -218,7 +248,7 @@ describe("streamImport — the run summary", () => {
       ndjsonResponse(['{"type":"done","root":"/p","config":{}}\n']),
     );
     await streamImport("/__studio/import-site", OPTS, () => {});
-    const plain = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string);
+    const plain = sentBody(fetchMock);
     expect(plain).not.toHaveProperty("verify");
     expect(plain).not.toHaveProperty("verifyThreshold");
     expect(plain).not.toHaveProperty("verifyMinFidelity");
@@ -228,7 +258,7 @@ describe("streamImport — the run summary", () => {
       { ...OPTS, verify: true, verifyMinFidelity: 60, verifyThreshold: 0.2 },
       () => {},
     );
-    const asked = JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string);
+    const asked = sentBody(fetchMock, 1);
     /* Two numbers, not one: `verifyThreshold` is pixelmatch's per-pixel colour tolerance and only
        moves the score, `verifyMinFidelity` is the bar the run is judged against. */
     expect(asked).toMatchObject({ verify: true, verifyMinFidelity: 60, verifyThreshold: 0.2 });
@@ -244,8 +274,7 @@ describe("streamImport — the run summary", () => {
       { ...OPTS, verify: true, verifyMinFidelity: 0 },
       () => {},
     );
-    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string);
-    expect(body.verifyMinFidelity).toBe(0);
+    expect(sentBody(fetchMock)["verifyMinFidelity"]).toBe(0);
   });
 
   test("returns what the run found", async () => {
@@ -357,8 +386,11 @@ describe("the breakpoint policy", () => {
       { ...OPTS, breakpoints: { count: 3, mode: "limit", rounding: "nearest" } },
       () => {},
     );
-    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as Record<string, unknown>;
-    expect(body.breakpoints).toEqual({ count: 3, mode: "limit", rounding: "nearest" });
+    expect(sentBody(fetchMock)["breakpoints"]).toEqual({
+      count: 3,
+      mode: "limit",
+      rounding: "nearest",
+    });
   });
 
   test("is omitted entirely when the caller has none", async () => {
@@ -366,7 +398,6 @@ describe("the breakpoint policy", () => {
       ndjsonResponse(['{"type":"done","root":"r","config":{}}\n']),
     );
     await streamImport("/e", OPTS, () => {});
-    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as Record<string, unknown>;
-    expect("breakpoints" in body).toBe(false);
+    expect("breakpoints" in sentBody(fetchMock)).toBe(false);
   });
 });

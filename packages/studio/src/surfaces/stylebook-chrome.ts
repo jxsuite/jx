@@ -29,10 +29,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import chromeDoc from "./stylebook-chrome.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("stylebook-chrome", chromeDoc as unknown as JxDocument);
+registerSurface("stylebook-chrome", chromeDoc);
 
 /** What the bar says right now. Every field is the panel's own wording, never a value it derives. */
 export interface StylebookChromeView {
@@ -64,8 +63,7 @@ export interface StylebookChromeSurface {
   update: (view: StylebookChromeView) => void;
 }
 
-interface StylebookChromeScope
-  extends Record<string, unknown>, StylebookChromeView, StylebookChromeActions {}
+interface StylebookChromeScope extends StylebookChromeView, StylebookChromeActions {}
 
 /**
  * Create the bar's surface, mounted into a host of its own.
@@ -84,7 +82,7 @@ export function createStylebookChromeSurface(
 ): StylebookChromeSurface {
   const host = document.createElement("div");
   host.style.display = "contents";
-  const scope = reactive({ ...view, ...actions }) as StylebookChromeScope;
+  const scope: StylebookChromeScope = reactive<StylebookChromeScope>({ ...view, ...actions });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;

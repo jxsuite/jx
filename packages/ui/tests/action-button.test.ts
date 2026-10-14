@@ -5,8 +5,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { buildStyleRules } from "@jxsuite/runtime/css";
-import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
+import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
 
+import actionButtonDoc from "../components/jx-action-button.json";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import { themeCSS } from "../src/theme.ts";
@@ -28,13 +30,17 @@ type JxActionButton = HTMLElement & {
   tabindex: string;
   checked: string;
   badge: string;
+  loading: boolean;
 };
 
 /** Every rule the element's own style block emits, under a stand-in scope handle. */
-const sheet = (): string[] =>
-  buildStyleRules(documents["jx-action-button"]!.style as JxStyle, { scope: "S" }).map(
-    (rule) => rule.text,
-  );
+const sheet = (): string[] => {
+  const { style } = documents["jx-action-button"];
+  if (!style) {
+    throw new Error("jx-action-button declares no style block");
+  }
+  return buildStyleRules(style, { scope: "S" }).map((rule) => rule.text);
+};
 
 beforeAll(async () => {
   await registerUi();
@@ -44,8 +50,16 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+/** A fresh, unattached `jx-action-button`, typed with the state its document declares. */
+function createActionButton(): JxActionButton {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-action-button` from its document before any
+     test runs, so `createElement` constructs that class synchronously, and the class exposes every
+     declared state entry (each JxActionButton member) as a property. */
+  return document.createElement("jx-action-button") as JxActionButton;
+}
+
 async function action(attrs: Record<string, string> = {}): Promise<JxActionButton> {
-  const el = document.createElement("jx-action-button") as JxActionButton;
+  const el = createActionButton();
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
   }
@@ -57,10 +71,20 @@ async function action(attrs: Record<string, string> = {}): Promise<JxActionButto
 const control = (el: Element) => el.querySelector<HTMLButtonElement>('[part="control"]')!;
 
 /** The stylebook page for this element, read off disk the way the conformance suite reads them. */
-const stylebookPage = (): JxDocument =>
-  JSON.parse(
+function stylebookPage(): JxElement {
+  const parsed: unknown = JSON.parse(
     readFileSync(resolve(import.meta.dir, "../stylebook/jx-action-button.json"), "utf8"),
-  ) as JxDocument;
+  );
+  if (!isNodeObject(parsed)) {
+    throw new TypeError("stylebook/jx-action-button.json is not a document object");
+  }
+  return parsed;
+}
+
+/** A node's element children: text children dropped, and a repeater read as having none. */
+function elementChildren(node: JxElement): JxElement[] {
+  return Array.isArray(node.children) ? node.children.filter((child) => isNodeObject(child)) : [];
+}
 
 describe("jx-action-button", () => {
   test("is a named, icon-first native button, quiet by default", async () => {
@@ -97,7 +121,7 @@ describe("jx-action-button", () => {
     expect(el.dataset.selected !== undefined).toBe(false);
     const changes: unknown[] = [];
     el.addEventListener("change", (e) => {
-      changes.push((e as CustomEvent).detail);
+      changes.push("detail" in e ? e.detail : undefined);
     });
     inner.click();
     await tick();
@@ -188,7 +212,7 @@ describe("jx-action-button", () => {
     expect(control(el).getAttribute("aria-label")).toBe("Toggle Inspector Dock");
     expect(control(el).hasAttribute("title")).toBe(false);
     expect(el.querySelector("jx-tooltip")!.textContent).toBe("Toggle Inspector Dock (⌘I)");
-    const icon = el.querySelector("jx-icon") as (HTMLElement & { mirror: boolean }) | null;
+    const icon = el.querySelector<HTMLElement & { mirror: boolean }>("jx-icon");
     expect(icon?.mirror).toBe(true);
     el.setAttribute("hint", "");
     await tick();
@@ -215,9 +239,7 @@ describe("jx-action-button", () => {
     /* An action button draws its icon from a manifest name and has no icon slot, so a host cannot
        put a progress ring where the glyph was — which is what blocked the Refresh affordance
        outright rather than degrading it. */
-    const el = (await action({ icon: "arrows-clockwise", label: "Refresh" })) as JxActionButton & {
-      loading: boolean;
-    };
+    const el = await action({ icon: "arrows-clockwise", label: "Refresh" });
     const inner = control(el);
     expect(el.querySelector('[part="spinner"]')!.hasAttribute("hidden")).toBe(true);
     expect(el.querySelector('[part="icon"]')!.hasAttribute("hidden")).toBe(false);
@@ -272,12 +294,12 @@ describe("jx-action-button", () => {
   test("a click dispatched AT the host is swallowed too, where no inner control sees it", async () => {
     /* The control-level swallow never runs for this one, so the host keeps a guard of its own —
        and a toggling button must not flip on it either. */
-    const el = (await action({
+    const el = await action({
       icon: "eye",
       label: "Show",
       loading: "",
       toggles: "",
-    })) as JxActionButton & { loading: boolean };
+    });
     const click = new MouseEvent("click", { bubbles: true, cancelable: true });
     el.dispatchEvent(click);
     await tick();
@@ -293,12 +315,12 @@ describe("jx-action-button", () => {
   });
 
   test("a loading toggle does not flip: the activation was swallowed, not queued", async () => {
-    const el = (await action({
+    const el = await action({
       icon: "eye",
       label: "Show",
       loading: "",
       toggles: "",
-    })) as JxActionButton & { loading: boolean };
+    });
     const changes: unknown[] = [];
     el.addEventListener("change", () => {
       changes.push(1);
@@ -318,13 +340,13 @@ describe("jx-action-button", () => {
   test("the prop descriptions say the tooltip is a decision, not the name repeated", async () => {
     /* The `title`-falls-back-to-`label` removal is a DECISION with two halves, and the next reader
        will re-derive it as a defect unless both are written down where the props are. */
-    const state = documents["jx-action-button"]!.state as Record<string, { description?: string }>;
-    expect(state["label"]!.description).toContain("It is NOT also the tooltip");
+    const { state } = actionButtonDoc;
+    expect(state.label.description).toContain("It is NOT also the tooltip");
     // The half that says `hint === label` is often the RIGHT answer, not a double-naming bug.
-    expect(state["hint"]!.description).toContain("icon-only");
-    expect(state["hint"]!.description).toContain("hint equal to label is the right answer");
+    expect(state.hint.description).toContain("icon-only");
+    expect(state.hint.description).toContain("hint equal to label is the right answer");
     // And the half that says why it is no longer automatic.
-    expect(state["hint"]!.description).toContain("already fully visible");
+    expect(state.hint.description).toContain("already fully visible");
   });
 
   test("the selection props describe the selection the element actually has", async () => {
@@ -333,17 +355,15 @@ describe("jx-action-button", () => {
        selection needs `toggles`, which is exactly the mistake that costs a `change` the call site
        cannot absorb. And `checked` has to say which way the refusal goes, since a document setting
        both gets one answer rather than an error. */
-    const state = documents["jx-action-button"]!.state as Record<string, { description?: string }>;
-    expect(state["selected"]!.description).toContain("whoever wrote it");
-    expect(state["selected"]!.description).not.toContain("The pressed state of a toggling button");
-    expect(state["checked"]!.description).toContain("checked wins");
-    expect(state["checked"]!.description).toContain("role=none");
+    const { state } = actionButtonDoc;
+    expect(state.selected.description).toContain("whoever wrote it");
+    expect(state.selected.description).not.toContain("The pressed state of a toggling button");
+    expect(state.checked.description).toContain("checked wins");
+    expect(state.checked.description).toContain("role=none");
   });
 
   test("a badge is drawn only while it has something to say", async () => {
-    const el = (await action({ icon: "git-branch", label: "Source Control" })) as JxActionButton & {
-      badge: string;
-    };
+    const el = await action({ icon: "git-branch", label: "Source Control" });
     expect(el.querySelector('[part="badge"]')).toBeNull();
     el.badge = "3";
     await tick();
@@ -382,11 +402,10 @@ describe("jx-action-button", () => {
        `[BUTTON, BUTTON, BUTTON, JX-ACTION-BUTTON, BUTTON]` — the roving caret's one tab stop
        became two on the segment holding it. Not advertising the attribute is what removes the
        trap: writing it now means what the platform means and nothing reaches the control. */
-    const doc = documents["jx-action-button"]!;
-    expect(doc.observedAttributes).not.toContain("tabindex");
-    const state = doc.state as Record<string, { attribute?: string; description?: string }>;
-    expect(state["tabindex"]!.attribute).toBeUndefined();
-    expect(state["tabindex"]!.description).toContain("PROPERTY ONLY");
+    expect(documents["jx-action-button"].observedAttributes).not.toContain("tabindex");
+    const { tabindex } = actionButtonDoc.state;
+    expect(tabindex).not.toHaveProperty("attribute");
+    expect(tabindex.description).toContain("PROPERTY ONLY");
     const el = await action({ icon: "text-b", label: "Bold", tabindex: "0" });
     expect(control(el).hasAttribute("tabindex")).toBe(false);
     // And the property still works on the same element, which is what the group writes.
@@ -500,7 +519,7 @@ describe("jx-action-button", () => {
     const el = await action({ icon: "text-b", label: "Bold", toggles: "" });
     const changes: unknown[] = [];
     el.addEventListener("change", (e) => {
-      changes.push((e as CustomEvent).detail);
+      changes.push("detail" in e ? e.detail : undefined);
     });
     control(el).click();
     await tick();
@@ -531,7 +550,7 @@ describe("jx-action-button", () => {
     expect(getComputedStyle(el.querySelector('[part="badge-slot"]')!).display).toBe("contents");
     // The two-line spelling, which is the one a hand-written page produces: the whitespace is a
     // Slotted child, so it REPLACES the slot rather than sitting inside it.
-    const spaced = document.createElement("jx-action-button") as JxActionButton;
+    const spaced = createActionButton();
     spaced.setAttribute("icon", "plus");
     spaced.setAttribute("label", "Add");
     spaced.append(document.createTextNode("\n  "));
@@ -586,15 +605,18 @@ describe("jx-action-button", () => {
        `checked` now draws it, so the state is written once and the page fails if it stops being
        true of the element. */
     const page = stylebookPage();
-    const note = (page.state as Record<string, Record<string, unknown>>)["note"]!;
+    const note = page.state?.["note"];
+    if (!isJsonObject(note)) {
+      throw new TypeError("the stylebook page declares no `note` entry");
+    }
     expect(note["parameters"]).toBeUndefined();
-    const segments = (page.children as JxElement[])
+    const segments = elementChildren(page)
       .filter((child) => child.attributes?.["role"] === "radiogroup")
-      .flatMap((group) => (group.children ?? []) as JxElement[]);
+      .flatMap((group) => elementChildren(group));
     expect(segments.length).toBeGreaterThan(1);
     for (const segment of segments) {
-      const props = segment.$props as Record<string, unknown>;
-      expect(typeof props["checked"], String(props["label"])).toBe("string");
+      const props = segment.$props ?? {};
+      expect(props["checked"], String(props["label"])).toBeTypeOf("string");
       expect(props["selected"], String(props["label"])).toBeUndefined();
     }
   });

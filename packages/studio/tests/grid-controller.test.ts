@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { canRedo, canUndo, redo, undo } from "../src/tabs/transact";
-import type { CommitResult, GridEditBatch, GridSource } from "../src/grid/grid-source";
+import type { GridController } from "../src/grid/grid-controller";
+import type { CommitResult, GridEditBatch, GridRow, GridSource } from "../src/grid/grid-source";
 import type { FsEvent } from "../src/types";
 
 const confirmCalls: string[] = [];
@@ -43,12 +44,11 @@ interface StubOptions {
 function stubSource(opts: StubOptions = {}): GridSource & { commits: GridEditBatch[] } {
   const commits: GridEditBatch[] = [];
   // Stateful: the default commit applies the batch, so post-save reloads return saved values.
-  let data = [
-    { cells: { count: 1, title: "One" } as Record<string, unknown>, key: "a" },
-    { cells: { count: 2, title: "Two" } as Record<string, unknown>, key: "b" },
+  let data: GridRow[] = [
+    { cells: { count: 1, title: "One" }, key: "a" },
+    { cells: { count: 2, title: "Two" }, key: "b" },
   ];
-  return {
-    ...(opts.backingPaths ? { backingPaths: () => opts.backingPaths! } : {}),
+  const source: GridSource & { commits: GridEditBatch[] } = {
     capabilities: { delete: true, insert: true, remotePaging: false, remoteSort: false },
     columns: async () => [
       { editable: true, field: "title", kind: "string", required: true, title: "Title" },
@@ -83,10 +83,15 @@ function stubSource(opts: StubOptions = {}): GridSource & { commits: GridEditBat
     id: "grid://collection/test",
     label: "test",
     rows: async () => ({
-      rows: data.map((row) => ({ cells: { ...row.cells } as never, key: row.key })),
+      rows: data.map((row) => ({ cells: { ...row.cells }, key: row.key })),
       total: data.length,
     }),
   };
+  const { backingPaths } = opts;
+  if (backingPaths) {
+    source.backingPaths = () => backingPaths;
+  }
+  return source;
 }
 
 function openGridTab(id = "grid://collection/test") {
@@ -456,7 +461,7 @@ function orderedSource(remoteSort = false): GridSource {
   };
 }
 
-const keysOf = (controller: { effectiveRows: () => Record<string, unknown>[] }) =>
+const keysOf = (controller: GridController) =>
   controller.effectiveRows().map((row) => row[ROW_KEY_FIELD]);
 
 describe("sort", () => {

@@ -14,7 +14,7 @@
 import { flush, installMockPlatform, pointer } from "./harness";
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
-import type { PackageInfo } from "../src/types";
+import type { PackageInfo, StudioPlatform } from "../src/types";
 
 void mock.module("../src/version", () => ({
   APP_NAME: "Jx Studio",
@@ -49,7 +49,7 @@ afterEach(() => {
       d.remove();
     }
   }
-  (document.querySelector("#layer-modal") as HTMLElement).innerHTML = "";
+  document.querySelector("#layer-modal")?.replaceChildren();
 });
 
 const TWO_DEPS = {
@@ -64,7 +64,7 @@ const TWO_DEPS = {
 };
 
 /** Draw the section into a fresh container and let the surface mount. */
-async function setup(overrides: Record<string, unknown>): Promise<HTMLElement> {
+async function setup(overrides: Partial<StudioPlatform>): Promise<HTMLElement> {
   installMockPlatform(overrides);
   const c = makeContainer();
   renderDependenciesEditor(c);
@@ -74,7 +74,7 @@ async function setup(overrides: Record<string, unknown>): Promise<HTMLElement> {
 
 /** The line drawn where the table would be: "Loading…" or "No dependencies.". */
 function status(c: HTMLElement): string {
-  return c.querySelector('[part="status"]')?.textContent?.trim() ?? "";
+  return c.querySelector('[part="status"]')?.textContent.trim() ?? "";
 }
 
 /** One package's row, found by the package it draws. */
@@ -84,12 +84,12 @@ function row(c: HTMLElement, name: string): HTMLElement | null {
 
 /** A cell of one package's row, by the column it is in. */
 function cell(c: HTMLElement, name: string, part: string): string | undefined {
-  return row(c, name)?.querySelector(`[part="${part}"]`)?.textContent?.trim();
+  return row(c, name)?.querySelector(`[part="${part}"]`)?.textContent.trim();
 }
 
 /** Every package the table lists, in order. */
 function listed(c: HTMLElement): (string | undefined)[] {
-  return [...c.querySelectorAll('[part="row"]')].map((r) => (r as HTMLElement).dataset["package"]);
+  return [...c.querySelectorAll<HTMLElement>('[part="row"]')].map((r) => r.dataset["package"]);
 }
 
 describe("renderDependenciesEditor", () => {
@@ -159,10 +159,10 @@ describe("renderDependenciesEditor", () => {
   });
 
   test("update sends a ^latest bump for the row", async () => {
-    let received: unknown;
+    let received: { name: string; version: string; dev?: boolean }[] = [];
     const c = await setup({
       ...TWO_DEPS,
-      setPackageVersions: async (u: unknown) => {
+      setPackageVersions: async (u) => {
         received = u;
         return { ok: true };
       },
@@ -199,7 +199,6 @@ describe("renderDependenciesEditor", () => {
       ...TWO_DEPS,
       removePackage: async (name: string) => {
         removed = name;
-        return {};
       },
     });
     pointer(row(c, "@jxsuite/compiler")!.querySelector('[part="remove"]')!, "click");
@@ -213,10 +212,12 @@ describe("renderDependenciesEditor", () => {
       listPackages: async () => [],
       addPackage: async (name: string) => {
         added = name;
-        return {};
       },
     });
-    const field = c.querySelector('[part="add-field"] [part="input"]') as HTMLInputElement;
+    const field = c.querySelector('[part="add-field"] [part="input"]');
+    if (!(field instanceof HTMLInputElement)) {
+      throw new Error("the add field draws no native input");
+    }
     field.value = "lodash";
     field.dispatchEvent(new Event("input", { bubbles: true }));
     await flush(2);

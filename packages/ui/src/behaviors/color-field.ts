@@ -33,6 +33,9 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 import {
   formatHex,
   formatOklch,
@@ -44,19 +47,24 @@ import {
 } from "../color.ts";
 import type { Rgb } from "../color.ts";
 import { close, openAt } from "./popover.ts";
+import type { PlacedPopover } from "./popover.ts";
 
 /** The tag this sidecar belongs to. */
 const HOST = "jx-color-field";
 
 /** The reactive scope a `jx-color-field` document hands its handlers. */
 export interface ColorFieldState {
-  /** The colour, spelled as `format` says. */
-  value: string;
+  /**
+   * The colour, spelled as `format` says. Null when a host clears the reflected `value` attribute,
+   * which is a write this module reads but never makes.
+   */
+  value: string | null;
   /**
    * The colour behind `value` when `value` is a reference this page cannot resolve; empty when the
-   * value stands for itself. Drawn by the chip and opened on by the picker, never written.
+   * value stands for itself. Drawn by the chip and opened on by the picker, never written; null
+   * when a host clears the reflected attribute.
    */
-  resolved: string;
+  resolved: string | null;
   /** `hex` or `oklch`: which spelling {@link compose} writes. */
   format: string;
   /** Whether the alpha channel is offered at all. */
@@ -83,13 +91,25 @@ export interface ColorFieldState {
   uid: string;
   /** Whether the element refuses to move. */
   disabled: boolean;
-  [key: string]: unknown;
 }
 
-/** The system's screen-colour picker, where the engine has one. */
+/**
+ * The system's screen-colour picker, where the engine has one. Not in the TypeScript DOM library
+ * yet, so its result is typed as loosely as an engine's own implementation could hand it back.
+ */
 interface EyeDropperApi {
-  open: () => Promise<{ sRGBHex: string }>;
+  open: () => Promise<{ sRGBHex?: string } | undefined>;
 }
+
+/**
+ * A node the document has named a channel, with the properties the composed elements install: the
+ * area's two axes, and the `value` a slider or a slotted palette carries.
+ */
+type ChannelElement = HTMLElement & {
+  saturation?: number;
+  brightness?: number;
+  value?: number | string;
+};
 
 /** How many stems have been minted, so no two instances share one. */
 let minted = 0;
@@ -120,9 +140,9 @@ function ownerOf(event: Event): HTMLElement | null {
   return target instanceof Element ? target.closest<HTMLElement>(HOST) : null;
 }
 
-/** The picker panel. */
-function panelOf(host: HTMLElement): HTMLElement | null {
-  return host.querySelector<HTMLElement>('[part="picker"]');
+/** The picker panel: the `jx-popover` jx-color-field.json renders as its `picker` part. */
+function panelOf(host: HTMLElement): PlacedPopover | null {
+  return host.querySelector<PlacedPopover>('[part="picker"]');
 }
 
 /** The colour the channels currently describe. */
@@ -242,11 +262,20 @@ const CHANNEL = "[data-jx-channel]";
  * channel by name is what makes the answer the same for a control the element owns, a control one
  * of its children owns, and a palette a consumer slotted in.
  */
-function sourceOf(event: Event): (HTMLElement & Record<string, unknown>) | null {
+function sourceOf(event: Event): ChannelElement | null {
   const { target } = event;
-  return target instanceof Element
-    ? target.closest<HTMLElement & Record<string, unknown>>(CHANNEL)
-    : null;
+  return target instanceof Element ? target.closest<ChannelElement>(CHANNEL) : null;
+}
+
+/**
+ * The `value` an event's target carries, as text; empty when it carries none.
+ *
+ * The target is a native `<input>` for the text and system channels, but for a palette it is
+ * whatever a consumer slotted in, which may expose no `value` at all.
+ */
+function targetValue(event: Event): string {
+  const { target } = event;
+  return target !== null && "value" in target ? String(target.value ?? "") : "";
 }
 
 /**
@@ -272,7 +301,7 @@ function route(state: ColorFieldState, event: Event, name: "input" | "change"): 
   }
   event.stopPropagation();
   if (channel === "text") {
-    const typed = String((event.target as HTMLInputElement).value ?? "");
+    const typed = targetValue(event);
     state.text = typed;
     const parsed = parseColor(typed);
     if (name === "input") {
@@ -295,18 +324,18 @@ function route(state: ColorFieldState, event: Event, name: "input" | "change"): 
        whatever announced them, and both are opaque by construction — a colour well cannot express
        an alpha and a palette entry need not — so the alpha the reader already chose is carried
        across rather than reset to full by a control that has nothing to say about it. */
-    const parsed = parseColor(String((event.target as HTMLInputElement).value ?? ""));
+    const parsed = parseColor(targetValue(event));
     if (!parsed) {
       return;
     }
     applyRgb(state, { ...parsed, a: state.alpha === true ? Number(state.opacity) / 100 : 1 });
   } else if (channel === "area") {
-    state.saturation = Number(source["saturation"]);
-    state.brightness = Number(source["brightness"]);
+    state.saturation = Number(source.saturation);
+    state.brightness = Number(source.brightness);
   } else if (channel === "hue") {
-    state.hue = Number(source["value"]);
+    state.hue = Number(source.value);
   } else if (channel === "opacity") {
-    state.opacity = Number(source["value"]);
+    state.opacity = Number(source.value);
   } else {
     return;
   }
@@ -373,8 +402,8 @@ export function onOpenPicker(state: ColorFieldState, event: Event): void {
     return;
   }
   const box = host.getBoundingClientRect();
-  (panel as HTMLElement & { x: number; y: number }).x = Math.round(box.left);
-  (panel as HTMLElement & { x: number; y: number }).y = Math.round(box.bottom);
+  panel.x = Math.round(box.left);
+  panel.y = Math.round(box.bottom);
   openAt(panel, event.currentTarget instanceof Element ? event.currentTarget : host);
 }
 
@@ -392,10 +421,16 @@ export function onOpenPicker(state: ColorFieldState, event: Event): void {
  * @param offered The element's own `eyedropper` prop.
  * @returns Whether to draw the button.
  */
-export function eyeDropperAvailable(offered: unknown): boolean {
-  return (
-    offered === true && typeof (globalThis as { EyeDropper?: unknown }).EyeDropper === "function"
-  );
+export function eyeDropperAvailable(offered: JsonValue | undefined): boolean {
+  return offered === true && isFunction(eyeDropperOf());
+}
+
+/** The engine's `EyeDropper` constructor, or undefined where it ships none. */
+function eyeDropperOf(): (new () => EyeDropperApi) | undefined {
+  /* SAFETY: `EyeDropper` is the WICG screen-picker constructor, absent from lib.dom; where an engine
+     ships it, `new EyeDropper().open()` resolves the picked colour, and where it does not the
+     property is undefined, which every caller guards. */
+  return (globalThis as { EyeDropper?: new () => EyeDropperApi }).EyeDropper;
 }
 
 /**
@@ -410,7 +445,7 @@ export function eyeDropperAvailable(offered: unknown): boolean {
  */
 export function onEyeDropper(state: ColorFieldState, event: Event): Promise<void> {
   const host = ownerOf(event);
-  const Api = (globalThis as { EyeDropper?: new () => EyeDropperApi }).EyeDropper;
+  const Api = eyeDropperOf();
   if (!host || !Api || state.disabled === true) {
     return Promise.resolve();
   }
@@ -459,7 +494,7 @@ export function onFieldMount(state: ColorFieldState, event: Event): void {
   const panel = panelOf(host);
   if (panel) {
     panel.addEventListener("toggle", (toggle: Event) => {
-      state.expanded = (toggle as Event & { newState?: string }).newState === "open";
+      state.expanded = "newState" in toggle && toggle.newState === "open";
     });
   }
 }

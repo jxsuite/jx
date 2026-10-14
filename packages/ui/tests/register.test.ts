@@ -1,14 +1,13 @@
 import "./with-dom.ts";
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { KIT_BASE, KIT_MODULES, KIT_TAGS, registerUi, themeInstalled } from "../src/index.ts";
 import { resolve } from "@jxsuite/runtime";
 
 describe("registerUi", () => {
   test("defines every kit element once, with no network, and adopts the theme", async () => {
-    const fetchMock = mock(() => Promise.reject(new Error("no network")));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const fetchMock = spyOn(globalThis, "fetch").mockRejectedValue(new Error("no network"));
     const doc = document.implementation.createHTMLDocument("kit");
 
     const first = registerUi({ document: doc });

@@ -19,7 +19,8 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as storeActual from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import { A, B } from "./shared-fixtures";
 
 void mock.module("../src/store", () => ({
   ...storeActual,
@@ -40,9 +41,6 @@ const { initCssData } = await import("../src/panels/style-utils");
 const { initLayers } = await import("../src/ui/layers");
 const { getNodeAtPath } = await import("../src/store");
 
-(globalThis as Record<string, unknown>).requestAnimationFrame ??= (cb: (t: number) => void) =>
-  setTimeout(() => cb(0), 0);
-
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   if (!document.querySelector(`#${id}`)) {
     const el = document.createElement("div");
@@ -52,9 +50,6 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-const A = ["children", 0];
-const B = ["children", 1];
-
 /** Two images that disagree twice over: their aspect ratio and their alt text. */
 function twoCards(): JxMutableNode {
   return {
@@ -63,7 +58,7 @@ function twoCards(): JxMutableNode {
       { attributes: { alt: "two" }, style: { aspectRatio: "16/9" }, tagName: "img" },
     ],
     tagName: "div",
-  } as unknown as JxMutableNode;
+  };
 }
 
 /** The same two, agreeing about everything. */
@@ -74,7 +69,7 @@ function twoIdenticalCards(): JxMutableNode {
       { attributes: { alt: "same" }, style: { aspectRatio: "1/1" }, tagName: "img" },
     ],
     tagName: "div",
-  } as unknown as JxMutableNode;
+  };
 }
 
 function setup(doc: JxMutableNode, selection: (string | number)[][]) {
@@ -85,21 +80,43 @@ function setup(doc: JxMutableNode, selection: (string | number)[][]) {
 }
 
 function node(path: (string | number)[]): JxMutableNode {
-  return getNodeAtPath(activeTab.value!.doc.document, path);
+  const found = getNodeAtPath(activeTab.value!.doc.document, path);
+  if (!found) {
+    throw new Error(`no node at [${path.join(", ")}]`);
+  }
+  return found;
+}
+
+/** A query result as the HTML element the panels draw, or `null` when the query found none. */
+function htmlOrNull(el: Element | null | undefined): HTMLElement | null {
+  return el instanceof HTMLElement ? el : null;
+}
+
+/** A query result that must exist, failing the test when it does not. */
+function htmlOf(el: Element | null): HTMLElement {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("expected the panel to draw this element");
+  }
+  return el;
 }
 
 const styleRow = (c: HTMLElement, prop: string) =>
-  c.querySelector(`[part="row"][data-prop="${prop}"]`) as HTMLElement | null;
+  htmlOrNull(c.querySelector(`[part="row"][data-prop="${prop}"]`));
 const contentRow = (c: HTMLElement, prop: string) =>
-  c.querySelector(`[data-prop="${prop}"]`) as HTMLElement | null;
-const chip = (row: HTMLElement | null) => row?.querySelector('[part="chip"]') as HTMLElement | null;
+  htmlOrNull(c.querySelector(`[data-prop="${prop}"]`));
+const chip = (row: HTMLElement | null) => htmlOrNull(row?.querySelector('[part="chip"]'));
 
 /** The state a chip is in. A document says such things with data, not with a class. */
 const chipState = (row: HTMLElement | null) => chip(row)?.dataset.state ?? "";
 
 /** A row's own control — a kit field's native input, wherever the row puts one. */
-const control = (row: HTMLElement | null, part = "text") =>
-  row?.querySelector(`[part="${part}"] [part="input"]`) as HTMLInputElement;
+function control(row: HTMLElement | null, part = "text"): HTMLInputElement {
+  const input = row?.querySelector(`[part="${part}"] [part="input"]`);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`expected a native input under [part="${part}"]`);
+  }
+  return input;
+}
 
 /**
  * The Style tab is a mounted Jx document too, bound to a host rather than rendered into one, and it
@@ -135,7 +152,7 @@ async function renderContent(): Promise<HTMLElement> {
   return contentHost;
 }
 const contentChip = (c: HTMLElement, prop: string) =>
-  contentRow(c, prop)?.querySelector('[part="chip"]') as HTMLElement | null;
+  htmlOrNull(contentRow(c, prop)?.querySelector('[part="chip"]'));
 /**
  * The Logic tab is a mounted Jx document too, bound to a host the Inspector owns for the life of
  * the window rather than rendered into one.
@@ -158,11 +175,11 @@ async function renderLogic(): Promise<HTMLElement> {
 
 /** The binding row for one event key. */
 const eventRow = (c: HTMLElement, key: string) =>
-  c.querySelector(`[data-event="${key}"][part="binding"]`) as HTMLElement;
+  htmlOf(c.querySelector(`[data-event="${key}"][part="binding"]`));
 
 /** Its clear control's dot, which is where `set` / `mixed` lands. */
 const eventDot = (c: HTMLElement, key: string) =>
-  eventRow(c, key).querySelector('[part="event-clear"] [part="dot"]') as HTMLElement;
+  htmlOf(eventRow(c, key).querySelector('[part="event-clear"] [part="dot"]'));
 
 beforeEach(() => {
   installMockPlatform();
@@ -243,14 +260,14 @@ describe("Style tab", () => {
  * primary element only, for the header field AND for every longhand child, and drew a plain "Clear
  * padding" dot over a property `mixedStyleProps` had already computed as mixed.
  */
-function twoSections(styles: [JxMutableNode["style"], JxMutableNode["style"]]): JxMutableNode {
+function twoSections(styles: [JxStyle, JxStyle]): JxMutableNode {
   return {
     children: [
       { style: styles[0], tagName: "section" },
       { style: styles[1], tagName: "section" },
     ],
     tagName: "div",
-  } as unknown as JxMutableNode;
+  };
 }
 
 const shorthandField = (c: HTMLElement, prop: string) => control(styleRow(c, prop));
@@ -398,7 +415,7 @@ function twoButtons(sameHandler: boolean): JxMutableNode {
       stop: { $prototype: "Function", body: "", parameters: [] },
     },
     tagName: "div",
-  } as unknown as JxMutableNode;
+  };
 }
 
 describe("Logic tab", () => {
@@ -452,8 +469,8 @@ describe("Logic tab", () => {
     const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu')!;
     menu.querySelector<HTMLElement>('[data-command-id="function"]')!.click();
     await flush(4);
-    expect((node(A).onclick as Record<string, unknown>).$prototype).toBe("Function");
-    expect((node(B).onclick as Record<string, unknown>).$prototype).toBe("Function");
+    expect(node(A).onclick).toMatchObject({ $prototype: "Function" });
+    expect(node(B).onclick).toMatchObject({ $prototype: "Function" });
     expect(tab.history.index).toBe(before + 1);
   });
 });

@@ -8,7 +8,8 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { assetUrlFor, resolveAssetUrl } from "@jxsuite/schema/asset-paths";
-import type { JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue, JxElement, ProjectConfig } from "@jxsuite/schema/types";
 import { buildExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { FormatHostIO } from "@jxsuite/schema/format-registry";
@@ -18,7 +19,13 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ContentEntry } from "../src/content.ts";
 import { Content } from "../src/content-loader.ts";
-import type { ContentSection } from "../src/content-loader.ts";
+import type {
+  ContentPathParams,
+  ContentPathsSource,
+  ContentSection,
+  ResolvePathsContext,
+} from "../src/content-loader.ts";
+import type { ContentNodes } from "../src/inert.ts";
 import type { ContentLoaderEntry } from "../src/types.ts";
 import {
   DUPLICATE_ROUTE_PATH,
@@ -63,18 +70,15 @@ function captureWarnings(): string[] {
 
 function nodeIO(): FormatHostIO {
   return {
+    // A module namespace object is an object keyed by export name, which is what the registry reads.
     importModule: async (path) => {
       try {
-        return (await import(pathToFileURL(path).href)) as Record<string, unknown>;
+        return await import(pathToFileURL(path).href);
       } catch {
-        return (await import(pathToFileURL(`${path.slice(0, -3)}.ts`).href)) as Record<
-          string,
-          unknown
-        >;
+        return await import(pathToFileURL(`${path.slice(0, -3)}.ts`).href);
       }
     },
-    loadJson: (path) =>
-      Promise.resolve(JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>),
+    loadJson: (path) => Promise.resolve(JSON.parse(readFileSync(path, "utf8"))),
     resolvePath: (base, ref) => (isAbsolute(ref) ? ref : resolve(dirname(base), ref)),
   };
 }
@@ -85,14 +89,21 @@ function registry(): Promise<ExtensionRegistry> {
   return registryPromise;
 }
 
+/**
+ * Options laid over a content type definition, as raw project.json values: a test may pass one the
+ * loader must reject, which only its own validation (not the declared option types) is entitled to
+ * judge, and `undefined` removes an option.
+ */
+type TypeOverrides = Record<string, JsonValue | undefined>;
+
 /** Load the fixture vault through `Content.projectData` with the given overrides on the kb type. */
 async function loadVault(
-  overrides: Record<string, unknown> = {},
+  overrides: TypeOverrides = {},
   projectConfig: ProjectConfig = {},
 ): Promise<Map<string, ContentLoaderEntry[]>> {
-  const section = {
+  const section: ContentSection = {
     kb: { ...KB_TYPE, source: "./vault", ...overrides },
-  } as unknown as ContentSection;
+  };
   return await Content.projectData(section, {
     projectConfig,
     registry: await registry(),
@@ -103,17 +114,21 @@ async function loadVault(
 const byPath = (entries: ContentLoaderEntry[], path: string) =>
   entries.find((e) => e._meta?.path === path)!;
 
+/** The child nodes of an element; a loaded entry never holds a mapped-array repeater. */
+const childrenOf = (el: JxElement): (JxElement | string)[] =>
+  Array.isArray(el.children) ? el.children : [];
+
 /** All Jx descendants matching a predicate, depth first. */
 function find(nodes: (JxElement | string)[] | undefined, test: (el: JxElement) => boolean) {
   const out: JxElement[] = [];
   for (const node of nodes ?? []) {
-    if (typeof node !== "object") {
+    if (isString(node)) {
       continue;
     }
     if (test(node)) {
       out.push(node);
     }
-    out.push(...find(node.children as (JxElement | string)[] | undefined, test));
+    out.push(...find(childrenOf(node), test));
   }
   return out;
 }
@@ -288,9 +303,7 @@ describe("routes", () => {
     const { kb } = Object.fromEntries(await loadVault());
     // The loser of the duplicate route is published and not a draft, and still has no page.
     expect(kb!.some((e) => e._meta?.path === DUPLICATE_ROUTE_PATH)).toBe(false);
-    expect(
-      kb!.every((e) => typeof e._meta?.route === "string" && typeof e._meta?.url === "string"),
-    ).toBe(true);
+    expect(kb!.every((e) => isString(e._meta?.route) && isString(e._meta.url))).toBe(true);
     // Without a route template nothing is dropped: the collection is whatever was loaded.
     const flat = Object.fromEntries(
       await loadVault({ indexRoute: undefined, route: undefined }),
@@ -359,7 +372,7 @@ describe("routes", () => {
 });
 
 describe("links between entries", () => {
-  const bench = async (overrides: Record<string, unknown> = {}) => {
+  const bench = async (overrides: TypeOverrides = {}) => {
     const { kb } = Object.fromEntries(await loadVault(overrides));
     return byPath(kb!, "Frappe/Bench Operations.md");
   };
@@ -467,8 +480,9 @@ describe("links between entries", () => {
   it("never rewrites a path outside the source root, however it is spelled", async () => {
     captureWarnings();
     const entry = await bench();
-    expect(JSON.stringify(entry.$children)).not.toContain("etc/passwd");
-    expect(JSON.stringify(entry.$children)).not.toContain('"href":"../../');
+    const tree = JSON.stringify(entry.$children);
+    expect(tree).not.toContain("etc/passwd");
+    expect(tree).not.toContain('"href":"../../');
   });
 
   it("links: error fails the build with every broken link in one message", async () => {
@@ -512,7 +526,8 @@ describe("alerts", () => {
     const alerts = find(entry.$children, (el) => el.attributes?.role === "note");
     expect(alerts.map((a) => a.attributes?.["data-alert"])).toEqual(["note", "warning", "tip"]);
     const warning = alerts[1]!;
-    expect((warning.children as JxElement[])[0]!.textContent).toBe("Destructive");
+    const [title] = childrenOf(warning);
+    expect(title).toMatchObject({ textContent: "Destructive" });
     expect(find(entry.$children, (el) => el.tagName === "blockquote")).toEqual([]);
   });
 
@@ -524,7 +539,7 @@ describe("alerts", () => {
     const entry = byPath(kb!, "Frappe/Bench Operations.md");
     const mapped = find(
       entry.$children,
-      (el) => typeof el.tagName === "string" && el.tagName.startsWith("doc-"),
+      (el) => isString(el.tagName) && el.tagName.startsWith("doc-"),
     );
     expect(mapped.map((el) => el.tagName)).toEqual(["doc-note", "doc-warning"]);
     expect(mapped[1]!.attributes?.["data-title"]).toBe("Destructive");
@@ -549,10 +564,10 @@ describe("alerts", () => {
 describe("code fences with braces", () => {
   /** The text of a node, reading escaped innerHTML back the way a browser would. */
   const textOf = (node: JxElement | string): string => {
-    if (typeof node === "string") {
+    if (isString(node)) {
       return node;
     }
-    if (typeof node.innerHTML === "string") {
+    if (node.innerHTML !== undefined) {
       return node.innerHTML
         .replaceAll("&#36;", "$")
         .replaceAll("&lt;", "<")
@@ -560,7 +575,7 @@ describe("code fences with braces", () => {
     }
     return (
       (node.textContent ?? "") +
-      ((node.children as (JxElement | string)[] | undefined) ?? [])
+      childrenOf(node)
         .map((child) => textOf(child))
         .join("")
     );
@@ -585,9 +600,9 @@ describe("code fences with braces", () => {
     expect(JSON.stringify(entry.$children)).not.toContain("${");
     // The raw body, which Studio writes back, is never touched.
     expect(entry.body).toContain("${first}");
-    expect(
-      textOf({ children: entry.$children as (JxElement | string)[], tagName: "div" }),
-    ).toContain("Prose naming ${first} and inline code ${last}.");
+    expect(textOf({ children: entry.$children ?? [], tagName: "div" })).toContain(
+      "Prose naming ${first} and inline code ${last}.",
+    );
   });
 
   it("highlights the languages the vault uses", async () => {
@@ -608,23 +623,17 @@ describe("code fences with braces", () => {
 });
 
 describe("$paths for a routed type", () => {
-  const paths = async (
-    urlPattern: string,
-    params: string[],
-    pathsDef: Record<string, unknown>,
-    locale?: string,
-  ) => {
+  const paths = async (urlPattern: string, params: string[], pathsDef: ContentPathsSource) => {
     const data = await loadVault();
-    return Content.resolvePaths(pathsDef as never, {
+    return Content.resolvePaths(pathsDef, {
       data,
       params,
       projectConfig: {},
       root: TMP,
       urlPattern,
-      ...(locale === undefined ? {} : { locale }),
     });
   };
-  const strip = (rows: Record<string, unknown>[]) =>
+  const strip = (rows: ContentPathParams[]) =>
     rows
       .map(({ _meta, ...params }) => params)
       .toSorted((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
@@ -663,7 +672,7 @@ describe("$paths for a routed type", () => {
   it("carries each entry's _meta so the sitemap can date the page", async () => {
     captureWarnings();
     const rows = await paths("/kb/*", ["path"], { contentType: "kb" });
-    expect(rows.every((r) => typeof (r._meta as { mtime?: string }).mtime === "string")).toBe(true);
+    expect(rows.every((r) => isString(r._meta?.mtime))).toBe(true);
   });
 
   it("explicit param and field still win, with the older meaning", async () => {
@@ -723,7 +732,10 @@ describe("$paths for a routed type", () => {
 });
 
 describe("ContentEntry bound to its page", () => {
-  const entryFor = async (urlPattern: string, extra: Record<string, unknown> = {}) => {
+  const entryFor = async (
+    urlPattern: string,
+    extra: Pick<ConstructorParameters<typeof ContentEntry>[0], "field" | "id"> = {},
+  ) => {
     captureWarnings();
     const data = await loadVault();
     return new ContentEntry({
@@ -731,7 +743,7 @@ describe("ContentEntry bound to its page", () => {
       _project: { config: {}, content: data },
       contentType: "kb",
       ...extra,
-    }).resolve() as ContentLoaderEntry | null;
+    }).resolve();
   };
 
   it("with no id, finds the entry whose route is the page's URL", async () => {
@@ -779,7 +791,7 @@ describe("the loaded collection is the filtered one", () => {
       "Frappe/Draft Recipe.md",
       "Frappe/Private Notes.md",
       ".obsidian/notes.md",
-    ]) {
+    ] as const) {
       expect(VAULT_FILES[hidden]).toBeDefined();
     }
   });
@@ -796,7 +808,7 @@ let sandboxCounter = 0;
  */
 async function loadFiles(
   files: Record<string, string>,
-  overrides: Record<string, unknown> = {},
+  overrides: TypeOverrides = {},
   projectConfig: ProjectConfig = {},
 ) {
   sandboxCounter += 1;
@@ -806,14 +818,14 @@ async function loadFiles(
     writeFileSync(join(dir, rel), text);
   }
   const warnings = captureWarnings();
-  const section = {
+  const section: ContentSection = {
     kb: {
       format: "Markdown",
       route: "/kb/{id:slug}/",
       source: `./sandbox-${sandboxCounter}`,
       ...overrides,
     },
-  } as unknown as ContentSection;
+  };
   const data = await Content.projectData(section, {
     projectConfig,
     registry: await registry(),
@@ -996,10 +1008,12 @@ describe("what the asset mount serves", () => {
       },
       { where: { publish: true } },
     );
-    const srcs = (entries[0]!.$children as unknown[])
-      .flat(Number.POSITIVE_INFINITY)
-      .flatMap((n) => find([n as JxElement], (el) => el.tagName === "img"))
-      .map((el) => el.attributes?.src);
+    // The loader's tree is ContentNodes: a raw HTML block is a nested list, not an element.
+    const flatten = (nodes: ContentNodes): (JxElement | string)[] =>
+      nodes.flatMap((node) => (Array.isArray(node) ? flatten(node) : [node]));
+    const srcs = find(flatten(entries[0]!.$children ?? []), (el) => el.tagName === "img").map(
+      (el) => el.attributes?.src,
+    );
     expect(srcs).toEqual(["/content/kb/pics/ok.png", ".env"]);
   });
 
@@ -1142,10 +1156,11 @@ describe("the page patterns of the project", () => {
   ) => {
     const data = new Map([["kb", await loadEntries()]]);
     const warnings = captureWarnings();
-    const rows = await Content.resolvePaths(
-      { contentType: "kb" },
-      { data, params, root: TMP, urlPattern, ...(patterns === undefined ? {} : { patterns }) },
-    );
+    const ctx: ResolvePathsContext = { data, params, root: TMP, urlPattern };
+    if (patterns !== undefined) {
+      ctx.patterns = patterns;
+    }
+    const rows = await Content.resolvePaths({ contentType: "kb" }, ctx);
     return { rows, warnings };
   };
 

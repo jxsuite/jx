@@ -15,7 +15,7 @@ import { invalidateUsages } from "../src/services/references";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { emptyContext, makeContext } from "../src/commands/context";
 import { shell } from "../src/shell";
-import type { ReferencesResult, StudioPlatform } from "../src/types";
+import type { ReferencesResult } from "../src/types";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** `files/files.ts` pulls half the app in; the row only needs to prove it calls openFileInTab. */
@@ -49,10 +49,10 @@ async function renderPanel(): Promise<HTMLElement> {
   return host;
 }
 
-const CARD_DOC = {
+const CARD_DOC: JxMutableNode = {
   children: [{ children: [], tagName: "my-card" }],
   tagName: "div",
-} as unknown as JxMutableNode;
+};
 
 function usageResult(over: Partial<ReferencesResult> = {}): ReferencesResult {
   return {
@@ -85,16 +85,31 @@ function usageResult(over: Partial<ReferencesResult> = {}): ReferencesResult {
 /** Select the `<my-card>` instance in a fresh document, with the registry knowing its definition. */
 function selectCard(): void {
   const tab = resetWorkspaceWithTab(CARD_DOC);
-  tab.session.selection = [["children", 0]] as never;
+  tab.session.selection = [["children", 0]];
   componentRegistry.length = 0;
   componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
 }
 
 /** The Usage section, whatever its heading currently says — the count IS the heading. */
 function usageSection(root: Element): (HTMLElement & { label: string; open: boolean }) | null {
+  /* SAFETY: every `[data-section]` node in surfaces/properties-panel.json is a
+     `jx-accordion-item`, which declares `label` (string) and `open` (boolean) as public state the kit
+     exposes as properties (ui/components/jx-accordion-item.json); the kit compiles components at
+     runtime, so there is no class type to narrow to instead. */
   return root.querySelector('[data-section="__usages"]') as
     | (HTMLElement & { label: string; open: boolean })
     | null;
+}
+
+/** The `selection.findUsages` record, as the inspector contributes it. */
+const record = () => inspectorCommands().find((c) => c.id === "selection.findUsages")!;
+
+/** Run `selection.findUsages` the way the palette does, with no arguments. */
+function runFindUsages(): void | Promise<void> {
+  /* SAFETY: `inspectorCommands()` returns `AnyCommand`, which erases every record's argument type
+     to `never`; `selection.findUsages` declares no args schema and its `run` takes no parameters,
+     so `undefined` is exactly what the palette passes it. */
+  return record().run(emptyContext(), undefined as never);
 }
 
 /** The sentence the Usage section says when it has no list to show. */
@@ -143,7 +158,7 @@ describe("the Usage section", () => {
     expect(usageSection(root)!.label).toBe("Used on 2 pages and 1 other file");
 
     const rows = [...root.querySelectorAll('[part="file-path"]')].map((el) =>
-      el.textContent?.trim(),
+      el.textContent.trim(),
     );
     // Most-referenced first, then alphabetical.
     expect(rows).toEqual(["pages/index.json", "components/hero.json", "pages/about.json"]);
@@ -201,13 +216,17 @@ describe("the Usage section", () => {
 
     const root = await renderPanel();
     expect(usageSection(root)!.label).toBe("Usage · unknown");
-    expect(note(root)).toContain("backend down");
-    expect(note(root)).toContain("unused");
+    const sentence = note(root);
+    expect(sentence).toContain("backend down");
+    expect(sentence).toContain("unused");
 
     const retry = [...root.querySelectorAll('[part="action"]')].find((b) =>
-      b.textContent?.includes("Retry"),
-    )!;
-    (retry as HTMLElement).click();
+      b.textContent.includes("Retry"),
+    );
+    if (!(retry instanceof HTMLElement)) {
+      throw new Error("the failed Usage section offered no Retry action");
+    }
+    retry.click();
     await flush(4);
     const after = await renderPanel();
     expect(usageSection(after)!.label).toContain("Used on");
@@ -218,8 +237,8 @@ describe("the Usage section", () => {
     const tab = resetWorkspaceWithTab({
       children: [{ children: [], tagName: "p" }],
       tagName: "div",
-    } as unknown as JxMutableNode);
-    tab.session.selection = [["children", 0]] as never;
+    });
+    tab.session.selection = [["children", 0]];
     const root = await renderPanel();
     await flush(4);
     expect(usageSection(root)).toBeNull();
@@ -239,7 +258,7 @@ describe("the Usage section", () => {
     // Collapsed by default: the heading IS the answer.
     expect(usageSection(root)!.open).toBe(false);
 
-    const details = usageSection(root)!.querySelector("details") as HTMLDetailsElement;
+    const details = usageSection(root)!.querySelector("details")!;
     details.open = true;
     details.dispatchEvent(new Event("toggle"));
     await flush();
@@ -251,8 +270,6 @@ describe("the Usage section", () => {
 });
 
 describe("selection.findUsages", () => {
-  const record = () => inspectorCommands().find((c) => c.id === "selection.findUsages")!;
-
   test("is declared once, for both the palette and the element menu", () => {
     expect(record().menus).toEqual(["context/element", "palette"]);
     expect(record().level).toBe("selection");
@@ -285,10 +302,10 @@ describe("selection.findUsages", () => {
         seen.push(target);
         return usageResult();
       },
-    } as Partial<StudioPlatform>);
+    });
     selectCard();
 
-    void record().run(emptyContext(), undefined as never);
+    void runFindUsages();
     await flush(3);
 
     expect(activeTab.value!.session.ui.inspectorSections["__usages"]).toBe(true);
@@ -306,14 +323,14 @@ describe("selection.findUsages", () => {
         seen.push(target);
         return usageResult();
       },
-    } as Partial<StudioPlatform>);
+    });
     const tab = resetWorkspaceWithTab({
       children: [{ children: [], tagName: "p" }],
       tagName: "div",
-    } as unknown as JxMutableNode);
-    tab.session.selection = [["children", 0]] as never;
+    });
+    tab.session.selection = [["children", 0]];
 
-    void record().run(emptyContext(), undefined as never);
+    void runFindUsages();
     await flush(2);
     expect(seen).toEqual([]);
   });
@@ -321,7 +338,7 @@ describe("selection.findUsages", () => {
   test("running it with no tab open does nothing", async () => {
     installMockPlatform({ findReferences: async () => usageResult() });
     closeAllTabs();
-    expect(() => record().run(emptyContext(), undefined as never)).not.toThrow();
+    expect(() => runFindUsages()).not.toThrow();
     await flush(1);
   });
 });

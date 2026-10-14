@@ -37,10 +37,12 @@ import { seedProjectList } from "../project-list";
 import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 import { collabState } from "../collab/collab-state";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { canvasPointAt, revealCanvasPath } from "../canvas/iframe-host";
 import { probeIdle } from "./idle";
 import type { CanvasPoint } from "../canvas/iframe-host";
 import type { IdleOptions } from "./idle";
+import type { CommandArgValues } from "../commands/command-args";
 import type { CommandContext } from "../commands/context";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { PeerPresence } from "../collab/collab-state";
@@ -49,9 +51,6 @@ import type { PagesDeploymentInfo } from "../publish/pages-service";
 import type { GitBranchesResult, GitStatusResult, ProjectListEntry } from "../types";
 import type { GitLogEntry } from "../shell";
 import type { JxPath } from "../state";
-
-/** Loosely-typed arguments, as they arrive from a manifest step, a palette prompt or a tool call. */
-export type AutomationArgs = Record<string, unknown>;
 
 /**
  * What the hook needs that it cannot import.
@@ -130,7 +129,7 @@ export interface ManifestId {
  * the same debt. Five `refused` entries are NOT a countdown: they are §13.5's normative refusals,
  * and they stay so that a caller reaching for one gets the reason instead of "unknown command".
  */
-export const AUTOMATION_COMMANDS: Readonly<Record<string, ManifestId>> = {
+export const AUTOMATION_COMMANDS = {
   "file.contextMenu": {
     disposition: "refused",
     note: "opening a menu to press an item names a control; the ITEM is the command",
@@ -152,7 +151,13 @@ export const AUTOMATION_COMMANDS: Readonly<Record<string, ManifestId>> = {
     disposition: "refused",
     note: "the status bar is not staged — if a capture needs a calm shell, the app must BE calm",
   },
-};
+} as const satisfies Readonly<Record<string, ManifestId>>;
+
+/**
+ * {@link AUTOMATION_COMMANDS} keyed for lookup by an arbitrary id. A Map rather than an index into
+ * the object, so an id such as `"constructor"` finds nothing instead of `Object.prototype`'s.
+ */
+const COMMAND_GAPS: ReadonlyMap<string, ManifestId> = new Map(Object.entries(AUTOMATION_COMMANDS));
 
 // ─── The seed registry, under the Remote Rule ─────────────────────────────────
 
@@ -161,7 +166,7 @@ export interface SeedDefinition {
   id: string;
   /** The network or IPC boundary this seed stands in for. The Remote Rule, written down per seed. */
   boundary: string;
-  run: (args: AutomationArgs) => void | Promise<void>;
+  run: (args: CommandArgValues) => void | Promise<void>;
 }
 
 /**
@@ -170,7 +175,7 @@ export interface SeedDefinition {
  * Every one of these was a method on the old surface. Each writes state a USER writes, so each is a
  * COMMAND — and a fixture that stages it photographs a state no session could have reached.
  */
-export const REFUSED_SEEDS: Readonly<Record<string, string>> = {
+export const REFUSED_SEEDS = {
   openSettings: 'a user opens Settings — run("settings.open")',
   select: 'a user selects a node — run("selection.set", { path })',
   setActivity: 'a user picks a Navigator panel — run("navigator.showPanel", { panel })',
@@ -178,9 +183,12 @@ export const REFUSED_SEEDS: Readonly<Record<string, string>> = {
   setStatus:
     "the status bar reports what the app just did; staging it is the one lie the Remote Rule (studio.md §13.5) names outright",
   setZoom: 'a user zooms — run("canvas.setZoom", { zoom })',
-};
+} as const satisfies Readonly<Record<string, string>>;
 
-function arrayArg<T>(args: AutomationArgs, key: string): T[] {
+/** {@link REFUSED_SEEDS} keyed for lookup by an arbitrary seed name, as {@link COMMAND_GAPS} is. */
+const SEED_REFUSALS: ReadonlyMap<string, string> = new Map(Object.entries(REFUSED_SEEDS));
+
+function arrayArg<T>(args: CommandArgValues, key: string): T[] {
   const value = args[key];
   if (value === undefined) {
     return [];
@@ -188,23 +196,28 @@ function arrayArg<T>(args: AutomationArgs, key: string): T[] {
   if (!Array.isArray(value)) {
     throw new TypeError(`seed argument "${key}" must be an array`);
   }
+  /* SAFETY: a seed's arguments are a fixture written against the boundary type it stands in for
+     (the screenshot manifest's `seed` steps), so only the container is checked here — exactly as
+     much as the remote it replaces would have checked before handing its JSON over. */
   return value as T[];
 }
 
-function requiredArg<T>(args: AutomationArgs, key: string): T {
+function requiredArg<T>(args: CommandArgValues, key: string): T {
   const value = args[key];
-  if (value === null || typeof value !== "object") {
+  if (!isNonNullObject(value)) {
     throw new TypeError(`seed argument "${key}" must be an object`);
   }
+  /* SAFETY: as in `arrayArg`: a fixture written against the boundary type it stands in for, of
+     which only the object container is checked here. */
   return value as T;
 }
 
-function optionalString(args: AutomationArgs, key: string): string | undefined {
+function optionalString(args: CommandArgValues, key: string): string | undefined {
   const value = args[key];
   if (value === undefined) {
     return undefined;
   }
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     throw new TypeError(`seed argument "${key}" must be a string`);
   }
   return value;
@@ -216,7 +229,9 @@ function optionalString(args: AutomationArgs, key: string): string | undefined {
  * Each one writes exactly what its named boundary would have written, and nothing else — the git
  * seed does not also open the Source Control panel, because a user does that.
  */
-export function createSeeds(deps: AutomationDeps): SeedDefinition[] {
+export function createSeeds(
+  deps: Pick<AutomationDeps, "seedAssistantMessages" | "seedPublishConnected">,
+): SeedDefinition[] {
   return [
     {
       boundary: "the assistant's model stream",
@@ -252,10 +267,13 @@ export function createSeeds(deps: AutomationDeps): SeedDefinition[] {
       id: "seed.publish",
       run: (args) => {
         const accountId = optionalString(args, "accountId");
-        deps.seedPublishConnected({
+        const connected: Parameters<AutomationDeps["seedPublishConnected"]>[0] = {
           deployment: requiredArg<PagesDeploymentInfo>(args, "deployment"),
-          ...(accountId ? { accountId } : {}),
-        });
+        };
+        if (accountId) {
+          connected.accountId = accountId;
+        }
+        deps.seedPublishConnected(connected);
       },
     },
     {
@@ -264,9 +282,16 @@ export function createSeeds(deps: AutomationDeps): SeedDefinition[] {
       run: (args) => {
         // The working tree really is a remote here: the git-panel shot photographs whatever the
         // Author happened to have dirty, because its project lives inside this repository.
-        shell.git.status = (args.status as GitStatusResult | undefined) ?? null;
-        shell.git.branches = (args.branches as GitBranchesResult | undefined) ?? null;
-        shell.git.logEntries = (args.log as GitLogEntry[] | undefined) ?? null;
+        /* SAFETY: as in `arrayArg`: a fixture written against the platform's git route answers it
+           stands in for, passed on as the route's JSON would have been, unchecked. */
+        const { status, branches, log } = args as {
+          status?: GitStatusResult;
+          branches?: GitBranchesResult;
+          log?: GitLogEntry[];
+        };
+        shell.git.status = status ?? null;
+        shell.git.branches = branches ?? null;
+        shell.git.logEntries = log ?? null;
         shell.git.loading = false;
         shell.git.error = null;
         render();
@@ -293,12 +318,9 @@ export function createSeeds(deps: AutomationDeps): SeedDefinition[] {
  * its `run`, never while building it, so the no-op deps below can never be called.
  */
 export function seedIds(): string[] {
-  const inert = {
-    registry: undefined as unknown as CommandRegistry,
-    seedAssistantMessages: () => {},
-    seedPublishConnected: () => {},
-  } satisfies AutomationDeps;
-  return createSeeds(inert).map((seed) => seed.id);
+  return createSeeds({ seedAssistantMessages: () => {}, seedPublishConnected: () => {} }).map(
+    (seed) => seed.id,
+  );
 }
 
 // ─── The API ──────────────────────────────────────────────────────────────────
@@ -340,8 +362,8 @@ export interface AutomationProbe {
 }
 
 export interface AutomationApi {
-  run: (id: string, args?: AutomationArgs) => Promise<void>;
-  seed: (id: string, args?: AutomationArgs) => Promise<void>;
+  run: (id: string, args?: CommandArgValues) => Promise<void>;
+  seed: (id: string, args?: CommandArgValues) => Promise<void>;
   probe: AutomationProbe;
 }
 
@@ -391,7 +413,7 @@ function unknownCommandMessage(
   if (seeds.has(id)) {
     return `"${id}" is a seed, not a command — call seed("${id}", …)`;
   }
-  const gap = AUTOMATION_COMMANDS[id];
+  const gap = COMMAND_GAPS.get(id);
   if (gap?.disposition === "refused") {
     return `"${id}" is refused by spec §13.5: ${gap.note}`;
   }
@@ -435,7 +457,7 @@ export function createAutomationApi(deps: AutomationDeps): AutomationApi {
     },
     async seed(id, args = {}) {
       const bare = id.startsWith("seed.") ? id.slice(5) : id;
-      const refusal = REFUSED_SEEDS[bare];
+      const refusal = SEED_REFUSALS.get(bare);
       if (refusal) {
         throw new AutomationRefusedError(
           id,
@@ -453,6 +475,11 @@ export function createAutomationApi(deps: AutomationDeps): AutomationApi {
   };
 }
 
+declare global {
+  /** The automation hook, installed only on a page load that opted in with `?automation=1`. */
+  var __jxAutomation: AutomationApi | undefined;
+}
+
 /** The hook is opt-in per page load: only `?automation=1` installs it. */
 export function shouldInstallAutomation(search: string): boolean {
   return new URLSearchParams(search).get("automation") === "1";
@@ -466,6 +493,6 @@ export function installAutomationHook(deps: AutomationDeps): boolean {
   if (!shouldInstallAutomation(location.search)) {
     return false;
   }
-  (globalThis as Record<string, unknown>).__jxAutomation = createAutomationApi(deps);
+  globalThis.__jxAutomation = createAutomationApi(deps);
   return true;
 }

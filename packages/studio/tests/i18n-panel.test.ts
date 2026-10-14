@@ -30,14 +30,16 @@ import { setActiveRegistry } from "../src/commands/active-registry";
 import { argsSchema, stringProperty } from "../src/commands/command-args";
 import { i18nCommands } from "../src/i18n/i18n-commands";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
-import { registerPlatform } from "../src/platform";
 import { setProjectState } from "../src/store";
 import type { AnyCommand } from "../src/commands/registry";
 import type { CommandContext } from "../src/commands/context";
 import type { LibraryFile } from "../src/browse/library-model";
-import type { NavigatorPanelContext, NavigatorPanelDeps } from "../src/panels/panel-registry";
+import type {
+  NavigatorPanelContext,
+  NavigatorPanelDeps,
+  PanelBody,
+} from "../src/panels/panel-registry";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { StudioPlatform } from "../src/types";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -263,7 +265,7 @@ const ran: { id: string; args: unknown }[] = [];
  */
 function stub(id: string, over: Partial<AnyCommand> = {}): AnyCommand {
   const real = i18nCommands().find((command) => command.id === id);
-  return {
+  const record: AnyCommand = {
     category: "Project",
     id,
     level: "document",
@@ -271,9 +273,11 @@ function stub(id: string, over: Partial<AnyCommand> = {}): AnyCommand {
       ran.push({ args, id });
     },
     title: id,
-    ...(real?.args === undefined ? {} : { args: real.args }),
-    ...over,
-  } as AnyCommand;
+  };
+  if (real?.args !== undefined) {
+    record.args = real.args;
+  }
+  return { ...record, ...over };
 }
 
 let context: CommandContext = emptyContext();
@@ -286,6 +290,9 @@ function publish(commands: AnyCommand[]): void {
 
 /** The panel context a `level: "project"` panel gets: no document, and deps that refuse to be read. */
 function panelCtx(): NavigatorPanelContext {
+  /* SAFETY: the Languages panel is `level: "project"` and never reads `deps`; the Proxy throws on
+     every property read, so the empty target can never be observed as a NavigatorPanelDeps — any
+     read fails the test by name instead. */
   return {
     deps: new Proxy(
       {},
@@ -308,7 +315,7 @@ function panelCtx(): NavigatorPanelContext {
  * leaves the mounted document standing, and a real template for any other, which clears to the end
  * of the parent and takes the document with it.
  */
-const panelFrame = (content: unknown) =>
+const panelFrame = (content: PanelBody | undefined) =>
   html`<div class="panel-body">
     <header class="panel-header">Languages</header>
     <div class="panel-content">${content}</div>
@@ -317,10 +324,19 @@ const panelFrame = (content: unknown) =>
 /** The Navigator root each test paints into. */
 let root: HTMLElement;
 
+/** The `.panel-body` the frame painted into `scope`; a frame that drew none fails the test. */
+function panelBody(scope: HTMLElement): HTMLElement {
+  const body = scope.querySelector(".panel-body");
+  if (!(body instanceof HTMLElement)) {
+    throw new Error("the frame drew no .panel-body");
+  }
+  return body;
+}
+
 /** Draw the body once. The first call kicks the scan off; the second draws what it found. */
 async function paint(): Promise<HTMLElement> {
   render(panelFrame(nothing), root);
-  const host = root.querySelector(".panel-body") as HTMLElement;
+  const host = panelBody(root);
   mountI18nPanel(panelCtx(), host);
   await flush(4);
   return host;
@@ -337,22 +353,32 @@ function part(host: HTMLElement, name: string): HTMLElement | null {
   return host.querySelector(`[part="${name}"]`);
 }
 
+/** The one element `selector` names inside `host`; a missing element fails the test by name. */
+function required(host: HTMLElement, selector: string): HTMLElement {
+  const found = host.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return found;
+}
+
 /** Every element carrying `part`. */
 function parts(host: HTMLElement, name: string): HTMLElement[] {
-  return [...host.querySelectorAll(`[part="${name}"]`)] as HTMLElement[];
+  return [...host.querySelectorAll<HTMLElement>(`[part="${name}"]`)];
 }
 
 /** A kit button's native control, which is what carries `disabled` and takes the click. */
 function control(host: HTMLElement, name: string): HTMLButtonElement | null {
-  return (part(host, name)?.querySelector('[part="control"]') ?? null) as HTMLButtonElement | null;
+  const found = part(host, name)?.querySelector('[part="control"]');
+  return found instanceof HTMLButtonElement ? found : null;
 }
 
-const SEED: Record<string, string> = {
+const SEED = {
   "content/blog/en/hello.md": "# hello",
   "pages/about.json": "{}",
   "pages/fr/about.json": "{}",
   "pages/index.json": "{}",
-};
+} satisfies Record<string, string>;
 
 function openBilingualProject(): void {
   resetStudioState({
@@ -381,7 +407,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setActiveRegistry(null);
-  setProjectState(null as never);
+  setProjectState(null);
   resetPanels();
   refreshParityScan();
   root.remove();
@@ -432,7 +458,7 @@ describe("the grid", () => {
     const host = await paintSettled();
     const heads = parts(host, "locale-head").map((el) => el.getAttribute("title"));
     expect(heads).toEqual(["en", "fr"]);
-    const keys = parts(host, "key").map((el) => el.textContent?.trim());
+    const keys = parts(host, "key").map((el) => el.textContent.trim());
     expect(keys).toEqual(["content/blog/hello.md", "pages/about.json", "pages/index.json"]);
   });
 
@@ -456,11 +482,15 @@ describe("the grid", () => {
 
 describe("a cell is a command, run by id", () => {
   /** The button in the row whose key is `key`, under the `index`-th locale column. */
-  function cell(host: HTMLElement, key: string, index: number): HTMLButtonElement {
+  function cell(host: HTMLElement, key: string, index: number): HTMLElement {
     const row = parts(host, "row").find(
-      (candidate) => part(candidate, "key")?.textContent?.trim() === key,
+      (candidate) => part(candidate, "key")?.textContent.trim() === key,
     );
-    return (row ? parts(row, "cell-button") : [])[index] as HTMLButtonElement;
+    const button = (row ? parts(row, "cell-button") : [])[index];
+    if (!button) {
+      throw new Error(`no cell ${String(index)} in the row for ${key}`);
+    }
+    return button;
   }
 
   test("an existing translation opens, addressed by the row's own file", async () => {
@@ -594,13 +624,11 @@ describe("a cell is a command, run by id", () => {
                   },
                 ]
               : [],
-      } as unknown as Partial<StudioPlatform>,
+      },
       {},
     );
     const host = await paintSettled();
-    const button = host.querySelector(
-      '[part="cell-button"][data-state="stale"]',
-    ) as HTMLButtonElement;
+    const button = required(host, '[part="cell-button"][data-state="stale"]');
     expect(button.getAttribute("title")).toBe("Open pages/fr/a.json — older than pages/a.json");
   });
 });
@@ -615,7 +643,7 @@ describe("the scan", () => {
     const host = await paintSettled();
     expect(parts(host, "row")).toHaveLength(3);
     installMockPlatform({}, { "pages/index.json": "{}" });
-    (part(host, "rescan") as HTMLButtonElement).click();
+    required(host, '[part="rescan"]').click();
     const after = await paintSettled();
     expect(parts(after, "row")).toHaveLength(1);
   });
@@ -628,7 +656,7 @@ describe("the scan", () => {
       projectRoot: "/other",
     });
     const host = await paintSettled();
-    const keys = parts(host, "key").map((el) => el.textContent?.trim());
+    const keys = parts(host, "key").map((el) => el.textContent.trim());
     expect(keys).toEqual(["pages/only.json"]);
   });
 
@@ -638,11 +666,12 @@ describe("the scan", () => {
      slug still folds two files into one row, and a page that cannot be read is still just keyed by
      its path. */
   test("reads every page at once, and folds what they declare exactly as before", async () => {
-    const files: Record<string, string> = {
+    const files = {
       "pages/about.json": "{}",
       "pages/broken.json": "{}",
       "pages/fr/a-propos.json": '{ "$translationKey": "about" }',
     };
+    const contents = new Map(Object.entries(files));
     let open = 0;
     let peak = 0;
     installMockPlatform(
@@ -658,15 +687,15 @@ describe("the scan", () => {
           if (path === "pages/broken.json") {
             throw new Error("EACCES");
           }
-          return files[path] ?? "";
+          return contents.get(path) ?? "";
         },
-      } as Partial<StudioPlatform>,
+      },
       files,
     );
     const host = await paintSettled();
     expect(peak).toBe(3);
     // About and à-propos are one page; the unreadable one is still a row of its own.
-    expect(parts(host, "key").map((el) => el.textContent?.trim())).toEqual([
+    expect(parts(host, "key").map((el) => el.textContent.trim())).toEqual([
       "pages/about.json",
       "pages/broken.json",
     ]);
@@ -682,13 +711,14 @@ describe("the scan", () => {
           ? [{ name: "index.json", path: "pages/index.json", type: "file" }]
           : [];
       },
-    } as unknown as Partial<StudioPlatform>);
+    });
     const host = await paintSettled();
     expect(part(host, "incomplete")?.textContent).toContain("content (EACCES)");
   });
 
   test("a window with no platform records the failure instead of throwing at render", async () => {
-    registerPlatform(undefined as never);
+    // What a window looks like before any adapter registered: the global is declared optional.
+    globalThis.__jxPlatform = undefined;
     const host = await paintSettled();
     expect(part(host, "incomplete")?.textContent).toContain("No platform registered");
     installMockPlatform({}, SEED);
@@ -738,7 +768,7 @@ describe("the record", () => {
     const body = panel?.render(panelCtx());
     expect(body).toBe(nothing);
     render(panelFrame(body), root);
-    const host = root.querySelector(".panel-body") as HTMLElement;
+    const host = panelBody(root);
     panel?.afterRender?.(panelCtx(), host);
     await flush(4);
     expect(host.textContent).toContain("Looking for translations");
@@ -757,27 +787,28 @@ describe("the mount", () => {
 
   test("a switch to another panel takes the document out, and coming back mounts a new one", async () => {
     const host = await paintSettled();
-    const table = part(host, "parity") as HTMLElement;
+    const table = required(host, '[part="parity"]');
     // What `left-panel.ts` does when the rail moves: the same frame, another panel's body in it.
     render(panelFrame(html`<p class="other-panel">Files</p>`), root);
     expect(table.isConnected).toBe(false);
     expect(part(root, "parity")).toBeNull();
 
     const back = await paint();
-    expect(part(back, "parity")).not.toBeNull();
-    expect(part(back, "parity")).not.toBe(table);
+    const remounted = part(back, "parity");
+    expect(remounted).not.toBeNull();
+    expect(remounted).not.toBe(table);
   });
 
   test("a switch while the mount is still in flight lands nothing in the abandoned host", async () => {
     render(panelFrame(nothing), root);
-    mountI18nPanel(panelCtx(), root.querySelector(".panel-body") as HTMLElement);
+    mountI18nPanel(panelCtx(), panelBody(root));
 
     /* No flush: `mountSurface` has not settled, so nothing is in the DOM yet. The rail moves and
        the Navigator is repainted into a different node before it does. */
     const other = document.createElement("div");
     document.body.append(other);
     render(panelFrame(nothing), other);
-    mountI18nPanel(panelCtx(), other.querySelector(".panel-body") as HTMLElement);
+    mountI18nPanel(panelCtx(), panelBody(other));
     await flush(4);
 
     expect(part(root, "empty")).toBeNull();

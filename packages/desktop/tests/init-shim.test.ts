@@ -10,15 +10,13 @@ import { expect, mock, spyOn, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { launcherSignal } from "@jxsuite/studio/platform";
-import type { LauncherSignal } from "@jxsuite/studio/platform";
+import { BRIDGE_ERROR } from "./_constants";
 
 try {
   GlobalRegistrator.register();
 } catch {
   /* Already registered */
 }
-
-const BRIDGE_ERROR = "Cannot set properties of undefined (setting 'receiveMessageFromHost')";
 
 void mock.module("electrobun/view", () => ({
   Electroview: class {
@@ -34,16 +32,14 @@ void mock.module("electrobun/view", () => ({
 const hydrateGithubToken = mock((_stored: boolean) => {});
 void mock.module("@jxsuite/studio/github-auth-status", () => ({ hydrateGithubToken }));
 
-const g = globalThis as unknown as { __jxLauncher?: LauncherSignal; __jxPlatform?: unknown };
-
 test("a throwing Electroview leaves a recorded failure and no adapter", async () => {
-  delete g.__jxLauncher;
-  delete g.__jxPlatform;
+  delete globalThis.__jxLauncher;
+  delete globalThis.__jxPlatform;
   const consoleError = spyOn(console, "error").mockImplementation(() => {});
 
   await import("../src/init");
 
-  expect(g.__jxPlatform).toBeUndefined();
+  expect(globalThis.__jxPlatform).toBeUndefined();
   expect(launcherSignal()?.launcher).toBe("electrobun");
   expect(launcherSignal()?.error?.message).toBe(BRIDGE_ERROR);
   expect(launcherSignal()?.error?.stack).toContain("TypeError");

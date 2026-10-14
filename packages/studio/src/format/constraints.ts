@@ -84,7 +84,7 @@ export function createNestingValidator(elements?: ElementsHints): NestingValidat
  *
  * Returned as a plain object because it crosses to the canvas frame with the render message.
  */
-export function formatEditableVerdicts(elements?: ElementsHints): Record<string, boolean> {
+export function formatEditableVerdicts(elements?: ElementsHints) {
   const verdicts: Record<string, boolean> = {};
   for (const [tag, rule] of Object.entries(elements?.nesting ?? {})) {
     // "_root" is the document itself, not an element.

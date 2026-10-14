@@ -6,15 +6,23 @@
 
 import { describe, it, expect } from "bun:test";
 import * as ai from "../src/index.js";
+import { createChatState } from "../src/chat-state.js";
+import {
+  STREAM_EVENT_TYPES,
+  createAnthropicStreamingClient,
+  createOpenAIStreamingClient,
+  createProxyStreamingClient,
+} from "../src/streaming-client.js";
+import { createToolDefinition, createToolRegistry } from "../src/tools.js";
 
 describe("@jxsuite/ai barrel", () => {
   it("re-exports the chat-state, tool, and streaming-client public API", () => {
-    expect(typeof ai.createChatState).toBe("function");
-    expect(typeof ai.createToolRegistry).toBe("function");
-    expect(typeof ai.createToolDefinition).toBe("function");
-    expect(typeof ai.createOpenAIStreamingClient).toBe("function");
-    expect(typeof ai.createAnthropicStreamingClient).toBe("function");
-    expect(typeof ai.createProxyStreamingClient).toBe("function");
-    expect(ai.STREAM_EVENT_TYPES).toBeDefined();
+    expect(ai.createChatState).toBe(createChatState);
+    expect(ai.createToolRegistry).toBe(createToolRegistry);
+    expect(ai.createToolDefinition).toBe(createToolDefinition);
+    expect(ai.createOpenAIStreamingClient).toBe(createOpenAIStreamingClient);
+    expect(ai.createAnthropicStreamingClient).toBe(createAnthropicStreamingClient);
+    expect(ai.createProxyStreamingClient).toBe(createProxyStreamingClient);
+    expect(ai.STREAM_EVENT_TYPES).toBe(STREAM_EVENT_TYPES);
   });
 });

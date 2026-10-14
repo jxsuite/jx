@@ -11,7 +11,22 @@ import { splitSelectorList } from "@jxsuite/runtime/css";
 import { validateDocument } from "@jxsuite/schema";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import {
+  getNestedStyle,
+  isJsonObject,
+  isNodeObject,
+  isNonNullObject,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
+import type {
+  JsonObject,
+  JsonValue,
+  JxDocument,
+  JxElement,
+  JxStateDefinition,
+  JxStyle,
+} from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { themeCSS, themeTokens } from "../src/theme.ts";
@@ -23,12 +38,59 @@ const stylebookDir = resolve(root, "stylebook");
 const stylebook: Record<string, JxDocument> = Object.fromEntries(
   readdirSync(stylebookDir)
     .filter((name) => name.endsWith(".json"))
-    .map((name) => [
-      name,
-      JSON.parse(readFileSync(resolve(stylebookDir, name), "utf8")) as JxDocument,
-    ]),
+    .map((name) => {
+      /* SAFETY: every stylebook/*.json is a Jx page document, and the "is valid" test below runs
+         each one through validateDocument, so a page that is not a JxDocument fails by name. */
+      const page = JSON.parse(readFileSync(resolve(stylebookDir, name), "utf8")) as JxDocument;
+      return [name, page];
+    }),
 );
+/* SAFETY: icons/list.json is the committed allow-list scripts/build-icons.ts reads as this same
+   IconList, a map of icon name to weight array; only its keys are read here, and
+   icons-build.test.ts holds the weights it names to ICON_WEIGHTS. */
 const list = JSON.parse(readFileSync(resolve(root, "icons/list.json"), "utf8")) as IconList;
+
+/**
+ * A kit document or stylebook page as the JSON tree it was read from, for the walkers below that
+ * visit every key rather than the ones the document interfaces name.
+ *
+ * @param {JxDocument} doc A `components/*.json` import or a parsed stylebook page
+ * @returns {JsonObject} The same object
+ */
+function jsonOf(doc: JxDocument): JsonObject {
+  if (!isJsonObject(doc)) {
+    throw new TypeError(`${doc.tagName}: a Jx document is a JSON object`);
+  }
+  return doc;
+}
+
+/**
+ * The `parameters` a state entry declares, when it is an object that declares any.
+ *
+ * @param {JxStateDefinition} entry One `state` entry
+ * @returns {JsonValue | undefined} Its `parameters`, or undefined
+ */
+function parametersOf(entry: JxStateDefinition): JsonValue | undefined {
+  return isJsonObject(entry) ? entry["parameters"] : undefined;
+}
+
+/**
+ * The icon names a stylebook page lists in `state.names`, refusing a list that holds anything but
+ * names rather than letting it pass unread.
+ *
+ * @param {JxDocument} page A stylebook page
+ * @returns {string[]} The names, empty when the page lists none
+ */
+function namesOf(page: JxDocument): string[] {
+  const declared = page.state?.["names"];
+  if (declared === undefined) {
+    return [];
+  }
+  if (!Array.isArray(declared) || !declared.every((name) => isString(name))) {
+    throw new TypeError(`${page.tagName}: state.names is not a list of icon names`);
+  }
+  return declared;
+}
 
 /**
  * `src/documents.ts` IS a hand-maintained second list, and this is what keeps it in step.
@@ -50,7 +112,7 @@ describe("every authored component is a registered document", () => {
     /* And each key is the tag the document declares, so the map cannot file one under another's
        name — the second half of the seam, and the half a key list alone would not see. */
     for (const [tag, doc] of Object.entries(documents)) {
-      expect((doc as { tagName?: string }).tagName, tag).toBe(tag);
+      expect(doc.tagName, tag).toBe(tag);
     }
   });
 });
@@ -63,34 +125,33 @@ describe("every authored component is a registered document", () => {
 function* internalNodes(node: JxElement, path = "root"): Generator<[string, JxElement]> {
   const kids = Array.isArray(node.children) ? node.children : [];
   for (const [i, child] of kids.entries()) {
-    if (!child || typeof child !== "object") {
+    if (!isNodeObject(child)) {
       continue;
     }
-    const el = child as JxElement;
     const label = `${path}.children[${i}]`;
-    if (typeof el.tagName === "string") {
-      yield [label, el];
+    if (isString(child.tagName)) {
+      yield [label, child];
     }
-    yield* internalNodes(el, label);
-    const mapped = (el as { map?: JxElement }).map;
-    if (mapped) {
+    yield* internalNodes(child, label);
+    const mapped = child["map"];
+    if (isNodeObject(mapped)) {
       yield [`${label}.map`, mapped];
       yield* internalNodes(mapped, `${label}.map`);
     }
     // A `$switch` container's branches are real rendered nodes and were invisible here: every one
     // Of jx-textfield's controls lives in one, so the part, token and icon rules below were only
     // Ever checked against the containers.
-    const { cases } = el as { cases?: Record<string, unknown> };
-    for (const [key, branch] of Object.entries(cases ?? {})) {
-      for (const [branchIndex, entry] of (Array.isArray(branch) ? branch : [branch]).entries()) {
-        if (!entry || typeof entry !== "object") {
+    for (const [key, branch] of Object.entries(child.cases ?? {})) {
+      const many = Array.isArray(branch);
+      for (const [branchIndex, entry] of (many ? branch : [branch]).entries()) {
+        if (!isNodeObject(entry)) {
           continue;
         }
-        const caseLabel = `${label}.cases.${key}${Array.isArray(branch) ? `[${branchIndex}]` : ""}`;
-        if (typeof (entry as JxElement).tagName === "string") {
-          yield [caseLabel, entry as JxElement];
+        const caseLabel = `${label}.cases.${key}${many ? `[${branchIndex}]` : ""}`;
+        if (isString(entry.tagName)) {
+          yield [caseLabel, entry];
         }
-        yield* internalNodes(entry as JxElement, caseLabel);
+        yield* internalNodes(entry, caseLabel);
       }
     }
   }
@@ -101,12 +162,12 @@ function* internalNodes(node: JxElement, path = "root"): Generator<[string, JxEl
  *
  * @yields {string} One declaration value
  */
-function* styleValues(style: unknown): Generator<string> {
-  if (!style || typeof style !== "object") {
+function* styleValues(style: JxStyle | JxStyle[string]): Generator<string> {
+  if (!isNonNullObject(style)) {
     return;
   }
-  for (const value of Object.values(style as Record<string, unknown>)) {
-    if (typeof value === "string") {
+  for (const value of Object.values(style)) {
+    if (isString(value)) {
       yield value;
     } else {
       yield* styleValues(value);
@@ -120,20 +181,19 @@ function* styleValues(style: unknown): Generator<string> {
  * @param node The document or subtree.
  * @returns {Set<string>} The state key names, without their pointer prefix.
  */
-function handlerKeys(node: unknown, out = new Set<string>()): Set<string> {
+function handlerKeys(node: JsonValue, out = new Set<string>()): Set<string> {
   if (Array.isArray(node)) {
     for (const item of node) {
       handlerKeys(item, out);
     }
     return out;
   }
-  if (!node || typeof node !== "object") {
+  if (!isJsonObject(node)) {
     return out;
   }
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    const ref = (value as { $ref?: string })?.$ref;
-    if (key.startsWith("on") && typeof ref === "string") {
-      out.add(ref.split("/").pop() ?? "");
+  for (const [key, value] of Object.entries(node)) {
+    if (key.startsWith("on") && isRef(value)) {
+      out.add(value.$ref.split("/").pop() ?? "");
     }
     handlerKeys(value, out);
   }
@@ -148,7 +208,7 @@ describe("kit documents", () => {
       test("is a valid custom-element document", async () => {
         expect(doc.tagName).toBe(tag);
         expect(tag).toContain("-");
-        const result = await validateDocument(doc as Record<string, unknown>);
+        const result = await validateDocument(jsonOf(doc));
         expect(result.errors).toBeNull();
         expect(result.valid).toBe(true);
       });
@@ -198,17 +258,18 @@ describe("kit documents", () => {
            three parts hidden by one rule, which is the compact and correct way to write it — was
            invisible a third time. Each blind spot passes silently, which is the shape the `[hidden]`
            defect itself has. */
-        const style = (doc.style ?? {}) as Record<string, unknown>;
+        const style = doc.style ?? {};
         /* Every selector member in the block, mapped to the declarations written for it. A key is
            a selector LIST, so it is split before anything is looked up. */
-        const members = new Map<string, Record<string, unknown>>();
-        for (const [key, value] of Object.entries(style)) {
-          if (!value || typeof value !== "object" || Array.isArray(value)) {
+        const members = new Map<string, JxStyle>();
+        for (const key of Object.keys(style)) {
+          const block = getNestedStyle(style, key);
+          if (!block) {
             continue;
           }
           for (const member of splitSelectorList(key)) {
             const at = members.get(member) ?? {};
-            Object.assign(at, value as Record<string, unknown>);
+            Object.assign(at, block);
             members.set(member, at);
           }
         }
@@ -224,7 +285,7 @@ describe("kit documents", () => {
         for (const [label, node] of internalNodes(doc)) {
           const part = node.attributes?.part;
           const bound = node.hidden !== undefined || node.attributes?.hidden !== undefined;
-          if (!bound || typeof part !== "string") {
+          if (!bound || !isString(part)) {
             continue;
           }
           const rule = forPart(part, "");
@@ -247,11 +308,11 @@ describe("kit documents", () => {
            This gate used to be written `if ("display" in style)`, which made it SELF-DISABLING:
            deleting an element's base display did not redden it, it silenced it. The one check
            that touched the base display was the one check its absence turned off. */
-        const style = (doc.style ?? {}) as Record<string, unknown>;
-        const hiddenRule = style["&[hidden]"] as Record<string, unknown> | undefined;
-        expect(hiddenRule?.display, `${doc.tagName} needs "&[hidden]": { "display": "none" }`).toBe(
-          "none",
-        );
+        const hiddenRule = getNestedStyle(doc.style, "&[hidden]");
+        expect(
+          hiddenRule?.["display"],
+          `${doc.tagName} needs "&[hidden]": { "display": "none" }`,
+        ).toBe("none");
       });
 
       test("names only glyphs the kit ships", () => {
@@ -262,9 +323,9 @@ describe("kit documents", () => {
           if (node.tagName !== "jx-icon") {
             continue;
           }
-          const props = (node as { $props?: Record<string, unknown> }).$props ?? {};
+          const props = node.$props ?? {};
           const name = props["name"] ?? node.attributes?.["name"];
-          if (typeof name !== "string" || name.includes("${")) {
+          if (!isString(name) || name.includes("${")) {
             continue;
           }
           expect(ICON_NAMES, `${label} <jx-icon name="${name}">`).toContain(name);
@@ -279,20 +340,20 @@ describe("kit documents", () => {
            handler silently does nothing. Measured: a click through the parameterised form wrote
            "undefined" where the plain form wrote "click". No lint sees it and the page looks
            right until someone presses the control. */
-        const bound = handlerKeys(doc);
+        const bound = handlerKeys(jsonOf(doc));
         for (const [key, entry] of Object.entries(doc.state ?? {})) {
           if (!bound.has(key)) {
             continue;
           }
-          const params = (entry as { parameters?: unknown }).parameters;
+          const params = parametersOf(entry);
           expect(params, `state.${key} is bound to an on* key`).toBeUndefined();
         }
       });
 
       test("documents every prop", () => {
         for (const [key, entry] of Object.entries(doc.state ?? {})) {
-          if (entry && typeof entry === "object" && "default" in entry) {
-            expect((entry as { description?: string }).description, key).toBeString();
+          if (isJsonObject(entry) && "default" in entry) {
+            expect(entry["description"], key).toBeString();
           }
         }
       });
@@ -318,19 +379,19 @@ describe("the kit ships no CSS class", () => {
    * @param node The document or subtree.
    * @yields {[string, string]} A label for messages, and the class value.
    */
-  function* classAttributes(node: unknown, path = "root"): Generator<[string, string]> {
+  function* classAttributes(node: JsonValue, path = "root"): Generator<[string, string]> {
     if (Array.isArray(node)) {
       for (const [i, item] of node.entries()) {
         yield* classAttributes(item, `${path}[${i}]`);
       }
       return;
     }
-    if (!node || typeof node !== "object") {
+    if (!isJsonObject(node)) {
       return;
     }
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    for (const [key, value] of Object.entries(node)) {
       // `className` is the DOM property spelling; `class` the attribute one. Both are a class.
-      if ((key === "class" || key === "className") && typeof value === "string") {
+      if ((key === "class" || key === "className") && isString(value)) {
         yield [`${path}.${key}`, value];
       }
       yield* classAttributes(value, `${path}.${key}`);
@@ -339,7 +400,7 @@ describe("the kit ships no CSS class", () => {
 
   for (const [tag, doc] of Object.entries(documents)) {
     test(`${tag} writes no class`, () => {
-      for (const [where, value] of classAttributes(doc)) {
+      for (const [where, value] of classAttributes(jsonOf(doc))) {
         for (const name of value.split(/\s+/).filter(Boolean)) {
           expect(PLATFORM_CLASSES, `${where}: ${name}`).toContain(name);
         }
@@ -349,7 +410,7 @@ describe("the kit ships no CSS class", () => {
 
   for (const [name, page] of Object.entries(stylebook)) {
     test(`${name} writes no class`, () => {
-      for (const [where, value] of classAttributes(page)) {
+      for (const [where, value] of classAttributes(jsonOf(page))) {
         for (const cls of value.split(/\s+/).filter(Boolean)) {
           expect(PLATFORM_CLASSES, `${where}: ${cls}`).toContain(cls);
         }
@@ -375,17 +436,17 @@ describe("the kit keeps its principles (ui.md §2)", () => {
    * @param node The document or subtree.
    * @yields {string} The path of each `$shadow` key.
    */
-  function* shadowKeys(node: unknown, path = "root"): Generator<string> {
+  function* shadowKeys(node: JsonValue, path = "root"): Generator<string> {
     if (Array.isArray(node)) {
       for (const [i, item] of node.entries()) {
         yield* shadowKeys(item, `${path}[${i}]`);
       }
       return;
     }
-    if (!node || typeof node !== "object") {
+    if (!isJsonObject(node)) {
       return;
     }
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    for (const [key, value] of Object.entries(node)) {
       if (key === "$shadow") {
         yield `${path}.${key}`;
       }
@@ -398,7 +459,7 @@ describe("the kit keeps its principles (ui.md §2)", () => {
       /* Principle 2: every relationship the kit is built on is an id reference, and none of them
          crosses a shadow boundary. `$shadow` stays a per-element opt-in taken on evidence of a
          leak, and there has been none. */
-      expect([...shadowKeys(doc)]).toEqual([]);
+      expect([...shadowKeys(jsonOf(doc))]).toEqual([]);
     });
   }
 
@@ -461,32 +522,28 @@ describe("the kit keeps a visible focus (WCAG 2.2 SC 2.4.7)", () => {
   const FOCUSABLE = new Set(["a", "button", "input", "select", "summary", "textarea"]);
 
   /** Whether a document renders, with its own markup, something a reader can tab to. */
-  function rendersFocusable(node: unknown): boolean {
+  function rendersFocusable(node: JsonValue | undefined): boolean {
     if (Array.isArray(node)) {
       return node.some((item) => rendersFocusable(item));
     }
-    if (!node || typeof node !== "object") {
+    if (!isJsonObject(node)) {
       return false;
     }
-    const el = node as {
-      tagName?: string;
-      attributes?: Record<string, unknown>;
-      children?: unknown;
-    };
-    const tabindex = String(el.attributes?.["tabindex"] ?? "");
+    const { attributes, tagName } = node;
+    const tabindex = String((isJsonObject(attributes) ? attributes["tabindex"] : undefined) ?? "");
     if (tabindex !== "" && tabindex !== "-1") {
       return true;
     }
-    if (el.tagName && FOCUSABLE.has(el.tagName) && tabindex !== "-1") {
+    if (isString(tagName) && FOCUSABLE.has(tagName) && tabindex !== "-1") {
       return true;
     }
-    return Object.entries(el)
+    return Object.entries(node)
       .filter(([key]) => key !== "style")
       .some(([, value]) => rendersFocusable(value));
   }
 
   for (const [tag, doc] of Object.entries(documents)) {
-    if (!rendersFocusable(doc.children)) {
+    if (!rendersFocusable(jsonOf(doc)["children"])) {
       continue;
     }
     test(`${tag} declares a :focus-visible rule for the control it renders`, () => {
@@ -510,9 +567,13 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
      and is gated by HIT area below: the criterion measures the region that accepts the pointer,
      and a `::before` inset past the box is that region (#324). */
   const MINIMUM = 24;
-  const densities = Object.entries(themeTokens).filter(([key]) =>
-    key.startsWith("&[data-density="),
-  ) as [string, Record<string, unknown>][];
+  /* Each density block by its key; a scalar under a density key reads as an empty block, so it
+     inherits the root's token exactly as a block that omits it does. */
+  const densities = Object.keys(themeTokens).flatMap((key) =>
+    key.startsWith("&[data-density=")
+      ? [[key, getNestedStyle(themeTokens, key) ?? {}] as const]
+      : [],
+  );
 
   test("the theme declares the compact and comfortable densities", () => {
     expect(densities.map(([key]) => key).toSorted()).toEqual([
@@ -542,13 +603,13 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
   const REPLACED = new Set(["jx-combobox", "jx-number-field", "jx-select", "jx-textfield"]);
 
   /** A `calc(var(--jx-control-h) - Npx)`, as the number of pixels it takes off the token. */
-  const shrinkOf = (value: unknown): number | null => {
+  const shrinkOf = (value: JxStyle[string]): number | null => {
     const m = /^calc\(var\(--jx-control-h\) - (\d+)px\)$/.exec(String(value));
     return m ? Number(m[1]) : null;
   };
 
   /** `-Npx`, as N; an inset that is not one negative pixel length on every side is no hit area. */
-  const outsetOf = (value: unknown): number | null => {
+  const outsetOf = (value: JxStyle[string]): number | null => {
     const m = /^-(\d+)px$/.exec(String(value));
     return m ? Number(m[1]) : null;
   };
@@ -561,7 +622,7 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
    * said 24 for it, because it measured from the border box. Read, not assumed, so a control that
    * grows a border without moving its inset fails here with the number that broke.
    */
-  const borderWidthOf = (rule: Record<string, unknown> | undefined): number | null => {
+  const borderWidthOf = (rule: JxStyle | undefined): number | null => {
     const declared = rule?.["borderWidth"] ?? rule?.["border"];
     if (declared === undefined) {
       return 0;
@@ -578,11 +639,11 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
      for the same reason the loop above is: the sheet is data, and a test per document names the
      document that broke. */
   const shrinking = Object.entries(documents).flatMap(([tag, doc]) => {
-    const style = (doc.style ?? {}) as Record<string, unknown>;
-    const smRules = Object.entries(style)
-      .filter(([key]) => key.includes('[data-size="sm"]'))
-      .map(([key, block]) => {
-        const declarations = block as Record<string, unknown>;
+    const style = doc.style ?? {};
+    const smRules = Object.keys(style)
+      .filter((key) => key.includes('[data-size="sm"]'))
+      .map((key) => {
+        const declarations = getNestedStyle(style, key) ?? {};
         const taken = Object.values(declarations)
           .map((value) => shrinkOf(value))
           .filter((n): n is number => n !== null);
@@ -605,7 +666,7 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
         expect(key, `${tag}: an sm shrink of something other than the control`).toContain(
           '[part="control"]',
         );
-        const before = declarations["::before"] as Record<string, unknown> | undefined;
+        const before = getNestedStyle(declarations, "::before");
         expect(before, `${tag}: ${key} shrinks the control and carries no ::before`).toBeDefined();
         expect(before!["content"], `${tag}: ${key}::before generates no box`).toBe('""');
         expect(before!["position"], `${tag}: ${key}::before is in the layout`).toBe("absolute");
@@ -618,9 +679,7 @@ describe("the kit's targets are at least 24px at every density (WCAG 2.2 SC 2.5.
            ancestor, so an inset on a static control would extend the host or whatever stands
            above it, not the control; the shrunk control must be `position: relative` itself, in
            the sm rule or already in the base control rule (jx-action-button's is, for its badge). */
-        const controlRule = style[key.replace(/^&\[data-size="sm"\]/, "&")] as
-          | Record<string, unknown>
-          | undefined;
+        const controlRule = getNestedStyle(style, key.replace(/^&\[data-size="sm"\]/, "&"));
         expect(
           [declarations["position"], controlRule?.["position"]],
           `${tag}: ${key} carries a hit area on a control that is not position: relative`,
@@ -691,18 +750,17 @@ describe("stylebook pages", () => {
 
   for (const [name, page] of Object.entries(stylebook)) {
     test(`${name} is valid, lint-clean, and references only shipped elements and icons`, async () => {
-      const result = await validateDocument(page as Record<string, unknown>);
+      const result = await validateDocument(jsonOf(page));
       expect(result.errors).toBeNull();
       expect(result.valid).toBe(true);
       expect(findPopoverDefects(page)).toEqual([]);
       for (const entry of page.$elements ?? []) {
-        if (typeof entry === "object" && "$ref" in entry) {
+        if (isRef(entry)) {
           const tag = entry.$ref.replace(/^.*\//, "").replace(/\.json$/, "");
           expect(Object.keys(documents), entry.$ref).toContain(tag);
         }
       }
-      const names = (page.state?.names as string[] | undefined) ?? [];
-      for (const iconName of names) {
+      for (const iconName of namesOf(page)) {
         expect(ICON_NAMES, iconName).toContain(iconName);
         expect(Object.keys(list), iconName).toContain(iconName);
       }
@@ -711,18 +769,18 @@ describe("stylebook pages", () => {
 
   for (const [name, page] of Object.entries(stylebook)) {
     test(`${name} binds no parameterised body to an event`, () => {
-      const bound = handlerKeys(page);
+      const bound = handlerKeys(jsonOf(page));
       for (const [key, entry] of Object.entries(page.state ?? {})) {
         if (!bound.has(key)) {
           continue;
         }
-        expect((entry as { parameters?: unknown }).parameters, `state.${key}`).toBeUndefined();
+        expect(parametersOf(entry), `state.${key}`).toBeUndefined();
       }
     });
   }
 
   test("the icon gallery shows every shipped glyph", () => {
-    const names = stylebook["jx-icon.json"]!.state!.names as string[];
-    expect([...names].toSorted()).toEqual([...ICON_NAMES]);
+    const names = namesOf(stylebook["jx-icon.json"]!);
+    expect(names.toSorted()).toEqual([...ICON_NAMES]);
   });
 });

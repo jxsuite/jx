@@ -15,7 +15,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildStyleRules } from "@jxsuite/runtime/css";
-import type { JxStyle } from "@jxsuite/schema/types";
+import { isNestedStyle } from "@jxsuite/schema/guards";
 
 import { documents } from "../src/documents.ts";
 import { themeTokens } from "../src/theme.ts";
@@ -24,11 +24,16 @@ import { themeTokens } from "../src/theme.ts";
 const FLOOR = 24;
 
 /** Every rule an element's style block emits, under a stand-in scope handle. */
-const sheet = (tag: string): string[] =>
-  buildStyleRules(documents[tag]!.style as JxStyle, { scope: "S" }).map((emitted) => emitted.text);
+function sheet(tag: keyof typeof documents): string[] {
+  const { style } = documents[tag];
+  if (!style) {
+    throw new Error(`${tag} has no component document with a style block`);
+  }
+  return buildStyleRules(style, { scope: "S" }).map((emitted) => emitted.text);
+}
 
 /** The one emitted rule whose selector is exactly `selector` (the handle spelled `S`). */
-function rule(tag: string, selector: string): string {
+function rule(tag: keyof typeof documents, selector: string): string {
   const found = sheet(tag).find((text) => text.startsWith(`${selector} {`));
   expect(found, `${tag} emits no rule for ${selector}`).toBeDefined();
   return found!;
@@ -51,9 +56,9 @@ function borderWidth(ruleText: string): number {
 
 /** `--jx-control-h` at the root and under every density the theme declares, as numbers. */
 function controlHeights(): [string, number][] {
-  const densities = Object.entries(themeTokens).filter(([key]) =>
-    key.startsWith("&[data-density="),
-  ) as [string, Record<string, unknown>][];
+  const densities = Object.entries(themeTokens).flatMap(([key, block]) =>
+    key.startsWith("&[data-density=") && isNestedStyle(block) ? [[key, block] as const] : [],
+  );
   return [[":root", themeTokens] as const, ...densities].map(([label, block]) => {
     const declared = String(block["--jx-control-h"] ?? themeTokens["--jx-control-h"]);
     return [label, Number(/^(\d+(?:\.\d+)?)px$/.exec(declared)![1])];

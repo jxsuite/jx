@@ -14,7 +14,7 @@
  */
 
 import { COMMON_SELECTORS } from "../store";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNonNullObject } from "@jxsuite/schema/guards";
 import { isPopover } from "@jxsuite/schema/overlays";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -62,7 +62,8 @@ function extraSelectorsFor(node: JxMutableNode): string[] {
  * @returns The offerable selectors.
  */
 export function selectorsForNode(node: JxMutableNode | null | undefined): string[] {
-  if (!node || typeof node !== "object") {
+  // The style panel reads the node with getNodeAtPath, which can answer a bare string text child.
+  if (!isNonNullObject(node)) {
     return [...COMMON_SELECTORS];
   }
   return [...new Set([...COMMON_SELECTORS, ...extraSelectorsFor(node)])];

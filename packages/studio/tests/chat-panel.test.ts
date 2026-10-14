@@ -23,13 +23,22 @@ import { inspectorTab, setInspectorTab } from "../src/panels/right-panel";
 
 // Chat-panel hosts ai-panel, which instantiates a document assistant at module load. Mock it
 // (before the dynamic import below) so no send ever touches the network.
-const assistantChatState = reactive({
+/** The members of the assistant's chat state that the panel reads. */
+interface AssistantChatStateFixture {
+  contextWarning: boolean;
+  error: string | null;
+  messages: { role: string; content: string }[];
+  status: "idle" | "streaming" | "error";
+  tokenCount: number;
+}
+const initialChatState: AssistantChatStateFixture = {
   contextWarning: false,
-  error: null as string | null,
-  messages: [] as { role: string; content: string }[],
-  status: "idle" as "idle" | "streaming" | "error",
+  error: null,
+  messages: [],
+  status: "idle",
   tokenCount: 0,
-});
+};
+const assistantChatState = reactive(initialChatState);
 const assistantSend = mock(async (_text: string) => {});
 void mock.module("../src/services/document-assistant", () => ({
   createDocumentAssistant: () => ({
@@ -72,9 +81,8 @@ const { mount, render, unmount } = await import("../src/panels/chat-panel");
 
 // The pending-prompt seed and `assistant.focus` both defer via requestAnimationFrame.
 const origRaf = globalThis.requestAnimationFrame;
-(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
-  cb: FrameRequestCallback,
-) => setTimeout(() => cb(0), 0) as unknown as number;
+// A Bun timer coerces to its numeric id, which `clearTimeout` still accepts as a cancel handle.
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => Number(setTimeout(() => cb(0), 0));
 
 /**
  * The Assistant tab's body, as `right-panel.ts` builds it.
@@ -83,7 +91,11 @@ const origRaf = globalThis.requestAnimationFrame;
  * `mount(host)` taking its container as an argument is exactly what makes that separable.
  */
 function chatHost(): HTMLElement {
-  return document.querySelector("#assistant-tab") as HTMLElement;
+  const host = document.querySelector("#assistant-tab");
+  if (!(host instanceof HTMLElement)) {
+    throw new Error("beforeEach builds the #assistant-tab host");
+  }
+  return host;
 }
 
 beforeEach(() => {
@@ -119,13 +131,13 @@ describe("chat panel", () => {
     mount(chatHost());
     setInspectorTab("assistant");
     await flush(4);
-    const container = chatHost().querySelector(".ai-panel-host") as HTMLElement;
-    expect(container).toBeTruthy();
+    const container = chatHost().querySelector(".ai-panel-host");
+    expect(container).toBeInstanceOf(HTMLElement);
     // No key stored and no configured proxy → still a chat, with the setup action beneath it.
     // The credentials form itself lives in Preferences › Assistant, not in this tab.
-    expect(container.querySelector('[part="ai-creds-form"]')).toBeNull();
-    expect(container.querySelector('[part="header"]')).toBeTruthy();
-    expect(container.querySelector('[part="setup"]')).toBeTruthy();
+    expect(container?.querySelector('[part="ai-creds-form"]')).toBeNull();
+    expect(container?.querySelector('[part="header"]')).toBeTruthy();
+    expect(container?.querySelector('[part="setup"]')).toBeTruthy();
   });
 
   test("renders the chat view once a key exists, with or without an open tab", async () => {
@@ -134,14 +146,14 @@ describe("chat panel", () => {
     setInspectorTab("assistant");
     render();
     await flush(4);
-    const container = chatHost().querySelector(".ai-panel-host") as HTMLElement;
-    expect(container.querySelector('[part="header"]')).toBeTruthy();
+    const container = chatHost().querySelector(".ai-panel-host");
+    expect(container?.querySelector('[part="header"]')).toBeTruthy();
 
     // Opening a document changes nothing about the panel's availability.
     resetWorkspaceWithTab();
     render();
     await flush(4);
-    expect(container.querySelector('[part="header"]')).toBeTruthy();
+    expect(container?.querySelector('[part="header"]')).toBeTruthy();
   });
 
   test("consumes a pending agent prompt when the workspace adopts its project root", async () => {
@@ -164,9 +176,12 @@ describe("chat panel", () => {
   });
 
   test("a project root without a pending prompt does not seed anything", async () => {
+    setInspectorTab("properties");
     mount(chatHost());
     setWorkspaceProject("/proj-d");
     await flush(4);
+    // Nothing revealed the Assistant tab, and nothing was sent.
+    expect(inspectorTab()).toBe("properties");
     expect(assistantSend).not.toHaveBeenCalled();
   });
 
@@ -189,9 +204,7 @@ describe("chat panel", () => {
     mount(chatHost());
     await flush(2);
     const { resolveRegion } = await import("../src/ui/regions");
-    expect(resolveRegion("inspector.assistant")).toBe(
-      chatHost().querySelector(".ai-panel-host") as HTMLElement,
-    );
+    expect(resolveRegion("inspector.assistant")).toBe(chatHost().querySelector(".ai-panel-host"));
   });
 
   test("a mount with no host is inert", () => {

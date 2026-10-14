@@ -1,7 +1,7 @@
 {
   "name": "sealed-orphan",
   "description": "A transcript as Studio's pruneOrphanToolMessages leaves it: Stop landed while ask_user waited, so the second call of the round was never run. Its synthesized failure is inserted directly after the requesting message (ahead of the real reply) with the requester's timestamp. Authored; Studio's ai-session-corpus test re-derives the sealed message from the real function.",
-  "shapes": ["sealed-orphan", "parallel-tool-calls", "tool-record-result-null"],
+  "scenarios": ["sealed-orphan", "parallel-tool-calls", "tool-record-result-null"],
   "messages": [
     {
       "id": "msg_T_1",

@@ -35,6 +35,7 @@ function copiedDirs(): string[] {
 
 /** The `@jxsuite/*` packages the desktop app declares as runtime dependencies. */
 function declaredJxDeps(): string[] {
+  // SAFETY: the desktop package's own committed manifest, whose `dependencies` bun reads as a name -> range map.
   const pkg = JSON.parse(readFileSync(resolve(REPO, "packages/desktop/package.json"), "utf8")) as {
     dependencies?: Record<string, string>;
   };
@@ -99,6 +100,8 @@ describe("the runtime install is the desktop app's production graph", () => {
        the project (packages/compiler/src/site/schema-command.ts, `hostResolve`), so a project that
        declares an extension needs the app to carry it — and nothing imports an extension
        statically, so only the declaration puts it in the production install. */
+    /* SAFETY: every directory under extensions/ is a bun workspace member, and the workspace
+       resolver refuses a member whose package.json lacks a string `name`. */
     const extensions = readdirSync(resolve(REPO, "extensions"), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map(

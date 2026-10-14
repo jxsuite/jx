@@ -25,7 +25,7 @@ const ACCOUNTS = [
 ];
 
 function d<T extends Element = HTMLElement>(sel: string): T | null {
-  return document.querySelector(`#layer-dialog ${sel}`) as T | null;
+  return document.querySelector<T>(`#layer-dialog ${sel}`);
 }
 
 /** The dialog itself, which is the surface's root. */

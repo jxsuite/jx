@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import type { JsonObject } from "@jxsuite/schema/types";
 import {
   compileExclude,
   compileWhere,
@@ -137,9 +138,16 @@ describe("compileExclude", () => {
   });
 
   it("refuses a malformed list with a message naming the problem", () => {
-    expect(() => compileExclude("internal/**" as unknown as string[])).toThrow(/array of glob/);
+    // The list is read from project.json, where nothing stops it being a string or holding a number.
+    const authored: JsonObject = { notAList: "internal/**", notText: [42] };
+    /* SAFETY: deliberately unsound. compileExclude is typed for the validated list, but its job here
+       is to refuse unvalidated project.json data: it checks Array.isArray on the list and isString
+       on each entry before reading either, so these values reach no typed access. */
+    expect(() => compileExclude(authored.notAList as string[])).toThrow(/array of glob/);
     expect(() => compileExclude([""])).toThrow(/non-empty strings/);
-    expect(() => compileExclude([42 as unknown as string])).toThrow(/non-empty strings/);
+    // SAFETY: deliberately unsound: `[42]` is no string list, and compileExclude runs isString on
+    // Each entry before reading it, so the number reaches only the refusal this line pins.
+    expect(() => compileExclude(authored.notText as string[])).toThrow(/non-empty strings/);
     expect(() => compileExclude(["!keep.md"])).toThrow(/negated patterns are not supported/);
   });
 
@@ -195,16 +203,20 @@ describe("compileExclude", () => {
 });
 
 describe("globToRegExp classes", () => {
+  /** The candidates a glob's RegExp accepts, in order: its whole verdict over the set as one value. */
+  const matching = (glob: string, candidates: string[]) => {
+    const re = globToRegExp(glob);
+    return candidates.filter((candidate) => re.test(candidate));
+  };
+
   it("a negated class never matches a slash", () => {
-    expect(globToRegExp("a[!x]b").test("a/b")).toBe(false);
-    expect(globToRegExp("a[!x]b").test("ayb")).toBe(true);
-    expect(globToRegExp("a[^x]b").test("a/b")).toBe(false);
+    expect(matching("a[!x]b", ["a/b", "ayb"])).toEqual(["ayb"]);
+    expect(matching("a[^x]b", ["a/b"])).toEqual([]);
   });
 
   it("an empty class is an ordinary bracket", () => {
-    expect(globToRegExp("a[!]b").test("a[!]b")).toBe(true);
-    expect(globToRegExp("a[!]b").test("a/b")).toBe(false);
-    expect(globToRegExp("a[]b").test("a[]b")).toBe(true);
+    expect(matching("a[!]b", ["a[!]b", "a/b"])).toEqual(["a[!]b"]);
+    expect(matching("a[]b", ["a[]b"])).toEqual(["a[]b"]);
   });
 });
 
@@ -353,8 +365,8 @@ describe("compileWhere", () => {
   });
 
   it("refuses what it cannot run, naming the key", () => {
-    expect(() => compileWhere("publish" as unknown)).toThrow(/must be an object/);
-    expect(() => compileWhere([] as unknown)).toThrow(/must be an object/);
+    expect(() => compileWhere("publish")).toThrow(/must be an object/);
+    expect(() => compileWhere([])).toThrow(/must be an object/);
     expect(() => compileWhere({ $or: [] })).toThrow(/top-level operators are not supported/);
     expect(() => compileWhere({ k: { $regex: "x" } })).toThrow(
       /where\.k: unknown operator "\$regex"/,

@@ -27,12 +27,14 @@
  * `packages/compiler/src/site/head-merger.ts` by `tests/head-panel.test.ts`.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { nothing } from "lit-html";
 import { projectState, renderOnly } from "../store";
 import type { DirEntry, JsonValue } from "../types";
 import { activeTab } from "../workspace/workspace";
 import { activeRegistry } from "../commands/active-registry";
 import { clearProblems, notify } from "../services/notify";
+import type { NotifyOptions } from "../services/notify";
 import { registerPanel } from "./panel-registry";
 import { mutateUpdateFrontmatter, transact, transactDoc } from "../tabs/transact";
 import { collectFmFields, projectFmField } from "./frontmatter-fields";
@@ -49,13 +51,14 @@ import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type * as MediaPickerModule from "../ui/media-picker";
 import type {
-  PageChoice,
   PagePanelActions,
   PagePanelView,
   PageRow,
   PageSection,
   PageTagRow,
 } from "../surfaces/panel-page";
+import type { SurfaceOption } from "../ui/surface";
+import type { SeoWarningView } from "../surfaces/seo";
 
 interface MetaField {
   label: string;
@@ -155,6 +158,15 @@ export const RESERVED_FM_KEYS = new Set(["title"]);
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 /**
+ * One slot of a `$head` array as it is read off a document.
+ *
+ * Wider than `JxHeadEntry` on purpose: a Markdown page's `$head` is its frontmatter, which reaches
+ * these helpers through {@link buildHeadDoc} without being validated, so an empty YAML list item
+ * arrives as `null`. Every reader here steps over such a slot rather than throwing on it.
+ */
+type HeadSlot = JxHeadEntry | null | undefined;
+
+/**
  * Find a `$head` meta entry by attribute match.
  *
  * @param {JxHeadEntry[]} head
@@ -162,11 +174,8 @@ export const RESERVED_FM_KEYS = new Set(["title"]);
  * @param {string} key
  * @returns {JxHeadEntry | undefined}
  */
-export function findMetaEntry(head: JxHeadEntry[], attr: "name" | "property", key: string) {
-  if (!head) {
-    return;
-  }
-  return head.find((e: JxHeadEntry) => e?.tagName === "meta" && e?.attributes?.[attr] === key);
+export function findMetaEntry(head: readonly HeadSlot[], attr: "name" | "property", key: string) {
+  return head.find((e): e is JxHeadEntry => e?.tagName === "meta" && e.attributes?.[attr] === key);
 }
 
 /**
@@ -176,11 +185,8 @@ export function findMetaEntry(head: JxHeadEntry[], attr: "name" | "property", ke
  * @param {string} rel
  * @returns {JxHeadEntry | undefined}
  */
-export function findLinkEntry(head: JxHeadEntry[], rel: string) {
-  if (!head) {
-    return;
-  }
-  return head.find((e: JxHeadEntry) => e?.tagName === "link" && e?.attributes?.rel === rel);
+export function findLinkEntry(head: readonly HeadSlot[], rel: string) {
+  return head.find((e): e is JxHeadEntry => e?.tagName === "link" && e.attributes?.rel === rel);
 }
 
 /**
@@ -189,20 +195,20 @@ export function findLinkEntry(head: JxHeadEntry[], rel: string) {
  * @param {JxHeadEntry} entry
  * @returns {boolean}
  */
-export function isManagedEntry(entry: JxHeadEntry) {
+export function isManagedEntry(entry: HeadSlot) {
   if (!entry?.tagName) {
     return false;
   }
   // Managed meta tags
   if (entry.tagName === "meta") {
-    const name = String(entry?.attributes?.name ?? "");
-    const prop = String(entry?.attributes?.property ?? "");
+    const name = String(entry.attributes?.name ?? "");
+    const prop = String(entry.attributes?.property ?? "");
     return (
       Boolean(name && MANAGED_META_KEYS.has(name)) || Boolean(prop && MANAGED_META_KEYS.has(prop))
     );
   }
   // Managed link: favicon
-  if (entry.tagName === "link" && entry?.attributes?.rel === "icon") {
+  if (entry.tagName === "link" && entry.attributes?.rel === "icon") {
     return true;
   }
   return false;
@@ -226,7 +232,7 @@ export function upsertMeta(
     doc.$head = [];
   }
   const idx = doc.$head.findIndex(
-    (e: JxHeadEntry) => e?.tagName === "meta" && e?.attributes?.[attr] === key,
+    (e: HeadSlot) => e?.tagName === "meta" && e.attributes?.[attr] === key,
   );
   if (content) {
     const entry = { attributes: { [attr]: key, content }, tagName: "meta" };
@@ -252,7 +258,7 @@ export function upsertLink(doc: JxMutableNode, rel: string, href: string) {
     doc.$head = [];
   }
   const idx = doc.$head.findIndex(
-    (e: JxHeadEntry) => e?.tagName === "link" && e?.attributes?.rel === rel,
+    (e: HeadSlot) => e?.tagName === "link" && e.attributes?.rel === rel,
   );
   if (href) {
     const entry = { attributes: { href, rel }, tagName: "link" };
@@ -272,7 +278,7 @@ export function upsertLink(doc: JxMutableNode, rel: string, href: string) {
  * @param {JxHeadEntry} entry
  * @returns {string}
  */
-export function entryLabel(entry: JxHeadEntry) {
+export function entryLabel(entry: HeadSlot) {
   if (!entry?.tagName) {
     return "unknown";
   }
@@ -301,7 +307,7 @@ export function entryLabel(entry: JxHeadEntry) {
  * @param {JxHeadEntry} entry
  * @returns {string}
  */
-export function entryValue(entry: JxHeadEntry) {
+export function entryValue(entry: HeadSlot) {
   const a = entry?.attributes ?? {};
   return String(a.content ?? a.href ?? a.src ?? entry?.textContent ?? "");
 }
@@ -358,11 +364,15 @@ const NOT_SUPPLIED: ResolvedHeadField = { donor: null, source: "none", value: ""
  * Last rather than first, because the merger folds a layer into a keyed map in array order: a layer
  * that lists `description` twice emits the second one.
  */
-function metaContentIn(head: JxHeadEntry[], attr: "name" | "property", key: string): string | null {
+function metaContentIn(
+  head: readonly HeadSlot[],
+  attr: "name" | "property",
+  key: string,
+): string | null {
   let found: string | null = null;
   for (const entry of head) {
-    if (entry?.tagName === "meta" && entry?.attributes?.[attr] === key) {
-      found = String(entry.attributes?.content ?? "");
+    if (entry?.tagName === "meta" && entry.attributes?.[attr] === key) {
+      found = String(entry.attributes.content ?? "");
     }
   }
   return found;
@@ -483,12 +493,12 @@ export interface SeoField extends ResolvedHeadField {
  * a verdict, and the verdict is what gets optimised (§16.6). A count beside a limit says the same
  * thing without pretending to rank it.
  */
-export const SEO_LIMITS: Readonly<Record<string, number>> = {
-  description: 160,
-  "og:description": 200,
-  "og:title": 60,
-  title: 60,
-};
+export const SEO_LIMITS: ReadonlyMap<string, number> = new Map([
+  ["description", 160],
+  ["og:description", 200],
+  ["og:title", 60],
+  ["title", 60],
+]);
 
 /** Counts what a reader sees as one character. See {@link visibleLength}. */
 const GRAPHEME_SEGMENTER = new Intl.Segmenter("en-US", { granularity: "grapheme" });
@@ -518,15 +528,6 @@ export function visibleLength(value: string): number {
   return count;
 }
 
-/** A named thing that is wrong, or absent. Never summed — the list IS the report. */
-export interface SeoWarning {
-  /** Stable id, so a test and a shot name the same warning. */
-  id: string;
-  /** The head key the warning is about, so the field row can carry it. */
-  field: string;
-  message: string;
-}
-
 /** The Problems `source` the SEO warnings carry, so a re-run replaces rather than stacks. */
 export const SEO_PROBLEM_SOURCE = "Search appearance";
 
@@ -548,13 +549,16 @@ export const SEO_PROBLEM_SOURCE = "Search appearance";
 export function reportSeoProblems(preview: SeoPreview, path?: string): number {
   clearProblems((record) => record.source === SEO_PROBLEM_SOURCE);
   for (const warning of preview.warnings) {
-    notify.warn(warning.message, {
+    const opts: NotifyOptions = {
       action: "document.openSeo",
       key: `seo.${warning.id}`,
       source: SEO_PROBLEM_SOURCE,
       tier: "problem",
-      ...(path === undefined ? {} : { path }),
-    });
+    };
+    if (path !== undefined) {
+      opts.path = path;
+    }
+    notify.warn(warning.message, opts);
   }
   return preview.warnings.length;
 }
@@ -564,7 +568,7 @@ export interface SeoPreview {
   url: SeoUrl;
   /** In render order: `title`, `description`, then the four OpenGraph keys. */
   fields: SeoField[];
-  warnings: SeoWarning[];
+  warnings: SeoWarningView[];
 }
 
 /** Look one field up by key — the previews read four of the six by name. */
@@ -574,14 +578,16 @@ export function seoField(preview: SeoPreview, key: string): SeoField {
       ...NOT_SUPPLIED,
       key,
       label: key,
-      limit: SEO_LIMITS[key] ?? null,
+      limit: SEO_LIMITS.get(key) ?? null,
     }
   );
 }
 
 /** Whether any layer declares a `<title>` element, which the merger discards. */
 function hasTitleEntry(layers: HeadLayers): boolean {
-  return [...layers.site, ...layers.layout, ...layers.page].some((e) => e?.tagName === "title");
+  return [...layers.site, ...layers.layout, ...layers.page].some(
+    (e: HeadSlot) => e?.tagName === "title",
+  );
 }
 
 /**
@@ -593,13 +599,13 @@ function hasTitleEntry(layers: HeadLayers): boolean {
  *
  * @param {SeoPreview} preview — `warnings` is ignored; this computes it.
  * @param {HeadLayers} layers
- * @returns {SeoWarning[]}
+ * @returns {SeoWarningView[]}
  */
 export function seoWarnings(
   preview: Omit<SeoPreview, "warnings">,
   layers: HeadLayers,
-): SeoWarning[] {
-  const warnings: SeoWarning[] = [];
+): SeoWarningView[] {
+  const warnings: SeoWarningView[] = [];
   const get = (key: string) => preview.fields.find((f) => f.key === key);
 
   const title = get("title");
@@ -671,6 +677,14 @@ export function seoWarnings(
   return warnings;
 }
 
+/** What {@link buildSeoPreview} needs besides the layers: the page's own title, route and site. */
+export interface SeoPreviewContext {
+  pageTitle: string;
+  route: string | null;
+  siteName?: string;
+  siteUrl?: string;
+}
+
 /**
  * Build the whole preview from the three layers, the page title, the route and the site config.
  *
@@ -678,18 +692,15 @@ export function seoWarnings(
  * (resolving the layout document) happens in {@link layoutHeadEntries} before this is called.
  *
  * @param {HeadLayers} layers
- * @param {{ pageTitle: string; route: string | null; siteName?: string; siteUrl?: string }} ctx
+ * @param {SeoPreviewContext} ctx
  * @returns {SeoPreview}
  */
-export function buildSeoPreview(
-  layers: HeadLayers,
-  ctx: { pageTitle: string; route: string | null; siteName?: string; siteUrl?: string },
-): SeoPreview {
+export function buildSeoPreview(layers: HeadLayers, ctx: SeoPreviewContext): SeoPreview {
   const field = (key: string, label: string, resolved: ResolvedHeadField): SeoField => ({
     ...resolved,
     key,
     label,
-    limit: SEO_LIMITS[key] ?? null,
+    limit: SEO_LIMITS.get(key) ?? null,
   });
 
   const fields: SeoField[] = [
@@ -765,6 +776,12 @@ export function layoutDisplayName(path: string): string {
   );
 }
 
+/** A layout's `$head` entries, and the name to print for the layout. */
+export interface LayoutHead {
+  entries: JxHeadEntry[];
+  name: string | null;
+}
+
 /**
  * The effective layout's `$head`, and the name to print for it.
  *
@@ -774,15 +791,9 @@ export function layoutDisplayName(path: string): string {
  *
  * @param {Tab | null} tab — the tab whose document the entries are being resolved FOR.
  * @param {string | false} [docLayout]
- * @returns {{ entries: JxHeadEntry[]; name: string | null }}
+ * @returns {LayoutHead}
  */
-export function layoutHeadEntries(
-  tab: Tab | null,
-  docLayout?: string | false,
-): {
-  entries: JxHeadEntry[];
-  name: string | null;
-} {
+export function layoutHeadEntries(tab: Tab | null, docLayout?: string | false): LayoutHead {
   const path = isPageDocument(tab) ? getEffectiveLayoutPath(docLayout) : null;
   if (path === null) {
     return { entries: [], name: null };
@@ -807,6 +818,17 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
   const config = projectState?.projectConfig;
   const layout = layoutHeadEntries(tab, doc.$layout);
   const path = tab?.documentPath;
+  // A content document's head doc may carry a non-string title (see buildHeadDoc).
+  const ctx: SeoPreviewContext = {
+    pageTitle: isString(doc.title) ? doc.title : "",
+    route: path ? pageRoute(path) : null,
+  };
+  if (config?.name !== undefined) {
+    ctx.siteName = config.name;
+  }
+  if (config?.url !== undefined) {
+    ctx.siteUrl = config.url;
+  }
   return buildSeoPreview(
     {
       layout: layout.entries,
@@ -814,12 +836,7 @@ export function seoPreviewFor(tab: Tab | null, doc: JxMutableNode): SeoPreview {
       page: doc.$head ?? [],
       site: config?.$head ?? [],
     },
-    {
-      pageTitle: typeof doc.title === "string" ? doc.title : "",
-      route: path ? pageRoute(path) : null,
-      ...(config?.name === undefined ? {} : { siteName: config.name }),
-      ...(config?.url === undefined ? {} : { siteUrl: config.url }),
-    },
+    ctx,
   );
 }
 
@@ -853,14 +870,24 @@ export function isPageDocument(tab: Tab | null): boolean {
 }
 
 /** Overlay content-mode frontmatter title/`$head` onto the document the panel edits. */
-export function buildHeadDoc(doc: JxMutableNode, fm: Record<string, unknown>): JxMutableNode {
-  const title = fm.title as string | undefined;
-  const $head = fm.$head as JxHeadEntry[] | undefined;
-  return {
-    ...doc,
-    ...(title === undefined ? {} : { title }),
-    ...($head === undefined ? {} : { $head }),
-  };
+export function buildHeadDoc(
+  doc: JxMutableNode,
+  fm: Tab["doc"]["content"]["frontmatter"],
+): JxMutableNode {
+  const headDoc: JxMutableNode = { ...doc };
+  if (fm.title !== undefined) {
+    /* SAFETY: deliberately not narrowed — a YAML title can be a number, and it is overlaid as
+       written. Every reader of a head doc's `title` (titleRow here and in frontmatter-panel.ts,
+       seoPreviewFor) tests it with isString before using it as text. */
+    headDoc.title = fm.title as string;
+  }
+  if (fm.$head !== undefined) {
+    /* SAFETY: Studio's one writer of the frontmatter `$head` key is applyContentMutation below,
+       which stores a JxHeadEntry[] or deletes the key. A hand-written one is trusted exactly as
+       far as a JSON page's `doc.$head` is, and the readers step over null slots (HeadSlot). */
+    headDoc.$head = fm.$head as JxHeadEntry[];
+  }
+  return headDoc;
 }
 
 /**
@@ -890,19 +917,25 @@ export function applyContentMutation(
   if (!tab) {
     return;
   }
-  const fmNow = (tab.doc.content?.frontmatter ?? {}) as Record<string, unknown>;
-  const fmHead = fmNow.$head as JxHeadEntry[] | undefined;
-  const tmp: JxMutableNode = {
-    ...(typeof fmNow.title === "string" ? { title: fmNow.title } : {}),
-    ...(fmHead ? { $head: [...fmHead] } : {}),
-  };
+  const fmNow = tab.doc.content.frontmatter;
+  // The frontmatter `$head`, read through the one place that types it.
+  const fmHead = buildHeadDoc({}, fmNow).$head;
+  const tmp: JxMutableNode = {};
+  if (isString(fmNow.title)) {
+    tmp.title = fmNow.title;
+  }
+  if (fmHead) {
+    tmp.$head = [...fmHead];
+  }
   fn(tmp);
   if (tmp.title !== fmNow.title) {
-    mutateUpdateFrontmatter(tab, "title", tmp.title as JsonValue);
+    mutateUpdateFrontmatter(tab, "title", tmp.title);
   }
   const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
-  // JxHeadEntry[] is JSON document content by construction.
-  mutateUpdateFrontmatter(tab, "$head", newHead as JsonValue);
+  /* SAFETY: every entry here either came from the frontmatter (JSON, from the format's split) or
+     was built by a head editor out of string attributes; JxHeadEntry is wider than JsonValue only
+     through its open index signature, which no head editor writes. */
+  mutateUpdateFrontmatter(tab, "$head", newHead as JsonValue | undefined);
   rerender();
 }
 
@@ -957,7 +990,7 @@ const _entries = new Map<string, JxHeadEntry>();
 const _pending = new Map<string, { commit: () => void; timer: ReturnType<typeof setTimeout> }>();
 
 /** The elements the add form offers, in the order a reader meets them. */
-const TAG_OPTIONS: PageChoice[] = [
+const TAG_OPTIONS: SurfaceOption[] = [
   { label: "meta", value: "meta" },
   { label: "link", value: "link" },
   { label: "script", value: "script" },
@@ -991,7 +1024,7 @@ function thumbFor(row: PageRow, value: string): void {
 
 /** The one head value you type while writing, in both realms. */
 function titleRow(doc: JxMutableNode, apply: PagePanelContext["applyMutation"]): PageRow {
-  const title = typeof doc.title === "string" ? doc.title : "";
+  const title = isString(doc.title) ? doc.title : "";
   _commits.set("title", {
     clear: () =>
       apply((d) => {
@@ -1140,8 +1173,7 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
     });
     _commits.set(key, {
       clear: () => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field)),
-      commit: (raw) =>
-        transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field, parse(raw) as JsonValue)),
+      commit: (raw) => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, f.field, parse(raw))),
     });
     return Object.assign(blankRow(key, f.field, row.label), row, {
       clearLabel: `Clear ${f.field}`,
@@ -1158,16 +1190,18 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
 /** The `$head` entries no structured control owns, and the keys a Remove hands back. */
 function customEntries(head: JxHeadEntry[]): PageTagRow[] {
   _entries.clear();
-  return head
-    .filter(
-      (e: JxHeadEntry) => !isManagedEntry(e) && !isGoogleFontEntry(e) && !isGoogleFontPreconnect(e),
-    )
-    .map((entry, index) => {
-      const key = `tag:${index}`;
-      _entries.set(key, entry);
-      const label = entryLabel(entry);
-      return { key, label, removeLabel: `Remove ${label}`, value: entryValue(entry) };
-    });
+  const rows: PageTagRow[] = [];
+  for (const entry of head) {
+    if (isManagedEntry(entry) || isGoogleFontEntry(entry) || isGoogleFontPreconnect(entry)) {
+      continue;
+    }
+    // The key counts the LISTED entries, as the index of the filtered list it replaces did.
+    const key = `tag:${rows.length}`;
+    _entries.set(key, entry);
+    const label = entryLabel(entry);
+    rows.push({ key, label, removeLabel: `Remove ${label}`, value: entryValue(entry) });
+  }
+  return rows;
 }
 
 /**
@@ -1434,20 +1468,6 @@ export function renderPagePanel(host: HTMLElement, ctx: PagePanelContext): void 
  */
 function contentArea(body: HTMLElement): HTMLElement {
   return body.querySelector<HTMLElement>(".panel-content") ?? body;
-}
-
-/**
- * The Navigator no longer draws this panel with lit.
- *
- * The record below returns `nothing` and mounts its document in `afterRender`, so this is a stub:
- * it survives only because `NavigatorPanelDeps` still declares the injection and `studio.ts` still
- * passes it. Both go in the change that deletes this.
- *
- * @deprecated The panel is `surfaces/panel-page.json`; call {@link renderPagePanel}.
- * @returns {typeof nothing}
- */
-export function renderHeadTemplate(_against: PagePanelContext): typeof nothing {
-  return nothing;
 }
 
 /**

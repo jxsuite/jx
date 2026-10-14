@@ -24,7 +24,8 @@ import { printedOf } from "./kit-readers";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as storeActual from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import { getNestedStyle } from "@jxsuite/schema/guards";
+import type { JsonObject, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 import { shell } from "../src/shell";
 
 // Make debounced style commits synchronous so an `input` handler commits without a real timer.
@@ -57,10 +58,6 @@ const { initLayers } = await import("../src/ui/layers");
 const { getNodeAtPath } = await import("../src/store");
 const { resetSlotModeMemory } = await import("../src/ui/dynamic-slot");
 
-// Happy-dom may not provide requestAnimationFrame in all versions.
-(globalThis as Record<string, unknown>).requestAnimationFrame ??= (cb: (t: number) => void) =>
-  setTimeout(() => cb(0), 0);
-
 beforeAll(() => {
   for (const id of ["layer-popover", "layer-modal", "layer-dialog", "layer-toast"]) {
     if (!document.querySelector(`#${id}`)) {
@@ -76,18 +73,47 @@ const MEDIA = { md: "(min-width: 768px)", sm: "(min-width: 640px)" };
 
 function setupTab(style: JxStyle | undefined, opts: { media?: boolean } = {}) {
   resetStudioState();
-  const doc = {
-    children: [{ ...(style ? { style } : {}), tagName: "section" }],
-    tagName: "div",
-    ...(opts.media ? { $media: MEDIA } : {}),
-  } as unknown as JxMutableNode;
+  const child: JxMutableNode = {};
+  if (style) {
+    child.style = style;
+  }
+  child.tagName = "section";
+  const doc: JxMutableNode = { children: [child], tagName: "div" };
+  if (opts.media) {
+    doc.$media = MEDIA;
+  }
   const tab = resetWorkspaceWithTab(doc);
   tab.session.selection = [["children", 0]];
   return tab;
 }
 
 function selectedNode(): JxMutableNode {
-  return getNodeAtPath(activeTab.value!.doc.document, ["children", 0]);
+  const node = getNodeAtPath(activeTab.value!.doc.document, ["children", 0]);
+  if (!node) {
+    throw new Error("the fixture's first child is missing");
+  }
+  return node;
+}
+
+/** The nested rule under `key` in the selected element's style; its absence fails the reader. */
+function nestedRule(key: string): JxStyle {
+  const rule = getNestedStyle(selectedNode().style, key);
+  if (!rule) {
+    throw new Error(`the selected element's style has no nested rule under "${key}"`);
+  }
+  return rule;
+}
+
+/**
+ * A nested rule holding a boolean, which no `JxStyle` declaration admits: a document as a hand edit
+ * or a foreign tool might leave it, for the tests that pin how the panel reads one.
+ */
+function malformedRule(): JxStyle {
+  const rule: JsonObject = { unexpected: true };
+  /* SAFETY: deliberately malformed. `rule` really is the JSON object annotated above, and it
+     differs from a `JxStyle` block only in its one boolean value; the panel under test must read it
+     as a nested rule, which is the property the callers assert. */
+  return rule as JxStyle;
 }
 
 /** Every host a paint has put in the document, so a test never inherits the last one's tab. */
@@ -140,10 +166,10 @@ function click(el: Element | null | undefined) {
 }
 
 /** Type into a kit field the way a reader does: the control's value, then the event. */
-function fire(el: Element | null | undefined, type: string, value?: string) {
+function fire(el: HTMLInputElement | null | undefined, type: string, value?: string) {
   expect(el).toBeTruthy();
   if (value !== undefined) {
-    (el as HTMLInputElement).value = value;
+    el!.value = value;
   }
   el!.dispatchEvent(new Event(type, { bubbles: true }));
 }
@@ -238,7 +264,7 @@ describe("the tab's teaching states", () => {
     expect(c.querySelector('[part="empty-message"]')?.textContent).toBe(
       "Open a page to style what you click.",
     );
-    expect(c.querySelector('[part="empty-action"]')?.textContent?.trim()).toBe("Open a page…");
+    expect(c.querySelector('[part="empty-action"]')?.textContent.trim()).toBe("Open a page…");
   });
 
   test("tab without selection → the one shared canvas verb, and no button", async () => {
@@ -265,7 +291,11 @@ describe("the tab's teaching states", () => {
   test("stylebook mode with null document → the same open-a-page state", async () => {
     const tab = setupTab({});
     shell.stylebook.selection = "h1";
-    (tab.doc as unknown as Record<string, unknown>).document = null;
+    /* SAFETY: `Tab.doc.document` is never null in the type, and this write breaks that on purpose:
+       the panel guards a document that went away under it, and only a null here reaches that
+       branch. The widened view admits exactly the one extra value written, and `afterEach` closes
+       the tab before any other test can read it. */
+    (tab.doc as { document: JxMutableNode | null }).document = null;
     const c = await renderPanel("stylebook");
     expect(c.querySelector('[part="empty-message"]')?.textContent).toBe(
       "Open a page to style what you click.",
@@ -294,7 +324,7 @@ describe("stylebook mode", () => {
   test("the selector menu offers the TAG's states, and choosing one writes under the tag", async () => {
     const tab = setupTab({});
     // Project Styles writes into the DOCUMENT's root style.
-    tab.doc.document.style = { a: { ":focus": { outline: "none" } } } as JxStyle;
+    tab.doc.document.style = { a: { ":focus": { outline: "none" } } };
     shell.stylebook.selection = "a";
     tab.session.ui.activeSelector = "a";
     await renderPanel("stylebook");
@@ -379,11 +409,11 @@ describe("the Value Source ladder", () => {
     // With a signal declared, which is exactly the state the generic ladder used to leak a
     // `From data…` rung in: a `{ $ref }` in a declaration is a document `JxStyle` refuses.
     resetStudioState();
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: { display: "flex" }, tagName: "section" }],
       state: { mode: { default: "grid" } },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     const c = await renderPanel();
@@ -397,11 +427,11 @@ describe("the Value Source ladder", () => {
 
   test("switching to Mixed text seeds a state-based template string", async () => {
     resetStudioState();
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: { display: "flex" }, tagName: "section" }],
       state: { mode: { default: "grid" } },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     const c = await renderPanel();
@@ -449,10 +479,10 @@ describe("the Target Line", () => {
   test("states the element and the base breakpoint, and scopes to the element", async () => {
     setupTab({});
     const c = await renderPanel();
-    expect(segment(c, "element")?.textContent?.trim()).toBe("section");
-    expect(segment(c, "media")?.textContent?.trim()).toBe("Base");
+    expect(segment(c, "element")?.textContent.trim()).toBe("section");
+    expect(segment(c, "media")?.textContent.trim()).toBe("Base");
     expect(segment(c, "scheme")).toBeNull();
-    expect(scopeChip(c)?.textContent?.trim()).toBe("this element");
+    expect(scopeChip(c)?.textContent.trim()).toBe("this element");
     expect(c.querySelector('[part="warning"]')).toBeNull();
   });
 
@@ -460,7 +490,7 @@ describe("the Target Line", () => {
     const tab = setupTab({}, { media: true });
     tab.session.ui.activeMedia = "md";
     const c = await renderPanel();
-    expect(segment(c, "media")?.textContent?.trim()).toBe("@Md");
+    expect(segment(c, "media")?.textContent.trim()).toBe("@Md");
     click(segment(c, "media"));
     expect(runMock).toHaveBeenCalledWith("settings.open", { section: "contexts" });
     click(segment(c, "element"));
@@ -535,11 +565,12 @@ describe("color-scheme layer routing", () => {
     media: Record<string, string> = SCHEME_MEDIA,
   ) {
     resetStudioState();
-    const doc = {
-      $media: media,
-      children: [{ ...(style ? { style } : {}), tagName: "section" }],
-      tagName: "div",
-    } as unknown as JxMutableNode;
+    const child: JxMutableNode = {};
+    if (style) {
+      child.style = style;
+    }
+    child.tagName = "section";
+    const doc: JxMutableNode = { $media: media, children: [child], tagName: "div" };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     return tab;
@@ -564,7 +595,7 @@ describe("color-scheme layer routing", () => {
     expect(chip(c, "color")?.textContent).toContain("from Base");
     click(chip(c, "color"));
     await settle();
-    expect(tab.session.ui.previewColorScheme as string).toBe("auto");
+    expect(tab.session.ui).toHaveProperty("previewColorScheme", "auto");
   });
 
   test("Auto keeps base-context editing and shows no variant segment", async () => {
@@ -630,11 +661,11 @@ describe("provenance chips", () => {
 
   test("a ${} value is bound, names its signal and opens it", async () => {
     resetStudioState();
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: { color: "${state.brand}" }, tagName: "section" }],
       state: { brand: { default: "red" } },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     const c = await renderPanel();
@@ -881,8 +912,8 @@ describe("section accordion", () => {
   test("a closed section draws no rows but still offers its clear-all dot", async () => {
     const tab = setupTab({
       ":hover": {
-        display: { unexpected: true } as unknown as string,
-        paddingTop: { unexpected: true } as unknown as string,
+        display: malformedRule(),
+        paddingTop: malformedRule(),
       },
     });
     tab.session.ui.activeSelector = ":hover";
@@ -892,7 +923,7 @@ describe("section accordion", () => {
     expect(row(c, "display", "field")).toBeNull(); // Section is closed → no rows
     click(section(c, "layout")!.querySelector('[part="dot"][data-clear="layout"]'));
     await settle();
-    const hover = selectedNode().style?.[":hover"] as Record<string, unknown>;
+    const hover = nestedRule(":hover");
     expect(hover.display).toBeUndefined();
     expect(hover.paddingTop).toBeDefined();
 
@@ -1056,7 +1087,7 @@ describe("keyword and font lists", () => {
     resetStudioState({
       projectConfig: { style: { "--font-ui": "Inter, sans-serif" } },
     });
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: { fontFamily: "var(--font-body)" }, tagName: "section" }],
       style: {
         "--font-body": "Georgia, serif",
@@ -1064,7 +1095,7 @@ describe("keyword and font lists", () => {
         "--font-nested": { not: "a font" },
       },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
@@ -1097,10 +1128,10 @@ describe("keyword and font lists", () => {
 
   test("choosing a preset mints the token first, and never overwrites one that exists", async () => {
     resetStudioState();
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: {}, tagName: "section" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
@@ -1111,7 +1142,7 @@ describe("keyword and font lists", () => {
     row(c, "fontFamily")!.querySelector<HTMLElement>(`jx-option[value="${varName}"]`)!.click();
     await settle();
     const minted = activeTab.value!.doc.document.style?.[varName];
-    expect(typeof minted).toBe("string");
+    expect(minted).toBeTypeOf("string");
     expect(minted).toContain("Avenir");
     expect(selectedNode().style?.fontFamily).toBe(`var(${varName})`);
 
@@ -1157,7 +1188,7 @@ describe("keyword and font lists", () => {
 
   test("a typography row draws each value as itself, in the element's own face", async () => {
     resetStudioState();
-    const doc = {
+    const doc: JxMutableNode = {
       children: [
         {
           style: {
@@ -1174,7 +1205,7 @@ describe("keyword and font lists", () => {
       ],
       style: { "--font-body": "Georgia, serif" },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
@@ -1257,9 +1288,9 @@ describe("the button group", () => {
     setupTab({ display: "flex" });
     const c = await renderPanel();
     const buttons = [
-      ...row(c, "display")!.querySelectorAll<HTMLElement & { icon: string; label: string }>(
-        '[part="button"]',
-      ),
+      ...row(c, "display")!.querySelectorAll<
+        HTMLElement & { hint: string; icon: string; label: string }
+      >('[part="button"]'),
     ];
     expect(buttons.map((b) => b.icon)).toEqual([
       "columns",
@@ -1274,7 +1305,7 @@ describe("the button group", () => {
       expect(text.textContent).toBe("");
       // The glyph is the picture; the value is still the name and the tooltip.
       expect(b.label).toBe(b.dataset.value!);
-      expect((b as unknown as { hint: string }).hint).toBe(b.dataset.value!);
+      expect(b.hint).toBe(b.dataset.value!);
     }
   });
 
@@ -1400,11 +1431,11 @@ describe("the colour row", () => {
        drew the no-colour checkerboard the moment a swatch was picked. The row follows the token
        through the effective style — the site's block under the document's — to the colour. */
     resetStudioState({ projectConfig: { style: { "--color-accent": "#0d9488" } } });
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: { color: "var(--color-ink)" }, tagName: "section" }],
       style: { "--color-ink": "var(--color-accent)" },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
@@ -1455,11 +1486,11 @@ describe("the colour row", () => {
 
   test("the project's colour tokens are the palette, and choosing one commits the reference", async () => {
     resetStudioState();
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ style: { color: "#111111" }, tagName: "section" }],
       style: { "--color-accent": "#ff0000", "--color-ink": "#0000ff", "--space-2": "8px" },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const tab = resetWorkspaceWithTab(doc);
     tab.session.selection = [["children", 0]];
     tab.session.ui.styleSections = { typography: true };
@@ -1590,7 +1621,7 @@ describe("relative styling section", () => {
     const c = await renderPanel();
     click(row(c, "th")!.querySelector('[part="nested-remove"]'));
     await settle();
-    const table = selectedNode().style?.table as Record<string, unknown>;
+    const table = nestedRule("table");
     expect(table.th).toBeUndefined();
     expect(table.textTransform).toBe("uppercase");
   });
@@ -1613,7 +1644,7 @@ describe("relative styling section", () => {
 
     await answerPromptDialog(" td ");
     await settle();
-    const table = selectedNode().style?.table as Record<string, unknown>;
+    const table = nestedRule("table");
     expect(table.td).toEqual({});
 
     // Cancelling adds nothing.
@@ -1631,7 +1662,7 @@ describe("relative styling section", () => {
     );
     await answerPromptDialog(null);
 
-    expect(Object.keys(selectedNode().style?.table as Record<string, unknown>).toSorted()).toEqual(
+    expect(Object.keys(nestedRule("table")).toSorted()).toEqual(
       ["td", "textTransform", "th"].toSorted(),
     );
   });

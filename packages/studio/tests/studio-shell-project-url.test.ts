@@ -18,7 +18,7 @@ let resolvedWith: string | null = null;
 
 const { platform, state } = await bootStudio({
   overrides: {
-    listDirectory: (async (dir: string) => {
+    listDirectory: async (dir: string) => {
       if (dir === ".") {
         return [
           { name: "pages", path: "pages", type: "directory" },
@@ -30,15 +30,15 @@ const { platform, state } = await bootStudio({
         return [{ name: "index.json", path: "pages/index.json", type: "file" }];
       }
       return [];
-    }) as any,
-    resolveSiteContext: (async (path: string) => {
+    },
+    resolveSiteContext: async (path: string) => {
       resolvedWith = path;
       return {
         fileRelPath: "project.json",
         projectConfig: { name: "SiteProj" },
         sitePath: SITE,
       };
-    }) as any,
+    },
   },
   seedFiles: {
     "pages/index.json": JSON.stringify({ children: [], tagName: "main" }),
@@ -57,7 +57,7 @@ describe("?project= bootstrap (site project)", () => {
   });
 
   test("populates project state from the site context", () => {
-    const ps = requireProjectState() as any;
+    const ps = requireProjectState();
     expect(ps.name).toBe("SiteProj");
     expect(ps.isSiteProject).toBe(true);
     expect(ps.root).toBe(SITE);
@@ -65,7 +65,7 @@ describe("?project= bootstrap (site project)", () => {
   });
 
   test("expands only conventional directories into the tree", () => {
-    const ps = requireProjectState() as any;
+    const ps = requireProjectState();
     expect(ps.projectDirs).toEqual(["pages"]);
     expect(ps.expanded.has("pages")).toBe(true);
     expect(ps.dirs.get(".")).toHaveLength(3);
@@ -76,7 +76,7 @@ describe("?project= bootstrap (site project)", () => {
   test("redirects project.json to the home page and opens it in a tab", () => {
     expect(activeTab.value?.id).toBe("pages/index.json");
     expect(activeTab.value?.documentPath).toBe("pages/index.json");
-    expect((activeTab.value!.doc.document as any).tagName).toBe("main");
+    expect(activeTab.value?.doc.document.tagName).toBe("main");
     // The redirect means the stylebook default for project.json must NOT kick in.
     expect(activeTab.value?.session.ui.canvasMode).not.toBe("stylebook");
   });

@@ -42,7 +42,8 @@
  * @docs studio/logic/events
  */
 
-import { getNodeAtPath, renderOnly } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { renderOnly } from "../store";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection, unifyValues } from "../tabs/selection";
 import {
@@ -68,6 +69,7 @@ import {
 import { VALUE_SOURCE_LABELS, capsForPosition, slotCaps, slotMode } from "../ui/value-source";
 import { cloneValue } from "../tabs/doc-op-apply";
 import { openMenu } from "../surfaces/menu";
+import type { MenuRowProjection } from "../surfaces/menu";
 import { showPromptDialog } from "../ui/layers";
 import { effect, effectScope } from "../reactivity";
 import {
@@ -86,30 +88,28 @@ import {
   isFunctionDef,
   isJsonObject,
   isRef,
+  isString,
 } from "@jxsuite/schema/guards";
 
 import type {
   LogicBindingView,
   LogicBodyKind,
-  LogicEmptyAction,
   LogicFieldView,
-  LogicOption,
   LogicSurface,
   LogicView,
 } from "../surfaces/logic-panel";
 import type { JsonValue } from "../types";
 import type { EffectScope } from "@vue/reactivity";
-import type { SignalOption } from "../ui/dynamic-slot";
 import type { SlotCapsSource, SlotMode } from "../ui/value-source";
 import type { JxPath } from "../state";
 import type {
-  CemEvent,
+  JxDocumentValue,
   JxEventBinding,
   JxFunctionDef,
   JxMutableNode,
-  JxPrototypeDef,
-  JxStatement,
+  JxStateDefinition,
 } from "@jxsuite/schema/types";
+import type { SurfaceAction, SurfaceOption } from "../ui/surface";
 
 /**
  * The events worth SUGGESTING — not the events an element may have.
@@ -146,7 +146,10 @@ const EVENT_NAME_PATTERN = /^on[a-z][\da-z-]*$/i;
 const HANDLER_MODES: SlotMode[] = capsForPosition("eventHandler");
 
 /** The value a handler starts at on each rung, when the user has never been on that rung before. */
-function seedForHandlerMode(mode: SlotMode, functionDefs: [string, unknown][]): JsonValue {
+function seedForHandlerMode(
+  mode: SlotMode,
+  functionDefs: [string, JxStateDefinition][],
+): JsonValue {
   if (mode === "function") {
     return { $prototype: "Function", body: "", parameters: [] };
   }
@@ -202,7 +205,7 @@ function mixedEventCount(doc: JxMutableNode, targets: readonly JxPath[], evKey: 
     return 0;
   }
   const values = targets.map((path) => {
-    const n = getNodeAtPath(doc, path) as JxMutableNode | undefined;
+    const n = getNodeAtPath(doc, path);
     return n ? (getEventBinding(n, evKey) ?? null) : null;
   });
   return unifyValues(values).mixed ? targets.length : 0;
@@ -214,12 +217,13 @@ function mixedEventCount(doc: JxMutableNode, targets: readonly JxPath[], evKey: 
 interface FieldPlan {
   label: string;
   caps: SlotCapsSource;
-  value: unknown;
+  /** What the selected node holds at the row's position. */
+  value: JxDocumentValue | undefined;
   mode: SlotMode;
   offered: SlotMode[];
   onChange: (v?: JsonValue) => void;
   onClear?: (() => void) | undefined;
-  extraSignals: SignalOption[] | null;
+  extraSignals: SurfaceOption[] | null;
   literalDefault: JsonValue | undefined;
   stateDefs: readonly string[];
   /** Fills the row's control host when the active rung is a formula. */
@@ -229,7 +233,7 @@ interface FieldPlan {
 /** Everything an event binding needs. */
 interface BindingPlan {
   key: string;
-  value: unknown;
+  value: JxEventBinding;
   mode: SlotMode;
   fn: JxFunctionDef | null;
   body: LogicBodyKind;
@@ -245,7 +249,7 @@ interface Plans {
   targets: JxPath[];
   /** The primary selection — the one whose bodies are edited. */
   selection: JxPath | null;
-  functionDefs: [string, unknown][];
+  functionDefs: [string, JxStateDefinition][];
 }
 
 let plans: Plans = {
@@ -280,7 +284,7 @@ function sourceHint(mode: SlotMode, offered: readonly SlotMode[]): string {
 }
 
 /** Every pointer the From data… rung offers on a bindable position. */
-function refOptions(plan: FieldPlan): LogicOption[] {
+function refOptions(plan: FieldPlan): SurfaceOption[] {
   return [
     ...plan.stateDefs.map((name) => ({ label: name, value: `#/state/${name}` })),
     ...(plan.extraSignals ?? []),
@@ -334,11 +338,13 @@ function addField(
   const mode = effectiveSlotMode(key, spec.value);
   const plan: FieldPlan = { ...spec, mode, offered };
   if (mode === "expression") {
-    const node = (spec.value as { $expression?: unknown } | undefined)?.$expression;
+    // The rung is "expression" only for an object carrying `$expression` (value-source.ts slotMode).
+    const node = isJsonObject(spec.value) ? spec.value.$expression : undefined;
     plan.paint = (host) =>
       mountExpressionEditor(
         host,
         node,
+        // SAFETY: the expression editor reports the tree it edits, built of JSON operator/operand nodes.
         (next) => spec.onChange({ $expression: next } as JsonValue),
         {
           allowEventRef: false,
@@ -367,7 +373,7 @@ export function projectLogicPanel(): LogicView {
   const tab = activeTab.value;
   const selection = primarySelection(tab?.session.selection);
   const doc = tab?.doc.document;
-  const nothingToWire = (message: string, actions: LogicEmptyAction[] = []): LogicView => {
+  const nothingToWire = (message: string, actions: SurfaceAction[] = []): LogicView => {
     plans = { bindings, cases, fields, functionDefs: [], selection: null, targets: [] };
     view.emptyActions = actions;
     view.emptyMessage = message;
@@ -387,7 +393,7 @@ export function projectLogicPanel(): LogicView {
   if (!selection) {
     return nothingToWire(clickAnythingTo("wire it up"));
   }
-  const node = getNodeAtPath(doc, selection) as JxMutableNode | undefined;
+  const node = getNodeAtPath(doc, selection);
   if (!node) {
     return nothingToWire(staleSelectionMessage());
   }
@@ -395,8 +401,7 @@ export function projectLogicPanel(): LogicView {
   view.state = "ready";
   const defs = doc.state || {};
   const functionDefs = Object.entries(defs).filter(
-    ([, d]) =>
-      (d as JxPrototypeDef)?.$prototype === "Function" || (d as Record<string, unknown>)?.$handler,
+    ([, d]) => isJsonObject(d) && (d.$prototype === "Function" || Boolean(d.$handler)),
   );
   // The whole selection the Logic tab wires. `[selection]` when one element is selected — which is
   // Every existing call site's behaviour, unchanged.
@@ -416,7 +421,7 @@ export function projectLogicPanel(): LogicView {
   const key = selection.join("/");
   /* De-escalating to Fixed value restores the bound signal's declared default — the old unbind
      behaviour, and the reason the ladder has to be told what a position's default IS. */
-  const literalDefaultOf = (raw: unknown): JsonValue | undefined => {
+  const literalDefaultOf = (raw: JxDocumentValue | undefined): JsonValue | undefined => {
     const bound = isRef(raw) ? raw.$ref : null;
     if (!bound) {
       return undefined;
@@ -501,13 +506,13 @@ export function projectLogicPanel(): LogicView {
       const declared: LogicView["declared"] = [];
       for (const [fnName, d] of Object.entries(defs)) {
         if (isFunctionDef(d) && Array.isArray(d.emits)) {
-          for (const [i, ev] of (d.emits as CemEvent[]).entries()) {
+          for (const [i, ev] of d.emits.entries()) {
             declared.push({
               key: `${fnName}:${ev.name || i}`,
               name: ev.name || "(unnamed)",
               source: `← ${fnName}`,
               title: ev.description || "",
-              type: isJsonObject(ev.type) && typeof ev.type.text === "string" ? ev.type.text : "",
+              type: isJsonObject(ev.type) && isString(ev.type.text) ? ev.type.text : "",
             });
           }
         }
@@ -528,23 +533,25 @@ export function projectLogicPanel(): LogicView {
 
   // ── The custom element's outward contract ────────────────────────────────
   if (isCustomElement && isRoot) {
-    const observed = Object.entries(defs).filter(
-      ([, d]) => (d as Record<string, unknown>).attribute,
-    );
-    view.hasObserved = true;
-    view.observedOpen = isInspectorSectionOpen("__observed", false);
-    view.observedEmpty = observed.length === 0;
-    view.observed = observed.map(([name, d]) => {
-      const def = d as Record<string, unknown>;
-      return {
+    // A state entry that declares an `attribute` is an object; a primitive entry declares none.
+    const observed: LogicView["observed"] = [];
+    for (const [name, def] of Object.entries(defs)) {
+      if (!isJsonObject(def) || !def.attribute) {
+        continue;
+      }
+      observed.push({
         detail: `→ ${name}`,
         key: name,
         name: String(def.attribute),
         prop: `attribute:${name}`,
         tags: def.reflects ? "reflects" : "",
         value: def.type ? String(def.type) : "",
-      };
-    });
+      });
+    }
+    view.hasObserved = true;
+    view.observedOpen = isInspectorSectionOpen("__observed", false);
+    view.observedEmpty = observed.length === 0;
+    view.observed = observed;
 
     const cssProps = Object.entries(node.style || {}).filter(([k]) => k.startsWith("--"));
     view.hasCssProps = cssProps.length > 0;
@@ -579,14 +586,15 @@ function bindingView(
   bindings: Map<string, BindingPlan>,
   evKey: string,
   evVal: JxEventBinding,
-  defs: Record<string, unknown>,
+  defs: Record<string, JxStateDefinition>,
 ): LogicBindingView {
   const { functionDefs, selection, targets } = plans;
   const tab = activeTab.value!;
   const fn: JxFunctionDef | null = isFunctionDef(evVal) ? evVal : null;
   const expression = isExpressionDef(evVal) ? evVal.$expression : null;
   const mode = slotMode(evVal);
-  const structured = Boolean(fn && Array.isArray(fn.body));
+  const statements = fn && Array.isArray(fn.body) ? fn.body : null;
+  const structured = statements !== null;
   const body: LogicBodyKind = fn
     ? structured
       ? "statements"
@@ -597,16 +605,16 @@ function bindingView(
   const mixed = mixedEventCount(tab.doc.document, targets, evKey) > 0;
   const plan: BindingPlan = { body, fn, key: evKey, mode, value: evVal };
 
-  if (fn && structured && selection) {
+  if (fn && statements && selection) {
     plan.mountStatements = (host) =>
       mountStatementEditor(
         host,
-        fn.body as JxStatement[],
+        statements,
         (next) =>
           transactDoc(activeTab.value, (t) =>
             mutateUpdateProperty(t, selection, evKey, {
               ...fn,
-              body: next as unknown as JsonValue,
+              body: next,
             }),
           ),
         {
@@ -619,7 +627,7 @@ function bindingView(
              second. */
           region: inspectorStatementsRegion(evKey),
           stateDefs: Object.keys(defs),
-          stateEntries: defs as never,
+          stateEntries: defs,
         },
       );
   }
@@ -634,12 +642,16 @@ function bindingView(
       selection,
       () => renderOnly("rightPanel"),
     );
-    const commitExpression = (newNode: unknown) =>
+    const commitExpression: Parameters<typeof mountExpressionEditor>[2] = (newNode) =>
       transactDoc(activeTab.value, (t) =>
+        // SAFETY: the expression editor reports the tree it edits, built of JSON operator/operand nodes.
         mutateUpdateProperty(t, selection, evKey, { $expression: newNode as JsonValue }),
       );
-    const insertDef = (defName: string, def: unknown) =>
+    const insertDef = (defName: string, def: JxStateDefinition) =>
       transactDoc(activeTab.value, (t) =>
+        /* SAFETY: the only def the expression editor inserts is a packaged formula's vendored entry
+           (formula-catalog.ts `ensure`): `$description`, `$expression` and `parameters`, all JSON
+           from @jxsuite/formulas. */
         mutateAddDef(t, defName, def as Record<string, JsonValue>),
       );
     plan.paint = (host) =>
@@ -648,7 +660,7 @@ function bindingView(
         onInsertDef: insertDef,
         preview,
         stateDefs: Object.keys(defs),
-        stateEntries: defs as never,
+        stateEntries: defs,
       });
   }
   bindings.set(evKey, plan);
@@ -658,7 +670,7 @@ function bindingView(
     clearTitle: mixed
       ? `${targets.length} selected elements bind ${evKey} differently — clearing removes it from all of them`
       : `Clear ${evKey}`,
-    code: fn && !structured && typeof fn.body === "string" ? fn.body : "",
+    code: fn && !structured && isString(fn.body) ? fn.body : "",
     codeChecked: body === "code" ? "true" : "false",
     dotState: mixed ? "mixed" : "set",
     key: evKey,
@@ -689,14 +701,14 @@ const expressionHosts = new Map<string, HTMLElement>();
 const statementHosts = new Map<string, HTMLElement>();
 
 /** The section ids the document names, and the keys `inspectorSections` stores them under. */
-const SECTION_KEYS: Record<string, string> = {
-  condition: "__condition",
-  cssparts: "__cssparts",
-  cssprops: "__cssprops",
-  events: "__events",
-  observed: "__observed",
-  repeater: "__repeater",
-};
+const SECTION_KEYS = new Map([
+  ["condition", "__condition"],
+  ["cssparts", "__cssparts"],
+  ["cssprops", "__cssprops"],
+  ["events", "__events"],
+  ["observed", "__observed"],
+  ["repeater", "__repeater"],
+]);
 
 /**
  * Mount the Logic tab into the container the Inspector owns, and subscribe to what it draws.
@@ -784,7 +796,7 @@ export function bindLogicPanelHost(el: HTMLElement | null): void {
             mutateUpdateProperty(t, selection, key, {
               $prototype: "Function",
               body: value,
-              parameters: (plan.fn?.parameters as JsonValue) || [],
+              parameters: plan.fn?.parameters || [],
             }),
           );
         }
@@ -795,7 +807,7 @@ export function bindLogicPanelHost(el: HTMLElement | null): void {
           return;
         }
         if (plan.mode === "ref") {
-          plan.onChange(value ? ({ $ref: value } as JsonValue) : undefined);
+          plan.onChange(value ? { $ref: value } : undefined);
           return;
         }
         plan.onChange(value);
@@ -810,7 +822,7 @@ export function bindLogicPanelHost(el: HTMLElement | null): void {
         );
       },
       setSection: (id, open) => {
-        const stored = SECTION_KEYS[id];
+        const stored = SECTION_KEYS.get(id);
         if (stored) {
           setInspectorSection(stored, open);
         }
@@ -929,7 +941,7 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
     opener: anchor,
     region: "value-source",
     rows: plan.offered.map((rung) => ({
-      checked: (rung === plan.mode ? "true" : "false") as "true" | "false",
+      checked: rung === plan.mode ? "true" : "false",
       destructive: false,
       disabled: false,
       dividerAbove: false,
@@ -937,8 +949,9 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
       title: VALUE_SOURCE_LABELS[rung],
     })),
     run: (id) => {
-      const next = id as SlotMode;
-      if (next === plan.mode) {
+      // The rows are `plan.offered`, so the id names one of its rungs.
+      const next = plan.offered.find((rung) => rung === id);
+      if (next === undefined || next === plan.mode) {
         return;
       }
       /* Leaving From data… seeds an empty Fixed value stash with the signal's declared default, so
@@ -955,6 +968,8 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
           key,
           plan.mode,
           next,
+          /* SAFETY: `plan.value` is a property read straight off the selected node, and a document is
+             JSON however the editor's node type spells its open keys. */
           cloneValue(plan.value as JsonValue | undefined),
           slotModeSeed(next, {
             extraSignals: plan.extraSignals,
@@ -978,7 +993,7 @@ function openHandlerMenu(key: string, anchor: HTMLElement): void {
     opener: anchor,
     region: "value-source",
     rows: HANDLER_MODES.map((rung) => ({
-      checked: (rung === plan.mode ? "true" : "false") as "true" | "false",
+      checked: rung === plan.mode ? "true" : "false",
       destructive: false,
       disabled: false,
       dividerAbove: false,
@@ -986,8 +1001,9 @@ function openHandlerMenu(key: string, anchor: HTMLElement): void {
       title: VALUE_SOURCE_LABELS[rung],
     })),
     run: (id) => {
-      const next = id as SlotMode;
-      if (next === plan.mode) {
+      // The rows are HANDLER_MODES, so the id names one of its rungs.
+      const next = HANDLER_MODES.find((rung) => rung === id);
+      if (next === undefined || next === plan.mode) {
         return;
       }
       const seed = seedForHandlerMode(next, plans.functionDefs);
@@ -998,6 +1014,7 @@ function openHandlerMenu(key: string, anchor: HTMLElement): void {
           `event|${plans.selection?.join("/") ?? ""}|${key}`,
           plan.mode,
           next,
+          // SAFETY: an event binding (a `$ref`, function def or expression def) is a JSON object.
           plan.value as JsonValue,
           seed,
         ) ?? seed,
@@ -1020,8 +1037,8 @@ function openEventNameMenu(key: string, anchor: HTMLElement): void {
     opener: anchor,
     region: "event-name",
     rows: [
-      ...suggestions.map((name) => ({
-        checked: (name === key ? "true" : "false") as "true" | "false",
+      ...suggestions.map((name): MenuRowProjection => ({
+        checked: name === key ? "true" : "false",
         destructive: false,
         disabled: false,
         dividerAbove: false,
@@ -1062,15 +1079,13 @@ function renameEvent(evKey: string, newKey: string): void {
   }
   transactDoc(activeTab.value, (t) => {
     for (const target of plans.targets) {
-      const existing = getEventBinding(
-        getNodeAtPath(t.doc.document, target) as JxMutableNode,
-        evKey,
-      );
+      const node = getNodeAtPath(t.doc.document, target);
+      const existing = node ? getEventBinding(node, evKey) : undefined;
       if (existing === undefined) {
         continue;
       }
       mutateUpdateProperty(t, target, evKey);
-      mutateUpdateProperty(t, target, newKey, existing as JsonValue);
+      mutateUpdateProperty(t, target, newKey, existing);
     }
   });
 }
@@ -1095,7 +1110,7 @@ function setHandlerBodyMode(key: string, mode: string): void {
   transactDoc(activeTab.value, (t) =>
     mutateUpdateProperty(t, selection, key, {
       ...fn,
-      body: (mode === "statements" ? [] : "") as JsonValue,
+      body: mode === "statements" ? [] : "",
     }),
   );
 }
@@ -1107,7 +1122,7 @@ function addEventBinding(): void {
   if (!selection || !tab) {
     return;
   }
-  const node = getNodeAtPath(tab.doc.document, selection) as JxMutableNode | undefined;
+  const node = getNodeAtPath(tab.doc.document, selection);
   let evName = "onclick";
   for (const name of EVENT_NAMES) {
     if (!node?.[name]) {

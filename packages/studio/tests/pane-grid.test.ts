@@ -1,5 +1,7 @@
 import { flush, resetStudioState, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import {
   PRIMARY_PANE,
   SECONDARY_PANE,
@@ -45,7 +47,20 @@ import { cellForPane, mount, paneGridReady, reconcile, unmount } from "../src/pa
 const SPLITTER_SELECTOR = 'jx-split[part="splitter"]';
 
 function grid(): HTMLElement {
-  return document.querySelector("#pane-grid") as HTMLElement;
+  const el = document.querySelector("#pane-grid");
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("no #pane-grid in the document");
+  }
+  return el;
+}
+
+/** The pane splitter, failing the test when the grid has none. */
+function splitterOf(): HTMLElement {
+  const el = grid().querySelector(SPLITTER_SELECTOR);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("the pane grid has no splitter");
+  }
+  return el;
 }
 
 function standUpGrid(): HTMLElement {
@@ -152,7 +167,7 @@ describe("reconcile", () => {
     resetWorkspaceWithTab();
     workspace.panes = [
       ...workspace.panes,
-      { activeTabId: null, derived: null, id: "ghost", tabOrder: [] as string[] },
+      { activeTabId: null, derived: null, id: "ghost", tabOrder: [] },
     ];
     await flush();
     const ghost = cellForPane("ghost");
@@ -184,7 +199,7 @@ describe("reconcile", () => {
 
     workspace.panes = [
       ...workspace.panes,
-      { activeTabId: null, derived: null, id: SECONDARY_PANE, tabOrder: [] as string[] },
+      { activeTabId: null, derived: null, id: SECONDARY_PANE, tabOrder: [] },
     ];
     await flush();
 
@@ -319,7 +334,9 @@ describe("the second cell", () => {
        diff printer does not come back from a live happy-dom element. */
     const order = [...grid().querySelectorAll(`${PANE_SELECTOR}, ${SPLITTER_SELECTOR}`)];
     const label = (node: Element) =>
-      node === splitter ? "splitter" : ((node as HTMLElement).dataset["paneId"] ?? "?");
+      node === splitter
+        ? "splitter"
+        : ((node instanceof HTMLElement ? node.dataset["paneId"] : undefined) ?? "?");
     expect(order.map((node) => label(node))).toEqual([PRIMARY_PANE, "splitter", SECONDARY_PANE]);
     expect(order[0]).toBe(cells[0]!.root);
     expect(order[2]).toBe(cells[1]!.root);
@@ -340,7 +357,7 @@ describe("the second cell", () => {
        identity — and persists with the dock widths through `persistDocks`. */
     stubRect(grid(), { height: 800, width: 1000 });
     await split();
-    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    const splitter = splitterOf();
 
     const drag = (from: number, to: number) => {
       splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: from, clientY: 0 }));
@@ -400,7 +417,7 @@ describe("the second cell", () => {
        that did not exist, so none of them can be satisfied by the old handle. */
     stubRect(grid(), { height: 800, width: 1000 });
     await split();
-    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    const splitter = splitterOf();
     expect(splitter.getAttribute("tabindex")).toBe("0");
     expect(splitter.getAttribute("role")).toBe("separator");
     expect(splitter.getAttribute("aria-label")).toBe("Pane split");
@@ -434,10 +451,11 @@ describe("the second cell", () => {
        every `pointermove` would serialise the dock record five times for one gesture. */
     stubRect(grid(), { height: 800, width: 1000 });
     await split();
-    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
-    const stored = () =>
-      (JSON.parse(localStorage.getItem("jx-studio-panel-widths") || "{}") as { paneSplit?: number })
-        .paneSplit;
+    const splitter = splitterOf();
+    const stored = (): number | undefined => {
+      const saved: JsonValue = JSON.parse(localStorage.getItem("jx-studio-panel-widths") || "{}");
+      return isJsonObject(saved) && isNumber(saved.paneSplit) ? saved.paneSplit : undefined;
+    };
 
     localStorage.removeItem("jx-studio-panel-widths");
     splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
@@ -458,7 +476,7 @@ describe("the second cell", () => {
     shell.paneSplit = 0.6;
     stubRect(grid(), { height: 800, width: 1000 });
     await split();
-    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    const splitter = splitterOf();
     expect(splitter.getAttribute("aria-valuenow")).toBe("0.6");
     // And it moves ON from there rather than from the default.
     splitter.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, key: "ArrowRight" }));
@@ -489,7 +507,7 @@ describe("the second cell", () => {
        row wrapper now and a childList watch on the grid alone would no longer see it move. */
     stubRect(grid(), { height: 800, width: 1000 });
     await split();
-    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    const splitter = splitterOf();
 
     const observer = new MutationObserver(() => {});
     observer.observe(grid(), { childList: true, subtree: true });
@@ -650,7 +668,7 @@ describe("a pointer in a cell moves the keyboard into it", () => {
     /* The one interaction that must not be disturbed mid-gesture. It is a child of its pane's ROW
        rather than of either cell, so the listener structurally cannot see it. */
     await split();
-    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    const splitter = splitterOf();
     expect(splitter.closest(PANE_SELECTOR)).toBeNull();
     down(splitter);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);

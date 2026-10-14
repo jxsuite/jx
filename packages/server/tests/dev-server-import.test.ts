@@ -5,10 +5,13 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { ImportProgressEvent, ImportSiteOptions } from "@jxsuite/import/run";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const importSite = mock(
-  (options: Record<string, unknown>, onProgress?: (e: Record<string, unknown>) => void) => {
-    const outDir = options.outDir as string;
+  (options: ImportSiteOptions, onProgress?: (e: ImportProgressEvent) => void) => {
+    const { outDir } = options;
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Imported" }));
     onProgress?.({ phase: "emit", message: "Wrote 1 file" });
@@ -20,6 +23,25 @@ void mock.module("@jxsuite/import/run", () => ({ importSite }));
 const { createDevServer } = await import("../src/server");
 
 const FIXTURES = resolve(import.meta.dir, "_dev_server_import_fixtures");
+
+/** Decodes an NDJSON import stream, failing the test on any line that is not a JSON object. */
+function parseStreamLines(text: string): JsonObject[] {
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const value: unknown = JSON.parse(line);
+      if (!isJsonObject(value)) {
+        throw new Error(`Expected an NDJSON object line, got ${line}`);
+      }
+      return value;
+    });
+}
+
+/** The options the mocked importSite was last called with. */
+function lastImportOptions(): ImportSiteOptions | undefined {
+  return importSite.mock.calls.at(-1)?.[0];
+}
 
 let server: { port: number | undefined; stop: () => void };
 let base: string;
@@ -47,18 +69,13 @@ describe("dev server import-site mount", () => {
     expect(res.headers.get("Content-Type")).toBe("application/x-ndjson");
 
     const text = await res.text();
-    const lines = text
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as Record<string, unknown>);
-    const done = lines.at(-1)!;
-    expect(done.type).toBe("done");
+    const done = parseStreamLines(text).at(-1);
+    expect(done?.type).toBe("done");
     // The dev server reports project roots relative to its own root.
-    expect(done.root).toBe("imported-site");
-    expect(done.config).toEqual({ name: "Imported" });
+    expect(done?.root).toBe("imported-site");
+    expect(done?.config).toEqual({ name: "Imported" });
 
-    const opts = importSite.mock.calls.at(-1)?.[0] as { outDir: string };
-    expect(opts.outDir).toBe(resolve(FIXTURES, "imported-site"));
+    expect(lastImportOptions()?.outDir).toBe(resolve(FIXTURES, "imported-site"));
   });
 
   test("imports into an absolute directory chosen directly", async () => {
@@ -73,14 +90,9 @@ describe("dev server import-site mount", () => {
     });
     expect(res.status).toBe(200);
     const text = await res.text();
-    const done = text
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as Record<string, unknown>)
-      .at(-1)!;
-    expect(done.type).toBe("done");
-    const opts = importSite.mock.calls.at(-1)?.[0] as { outDir: string };
-    expect(opts.outDir).toBe(dest);
+    const done = parseStreamLines(text).at(-1);
+    expect(done?.type).toBe("done");
+    expect(lastImportOptions()?.outDir).toBe(dest);
   });
 
   test("rejects a destination outside the server root", async () => {
@@ -90,7 +102,7 @@ describe("dev server import-site mount", () => {
       method: "POST",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("outside");
+    const body: unknown = await res.json();
+    expect(body).toMatchObject({ error: expect.stringContaining("outside") });
   });
 });

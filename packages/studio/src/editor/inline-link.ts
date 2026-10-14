@@ -8,32 +8,57 @@
  * it here (Phase 4b-2).
  *
  * `document.execCommand` is uncoverable under happy-dom (no implementation), so it is wrapped in a
- * one-line shim {@link exec} that the branch logic calls; tests stub `document.execCommand` and
- * assert at the stub level (documented as stub-level, not behavioral).
+ * one-line shim {@link execEditingCommand} that the branch logic calls; tests stub
+ * `document.execCommand` and assert at the stub level (documented as stub-level, not behavioral).
  */
 
 import { normalizeInlineContent } from "./inline-format";
 
-/** The one uncoverable call, isolated so the surrounding branch logic stays unit-testable. */
-const exec = (cmd: string, val?: string): boolean => document.execCommand(cmd, false, val);
+/**
+ * The one uncoverable call, isolated so the surrounding branch logic stays unit-testable, and the
+ * one place Studio reaches `document.execCommand`. It is deprecated, and NOT kept for the native
+ * undo stack: Studio owns history (`edit.undo` is forwarded out of the frame and a `historyUndo`
+ * `beforeinput` is rejected, studio.md §8.2.1). It is kept because it is the only script entry into
+ * the browser's editing engine, which a Range rewrite would not reproduce: `insertText` rebalances
+ * whitespace into `&nbsp;` runs (and back) around the caret, and `createLink` splits the anchor at
+ * inline-formatting boundaries it only partly covers.
+ */
+export const execEditingCommand = (cmd: string, val?: string): boolean =>
+  // oxlint-disable-next-line typescript/no-deprecated -- no successor API exists: execCommand is the only script entry into the browser's editing engine (whitespace rebalancing, anchor splitting), see the doc comment above
+  document.execCommand(cmd, false, val);
+
+/** The link the selection sits in, as the format toolbar's Link field shows it. */
+export interface LinkState {
+  /** Whether the selection anchor is inside an `<a>`. */
+  active: boolean;
+  /** The author-entered URL of that `<a>`, or null when there is none. */
+  href: string | null;
+}
+
+/**
+ * Whether `node` is an `<a>` element. Decided by node type and name rather than `instanceof`, so it
+ * holds for nodes of another realm; for an element, `nodeName` is its tag name.
+ */
+function isAnchorNode(node: Node): node is HTMLAnchorElement | SVGAElement {
+  return node.nodeType === Node.ELEMENT_NODE && node.nodeName.toLowerCase() === "a";
+}
 
 /**
  * Read the link state of the current selection relative to `root`: walk the selection's anchor node
  * up to `root` looking for an `<a>`. Returns the author-entered `href` attribute (NOT the resolved
  * `.href` property), so relative/templated URLs round-trip unchanged.
  */
-export function linkStateForSelection(root: HTMLElement): { active: boolean; href: string | null } {
+export function linkStateForSelection(root: HTMLElement): LinkState {
   const sel = window.getSelection();
   if (!sel || !sel.rangeCount) {
     return { active: false, href: null };
   }
   let node: Node | null = sel.anchorNode;
   while (node && node !== root) {
-    if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName.toLowerCase() === "a") {
+    if (isAnchorNode(node)) {
       // Design/edit renders anchors de-linked, with the URL on `data-jx-href` — so the toolbar's
       // Link field must read that first or it shows an empty URL for every existing link.
-      const el = node as HTMLElement;
-      return { active: true, href: el.dataset.jxHref ?? el.getAttribute("href") };
+      return { active: true, href: node.dataset.jxHref ?? node.getAttribute("href") };
     }
     node = node.parentNode;
   }
@@ -44,17 +69,17 @@ export function linkStateForSelection(root: HTMLElement): { active: boolean; hre
  * Find the `<a>` that contains the selection anchor (up to `root`), if any.
  *
  * @param {HTMLElement} root
- * @returns {HTMLAnchorElement | null}
+ * @returns {HTMLAnchorElement | SVGAElement | null}
  */
-function anchorInSelection(root: HTMLElement): HTMLAnchorElement | null {
+function anchorInSelection(root: HTMLElement): HTMLAnchorElement | SVGAElement | null {
   const sel = window.getSelection();
   if (!sel || !sel.rangeCount) {
     return null;
   }
   let node: Node | null = sel.anchorNode;
   while (node && node !== root) {
-    if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName.toLowerCase() === "a") {
-      return node as HTMLAnchorElement;
+    if (isAnchorNode(node)) {
+      return node;
     }
     node = node.parentNode;
   }
@@ -80,13 +105,13 @@ export function applyLink(root: HTMLElement, href: string | null): void {
       existing.replaceWith(frag);
     }
   } else if (href) {
-    exec("createLink", href);
+    execEditingCommand("createLink", href);
   }
   normalizeInlineContent(root);
 }
 
-/** Insert a `${token}` template expression at the caret inside `root` (joins the native undo stack). */
+/** Insert a `${token}` template expression at the caret inside `root`, through the editing engine. */
 export function insertTemplateToken(root: HTMLElement, token: string): void {
   root.focus();
-  exec("insertText", `\${${token}}`);
+  execEditingCommand("insertText", `\${${token}}`);
 }

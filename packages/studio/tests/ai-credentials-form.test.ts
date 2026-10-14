@@ -30,10 +30,15 @@ installMockPlatform();
 let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
   Response.json({ models: [] }, { status: 200 });
 const fetchCalls: { url: string; init?: RequestInit | undefined }[] = [];
-(globalThis as Record<string, unknown>).fetch = (url: string, init?: RequestInit) => {
-  fetchCalls.push({ init, url });
-  return fetchImpl(url, init);
-};
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  (resource: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(resource);
+    fetchCalls.push({ init, url });
+    return fetchImpl(url, init);
+  },
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,12 +73,16 @@ async function makeForm(extra: Partial<AiCredentialsFormOptions> = {}) {
 
 /** One of the document's named regions. */
 function part(container: HTMLElement, name: string) {
-  return container.querySelector(`[part="${name}"]`) as HTMLElement | null;
+  return container.querySelector<HTMLElement>(`[part="${name}"]`);
 }
 
 /** The native control inside a kit field: what a reader types into and what carries its value. */
 function input(container: HTMLElement, field: string) {
-  return container.querySelector(`[part="${field}"] [part="input"]`) as HTMLInputElement;
+  const control = container.querySelector(`[part="${field}"] [part="input"]`);
+  if (!(control instanceof HTMLInputElement)) {
+    throw new Error(`the ${field} field has no native input`);
+  }
+  return control;
 }
 
 /** Press a kit button by the part that names it. */
@@ -82,6 +91,20 @@ function press(container: HTMLElement, name: string) {
   (button?.querySelector('[part="control"]') ?? button)?.dispatchEvent(
     new MouseEvent("click", { bubbles: true }),
   );
+}
+
+/** The focusable control of a kit button: its inner `[part="control"]`, or the host itself. */
+function buttonControl(container: HTMLElement, name: string): HTMLElement {
+  const button = part(container, name);
+  if (!button) {
+    throw new Error(`the form has no ${name} button`);
+  }
+  return button.querySelector<HTMLElement>('[part="control"]') ?? button;
+}
+
+/** The headers a recorded request sent, read case-insensitively the way a server reads them. */
+function sentHeaders(call: (typeof fetchCalls)[number] | undefined) {
+  return new Headers(call?.init?.headers);
 }
 
 /** Type into a kit field the way a reader does: the control reports, and the event bubbles. */
@@ -93,6 +116,9 @@ function type(container: HTMLElement, field: string, value: string) {
 
 /** The model field: one `jx-combobox` over the fetched catalogue, with its state accessors. */
 function modelField(container: HTMLElement) {
+  /* SAFETY: `[part="model"]` is the form document's one `jx-combobox`, and the kit's combobox
+     component declares `value`, `activeIndex`, `allowsCustomValue` and `open` as its public state;
+     the kit compiles components at runtime, so there is no class type to narrow to instead. */
   return part(container, "model") as HTMLElement & {
     value: string;
     activeIndex: number;
@@ -121,7 +147,11 @@ function chooseListed(container: HTMLElement, value: string) {
 
 /** Drop the model field's list the way a reader does: the chevron. */
 async function openModelList(container: HTMLElement) {
-  (part(container, "model")!.querySelector('[part="toggle"]') as HTMLElement).click();
+  const toggle = part(container, "model")?.querySelector<HTMLElement>('[part="toggle"]');
+  if (!toggle) {
+    throw new Error("the model field has no toggle");
+  }
+  toggle.click();
   await flush(2);
 }
 
@@ -165,11 +195,11 @@ describe("ai-credentials-form", () => {
     press(c.container, "fetch");
     await flush(4);
 
-    const call = fetchCalls.at(-1)!;
-    expect(call.url).toBe("/__mock/ai/models");
-    const headers = call.init!.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBe("sk-fetch-key");
-    expect(headers["X-Api-Base-URL"]).toBe("http://localhost:9999/v1");
+    const call = fetchCalls.at(-1);
+    expect(call?.url).toBe("/__mock/ai/models");
+    const headers = sentHeaders(call);
+    expect(headers.get("X-Api-Key")).toBe("sk-fetch-key");
+    expect(headers.get("X-Api-Base-URL")).toBe("http://localhost:9999/v1");
 
     // The catalogue is the model field's own list now, offering both models under the field.
     expect(listedValues(c.container)).toEqual(["gpt-4o", "x"]);
@@ -509,8 +539,7 @@ describe("ai-credentials-form", () => {
     await c.repaint();
     expect(document.activeElement).toBe(input(c.container, "endpoint"));
 
-    const control = (part(c.container, "cancel")!.querySelector('[part="control"]') ??
-      part(c.container, "cancel")!) as HTMLElement;
+    const control = buttonControl(c.container, "cancel");
     control.focus();
     expect(document.activeElement).toBe(control);
     press(c.container, "cancel");
@@ -518,8 +547,7 @@ describe("ai-credentials-form", () => {
     expect(document.activeElement).toBe(input(c.container, "key"));
 
     type(c.container, "key", "sk-focus");
-    const save = (part(c.container, "save")!.querySelector('[part="control"]') ??
-      part(c.container, "save")!) as HTMLElement;
+    const save = buttonControl(c.container, "save");
     save.focus();
     press(c.container, "save");
     expect(part(c.container, "save")).toBeNull();
@@ -601,8 +629,7 @@ describe("ai-credentials-form", () => {
     fetchCalls.length = 0;
     press(c.container, "fetch");
     await flush(4);
-    const headers = fetchCalls.at(-1)!.init!.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBe("sk-new");
+    expect(sentHeaders(fetchCalls.at(-1)).get("X-Api-Key")).toBe("sk-new");
   });
 
   test("two instances keep independent draft state", async () => {

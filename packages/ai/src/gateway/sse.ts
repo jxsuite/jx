@@ -10,11 +10,11 @@ import type { StreamEvent } from "../streaming-client.ts";
  * The headers a chat stream is answered with. `no-cache` because a replayed stream is a different
  * turn, and `keep-alive` because the answer is long-lived by design.
  */
-export const SSE_HEADERS: Readonly<Record<string, string>> = {
+export const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
   Connection: "keep-alive",
-};
+} as const satisfies Readonly<Record<string, string>>;
 
 /**
  * Frame `events` as a Server-Sent Events body: `data: <JSON>` and a blank line per frame, and

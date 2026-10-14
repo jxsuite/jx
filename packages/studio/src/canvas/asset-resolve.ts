@@ -45,29 +45,24 @@
 
 import {
   assetUrlFor,
+  CONTENT_SECTION_KEY,
   encodeProjectPath,
   isNonRelativeRef,
   joinProjectPath,
+  LOCALE_PLACEHOLDER,
   projectPathForRef,
+  SAFE_CONTENT_TYPE_NAME,
   splitRefSuffix,
 } from "@jxsuite/schema/asset-paths";
 import type { AssetLane, AssetMount } from "@jxsuite/schema/asset-paths";
+import { isString } from "@jxsuite/schema/guards";
 import type { ContentSectionEntry } from "../types";
 
-/** Content type names safe in a URL path segment. Mirrors `SAFE_TYPE_NAME` in the content loader. */
-const SAFE_TYPE_NAME = /^[\w.~-]+$/;
-
-/** The project.json section key content types live under; also their URL namespace. */
-const SECTION_KEY = "content";
-
-/**
- * The placeholder a content type's `source` may carry to say "one directory per locale".
- *
- * Held here rather than imported out of the parser extension's content loader ({@link
- * file://../../../../extensions/parser/src/content-loader.ts}): that module reads the filesystem
- * and this one runs in a browser. It is also an extension, and core may not import one.
- */
-const LOCALE_PLACEHOLDER = "{locale}";
+/* The content namespace, the URL-safe name test and the `{locale}` token come from
+   `@jxsuite/schema/asset-paths`, the one module both this browser-side resolver and the parser
+   extension's content loader may import: the loader reads the filesystem, and it is an extension,
+   which core may not import. Re-exported so Studio's content modules keep one local import. */
+export { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 
 /**
  * Everything the canvas needs to resolve one reference, as PLAIN DATA.
@@ -127,7 +122,7 @@ export interface AssetContext {
  * @returns {string} The versioned URL
  */
 export function withVersion(url: string, version: string | undefined): string {
-  if (typeof version !== "string" || version === "") {
+  if (!isString(version) || version === "") {
     return url;
   }
   const hashAt = url.indexOf("#");
@@ -172,7 +167,7 @@ function ownVersion(
     return undefined;
   }
   const version: unknown = versions[path];
-  return typeof version === "string" ? version : undefined;
+  return isString(version) ? version : undefined;
 }
 
 /**
@@ -184,13 +179,14 @@ function ownVersion(
  * file tree cannot reach in the first place.
  *
  * @param {string | null | undefined} documentPath - Project-relative path of the open document
- * @param {Record<string, ContentSectionEntry> | null | undefined} content - Project.json `content`
+ * @param {Record<string, ContentSectionEntry | null | undefined> | null | undefined} content -
+ *   Project.json `content`
  * @param {readonly string[]} [locales] - Canonical locale tags, for `{locale}` sources
  * @returns {AssetMount | null} The mount, project-relative
  */
 export function contentMountFor(
   documentPath: string | null | undefined,
-  content: Record<string, ContentSectionEntry> | null | undefined,
+  content: Record<string, ContentSectionEntry | null | undefined> | null | undefined,
   locales: readonly string[] = [],
 ): AssetMount | null {
   if (!documentPath || !content) {
@@ -204,7 +200,7 @@ export function contentMountFor(
     }
   };
   for (const [name, def] of Object.entries(content)) {
-    if (!def?.source || !SAFE_TYPE_NAME.test(name)) {
+    if (!def?.source || !SAFE_CONTENT_TYPE_NAME.test(name)) {
       continue;
     }
     const dir = normalizeSource(def.source);
@@ -222,7 +218,7 @@ export function contentMountFor(
     if (/\.[a-z0-9]+$/i.test(dir)) {
       continue;
     }
-    consider(dir, `/${SECTION_KEY}/${name}`);
+    consider(dir, `/${CONTENT_SECTION_KEY}/${name}`);
   }
   return best;
 }
@@ -256,15 +252,15 @@ function localeMountFor(
     return null;
   }
   const segment = path.slice(head.length).split("/")[0] ?? "";
-  if (segment === "" || !SAFE_TYPE_NAME.test(segment)) {
+  if (segment === "" || !SAFE_CONTENT_TYPE_NAME.test(segment)) {
     return null;
   }
   const canonical = locales.find((tag) => tag.toLowerCase() === segment.toLowerCase());
-  if (canonical === undefined || !SAFE_TYPE_NAME.test(canonical)) {
+  if (canonical === undefined || !SAFE_CONTENT_TYPE_NAME.test(canonical)) {
     return null;
   }
   const dir = `${head}${segment}${tail}`.replace(/\/+$/, "");
-  return { dir, urlPrefix: `/${SECTION_KEY}/${name}/${canonical}` };
+  return { dir, urlPrefix: `/${CONTENT_SECTION_KEY}/${name}/${canonical}` };
 }
 
 /** Strip `./` and any trailing slash from a configured `source`, the way collectionDirs does. */

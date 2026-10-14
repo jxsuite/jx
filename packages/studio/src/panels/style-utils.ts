@@ -1,16 +1,88 @@
 /** Style utilities — pure CSS helper functions used by the style panel. */
 
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNumber, isString } from "@jxsuite/schema/guards";
+import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
 import { activeTab } from "../workspace/workspace";
 import { getEffectiveStyle } from "../site-context";
 import cssMeta from "../../data/css-meta.json";
 
+/** One `$show` condition: the row is offered while `prop` holds one of `values`, or any value. */
+export interface CssShowCondition {
+  prop: string;
+  values: string[];
+}
+
+/** One Modern Font Stacks preset a `fontFamily` entry offers. */
+export interface CssFontPreset {
+  title: string;
+  value: string;
+}
+
+/** Every kind of value a css-meta entry holds under any of its keys. */
+type CssMetaValue =
+  | string
+  | number
+  | boolean
+  | string[]
+  | CssShowCondition[]
+  | CssFontPreset[]
+  | Record<string, string>;
+
+/**
+ * What `css-meta.json` says about one CSS property: which section files it, where in that section,
+ * and which control edits it. Every entry in the file carries `$order`; the rest is per property.
+ *
+ * The index signature is what keeps an entry assignable to the open records `inferInputType()` and
+ * `propLabel()` read it through; it admits only the value kinds the file actually holds.
+ */
+export interface CssMetaEntry {
+  $order: number;
+  $section?: string;
+  $label?: string;
+  $input?: string;
+  $buttonValues?: string[];
+  $icons?: Record<string, string>;
+  $keywords?: string[];
+  $longhands?: string[];
+  /** `true` on a shorthand row; the shorthand's own name on each of its longhands. */
+  $shorthand?: string | boolean;
+  $shorthandType?: string;
+  $show?: CssShowCondition[];
+  $span?: number;
+  $units?: string[];
+  enum?: string[];
+  examples?: string[];
+  presets?: CssFontPreset[];
+  format?: string;
+  type?: string;
+  minimum?: number;
+  maximum?: number;
+  [key: string]: CssMetaValue | undefined;
+}
+
+/** A shorthand's longhand, with its own css-meta entry. */
+export interface CssLonghand {
+  name: string;
+  entry: CssMetaEntry;
+}
+
+/**
+ * Css-meta's property table, by property name. The JSON module's inferred type is checked against
+ * {@link CssMetaEntry} here, once, so a key the file stops carrying is a type error at this line.
+ */
+export const cssDefs: Readonly<Record<string, CssMetaEntry>> = cssMeta.$defs;
+
 let cssInitialMap = new Map<string, string>();
 
 /** Initialise cssInitialMap from webdata — call once during bootstrap. */
 export function initCssData(webdata: { cssProps: string[][] }) {
-  cssInitialMap = new Map(webdata.cssProps as [string, string][]);
+  cssInitialMap = new Map<string, string>();
+  for (const [name, initial] of webdata.cssProps) {
+    if (name !== undefined && initial !== undefined) {
+      cssInitialMap.set(name, initial);
+    }
+  }
 }
 
 /** Get the CSS initial-value map (populated by initCssData). */
@@ -18,31 +90,30 @@ export function getCssInitialMap() {
   return cssInitialMap;
 }
 
+/**
+ * A declaration's value rather than a nested block (`:hover`, `@--md`) or a block list.
+ *
+ * Exactly the `typeof value !== "object"` test the Style tab has always made, so a `null` a JSON
+ * document might hold still counts as a block, never as a value.
+ */
+export function isDeclarationValue(value: JxStyle[string]): value is string | number | undefined {
+  return typeof value !== "object";
+}
+
 // ─── Condition helpers ──────────────────────────────────────────────────────
 
-/** @param {{ prop: string; values: string[] }} cond @param {Record<string, unknown>} styles */
-export function conditionPasses(
-  cond: { prop: string; values: string[] },
-  styles: Record<string, unknown>,
-) {
-  const val = (styles[cond.prop] ?? "") as string;
+/** Whether one `$show` condition holds against the style being edited. */
+export function conditionPasses(cond: CssShowCondition, styles: JxStyle) {
+  const val = styles[cond.prop] ?? "";
   if (cond.values.length === 0) {
     return val !== "" && val !== "initial";
   }
-  return cond.values.includes(val);
+  return isString(val) && cond.values.includes(val);
 }
 
-/**
- * @param {{ $show?: { prop: string; values: string[] }[] }} entry @param {Record<string, unknown>}
- *   styles
- */
-export function allConditionsPass(
-  entry: { $show?: { prop: string; values: string[] }[] },
-  styles: Record<string, unknown>,
-) {
-  return (entry.$show ?? []).every((/** @type {{ prop: string; values: string[] }} */ c) =>
-    conditionPasses(c, styles),
-  );
+/** Whether every `$show` condition of an entry holds; an entry with none always passes. */
+export function allConditionsPass(entry: Pick<CssMetaEntry, "$show">, styles: JxStyle) {
+  return (entry.$show ?? []).every((c) => conditionPasses(c, styles));
 }
 
 // ─── Auto-open sections ─────────────────────────────────────────────────────
@@ -64,11 +135,10 @@ export function autoOpenSections(node: JxMutableNode, currentSections: Record<st
   const style = node.style || {};
   const result = { ...currentSections };
   for (const prop of Object.keys(style)) {
-    if (typeof style[prop] === "object") {
+    if (!isDeclarationValue(style[prop])) {
       continue;
     }
-    const entry = (cssMeta.$defs as Record<string, Record<string, unknown>>)[prop];
-    const section = (entry?.$section as string) ?? "other";
+    const section = cssDefs[prop]?.$section ?? "other";
     if (result[section] === undefined) {
       result[section] = true;
     }
@@ -78,31 +148,21 @@ export function autoOpenSections(node: JxMutableNode, currentSections: Record<st
 
 // ─── Shorthand expand/compress ──────────────────────────────────────────────
 
-/** Get longhands for a shorthand property from css-meta */
-export function getLonghands(shorthandProp: string) {
-  const entry = (cssMeta.$defs as Record<string, Record<string, unknown>>)[shorthandProp];
-  if (entry?.$longhands) {
-    return (entry.$longhands as string[])
-      .map((name: string) => ({
-        entry: (cssMeta.$defs as Record<string, Record<string, unknown>>)[name] || {
-          $order: 0,
-        },
-        name,
-      }))
-      .toSorted(
-        (
-          /** @type {{ entry: Record<string, unknown> }} */ a,
-          /** @type {{ entry: Record<string, unknown> }} */ b,
-        ) => (a.entry.$order as number) - (b.entry.$order as number),
-      );
+/** Get longhands for a shorthand property from css-meta, in their `$order`. */
+export function getLonghands(shorthandProp: string): CssLonghand[] {
+  const listed = cssDefs[shorthandProp]?.$longhands;
+  if (listed) {
+    return listed
+      .map((name) => ({ entry: cssDefs[name] || { $order: 0 }, name }))
+      .toSorted((a, b) => a.entry.$order - b.entry.$order);
   }
-  const result = [];
-  for (const [name, e] of Object.entries(cssMeta.$defs) as [string, Record<string, unknown>][]) {
+  const result: CssLonghand[] = [];
+  for (const [name, e] of Object.entries(cssDefs)) {
     if (e.$shorthand === shorthandProp) {
       result.push({ entry: e, name });
     }
   }
-  result.sort((a, b) => (a.entry.$order as number) - (b.entry.$order as number));
+  result.sort((a, b) => a.entry.$order - b.entry.$order);
   return result;
 }
 
@@ -232,7 +292,7 @@ export function getFontVars() {
   const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
   const vars = [];
   for (const [k, v] of Object.entries(style)) {
-    if (k.startsWith("--font") && (typeof v === "string" || typeof v === "number")) {
+    if (k.startsWith("--font") && (isString(v) || isNumber(v))) {
       vars.push({ name: k, value: String(v) });
     }
   }
@@ -247,12 +307,15 @@ export function getFontVars() {
  * `face`, which is the channel every one of these rows ALSO carries, so a weight is shown in the
  * element's own typeface rather than in the panel's.
  */
-export const TYPO_PREVIEW_CHANNELS: Readonly<Record<string, string>> = {
-  fontStyle: "slant",
-  fontVariant: "variant",
-  fontWeight: "weight",
-  textDecoration: "decoration",
-  textTransform: "transform",
-};
+export const TYPO_PREVIEW_CHANNELS = new Map<string, TypoPreviewChannel>([
+  ["fontStyle", "slant"],
+  ["fontVariant", "variant"],
+  ["fontWeight", "weight"],
+  ["textDecoration", "decoration"],
+  ["textTransform", "transform"],
+]);
+
+/** A `jx-option` drawing channel a typography row previews its value through (ui.md §5.3). */
+export type TypoPreviewChannel = "decoration" | "slant" | "transform" | "variant" | "weight";
 
 export { default as cssMeta } from "../../data/css-meta.json";

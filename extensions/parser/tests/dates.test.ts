@@ -13,20 +13,21 @@ import {
   parseComparable,
   parseDateValue,
 } from "../src/dates.ts";
+import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry } from "../src/types.ts";
 
-function entry(id: string, data: Record<string, unknown>): ContentLoaderEntry {
-  return { data, id } as ContentLoaderEntry;
+function entry(id: string, data: ContentLoaderEntry["data"]): ContentLoaderEntry {
+  return { body: null, data, id };
 }
 
-const SCHEMA = {
+const SCHEMA: ContentTypeSchema = {
   properties: {
     published: { format: "date", type: "string" },
     title: { type: "string" },
     updated: { format: "date-time", type: "string" },
   },
   type: "object",
-} as never;
+};
 
 describe("parseDateValue", () => {
   test("a bare YYYY-MM-DD stays itself for a date field", () => {
@@ -99,8 +100,7 @@ describe("coerceEntryDates", () => {
     // An events collection that genuinely means "7pm local" needs the original back.
     const entries = [entry("a", { updated: "2025-03-04T19:00:00+02:00" })];
     coerceEntryDates(entries, SCHEMA, "blog");
-    const meta = entries[0]!._meta as { rawDates?: Record<string, unknown> };
-    expect(meta.rawDates?.updated).toBe("2025-03-04T19:00:00+02:00");
+    expect(entries[0]!._meta?.rawDates?.updated).toBe("2025-03-04T19:00:00+02:00");
   });
 
   test("does not record a raw value when nothing changed", () => {
@@ -129,7 +129,7 @@ describe("coerceEntryDates", () => {
     const entries = [entry("a", { published: "03/04/2025" })];
     expect(coerceEntryDates(entries, undefined, "blog")).toEqual([]);
     expect(
-      coerceEntryDates(entries, { properties: { title: { type: "string" } } } as never, "blog"),
+      coerceEntryDates(entries, { properties: { title: { type: "string" } } }, "blog"),
     ).toEqual([]);
     expect(entries[0]!.data.published).toBe("03/04/2025");
   });
@@ -144,8 +144,11 @@ describe("sorting and comparison", () => {
     const earlier = "2025-03-04T00:00:00Z";
     // 23:00 on the 3rd — earlier in fact, later as text.
     const laterRaw = "2025-03-04T01:00:00+02:00";
-    expect(laterRaw > earlier).toBe(true); // Wrong, as authored.
-    expect(parseDateValue(laterRaw, "date-time")! > earlier).toBe(false); // Right, once normalized.
+    const normalized = parseDateValue(laterRaw, "date-time")!;
+    // Wrong, as authored: the raw text sorts after the instant it precedes.
+    expect([laterRaw, earlier].toSorted()).toEqual([earlier, laterRaw]);
+    // Right, once normalized.
+    expect([earlier, normalized].toSorted()).toEqual([normalized, earlier]);
   });
 
   test("parseComparable keeps two dates in string space and everything else numeric", () => {

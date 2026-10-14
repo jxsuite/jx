@@ -1,21 +1,10 @@
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { STORAGE_KEY } from "../src/github/github-auth-status";
 import { notifyModule } from "./notify-mock";
 import { resetActivities } from "../src/panels/activity-panel";
 import type { RepoOptions } from "../src/surfaces/github-publish";
 import type { StudioPlatform } from "../src/types";
-
-if (globalThis.localStorage === undefined) {
-  const store = new Map();
-  globalThis.localStorage = {
-    clear: () => store.clear(),
-    getItem: (k: string) => store.get(k) ?? null,
-    removeItem: (k: string) => store.delete(k),
-    setItem: (k: string, v: string) => store.set(k, v),
-  } as any;
-}
-
-const STORAGE_KEY = "jx_github_token";
 
 let mockFetchResponses: { ok?: boolean; json: unknown; status?: number }[] = [];
 let mockFetchCalls: {
@@ -100,7 +89,6 @@ void mock.module("../src/platform.js", () => ({
 void mock.module("../src/panels/git-panel.js", () => ({
   platformSupportsClone: () => false,
   refreshGitStatus: async () => {},
-  renderGitPanel: () => null,
 }));
 
 // `notify` in place of the deleted `statusMessage`: the publish flow's three progress lines and
@@ -111,7 +99,6 @@ const record = (message: string, opts?: { detail?: string }) => {
   if (opts?.detail) {
     details.push(opts.detail);
   }
-  return { id: "n", message } as never;
 };
 void mock.module("../src/services/notify.js", () =>
   notifyModule((call) => record(call.message, call.options)),

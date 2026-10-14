@@ -18,17 +18,17 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 const { colorTokens, resolvedColor } = await import("../src/ui/color-selector");
 
-const COLOR_DOC = {
+const COLOR_DOC: JxMutableNode = {
   children: [{ tagName: "p" }],
   style: {
     "--color-accent": "#ff0000",
-    "--color-bad": { nested: true },
+    "--color-bad": { color: "red" },
     "--color-num": 42,
     "--color-primary-blue": "#0000ff",
     "--font-body": "Inter, sans-serif",
   },
   tagName: "div",
-} as unknown as JxMutableNode;
+};
 
 beforeEach(() => {
   resetStudioState();
@@ -56,14 +56,14 @@ describe("colorTokens", () => {
     resetWorkspaceWithTab({
       style: { "--color": "#123456" },
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     /* `jx-swatch` announces its label, so the empty string here would be a swatch that reads out
        its hex one character at a time. */
     expect(colorTokens()).toEqual([{ color: "#123456", label: "--color", value: "var(--color)" }]);
   });
 
   test("a document with no style of its own has no palette", () => {
-    resetWorkspaceWithTab({ tagName: "div" } as unknown as JxMutableNode);
+    resetWorkspaceWithTab({ tagName: "div" });
     expect(colorTokens()).toEqual([]);
   });
 });
@@ -81,7 +81,7 @@ describe("resolvedColor", () => {
     resetWorkspaceWithTab({
       style: { "--color-accent": "var(--color-brand)", "--color-ink": "#0000ff" },
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     expect(resolvedColor("var(--color-ink)")).toBe("#0000ff");
     expect(resolvedColor("var(--color-accent)")).toBe("#0d9488");
     expect(resolvedColor("var(--color-brand)")).toBe("#0d9488");
@@ -91,7 +91,7 @@ describe("resolvedColor", () => {
     resetWorkspaceWithTab({
       style: { "--color-loop": "var(--color-loop)" },
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     /* A token a stylesheet defines, and an alias that loops: the field's own fallback — drawing
        the reference and letting the browser try — is the right answer for both. */
     expect(resolvedColor("var(--color-elsewhere)")).toBe("");

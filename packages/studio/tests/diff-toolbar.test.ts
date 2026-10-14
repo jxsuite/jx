@@ -10,28 +10,42 @@
 import "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ChangeMap } from "../src/canvas/diff-marks";
+import type { AnyCommand } from "../src/commands/registry";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { CommandContext, EditorKind } from "../src/commands/context";
+
+/**
+ * The stand-in for an artboard canvas element and for its iframe host alike: the stepper only hands
+ * either one back to the doubled `iframe-host`, so an id saying which one it is is all they need.
+ */
+interface Identified {
+  id: string;
+}
+
+/** A path as the measure and the reveal receive it. */
+type ReadonlyPath = readonly (string | number)[];
 
 /** Rects the next measures answer with, in call order. `null` means "no stamped element". */
 let measureQueue: ({ top: number; height: number } | null)[] = [];
-const measured: unknown[][] = [];
+const measured: [Identified, ReadonlyPath][] = [];
 const panned: { top: number; height: number }[] = [];
 const announced: string[] = [];
 /** Whether `hostForCanvas` finds an artboard host; the reveal only runs when it does. */
-let hostResult: unknown = null;
+let hostResult: Identified | null = null;
 /** Make the next measure blow up, to exercise the click handler's failure path. */
 let measureThrows = false;
-const revealed: unknown[] = [];
+const revealed: [Identified, ReadonlyPath][] = [];
 
 void mock.module("../src/canvas/iframe-host.js", () => ({
   hostForCanvas: () => hostResult,
-  measureInCanvas: (canvas: unknown, path: unknown) => {
+  measureInCanvas: (canvas: Identified, path: ReadonlyPath) => {
     if (measureThrows) {
       throw new Error("measure exploded");
     }
     measured.push([canvas, path]);
     return Promise.resolve(measureQueue.shift() ?? null);
   },
-  revealCanvasPathIn: (host: unknown, path: unknown) => {
+  revealCanvasPathIn: (host: Identified, path: ReadonlyPath) => {
     revealed.push([host, path]);
     return Promise.resolve(null);
   },
@@ -41,17 +55,23 @@ void mock.module("../src/canvas/canvas-utils.js", () => ({
   panToParentRect: (rect: { top: number; height: number }) => panned.push(rect),
 }));
 
+/** The two members of a canvas surface the stepper and the view switch touch. */
+interface SurfaceDouble {
+  panels: { canvas: Identified }[];
+  prevCanvasMode: string | null;
+}
+
 // Both artboards exist as far as the stepper is concerned; only their rects are stubbed.
-const surfaces = new Map<string, { panels: unknown[]; prevCanvasMode: string | null }>();
+const surfaces = new Map<string, SurfaceDouble>();
 void mock.module("../src/canvas/canvas-surface.js", () => ({
   surfaceForPane: (paneId: string) => {
     const existing = surfaces.get(paneId);
     if (existing) {
       return existing;
     }
-    const fresh = {
+    const fresh: SurfaceDouble = {
       panels: [{ canvas: { id: "original" } }, { canvas: { id: "current" } }],
-      prevCanvasMode: "git-diff" as string | null,
+      prevCanvasMode: "git-diff",
     };
     surfaces.set(paneId, fresh);
     return fresh;
@@ -85,6 +105,19 @@ setDiffChromeRepaint(() => {
 const { diffStepOf, diffViewOf, resetDiffViews, setDiffChangeMap, setDiffView } =
   await import("../src/canvas/diff-view");
 const { flush } = await import("./harness");
+const { emptyContext, makeContext } = await import("../src/commands/context");
+
+/** Run a record with the arguments `registry.run` hands it once they pass the record's schema. */
+function runWith(
+  command: AnyCommand,
+  context: CommandContext,
+  args: CommandArgValues,
+): ReturnType<AnyCommand["run"]> {
+  /* SAFETY: `AnyCommand` erases every record's argument type to `never` (see its declaration). The
+     diff records read their arguments only through `paneOfArgs` and `enumArg`, both of which take
+     `CommandArgValues`, the type every `args` here already has. */
+  return command.run(context, args as never);
+}
 
 const mapOf = (steps: ChangeMap["steps"], extra: Partial<ChangeMap> = {}): ChangeMap => ({
   current: [],
@@ -124,8 +157,9 @@ async function draw(paneId: string): Promise<HTMLElement> {
    inside each button rather than on the host, which is exactly why the old spelling could not
    survive: the template wrote `role="radio"` on `sp-action-button` and Spectrum overwrote it with
    `role="button"` plus `aria-pressed` the moment the element upgraded. */
-const radios = (el: HTMLElement) =>
-  [...el.querySelectorAll('[part="view"] jx-action-button')] as HTMLElement[];
+const radios = (el: HTMLElement) => [
+  ...el.querySelectorAll<HTMLElement>('[part="view"] jx-action-button'),
+];
 
 /** What a radio announces, read where the kit writes it: the control inside the button. */
 const checked = (button: HTMLElement) =>
@@ -133,7 +167,7 @@ const checked = (button: HTMLElement) =>
 
 /** One stepper button, by the `part` the document draws it with. */
 const stepper = (el: HTMLElement, which: "previous" | "next") =>
-  el.querySelector(`[part="${which}"]`) as HTMLElement | null;
+  el.querySelector<HTMLElement>(`[part="${which}"]`);
 
 beforeEach(() => {
   resetDiffViews();
@@ -203,7 +237,7 @@ describe("what the toolbar says", () => {
     const el = await draw("primary");
     // What each radio PRINTS — its label part — rather than the host's text, which now also
     // Carries the tip an enabled hint renders as a child (ui.md §5.1).
-    expect(radios(el).map((b) => b.querySelector('[part="label"]')?.textContent?.trim())).toEqual([
+    expect(radios(el).map((b) => b.querySelector('[part="label"]')?.textContent.trim())).toEqual([
       "Visual",
       "Code",
     ]);
@@ -309,7 +343,7 @@ describe("the commands", () => {
     const { diffCommands } = await import("../src/canvas/diff-toolbar");
     return diffCommands().find((command) => command.id === id)!;
   };
-  const ctx = (kind: string) => ({ editor: { kind } }) as never;
+  const ctx = (kind: EditorKind) => makeContext({ editor: { kind } });
 
   test("declare the GLOBAL key scope, not canvas", async () => {
     /* Not a preference. `keyScopeStack` switches on `ctx.editor.kind` and "diff" falls through to
@@ -340,7 +374,7 @@ describe("the commands", () => {
     setDiffChangeMap("secondary", mapOf([modified(0), modified(1)]));
     measureQueue = [null, null];
     const next = await byId("diff.nextChange");
-    await next.run(ctx("diff"), { pane: "secondary" } as never);
+    await runWith(next, ctx("diff"), { pane: "secondary" });
     expect(diffStepOf("secondary")).toBe(0);
   });
 
@@ -348,7 +382,7 @@ describe("the commands", () => {
     setDiffChangeMap("secondary", mapOf([modified(0), modified(1)]));
     measureQueue = [null, null, null, null];
     const previous = await byId("diff.previousChange");
-    await previous.run(ctx("diff"), { pane: "secondary" } as never);
+    await runWith(previous, ctx("diff"), { pane: "secondary" });
     expect(diffStepOf("secondary")).toBe(1);
   });
 
@@ -357,7 +391,7 @@ describe("the commands", () => {
     setDiffChangeMap(workspace.activePaneId, mapOf([modified(0)]));
     measureQueue = [null, null];
     const next = await byId("diff.nextChange");
-    await next.run(ctx("diff"), {} as never);
+    await runWith(next, ctx("diff"), {});
     expect(diffStepOf(workspace.activePaneId)).toBe(0);
   });
 
@@ -368,7 +402,6 @@ describe("the commands", () => {
        have been refused before `run` with "expected a non-empty string, got missing". The schema
        says what the implementation does now, and this drives the whole path to prove it. */
     const { createCommandRegistry } = await import("../src/commands/registry");
-    const { makeContext } = await import("../src/commands/context");
     const { diffCommands } = await import("../src/canvas/diff-toolbar");
     const { workspace } = await import("../src/workspace/workspace");
     const registry = createCommandRegistry({
@@ -401,15 +434,15 @@ describe("the commands", () => {
     // Is called in cannot be driven, or photographed, honestly.
     const setView = await byId("diff.setView");
     setDiffChangeMap("secondary", mapOf([modified(0)]));
-    await setView.run(ctx("diff"), { pane: "secondary", view: "code" } as never);
+    await runWith(setView, ctx("diff"), { pane: "secondary", view: "code" });
     expect(diffViewOf("secondary")).toBe("code");
     // Called again with the same value it is a no-op, which is what "idempotent" has to mean for a
     // Verb a screenshot step or the assistant may repeat.
-    await setView.run(ctx("diff"), { pane: "secondary", view: "code" } as never);
+    await runWith(setView, ctx("diff"), { pane: "secondary", view: "code" });
     expect(diffViewOf("secondary")).toBe("code");
     expect(repainted).toEqual(["secondary"]);
     expect(chromeRepaints).toBe(1);
-    await setView.run(ctx("diff"), { pane: "secondary", view: "visual" } as never);
+    await runWith(setView, ctx("diff"), { pane: "secondary", view: "visual" });
     expect(diffViewOf("secondary")).toBe("visual");
     // The verb and the button are one repaint, so the pod follows either.
     expect(chromeRepaints).toBe(2);
@@ -417,7 +450,7 @@ describe("the commands", () => {
 
   test("diff.setView refuses a view it does not offer", async () => {
     const setView = await byId("diff.setView");
-    expect(() => setView.run(ctx("diff"), { view: "sideways" } as never)).toThrow();
+    expect(() => runWith(setView, ctx("diff"), { view: "sideways" })).toThrow();
   });
 });
 
@@ -552,18 +585,18 @@ describe("every diff command's predicates", () => {
       "diff.setView",
     ]);
     for (const command of commands) {
-      expect(command.when?.({ editor: { kind: "diff" } } as never)).toBe(true);
-      expect(command.when?.({ editor: { kind: "canvas" } } as never)).toBe(false);
+      expect(command.when?.(makeContext({ editor: { kind: "diff" } }))).toBe(true);
+      expect(command.when?.(makeContext({ editor: { kind: "canvas" } }))).toBe(false);
       expect(command.level).toBe("document");
       expect(command.category).toBe("View");
     }
     // The steppers gate on there being somewhere to step; setting the view does not.
     const [next, previous, setView] = commands;
-    expect(next!.enablement?.({} as never)).toBe(false);
-    expect(previous!.enablement?.({} as never)).toBe(false);
+    expect(next!.enablement?.(emptyContext())).toBe(false);
+    expect(previous!.enablement?.(emptyContext())).toBe(false);
     expect(setView!.enablement).toBeUndefined();
     setDiffChangeMap(workspace.activePaneId, mapOf([modified(0)]));
-    expect(next!.enablement?.({} as never)).toBe(true);
-    expect(previous!.enablement?.({} as never)).toBe(true);
+    expect(next!.enablement?.(emptyContext())).toBe(true);
+    expect(previous!.enablement?.(emptyContext())).toBe(true);
   });
 });

@@ -15,20 +15,20 @@
  * one thing on one keyboard and another thing on another is a defect nothing downstream can see.
  */
 
-import type { JxClassDef, JxDocument, ProjectConfig } from "../types";
-import { isJsonObject } from "./guards";
+import type { JsonObject, JsonValue, JxClassDef, JxDocument, ProjectConfig } from "../types";
+import { isJsonObject, isString } from "./guards";
 import { describeIJsonProblem, findIJsonProblems } from "./ijson";
 
 // ─── Error helpers ──────────────────────────────────────────────────────────────
 
 /** Extract a human-readable message from a caught `unknown`. */
-export function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+export function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** Coerce a caught `unknown` to an Error without losing the original. */
-export function toError(e: unknown): Error {
-  return e instanceof Error ? e : new Error(String(e));
+export function toError(cause: unknown): Error {
+  return cause instanceof Error ? cause : new Error(String(cause));
 }
 
 // ─── Unicode normalization ──────────────────────────────────────────────────────
@@ -62,35 +62,40 @@ const NON_ASCII = /[^\p{ASCII}]/u;
  * escape into a combining mark, so normalizing the raw text would miss exactly the documents a
  * generator wrote.
  *
- * @param {unknown} value - Any parsed JSON value
- * @returns {unknown} The same shape, with all text in NFC
+ * @param {JsonValue} value - Any parsed JSON value
+ * @returns {JsonValue} The same shape, with all text in NFC
  */
-function normalizeIdentifiers(value: unknown): unknown {
-  if (typeof value === "string") {
+function normalizeIdentifiers(value: JsonValue): JsonValue {
+  if (isString(value)) {
     return NON_ASCII.test(value) ? value.normalize("NFC") : value;
   }
   if (Array.isArray(value)) {
     return value.map((item) => normalizeIdentifiers(item));
   }
   if (isJsonObject(value)) {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      /*
-       * A later key wins on collision, matching what `JSON.parse` does with a literal duplicate.
-       * It cannot happen through this boundary — I-JSON already rejected duplicate keys, and two
-       * keys differing only by normalization form are not duplicates to `JSON.parse` — so this is
-       * a statement about which is authoritative rather than a branch anything reaches.
-       */
-      out[NON_ASCII.test(key) ? key.normalize("NFC") : key] = normalizeIdentifiers(entry);
-    }
-    return out;
+    return normalizeObject(value);
   }
   return value;
 }
 
+/** {@link normalizeIdentifiers} for an object, keeping the object type for the parse helpers. */
+function normalizeObject(value: JsonObject): JsonObject {
+  const out: JsonObject = {};
+  for (const [key, entry] of Object.entries(value)) {
+    /*
+     * A later key wins on collision, matching what `JSON.parse` does with a literal duplicate.
+     * It cannot happen through this boundary — I-JSON already rejected duplicate keys, and two
+     * keys differing only by normalization form are not duplicates to `JSON.parse` — so this is
+     * a statement about which is authoritative rather than a branch anything reaches.
+     */
+    out[NON_ASCII.test(key) ? key.normalize("NFC") : key] = normalizeIdentifiers(entry);
+  }
+  return out;
+}
+
 // ─── Parse helpers ──────────────────────────────────────────────────────────────
 
-function parseObject(text: string, sourcePath: string, what: string): Record<string, unknown> {
+function parseObject(text: string, sourcePath: string, what: string): JsonObject {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -112,16 +117,25 @@ function parseObject(text: string, sourcePath: string, what: string): Record<str
     const described = problems.map((problem) => describeIJsonProblem(problem)).join("; ");
     throw new Error(`Invalid ${what} at ${sourcePath}: ${described}`);
   }
-  return normalizeIdentifiers(parsed) as Record<string, unknown>;
+  return normalizeObject(parsed);
 }
 
 /** Parse a Jx document (.json page/layout/component source). */
 export function parseJxDocument(text: string, sourcePath: string): JxDocument {
+  /*
+   * SAFETY: every JxDocument member is optional, so any JSON object is a structurally admissible
+   * document. This boundary verifies the object shape and I-JSON only; member-level checking is the
+   * schema's job (`validateDocument`), which callers run when they need it.
+   */
   return parseObject(text, sourcePath, "Jx document") as JxDocument;
 }
 
 /** Parse a project.json site configuration. */
 export function parseProjectConfig(text: string, sourcePath: string): ProjectConfig {
+  /*
+   * SAFETY: every ProjectConfig member is optional, so any JSON object is a structurally admissible
+   * config; member-level checking is `validateProject`'s job against the per-project schema.
+   */
   return parseObject(text, sourcePath, "project config") as ProjectConfig;
 }
 
@@ -130,5 +144,9 @@ export function parseProjectConfig(text: string, sourcePath: string): ProjectCon
  * discriminator but is not required — existing class files omit it.
  */
 export function parseClassDef(text: string, sourcePath: string): JxClassDef {
-  return parseObject(text, sourcePath, "class definition") as unknown as JxClassDef;
+  /*
+   * SAFETY: only the object shape is verified here. The type states the canonical form, and a class
+   * file that omits `$prototype` (accepted on purpose, see above) is the one known deviation from it.
+   */
+  return parseObject(text, sourcePath, "class definition") as JxClassDef;
 }

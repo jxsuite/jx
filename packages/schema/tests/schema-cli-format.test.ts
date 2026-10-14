@@ -9,13 +9,22 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { toError } from "../src/parse";
+
 // ── Force the oxfmt spawn to fail with no diagnostic output ─────────────────────
 // Empty stdout/stderr with no successful exit is the shape observed inside the Nix build sandbox
 // (a signal here also exercises the signalCode detail branch); delegate every other spawn to the
 // Real implementation.
-const realSpawnSync = Bun.spawnSync;
-Bun.spawnSync = ((cmd: unknown, opts: unknown) => {
-  if (Array.isArray(cmd) && cmd[1] === "oxfmt") {
+type SpawnSync = typeof Bun.spawnSync;
+const realSpawnSync: SpawnSync = Bun.spawnSync;
+/* SAFETY: the CLI's oxfmt call in src/schema.ts reads only `exitCode`, `signalCode`, `stdout` and
+   `stderr` of the result, and this stand-in returns them in the shape the Nix sandbox produced,
+   including the `exitCode: null` SyncSubprocess does not admit (that shape is what is under test).
+   Every other call is forwarded to the real spawnSync with its arguments untouched; an options-
+   object call reads `undefined` at index 1, so it is forwarded too. */
+Bun.spawnSync = ((...args: Parameters<SpawnSync>) => {
+  const [cmds] = args;
+  if (cmds[1] === "oxfmt") {
     return {
       exitCode: null,
       signalCode: "SIGSEGV",
@@ -26,8 +35,8 @@ Bun.spawnSync = ((cmd: unknown, opts: unknown) => {
       pid: 0,
     };
   }
-  return (realSpawnSync as (c: unknown, o: unknown) => unknown)(cmd, opts);
-}) as typeof Bun.spawnSync;
+  return realSpawnSync(...args);
+}) as SpawnSync;
 
 // ── Trigger the CLI default branch at import time ───────────────────────────────
 const TMP = resolve(tmpdir(), `jx-schema-cli-format-test-${Date.now()}`);
@@ -40,14 +49,14 @@ console.error = (...args: unknown[]) => {
 
 process.argv = [process.argv[0] ?? "bun", join(TMP, "src", "schema.ts")];
 
-let threw: unknown = null;
+let threw: Error | null = null;
 const { ready } = await import("../src/schema");
 // The CLI build runs in the exported `ready` promise (not a top-level await), so await it: Bun's
 // Test runtime drops a dynamically-imported module's top-level-await continuation on Windows.
 try {
   await ready;
 } catch (error) {
-  threw = error;
+  threw = toError(error);
 }
 
 Bun.spawnSync = realSpawnSync;

@@ -15,10 +15,11 @@ import {
   normalizeFilter,
   normalizeSort,
 } from "../src/query";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { DynamicDatabase } from "../src/query";
 import type { TableDef } from "../src/types";
 
-const TABLES: Record<string, TableDef> = {
+const TABLES = {
   comments: {
     connection: "main",
     schema: {
@@ -34,7 +35,7 @@ const TABLES: Record<string, TableDef> = {
     timestamps: false,
   },
   users: { connection: "main", schema: { properties: {}, type: "object" } },
-};
+} satisfies Record<string, TableDef>;
 
 const plan = planTable("comments", TABLES.comments!, TABLES, "sqlite");
 let db: Kysely<DynamicDatabase>;
@@ -63,12 +64,13 @@ beforeAll(async () => {
   }
 });
 
-async function ids(filter: unknown, sort?: unknown): Promise<string[]> {
+/** The ids of the rows a filter (and optional sort) selects, in result order. */
+async function ids(filter: JsonValue, sort?: JsonValue) {
   let qb = db.selectFrom("comments").selectAll();
   qb = applyFilter(qb, normalizeFilter(filter), plan.columns);
   qb = applySort(qb, normalizeSort(sort ?? { field: "id", order: "asc" }), plan.columns);
   const rows = await qb.execute();
-  return rows.map((r) => r.id as string);
+  return rows.map((r) => r.id);
 }
 
 describe("normalizeFilter / normalizeSort", () => {

@@ -4,22 +4,19 @@
  * the flag in and the lines out.
  */
 import { describe, expect, it } from "bun:test";
-import { runEntry, setValidateProjectTree, validateProjectTreeOptions } from "./_cli-harness.ts";
-
-const FINDING = {
-  file: "pages/index.json",
-  message: "the <button> has no accessible name.",
-  rule: "interactive-unnamed",
-  severity: "error",
-  source: "accessibility",
-};
+import {
+  BUTTON_NAME_FINDING,
+  runEntry,
+  setValidateProjectTree,
+  validateProjectTreeOptions,
+} from "./_cli-harness.ts";
 
 /* One run per file: the harness imports the entry once, and `main()` runs at import. */
 describe("jx cli — validate lint", () => {
   it("prints an advisory finding under a valid verdict, and passes strict through", async () => {
     validateProjectTreeOptions.length = 0;
     setValidateProjectTree(() =>
-      Promise.resolve({ checked: 3, issues: [], lint: [FINDING], valid: true }),
+      Promise.resolve({ checked: 3, issues: [], lint: [BUTTON_NAME_FINDING], valid: true }),
     );
     const result = await runEntry("cli", ["validate", "/tmp/jx-cli-validate-lint"]);
     expect(result.exited).toBe(false);

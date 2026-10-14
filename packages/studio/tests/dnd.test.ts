@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { activeTab, closeTab, openTab, workspace } from "../src/workspace/workspace";
 import { applyDropInstruction } from "../src/panels/dnd";
 import { jsonClone } from "../src/utils/studio-utils";
+import { isNodeObject, isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 function openDoc(doc: JxMutableNode) {
@@ -23,16 +24,28 @@ function makeDoc(): JxMutableNode {
   };
 }
 
-/** Walk the tree and assert no children array contains undefined/null holes */
-function assertNoHoles(node: JxMutableNode | string | number | boolean) {
-  if (typeof node !== "object" || node === null) {
+/** The element children of `node`; the fixtures here hold no text or repeater children. */
+function elementChildren(node: JxMutableNode | undefined): JxMutableNode[] {
+  const children = node?.children;
+  if (!Array.isArray(children) || !children.every((child) => isNodeObject(child))) {
+    throw new Error("expected an array of element children");
+  }
+  return children;
+}
+
+/**
+ * Walk the tree and assert no children array contains undefined/null holes. A hole fails its
+ * `expect` before the walk recurses into it, so only real members are descended into.
+ */
+function assertNoHoles(node: JxMutableNode | string) {
+  if (isString(node)) {
     return;
   }
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
       expect(child).toBeDefined();
       expect(child).not.toBeNull();
-      assertNoHoles(child as JxMutableNode);
+      assertNoHoles(child);
     }
   }
 }
@@ -52,7 +65,7 @@ describe("applyDropInstruction — tree-node moves", () => {
       { path: ["children", 2], type: "tree-node" },
       ["children", 0],
     );
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.textContent ?? c.tagName)).toEqual(["second", "section", "first"]);
     assertNoHoles(tab.doc.document);
   });
@@ -65,7 +78,7 @@ describe("applyDropInstruction — tree-node moves", () => {
       { path: ["children", 0], type: "tree-node" },
       ["children", 2],
     );
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.textContent ?? c.tagName)).toEqual(["first", "second", "section"]);
     assertNoHoles(tab.doc.document);
   });
@@ -78,9 +91,9 @@ describe("applyDropInstruction — tree-node moves", () => {
       { path: ["children", 1], type: "tree-node" },
       ["children", 0],
     );
-    const [section] = (tab.doc.document as any).children;
-    expect(section.children).toHaveLength(2);
-    expect(section.children[1].textContent).toBe("first");
+    const sectionChildren = elementChildren(elementChildren(tab.doc.document)[0]);
+    expect(sectionChildren).toHaveLength(2);
+    expect(sectionChildren[1]!.textContent).toBe("first");
     expect(tab.doc.document.children).toHaveLength(2);
     assertNoHoles(tab.doc.document);
   });
@@ -105,10 +118,9 @@ describe("applyDropInstruction — tree-node moves", () => {
 
     assertNoHoles(tab.doc.document);
     // First application moved "second" into the section; stale repeats were no-ops
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children).toHaveLength(2);
-    const section = children[0] as any;
-    expect(section.children.map((c: JxMutableNode) => c.textContent)).toEqual(["title", "second"]);
+    expect(elementChildren(children[0]).map((c) => c.textContent)).toEqual(["title", "second"]);
   });
 
   test("reorder around a root-level path is a no-op", () => {
@@ -140,7 +152,7 @@ describe("applyDropInstruction — block inserts", () => {
       { fragment: { tagName: "hr" }, type: "block" },
       ["children", 1],
     );
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children).toHaveLength(4);
     expect(children[1]!.tagName).toBe("hr");
     assertNoHoles(tab.doc.document);
@@ -154,9 +166,9 @@ describe("applyDropInstruction — block inserts", () => {
       { fragment: { tagName: "img" }, type: "block" },
       ["children", 0],
     );
-    const [section] = (tab.doc.document as any).children;
-    expect(section.children).toHaveLength(2);
-    expect(section.children[1].tagName).toBe("img");
+    const sectionChildren = elementChildren(elementChildren(tab.doc.document)[0]);
+    expect(sectionChildren).toHaveLength(2);
+    expect(sectionChildren[1]!.tagName).toBe("img");
     assertNoHoles(tab.doc.document);
   });
 

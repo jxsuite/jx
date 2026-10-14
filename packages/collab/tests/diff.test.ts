@@ -1,9 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import { applyDocOpToDoc } from "../src/ops.ts";
+import { applyDocOpToDoc, childArray } from "../src/ops.ts";
 import { deepEqual, diffDocs, replaceYStructure } from "../src/diff.ts";
 import { metaMap, seedStructure, yDocToJson } from "../src/schema.ts";
+
+/** The element (not bare-string) child at `index`; the fixtures below put one at every index used. */
+function elementAt(node: JxMutableNode, index: number): JxMutableNode {
+  const child = childArray(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new TypeError(`fixture has no element child at ${index}`);
+  }
+  return child;
+}
 
 /** The core invariant: replaying the diff transforms a into b. */
 function assertDiffFaithful(a: JxMutableNode, b: JxMutableNode): number {
@@ -36,7 +46,7 @@ describe("diffDocs core invariant", () => {
 
   test("key change on a nested node is one surgical set-key", () => {
     const b = structuredClone(DOC);
-    (b.children as JxMutableNode[])[1]!.textContent = "changed";
+    elementAt(b, 1).textContent = "changed";
     const ops = diffDocs(DOC, b)!;
     expect(ops).toEqual([
       { key: "textContent", op: "set-key", path: ["children", 1], value: "changed" },
@@ -52,7 +62,7 @@ describe("diffDocs core invariant", () => {
 
   test("prepend (the classic positional trap) inserts once instead of rewriting every child", () => {
     const b = structuredClone(DOC);
-    (b.children as unknown[]).unshift({ tagName: "nav" });
+    childArray(b).unshift({ tagName: "nav" });
     const ops = diffDocs(DOC, b)!;
     expect(ops).toEqual([
       { index: 0, node: { tagName: "nav" }, op: "insert-child", parentPath: [] },
@@ -61,7 +71,7 @@ describe("diffDocs core invariant", () => {
 
   test("mid-list removal", () => {
     const b = structuredClone(DOC);
-    (b.children as unknown[]).splice(1, 1);
+    childArray(b).splice(1, 1);
     const ops = diffDocs(DOC, b)!;
     expect(ops).toEqual([{ index: 1, op: "remove-child", parentPath: [] }]);
   });
@@ -76,8 +86,8 @@ describe("diffDocs core invariant", () => {
 
   test("wrap: a node moving one level deeper", () => {
     const b = structuredClone(DOC);
-    const children = b.children as JxMutableNode[];
-    children[1] = { children: [children[1]!], tagName: "blockquote" };
+    const children = childArray(b);
+    children[1] = { children: [elementAt(b, 1)], tagName: "blockquote" };
     assertDiffFaithful(DOC, b);
   });
 
@@ -91,7 +101,7 @@ describe("diffDocs core invariant", () => {
       tagName: "div",
     };
     const b = structuredClone(a);
-    (b.children as unknown[]).reverse();
+    childArray(b).reverse();
     assertDiffFaithful(a, b);
   });
 
@@ -104,9 +114,8 @@ describe("diffDocs core invariant", () => {
       tagName: "div",
     };
     const b = structuredClone(a);
-    const bc = b.children as JxMutableNode[];
-    bc[0]!.textContent = "new-x";
-    bc[1]!.textContent = "new-y";
+    elementAt(b, 0).textContent = "new-x";
+    elementAt(b, 1).textContent = "new-y";
     const ops = diffDocs(a, b)!;
     // Both children edited in place — no splices.
     expect(ops.every((op) => op.op === "set-key")).toBe(true);
@@ -130,10 +139,10 @@ describe("diffDocs core invariant", () => {
 
   test("mapped-array children replace whole", () => {
     const a: JxMutableNode = { children: [{ tagName: "p" }], tagName: "div" };
-    const b = {
-      children: { map: { $ref: "#/state/items" }, template: { tagName: "li" } },
+    const b: JxMutableNode = {
+      children: { $prototype: "Array", items: { $ref: "#/state/items" }, map: { tagName: "li" } },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const ops = diffDocs(a, b)!;
     expect(ops).toHaveLength(1);
     expect(ops[0]).toMatchObject({ key: "children", op: "set-key", path: [] });
@@ -142,8 +151,7 @@ describe("diffDocs core invariant", () => {
 
   test("deep nested edits address the b-side path", () => {
     const b = structuredClone(DOC);
-    const ul = (b.children as JxMutableNode[])[4]!;
-    (ul.children as JxMutableNode[])[0]!.textContent = "z";
+    elementAt(elementAt(b, 4), 0).textContent = "z";
     const ops = diffDocs(DOC, b)!;
     expect(ops).toEqual([
       { key: "textContent", op: "set-key", path: ["children", 4, "children", 0], value: "z" },

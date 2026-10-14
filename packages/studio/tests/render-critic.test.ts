@@ -1,6 +1,20 @@
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
 import { renderCheck } from "../src/services/render-critic";
+import type { JxDocument } from "@jxsuite/schema/types";
+import type { CandidateDocument, RenderVerdict } from "../src/services/ai-write-report";
+
+/**
+ * `renderCheck` as the AI tools take it: they hand over a `CandidateDocument`, the raw tool
+ * argument that their `validate` dep has already accepted, and these suites stub `validate`.
+ */
+function checkCandidate(doc: CandidateDocument): Promise<RenderVerdict> {
+  /* SAFETY: every candidate these suites send is a Jx document literal, and `renderCheck` runs its
+     whole body (buildScope, renderNode) inside one try/catch that turns any throw into
+     `{ ok: false }`, so a candidate that were not a well-formed document would still yield a
+     verdict rather than an unhandled error. */
+  return renderCheck(doc as JxDocument);
+}
 
 describe("render-critic", () => {
   test("valid document renders ok", async () => {
@@ -35,7 +49,7 @@ describe("render-critic", () => {
     };
     const result = await renderCheck(doc);
     expect(result.ok).toBe(false);
-    expect((result as { ok: false; error: string }).error).toContain("is not defined");
+    expect(result.ok ? "" : result.error).toContain("is not defined");
   });
 
   test("malformed Function body is caught", async () => {
@@ -57,7 +71,7 @@ describe("render-critic", () => {
     };
     const result = await renderCheck(doc);
     expect(result.ok).toBe(false);
-    expect((result as { ok: false; error: string }).error).toContain("Render error");
+    expect(result.ok ? "" : result.error).toContain("Render error");
   });
 
   test("applyAndValidate integration — render break surfaces as tool error", async () => {
@@ -75,9 +89,7 @@ describe("render-critic", () => {
     registerAiTools(registry, {
       getTab: () => tab,
       validate: async () => [],
-      renderCheck: renderCheck as (
-        doc: unknown,
-      ) => Promise<{ ok: true } | { ok: false; error: string }>,
+      renderCheck: checkCandidate,
     });
 
     const result = await registry.execute("set_property", {
@@ -91,7 +103,7 @@ describe("render-critic", () => {
     // Enough that renderNode doesn't throw (in which case the critic correctly passes).
     // Either outcome is valid for this integration test; we just verify no crash.
     expect(result).toBeDefined();
-    expect(typeof result.success).toBe("boolean");
+    expect(result.success).toBeTypeOf("boolean");
 
     disposeTab(tab);
   });
@@ -105,9 +117,7 @@ describe("render-critic", () => {
     registerAiTools(registry, {
       getTab: () => null,
       validate: async () => [],
-      renderCheck: renderCheck as (
-        doc: unknown,
-      ) => Promise<{ ok: true } | { ok: false; error: string }>,
+      renderCheck: checkCandidate,
       saveFile: async (path, content) => {
         written = { path, content };
       },
@@ -135,9 +145,7 @@ describe("render-critic", () => {
     registerAiTools(registry, {
       getTab: () => null,
       validate: async () => [],
-      renderCheck: renderCheck as (
-        doc: unknown,
-      ) => Promise<{ ok: true } | { ok: false; error: string }>,
+      renderCheck: checkCandidate,
       saveFile: async (path, content) => {
         written = { path, content };
       },

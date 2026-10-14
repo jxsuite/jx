@@ -21,10 +21,25 @@
  */
 
 import elementsMeta from "../../data/elements-meta.json";
+import type { InlineAction } from "./inline-edit";
 
-interface ElementDef {
+/** The fields of one `elements-meta.json` `$defs` entry the editor reads. */
+export interface ElementMeta {
+  /** Tags this element accepts as inline children; containers declare `[]`. */
   $inlineChildren?: string[];
+  /** The formatting verbs the block action bar offers, or the tag whose list this one shares. */
+  $inlineActions?: InlineAction[] | string;
+  /** The `$convertGroups` group this element converts within. */
+  $convertTo?: string;
+  /** The groups offered instead of `$convertTo` while the element is empty. */
+  $convertToWhenEmpty?: string[];
 }
+
+/**
+ * The studio's element metadata by tag. The JSON is bundled with the studio, so the compiler checks
+ * every entry against {@link ElementMeta} here, once, instead of each reader asserting it.
+ */
+export const ELEMENT_DEFS: Readonly<Record<string, ElementMeta>> = elementsMeta.$defs;
 
 /**
  * Tags the studio's own metadata says accept inline children.
@@ -36,7 +51,7 @@ interface ElementDef {
 const EXCLUDED = new Set(["pre"]);
 
 export const BUILTIN_EDITABLE_TAGS: ReadonlySet<string> = new Set(
-  Object.entries(elementsMeta.$defs as Record<string, ElementDef>)
+  Object.entries(ELEMENT_DEFS)
     .filter(([tag, def]) => !EXCLUDED.has(tag) && (def.$inlineChildren?.length ?? 0) > 0)
     .map(([tag]) => tag),
 );

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { assertCreatableParent, handleStudioApi, isOwnedProjectDir } from "../src/studio-api";
 import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
 import type { StudioApiOptions } from "../src/studio-api";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { basename, join, resolve } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -36,7 +37,7 @@ function getReq(pathAndQuery: string) {
   return { req: new Request(url, { method: "GET" }), url };
 }
 
-function jsonReq(path: string, method: string, body: unknown) {
+function jsonReq(path: string, method: string, body: JsonValue) {
   const url = new URL(`http://localhost${path}`);
   return {
     req: new Request(url, { body: JSON.stringify(body), method }),
@@ -433,8 +434,7 @@ describe("locate-directory", () => {
     tag(home, ID);
     const res = await locateDirectory(home, `name=${basename(home)}&id=${ID}`);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { path: string | null };
-    expect(payload.path).toBe(home);
+    expect(await res.json()).toMatchObject({ path: home });
     // The route cleans up the moment it matches, rather than leaving the tag for the client.
     expect(existsSync(join(home, LOCATION_ID_FILE))).toBe(false);
   });
@@ -450,8 +450,7 @@ describe("locate-directory", () => {
 
     const res = await locateDirectory(home, `name=new-site&id=${ID}`);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { path: string | null };
-    expect(payload.path).toBe(target);
+    expect(await res.json()).toMatchObject({ path: target });
     expect(existsSync(join(target, LOCATION_ID_FILE))).toBe(false);
   });
 
@@ -468,8 +467,7 @@ describe("locate-directory", () => {
 
     const res = await locateDirectory(home, `name=new-site&id=${ID}`);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { path: string | null };
-    expect(payload.path).toBe(live);
+    expect(await res.json()).toMatchObject({ path: live });
     // The loser's tag is left untouched — it belongs to someone else's pick.
     expect(existsSync(join(stale, LOCATION_ID_FILE))).toBe(true);
   });
@@ -481,8 +479,7 @@ describe("locate-directory", () => {
     tag(dir, OTHER_ID);
     const res = await locateDirectory(home, `name=new-site&id=${ID}`);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { path: string | null };
-    expect(payload.path).toBeNull();
+    expect(await res.json()).toMatchObject({ path: null });
   });
 
   test("returns a null path when there is no home directory", async () => {
@@ -494,8 +491,7 @@ describe("locate-directory", () => {
       const { req, url } = getReq(`/__studio/locate-directory?name=new-site&id=${ID}`);
       const res = await callApi(req, url);
       expect(res.status).toBe(200);
-      const payload = (await res.json()) as { path: string | null };
-      expect(payload.path).toBeNull();
+      expect(await res.json()).toMatchObject({ path: null });
     } finally {
       if (originalHome !== undefined) {
         process.env.HOME = originalHome;
@@ -578,7 +574,7 @@ describe("isOwnedProjectDir", () => {
 // ─── create-project ──────────────────────────────────────────────────────────
 
 /** A create-project body pointed at `parent`, which the modal always supplies. */
-function createReq(body: Record<string, unknown>, parent: string = ROOT) {
+function createReq(body: JsonObject, parent: string = ROOT) {
   return jsonReq("/__studio/create-project", "POST", {
     destination: { kind: "path", parent },
     ...body,
@@ -703,6 +699,41 @@ describe("create-project", () => {
     expect(existsSync(join(ROOT, "from-starter", "content", "menu"))).toBe(true);
   });
 
+  test("drops a falsy adapter so a starter keeps its static build section", async () => {
+    const { req, url } = createReq({
+      adapter: null,
+      directory: "starter-null-adapter",
+      name: "Null Adapter",
+      starter: "restaurant",
+    });
+    const res = await callApi(req, url);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.config.build).toEqual({
+      format: "directory",
+      outDir: "./dist",
+      trailingSlash: "always",
+    });
+  });
+
+  test("writes a non-static adapter into a starter's build section", async () => {
+    const { req, url } = createReq({
+      adapter: "cloudflare-pages",
+      directory: "starter-pages-adapter",
+      name: "Pages Adapter",
+      starter: "restaurant",
+    });
+    const res = await callApi(req, url);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.config.build).toEqual({
+      adapter: "cloudflare-pages",
+      format: "directory",
+      outDir: "./dist",
+      trailingSlash: "always",
+    });
+  });
+
   test("applies a built-in template variant", async () => {
     const { req, url } = createReq({
       directory: "from-template",
@@ -764,9 +795,9 @@ describe("starters", () => {
     const { req, url } = getReq("/__studio/starters");
     const res = await callApi(req, url);
     expect(res.status).toBe(200);
-    const starters = (await res.json()) as { id: string }[];
-    expect(Array.isArray(starters)).toBe(true);
-    expect(starters.some((s) => s.id === "restaurant")).toBe(true);
+    expect(await res.json()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "restaurant" })]),
+    );
   });
 });
 
@@ -794,8 +825,9 @@ describe("files — gaps", () => {
     const { req, url } = getReq(`/__studio/files?dir=${encodeURIComponent(ROOT)}&glob=*.txt`);
     const res = await callApi(req, url, ROOT, EXTERNAL);
     expect(res.status).toBe(200);
-    const files = (await res.json()) as { path: string }[];
-    expect(files.map((f) => f.path)).toContain("blocker.txt");
+    expect(await res.json()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: "blocker.txt" })]),
+    );
   });
 });
 
@@ -824,8 +856,9 @@ describe("components — gaps", () => {
     const { req, url } = getReq("/__studio/components?dir=comp-ext-proj");
     const res = await callApi(req, url);
     expect(res.status).toBe(200);
-    const components = (await res.json()) as { tagName: string }[];
-    expect(components.some((c) => c.tagName === "x-card")).toBe(true);
+    expect(await res.json()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ tagName: "x-card" })]),
+    );
   });
 
   test("discovers CEM components via root node_modules fallback", async () => {
@@ -983,8 +1016,9 @@ describe("packages add/remove — gaps", () => {
       });
       const res = await callApi(req, url);
       expect(res.status).toBe(500);
-      const payload = (await res.json()) as { error: string };
-      expect(payload.error.length).toBeGreaterThan(0);
+      const { error } = await res.json();
+      expect(error).toBeTypeOf("string");
+      expect(error).not.toBe("");
     } finally {
       rmSync(emptyDir, { force: true, recursive: true });
     }
@@ -1174,13 +1208,15 @@ describe("plugin-schema — gaps", () => {
     const { req, url } = getReq("/__studio/plugin-schema?src=./Init.class.json");
     const res = await callApi(req, url);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      schema: { properties: Record<string, { default?: unknown }> };
-    };
-    expect(body.schema.properties.count!.default).toBe(7);
-    expect((body.schema.properties.count as { examples?: number[] }).examples).toEqual([1, 2, 3]);
-    // An explicit default always wins over the initializer.
-    expect(body.schema.properties.fixed!.default).toBe("abc");
+    expect(await res.json()).toMatchObject({
+      schema: {
+        properties: {
+          count: { default: 7, examples: [1, 2, 3] },
+          // An explicit default always wins over the initializer.
+          fixed: { default: "abc" },
+        },
+      },
+    });
   });
 });
 
@@ -1247,7 +1283,7 @@ describe("packages — install/needs/outdated/set-versions", () => {
     const res = await callApi(req, url);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(typeof body.ok).toBe("boolean");
+    expect(body.ok).toBeTypeOf("boolean");
   });
 
   test("versions reports each dependency's latest, behind or not (registry mocked)", async () => {
@@ -1260,10 +1296,15 @@ describe("packages — install/needs/outdated/set-versions", () => {
       }),
     );
     const origFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: string) =>
-      Response.json({
-        version: input.includes("current-pkg") ? "3.0.0" : "2.0.0",
-      })) as unknown as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async (input: string | URL | Request) =>
+        Response.json({
+          version: (input instanceof Request ? input.url : input.toString()).includes("current-pkg")
+            ? "3.0.0"
+            : "2.0.0",
+        }),
+      { preconnect: origFetch.preconnect },
+    );
     try {
       const { req, url } = getReq("/__studio/packages/versions?dir=versions-proj");
       const res = await callApi(req, url);

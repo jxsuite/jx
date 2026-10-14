@@ -64,8 +64,6 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { EffectScope } from "../reactivity";
 import type { PanelBody } from "./panel-registry";
 
-type GitFileEntry = GitFileStatus;
-
 export async function refreshGitStatus() {
   if (!projectState) {
     return;
@@ -91,7 +89,7 @@ export async function refreshGitStatus() {
     const failure: unknown =
       status.status === "rejected"
         ? status.reason
-        : branches.status === "rejected" && status.value?.isRepo
+        : branches.status === "rejected" && status.value.isRepo
           ? branches.reason
           : null;
     if (failure) {
@@ -185,7 +183,7 @@ export async function cloneRepository(ctx: { openRecentProject: (root: string) =
   try {
     notify.info("Cloning repository…", { key: "git.clone", source: "Source Control" });
     const result = await platform.gitClone(url);
-    if (result?.root) {
+    if (result.root) {
       notify.success("Clone complete.", { key: "git.clone" });
       await ctx.openRecentProject(result.root);
     }
@@ -238,13 +236,13 @@ export function platformSupportsClone(): boolean {
  * @returns {Promise<GitDiffState>}
  */
 /** How each status reads aloud. The badge is one letter and a colour, which a label cannot be. */
-const STATUS_WORDS: Record<string, string> = {
-  A: "added",
-  D: "deleted",
-  M: "modified",
-  R: "renamed",
-  U: "untracked",
-};
+const STATUS_WORDS = new Map([
+  ["A", "added"],
+  ["D", "deleted"],
+  ["M", "modified"],
+  ["R", "renamed"],
+  ["U", "untracked"],
+]);
 
 /** The statuses a comparison can be built for. `R` is absent — see {@link DIFFABLE_STATUSES}. */
 export const DIFFABLE_STATUSES = new Set(["M", "A", "U", "D"]);
@@ -322,7 +320,7 @@ export async function initRepository(): Promise<void> {
 
 /** Push the current branch. Same loading/error contract as every other panel verb. */
 export async function pushCurrentBranch(): Promise<void> {
-  await gitAction("gitPush");
+  await gitAction((plat) => plat.gitPush());
 }
 
 /**
@@ -340,17 +338,17 @@ export async function signInToGithub(): Promise<void> {
 }
 
 /**
- * @param {string} action
- * @param {unknown} [body]
- * @returns {Promise<boolean>} Whether the action succeeded — its failure is already on screen.
+ * Run one platform git verb under the panel's loading/error contract.
+ *
+ * @param run Calls the verb on the platform it is handed.
+ * @returns Whether the action succeeded — its failure is already on screen.
  */
-async function gitAction(action: string, body?: unknown): Promise<boolean> {
-  const plat = getPlatform() as Record<string, (...args: unknown[]) => Promise<unknown>> &
-    StudioPlatform;
+async function gitAction(run: (plat: StudioPlatform) => Promise<void>): Promise<boolean> {
+  const plat = getPlatform();
   shell.git.loading = true;
   shell.git.error = null;
   try {
-    await plat[action]!(body);
+    await run(plat);
     await refreshGitStatus();
     return true;
   } catch (error) {
@@ -390,7 +388,7 @@ async function doPull() {
  * the "last updated" stamp it used to sit beside are on `shell.git`, so opening a second project no
  * longer inherits the first one's History selection and timestamp.
  */
-let _pollTimer = null as ReturnType<typeof setInterval> | null;
+let _pollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function fetchGitLog() {
   const plat = getPlatform();
@@ -440,7 +438,7 @@ let _branchOverride: string | null = null;
  * a decision about paths and the document only lays out two spans. The label is the same fact said
  * aloud: the badge beside it is one letter and a colour, which a screen reader cannot read.
  */
-function fileRowView(file: GitFileEntry): GitFileRowView {
+function fileRowView(file: GitFileStatus): GitFileRowView {
   const parts = file.path.split("/");
   const name = parts.pop() ?? file.path;
   const dir = parts.join("/");
@@ -449,7 +447,7 @@ function fileRowView(file: GitFileEntry): GitFileRowView {
     dir,
     hasDir: dir !== "",
     key: file.path,
-    label: `${file.path}, ${STATUS_WORDS[file.status] ?? "changed"}`,
+    label: `${file.path}, ${STATUS_WORDS.get(file.status) ?? "changed"}`,
     name,
     path: file.path,
     staged: Boolean(file.staged),
@@ -461,8 +459,8 @@ function fileRowView(file: GitFileEntry): GitFileRowView {
  * Group files by component — the parent directory for anything the app can render, "Other" for the
  * rest.
  */
-function groupFilesByComponent(files: GitFileEntry[]): GitGroupView[] {
-  const groups = new Map<string, GitFileEntry[]>();
+function groupFilesByComponent(files: GitFileStatus[]): GitGroupView[] {
+  const groups = new Map<string, GitFileStatus[]>();
   for (const f of files) {
     const parts = f.path.split("/");
     let component;
@@ -471,10 +469,12 @@ function groupFilesByComponent(files: GitFileEntry[]): GitGroupView[] {
     } else {
       component = "Other";
     }
-    if (!groups.has(component)) {
-      groups.set(component, []);
+    let group = groups.get(component);
+    if (!group) {
+      group = [];
+      groups.set(component, group);
     }
-    (groups.get(component) as GitFileEntry[]).push(f);
+    group.push(f);
   }
   return [...groups.entries()].map(([name, entries]) => ({
     files: entries.map((entry) => fileRowView(entry)),
@@ -534,8 +534,8 @@ export function gitPanelValues(): GitPanelValues {
   const { branches, commitMessage, error, lastUpdated, loading, logEntries, status, subTab } =
     shell.git;
   const files = status?.files ?? [];
-  const staged = files.filter((f: GitFileEntry) => f.staged);
-  const unstaged = files.filter((f: GitFileEntry) => !f.staged);
+  const staged = files.filter((f: GitFileStatus) => f.staged);
+  const unstaged = files.filter((f: GitFileStatus) => !f.staged);
   const all = [...staged, ...unstaged];
   const upToDate = !status?.ahead && !status?.behind;
   const ahead = status?.ahead ? `${status.ahead} ahead` : "";
@@ -566,9 +566,11 @@ export function gitPanelValues(): GitPanelValues {
     lastUpdated: lastUpdatedLabel(lastUpdated),
     pullLabel: behind ? `Pull (${behind})` : "Pull",
     pushLabel: ahead ? `Push (${ahead})` : "Push",
-    remoteState: (status?.remotes?.length ?? 0) > 0 ? "remote" : "local",
+    // A host may omit `remotes` despite the declared type (see deploy-checklist.ts), so its
+    // Presence is checked rather than assumed.
+    remoteState: Array.isArray(status?.remotes) && status.remotes.length > 0 ? "remote" : "local",
     stagedCount: String(staged.length),
-    stagedFiles: staged.map((file: GitFileEntry) => fileRowView(file)),
+    stagedFiles: staged.map((file: GitFileStatus) => fileRowView(file)),
     subTab,
     syncLabel: upToDate ? "Up to date" : `${ahead}${ahead && behind ? ", " : ""}${behind}`,
     view: panelView(),
@@ -579,8 +581,8 @@ export function gitPanelValues(): GitPanelValues {
 const NEW_BRANCH = "__new__";
 
 /** The changed file at this path, as the last status read saw it. */
-function fileAt(path: string): GitFileEntry | undefined {
-  return shell.git.status?.files.find((file: GitFileEntry) => file.path === path);
+function fileAt(path: string): GitFileStatus | undefined {
+  return shell.git.status?.files.find((file: GitFileStatus) => file.path === path);
 }
 
 /** Commit the message the field holds, if it holds one. Never a commit of nothing. */
@@ -593,7 +595,7 @@ async function doCommit(): Promise<void> {
   // Fold co-editing sessions into the backend's tree first so the commit never misses trailing
   // Keystrokes (the mirror is debounced).
   await flushAllCollab();
-  if (!(await gitAction("gitCommit", message))) {
+  if (!(await gitAction((plat) => plat.gitCommit(message)))) {
     restoreCommitMessage(message);
   }
 }
@@ -644,12 +646,12 @@ async function chooseBranch(value: string): Promise<void> {
     _branchOverride = null;
     syncGitPanel();
     if (name) {
-      await gitAction("gitCreateBranch", name);
+      await gitAction((plat) => plat.gitCreateBranch(name));
     }
     return;
   }
   if (value !== branches?.current) {
-    await gitAction("gitCheckout", value);
+    await gitAction((plat) => plat.gitCheckout(value));
   }
 }
 
@@ -716,7 +718,7 @@ async function discardFile(path: string): Promise<void> {
   if (!confirmed) {
     return;
   }
-  await gitAction("gitDiscard", [path]);
+  await gitAction((plat) => plat.gitDiscard([path]));
 }
 
 /**
@@ -794,7 +796,7 @@ const ACTIONS: GitPanelActions = {
     shell.git.commitMessage = value;
   },
   fetch: () => {
-    void gitAction("gitFetch");
+    void gitAction((plat) => plat.gitFetch());
   },
   initRepository: () => {
     void initRepository();
@@ -807,29 +809,29 @@ const ACTIONS: GitPanelActions = {
     void doPull();
   },
   push: () => {
-    void gitAction("gitPush");
+    void gitAction((plat) => plat.gitPush());
   },
   refresh: () => {
     void refreshGitStatus();
   },
   selectTab,
   stage: (path) => {
-    void gitAction("gitStage", [path]);
+    void gitAction((plat) => plat.gitStage([path]));
   },
   stageAll: () => {
     const paths = (shell.git.status?.files ?? [])
-      .filter((file: GitFileEntry) => !file.staged)
-      .map((file: GitFileEntry) => file.path);
-    void gitAction("gitStage", paths);
+      .filter((file: GitFileStatus) => !file.staged)
+      .map((file: GitFileStatus) => file.path);
+    void gitAction((plat) => plat.gitStage(paths));
   },
   unstage: (path) => {
-    void gitAction("gitUnstage", [path]);
+    void gitAction((plat) => plat.gitUnstage([path]));
   },
   unstageAll: () => {
     const paths = (shell.git.status?.files ?? [])
-      .filter((file: GitFileEntry) => file.staged)
-      .map((file: GitFileEntry) => file.path);
-    void gitAction("gitUnstage", paths);
+      .filter((file: GitFileStatus) => file.staged)
+      .map((file: GitFileStatus) => file.path);
+    void gitAction((plat) => plat.gitUnstage(paths));
   },
 };
 
@@ -929,20 +931,6 @@ export function mountGitPanel(host: HTMLElement, deps: GitPanelDeps): void {
     });
   });
   _standing = { handle, host: container, scope };
-}
-
-/**
- * The Navigator no longer draws this panel with lit.
- *
- * The record below returns `nothing` and mounts its document in `afterRender`, so this is a stub:
- * it survives only because `NavigatorPanelDeps` still declares the injection and `studio.ts` still
- * passes it. Both go in the change that deletes this.
- *
- * @deprecated The panel is `surfaces/git-panel.json`; call {@link mountGitPanel}.
- * @returns {typeof nothing}
- */
-export function renderGitPanel(_against: GitPanelDeps): typeof nothing {
-  return nothing;
 }
 
 /**

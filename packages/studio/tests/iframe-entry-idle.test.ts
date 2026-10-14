@@ -30,6 +30,14 @@ interface Harness {
   advance: (ms: number) => void;
 }
 
+/** An `Animation` stand-in for `document.getAnimations()`, carrying only its play state. */
+function animation(playState: AnimationPlayState): Animation {
+  /* SAFETY: the frame's idle sampler only filters `document.getAnimations()` by `playState`
+     (`a.playState === "running"`) and counts the result; it never calls or reads any other
+     `Animation` member, so an object holding just `playState` answers every read it makes. */
+  return { playState } as Animation;
+}
+
 let teardown: (() => void) | undefined;
 let restore: (() => void) | undefined;
 
@@ -42,22 +50,18 @@ afterEach(() => {
 });
 
 function boot(options: { animations?: number; fontStatus?: string } = {}): Harness {
-  const win = window as unknown as {
-    requestAnimationFrame: (cb: () => void) => number;
-    cancelAnimationFrame: (h: number) => void;
-  };
-  const origRaf = win.requestAnimationFrame;
-  const origCancel = win.cancelAnimationFrame;
+  const origRaf = window.requestAnimationFrame;
+  const origCancel = window.cancelAnimationFrame;
   const origNow = Date.now;
   const origFonts = Object.getOwnPropertyDescriptor(document, "fonts");
   const origGetAnimations = document.getAnimations;
 
   let queued: (() => void) | null = null;
-  win.requestAnimationFrame = (cb: () => void) => {
-    queued = cb;
+  window.requestAnimationFrame = (cb: FrameRequestCallback) => {
+    queued = () => cb(clock);
     return 1;
   };
-  win.cancelAnimationFrame = () => {
+  window.cancelAnimationFrame = () => {
     queued = null;
   };
   let clock = 1_000_000;
@@ -66,14 +70,12 @@ function boot(options: { animations?: number; fontStatus?: string } = {}): Harne
     configurable: true,
     value: { status: options.fontStatus ?? "loaded" },
   });
-  const running = Array.from({ length: options.animations ?? 0 }, () => ({
-    playState: "running",
-  })) as Animation[];
-  document.getAnimations = () => [...running, { playState: "finished" } as Animation];
+  const running = Array.from({ length: options.animations ?? 0 }, () => animation("running"));
+  document.getAnimations = () => [...running, animation("finished")];
 
   restore = () => {
-    win.requestAnimationFrame = origRaf;
-    win.cancelAnimationFrame = origCancel;
+    window.requestAnimationFrame = origRaf;
+    window.cancelAnimationFrame = origCancel;
     Date.now = origNow;
     document.getAnimations = origGetAnimations;
     if (origFonts) {
@@ -129,8 +131,8 @@ describe("the frame's quiescence report", () => {
     h.tick();
     expect(h.idles.at(-1)).toMatchObject({ fonts: false });
     // Never reaches two quiet frames, so it keeps sampling until its own deadline.
-    expect(h.tick()).toBe(true);
-    expect(h.tick()).toBe(true);
+    const ticks = [h.tick(), h.tick()];
+    expect(ticks).toEqual([true, true]);
   });
 
   test("running animations are counted, finished ones are not", () => {

@@ -25,7 +25,11 @@ const tick = () =>
   });
 
 /* A real origin, so the canvas base the lane hands a frame is a URL and not `null/…`. */
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies the window's members
+   onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/packages/studio/index.html");
 
 /** A surface over one probe element, with a host record it projects. */
@@ -58,6 +62,12 @@ const probeV2: JxDocument = {
 };
 
 let host: HTMLElement;
+
+/** The `data-mark` on whatever element a root draws first NOW, so a re-mount reads as a lost mark. */
+function markOf(root: Element): string | undefined {
+  const first = root.firstElementChild;
+  return first instanceof HTMLElement ? first.dataset.mark : undefined;
+}
 
 beforeEach(() => {
   resetSurfaceRegistry();
@@ -164,7 +174,11 @@ describe("applyLiveSave", () => {
     await mountSurface("bystander", {}, other);
     await tick();
     /* A mark rather than the node: a failing `toBe` on a live element walks the DOM graph. */
-    (other.firstElementChild as HTMLElement).dataset.mark = "kept";
+    const bystander = other.firstElementChild;
+    if (!(bystander instanceof HTMLElement)) {
+      throw new Error("the bystander surface drew nothing");
+    }
+    bystander.dataset.mark = "kept";
     expect(host.querySelector("jx-live-probe b")?.textContent).toBe("[hi]");
 
     const result = await applyLiveSave({ kind: "element", tag: "jx-live-probe" }, probeV2);
@@ -177,7 +191,7 @@ describe("applyLiveSave", () => {
     /* The root that used the element draws its new definition; the bystander was not touched. */
     expect(host.querySelector("jx-live-probe b")).toBeNull();
     expect(host.querySelector("jx-live-probe i")?.textContent).toBe("(hi)");
-    expect((other.firstElementChild as HTMLElement).dataset.mark).toBe("kept");
+    expect(markOf(other)).toBe("kept");
     model.word = "there";
     await tick();
     expect(host.querySelector("jx-live-probe i")?.textContent).toBe("(there)");
@@ -244,11 +258,16 @@ describe("canvasBaseFor", () => {
   });
 });
 
+/** The shell's workspace record as the saver reads it, writable here so a test can switch projects. */
+interface WorkspaceRecord {
+  projectRoot: string | null;
+}
+
 describe("createLiveSurfaceSaver", () => {
   test("applies a chrome save under the open project and says so; ignores every other save", async () => {
     const said: string[] = [];
     const told: string[] = [];
-    const workspace: { projectRoot: string | null } = { projectRoot: "/w/jx/packages/studio" };
+    const workspace: WorkspaceRecord = { projectRoot: "/w/jx/packages/studio" };
     const save = createLiveSurfaceSaver({
       notify: {
         info: (message, options) => said.push(`info ${options.key}: ${message}`),

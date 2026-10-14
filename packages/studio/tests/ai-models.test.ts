@@ -29,10 +29,20 @@ const { platform } = installMockPlatform();
 let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
   Response.json({ models: [] }, { status: 200 });
 const fetchCalls: { url: string; init?: RequestInit | undefined }[] = [];
-(globalThis as Record<string, unknown>).fetch = (url: string, init?: RequestInit) => {
-  fetchCalls.push({ init, url });
-  return fetchImpl(url, init);
-};
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  (resource: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(resource);
+    fetchCalls.push({ init, url });
+    return fetchImpl(url, init);
+  },
+  { preconnect: globalThis.fetch.preconnect },
+);
+
+/** The headers the latest request sent, read case-insensitively the way a server reads them. */
+function lastSentHeaders() {
+  return new Headers(fetchCalls.at(-1)?.init?.headers);
+}
 
 /** Let the probe's promise chain settle. */
 async function flush(turns = 4) {
@@ -91,15 +101,15 @@ describe("fetchAvailableModels", () => {
 
   test("forwards stored credentials as headers, omitting empty ones", async () => {
     await fetchAvailableModels();
-    let headers = fetchCalls.at(-1)!.init!.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBeUndefined();
-    expect(headers["X-Api-Base-URL"]).toBeUndefined();
+    let headers = lastSentHeaders();
+    expect(headers.get("X-Api-Key")).toBeNull();
+    expect(headers.get("X-Api-Base-URL")).toBeNull();
 
     seedSettings({ "jx.ai.openaiKey": "sk-stored", "jx.ai.baseUrl": "http://localhost:11434/v1" });
     await fetchAvailableModels({ force: true });
-    headers = fetchCalls.at(-1)!.init!.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBe("sk-stored");
-    expect(headers["X-Api-Base-URL"]).toBe("http://localhost:11434/v1");
+    headers = lastSentHeaders();
+    expect(headers.get("X-Api-Key")).toBe("sk-stored");
+    expect(headers.get("X-Api-Base-URL")).toBe("http://localhost:11434/v1");
   });
 
   test("explicit credentials win over stored ones", async () => {
@@ -107,9 +117,9 @@ describe("fetchAvailableModels", () => {
     await fetchAvailableModels({
       credentials: { apiKey: "sk-draft", baseUrl: "http://draft/v1" },
     });
-    const headers = fetchCalls.at(-1)!.init!.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBe("sk-draft");
-    expect(headers["X-Api-Base-URL"]).toBe("http://draft/v1");
+    const headers = lastSentHeaders();
+    expect(headers.get("X-Api-Key")).toBe("sk-draft");
+    expect(headers.get("X-Api-Base-URL")).toBe("http://draft/v1");
   });
 
   /**
@@ -447,10 +457,11 @@ describe("probe staleness", () => {
 
     const realWindow = globalThis.window;
     try {
-      (globalThis as Record<string, unknown>).window = undefined;
+      // Redefining only the value keeps the global's writable, enumerable, configurable data slot.
+      Object.defineProperty(globalThis, "window", { value: undefined });
       expect(() => installProbeRefresh()).not.toThrow();
     } finally {
-      (globalThis as Record<string, unknown>).window = realWindow;
+      Object.defineProperty(globalThis, "window", { value: realWindow });
     }
   });
 });

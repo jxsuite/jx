@@ -2,14 +2,14 @@
 /**
  * Ai-credentials-form.ts — reusable AI provider credentials form (key / model / endpoint).
  *
- * Embedded by every host that needs a provider configured — **Preferences › Assistant** (⌘,) and the
- * New Project modal's Import/Agent gates. All draft/model-list state lives inside the closure, so
- * multiple instances never share state. Persists via src/services/ai-settings.ts on Save.
+ * Embedded by every host that needs a provider configured — **Preferences › Assistant** (⌘,) and
+ * the New Project modal's Import/Agent gates. All draft/model-list state lives inside the closure,
+ * so multiple instances never share state. Persists via src/services/ai-settings.ts on Save.
  *
  * The interim `Assistant: Settings…` dialog that used to host it is deleted: a provider key is an
  * application setting, and the surface that owns application settings is also the one that can list
- * it and revoke it (§15). Nothing about this form changed for the move, which is the argument
- * for it having been a reusable form rather than a section of a dialog.
+ * it and revoke it (§15). Nothing about this form changed for the move, which is the argument for
+ * it having been a reusable form rather than a section of a dialog.
  *
  * This module is the FLOW; `surfaces/ai-credentials-form.json` is what it draws. It keeps the three
  * drafts, decides which credentials a listing is sent with, what Save persists and re-reads, and
@@ -19,8 +19,8 @@
  * `surfaces/ai-credentials-form.ts` for why that element is the mount point and why re-rendering
  * the gate cannot disturb it.
  *
- * @docs studio/ai
  * @license MIT
+ * @docs studio/ai
  */
 
 import { fetchAvailableModels, proxyModelsErrorMessage } from "../services/ai-models";
@@ -35,11 +35,8 @@ import {
 import { SETTINGS } from "../services/settings/definitions";
 import type { AiProvider } from "../services/ai-settings";
 import { createAiCredentialsSurface } from "../surfaces/ai-credentials-form";
-import type {
-  AiCredentialsSurface,
-  AiCredentialsView,
-  CredentialsModelRow,
-} from "../surfaces/ai-credentials-form";
+import type { AiCredentialsSurface, AiCredentialsView } from "../surfaces/ai-credentials-form";
+import type { SurfaceOption } from "./surface";
 
 /** The blurb a host that says nothing gets. */
 const DEFAULT_INTRO =
@@ -231,7 +228,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
         modelsError = `${upstreamMessage} — type the model ID directly instead.`;
       }
     } catch (error: unknown) {
-      modelsError = (error as Error).message || "Failed to fetch models";
+      modelsError = (error instanceof Error && error.message) || "Failed to fetch models";
     } finally {
       modelsLoading = false;
       opts.requestRender();
@@ -242,7 +239,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
    * The catalogue as rows — the list the combobox will draw, never a corpus it matches against. A
    * model with no name of its own is called by its id.
    */
-  function rows(): CredentialsModelRow[] {
+  function rows(): SurfaceOption[] {
     return availableModels.map((model) => ({ label: model.name, value: model.id }));
   }
 

@@ -23,11 +23,9 @@ export type ShadowMode = "open" | "closed";
 /** A value `$shadow` or `defaults.shadow` may carry. */
 export type ShadowSetting = ShadowMode | false;
 
-function asSetting(value: unknown): ShadowSetting | undefined {
-  if (value === false || value === "open" || value === "closed") {
-    return value;
-  }
-  return undefined;
+/** Whether a document value is one of the settings `$shadow` / `defaults.shadow` may carry. */
+function isShadowSetting(value: unknown): value is ShadowSetting {
+  return value === false || value === "open" || value === "closed";
 }
 
 /**
@@ -44,9 +42,12 @@ export function resolveShadowMode(
   doc: JxDocument | JxElement | null | undefined,
   defaults?: ProjectConfig["defaults"],
 ): ShadowMode | null {
-  const own = asSetting((doc as { $shadow?: unknown } | null | undefined)?.$shadow);
-  const setting = own ?? asSetting(defaults?.shadow) ?? false;
-  return setting === false ? null : setting;
+  const own = doc?.$shadow;
+  if (isShadowSetting(own)) {
+    return own === false ? null : own;
+  }
+  const projectDefault = defaults?.shadow;
+  return isShadowSetting(projectDefault) && projectDefault !== false ? projectDefault : null;
 }
 
 /**

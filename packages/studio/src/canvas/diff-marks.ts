@@ -35,6 +35,7 @@
  */
 
 import { deepEqual, matchChildren } from "@jxsuite/collab/diff-core";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
 
 /** What happened to a node. `modified` means the node survived and its own content changed. */
@@ -84,10 +85,6 @@ export interface ChangeMapOptions {
 
 const DEFAULT_MAX_CELLS = 250_000;
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 class ChangeWalker {
   readonly original: ChangeMark[] = [];
   readonly current: ChangeMark[] = [];
@@ -121,12 +118,7 @@ class ChangeWalker {
     this.steps.push({ currentPath: bPath, kind, originalPath: aPath });
   }
 
-  diffNode(
-    aPath: JxPath,
-    bPath: JxPath,
-    a: Record<string, unknown>,
-    b: Record<string, unknown>,
-  ): void {
+  diffNode(aPath: JxPath, bPath: JxPath, a: JxMutableNode, b: JxMutableNode): void {
     const isRoot = aPath.length === 0 && bPath.length === 0;
     let ownChanged = false;
     for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
@@ -161,8 +153,8 @@ class ChangeWalker {
   private diffChildren(
     aPath: JxPath,
     bPath: JxPath,
-    ca: readonly unknown[],
-    cb: readonly unknown[],
+    ca: readonly (JxMutableNode | string)[],
+    cb: readonly (JxMutableNode | string)[],
   ): void {
     if (ca.length * cb.length > this.maxCells) {
       this.degraded = true;
@@ -183,7 +175,7 @@ class ChangeWalker {
       if (!match.identical) {
         const aItem = ca[match.aIndex];
         const bItem = cb[match.bIndex];
-        if (isPlainObject(aItem) && isPlainObject(bItem)) {
+        if (isJsonObject(aItem) && isJsonObject(bItem)) {
           this.diffNode(
             [...aPath, "children", match.aIndex],
             [...bPath, "children", match.bIndex],
@@ -211,11 +203,12 @@ class ChangeWalker {
     kind: "added" | "removed",
     aPath: JxPath,
     bPath: JxPath,
-    item: unknown,
+    // Every caller reads in bounds, but an indexed read is typed possibly undefined; it is no element.
+    item: JxMutableNode | string | undefined,
     aIndex: number | null,
     bIndex: number | null,
   ): void {
-    if (!isPlainObject(item)) {
+    if (!isJsonObject(item)) {
       this.emit("modified", aPath, bPath);
       return;
     }
@@ -241,7 +234,7 @@ export function buildChangeMap(
   opts: ChangeMapOptions = {},
 ): ChangeMap {
   const walker = new ChangeWalker(opts.maxCells ?? DEFAULT_MAX_CELLS);
-  walker.diffNode([], [], a as Record<string, unknown>, b as Record<string, unknown>);
+  walker.diffNode([], [], a, b);
   return {
     current: walker.current,
     degraded: walker.degraded,

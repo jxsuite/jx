@@ -8,29 +8,27 @@
  * never touch a postgres connection never import them.
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { deployWithDialect, testWithDialect } from "./provider-utils.ts";
 import type { Dialect } from "kysely";
-import type { ConnectorProvider } from "./provider-utils.ts";
+import type { ConnectorProvider, HostEnv } from "./provider-utils.ts";
 import type { ConnectionDef } from "./types.ts";
 
 /**
  * Resolve the postgres URL for a connection: Hyperdrive binding first, then `urlEnv`.
  *
  * @param {ConnectionDef} connection
- * @param {Record<string, unknown>} env
+ * @param {HostEnv} env
  * @returns {string}
  */
-export function resolvePostgresUrl(
-  connection: ConnectionDef,
-  env: Record<string, unknown>,
-): string {
+export function resolvePostgresUrl(connection: ConnectionDef, env: HostEnv): string {
   const { binding, urlEnv, $name = "connection" } = connection;
-  const bound = binding ? (env[binding] as { connectionString?: string } | undefined) : undefined;
-  if (bound && typeof bound.connectionString === "string") {
+  const bound = binding ? env[binding] : undefined;
+  if (isNonNullObject(bound) && "connectionString" in bound && isString(bound.connectionString)) {
     return bound.connectionString;
   }
   const url = urlEnv ? env[urlEnv] : undefined;
-  if (typeof url === "string" && url !== "") {
+  if (isString(url) && url !== "") {
     return url;
   }
   throw new Error(
@@ -62,15 +60,15 @@ export const Supabase = {
   deploySchema: async (
     tables: Parameters<ConnectorProvider["deploySchema"]>[0],
     connection: ConnectionDef,
-    options: { env: Record<string, unknown>; dryRun?: boolean },
+    options: { env: HostEnv; dryRun?: boolean },
   ) => {
     const dialect = await postgresDialect(resolvePostgresUrl(connection, options.env));
     return deployWithDialect(dialect, "postgres", tables, { dryRun: options.dryRun ?? false });
   },
-  dialect: (connection: ConnectionDef, env: Record<string, unknown>) =>
+  dialect: (connection: ConnectionDef, env: HostEnv) =>
     postgresDialect(resolvePostgresUrl(connection, env)),
   kind: "postgres",
-  testConnection: async (connection: ConnectionDef, env: Record<string, unknown>) => {
+  testConnection: async (connection: ConnectionDef, env: HostEnv) => {
     try {
       const dialect = await postgresDialect(resolvePostgresUrl(connection, env));
       return await testWithDialect(dialect);

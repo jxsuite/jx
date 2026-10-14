@@ -27,13 +27,14 @@
  * @docs studio/projects/content-types
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import entryEditorDoc from "./entry-editor.json";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("entry-editor", entryEditorDoc as unknown as JxDocument);
+registerSurface("entry-editor", entryEditorDoc);
 
 /** Everything the document draws, as one value. */
 export interface EntryEditorView {
@@ -89,7 +90,7 @@ export interface EntryEditorSurfaceHandle {
 }
 
 /** The scope the document reads: the view plus the actions, flat. */
-interface EntryEditorScope extends Record<string, unknown>, EntryEditorView, EntryEditorActions {}
+interface EntryEditorScope extends EntryEditorView, EntryEditorActions {}
 
 /** Write a whole view into the scope. Assignment only — the mount is never rebuilt for a repaint. */
 function project(scope: EntryEditorScope, view: EntryEditorView): void {
@@ -107,10 +108,9 @@ function project(scope: EntryEditorScope, view: EntryEditorView): void {
 }
 
 /** The `part` a node was authored with, or `""` — the only thing this adapter asks about a node. */
-function partOf(def: unknown): string {
-  const attributes = (def as { attributes?: Record<string, unknown> } | null)?.attributes;
-  const part = attributes?.["part"];
-  return typeof part === "string" ? part : "";
+function partOf(def: JxElement | string): string {
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -133,7 +133,7 @@ export function mountEntryEditorSurface(
   islands: EntryEditorIslands,
 ): EntryEditorSurfaceHandle {
   host.replaceChildren();
-  const scope = reactive<EntryEditorScope>({
+  const scope: EntryEditorScope = reactive<EntryEditorScope>({
     collection: "",
     draft: false,
     draftAxis: "hidden",
@@ -147,7 +147,7 @@ export function mountEntryEditorSurface(
     region: "",
     setDraft: actions.setDraft,
     stage: "empty",
-  }) as EntryEditorScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;
@@ -163,12 +163,15 @@ export function mountEntryEditorSurface(
       }
     },
   }).then((surface) => {
+    /* SAFETY: `entry-editor.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

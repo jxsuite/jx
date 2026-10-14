@@ -36,7 +36,8 @@ import { PROJECT_STYLES_TITLE } from "../style/project-styles";
 import { mountStylebookCanvas, panToStylebookTag } from "../canvas/iframe-host";
 import stylebookMeta from "../../data/stylebook-meta.json";
 import type { CanvasPanelEntry } from "../canvas/canvas-utils";
-import type { CanvasStageView } from "../surfaces/canvas-stage";
+import type { CanvasStageHandle, CanvasStageView } from "../surfaces/canvas-stage";
+import type { TabUi } from "../tabs/tab";
 
 export interface StylebookEntry {
   tag: string;
@@ -61,7 +62,7 @@ interface StylebookCtx {
     surface: CanvasSurface,
     view: CanvasStageView,
     entries: CanvasPanelEntry[],
-  ) => Promise<unknown>;
+  ) => Promise<CanvasStageHandle | null>;
   /** A node the stage drew for a part — here, the empty box the chrome bar stands in. */
   stageHost: (surface: CanvasSurface, part: string) => HTMLElement | null;
   applyTransform: (surface: CanvasSurface) => void;
@@ -151,7 +152,7 @@ export async function renderStylebookMode(
      so the field keeps its caret across the stage rebuild a keystroke in it causes. */
   const chromeBarNode = chromeBar(surface);
 
-  (canvasWrap as HTMLElement).style.overflow = "hidden";
+  canvasWrap.style.overflow = "hidden";
 
   /** @type {{ name: string; displayName: string; width: number }[]} */
   const allPanelDefs = [];
@@ -173,7 +174,7 @@ export async function renderStylebookMode(
   /** @type {CanvasPanelEntry[]} */
   let panelEntries;
   if (!hasMedia) {
-    const hasBaseWidth = effectiveMedia && effectiveMedia["--"];
+    const hasBaseWidth = effectiveMedia["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
     panelEntries = [
       ctx.canvasPanelEntry(
@@ -224,22 +225,17 @@ export async function renderStylebookMode(
   const generated = buildStylebookDoc({
     components: componentRegistry,
     customizedOnly: Boolean(customizedOnly),
-    effectiveMedia: effectiveMedia ?? {},
+    effectiveMedia,
     effectiveStyle: getEffectiveStyle(tab?.doc.document?.style),
     filter,
-    meta: stylebookMeta as { $sections: { label: string; elements: StylebookEntry[] }[] },
+    meta: stylebookMeta,
     projectRoot: projectState?.projectRoot ?? null,
   });
 
   const { panels } = surface;
   for (const { panel } of panelEntries) {
     panels.push(panel);
-    mountStylebookCanvas(
-      surface.renderGeneration,
-      generated,
-      panel.canvas as HTMLElement,
-      panel._width,
-    );
+    mountStylebookCanvas(surface.renderGeneration, generated, panel.canvas, panel._width);
   }
   if (hasMedia) {
     ctx.updateActivePanelHeaders(surface);
@@ -260,16 +256,16 @@ export async function renderStylebookMode(
  */
 export function selectStylebookTag(tag: string, media?: string | null, { panCanvas = false } = {}) {
   shell.stylebook.selection = tag;
+  const ui: Partial<TabUi> = { activeSelector: tag, rightTab: "style" };
+  if (media !== undefined) {
+    ui.activeMedia = media;
+  }
   updateSession(activeTab.value, {
     // The ROOT path, not an empty selection: stylebook mode has always parked the selection on the
     // Document element while the Style tab edits a TAG, and widening the field to a list changed
     // Which literal spells that — `[[]]` is one selected path, the root — not what it means.
     selection: [[]],
-    ui: {
-      activeSelector: tag,
-      rightTab: "style",
-      ...(media !== undefined ? { activeMedia: media } : {}),
-    },
+    ui,
   });
 
   if (tag && panCanvas) {

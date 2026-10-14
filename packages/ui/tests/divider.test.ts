@@ -22,6 +22,8 @@ afterEach(() => {
 });
 
 async function divider(attrs: Record<string, string> = {}): Promise<JxDivider> {
+  /* SAFETY: registerUi() in beforeAll defined jx-divider, so createElement returns the upgraded
+     element, which carries the reactive `orientation` property its component document declares. */
   const el = document.createElement("jx-divider") as JxDivider;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -59,17 +61,23 @@ function rulesOf(el: HTMLElement): Map<string, string> {
   return out;
 }
 
+/** The CSSStyleDeclaration members that read as a string: the camelCase longhands. */
+type StyleProperty = {
+  [K in Extract<keyof CSSStyleDeclaration, string>]: CSSStyleDeclaration[K] extends string
+    ? K
+    : never;
+}[Extract<keyof CSSStyleDeclaration, string>];
+
 /**
  * One property as the CASCADE resolves it — what the box actually gets. happy-dom applies the
  * emitted sheet, so this fails when a declaration is deleted AND when a later rule of equal
  * specificity overrides it, which is the failure `rulesOf` cannot see.
  *
  * @param {HTMLElement} el - The element to read
- * @param {string} prop - A camelCase CSS property name
+ * @param {StyleProperty} prop - A camelCase CSS property name
  * @returns {string}
  */
-const computed = (el: HTMLElement, prop: string) =>
-  (getComputedStyle(el) as unknown as Record<string, string>)[prop] ?? "";
+const computed = (el: HTMLElement, prop: StyleProperty) => getComputedStyle(el)[prop];
 
 describe("jx-divider", () => {
   test("draws one hr the platform already announces as a separator", async () => {

@@ -56,6 +56,7 @@ import {
   saveViewAs,
 } from "./grid-layout";
 import { argsSchema, stringArg, stringProperty } from "../commands/command-args";
+import type { CommandArgValues } from "../commands/command-args";
 import type { EffectScope } from "@vue/reactivity";
 import type { GridController } from "./grid-controller";
 import type { GridLayout, GridSortSpec } from "./grid-layout";
@@ -69,7 +70,7 @@ import type {
   GridPanelView,
 } from "../surfaces/grid-panel";
 import type { GridViewsSurfaceHandle, GridViewsView } from "../surfaces/grid-views";
-import type { GridReplaceSurfaceHandle } from "../surfaces/grid-replace";
+import type { PopoverSurfaceHandle } from "../ui/popover-surface";
 
 interface ActiveGridPanel {
   /** The pane whose stage this grid is drawn on. */
@@ -85,7 +86,7 @@ interface ActiveGridPanel {
   /** Where that panel was opened, so a re-projection cannot move it back to the origin. */
   viewsAt: { x: number; y: number };
   /** Find & replace while it is open. */
-  replace: GridReplaceSurfaceHandle | null;
+  replace: PopoverSurfaceHandle | null;
   /**
    * Rebuild the engine over the same controller.
    *
@@ -692,6 +693,12 @@ function requireSurface(commandId: string) {
   return surface;
 }
 
+/** A saved view, addressed by the grid it was saved for. */
+interface SavedViewRef {
+  gridId: string;
+  name: string;
+}
+
 /**
  * Saved views, as commands.
  *
@@ -703,10 +710,10 @@ function requireSurface(commandId: string) {
  * @returns {AnyCommand[]}
  */
 export function gridViewCommands(): AnyCommand[] {
-  const viewNameArg = (commandId: string, args: unknown): { gridId: string; name: string } => {
+  const viewNameArg = (commandId: string, args: CommandArgValues): SavedViewRef => {
     const { controller } = requireSurface(commandId);
     const gridId = controller.source.id;
-    const name = stringArg(commandId, args as Record<string, unknown>, "name");
+    const name = stringArg(commandId, args, "name");
     const known = listSavedViews(gridId).map((view) => view.name);
     if (!known.includes(name)) {
       throw new RangeError(

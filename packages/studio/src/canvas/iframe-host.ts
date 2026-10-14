@@ -46,6 +46,7 @@ import { formatEditableVerdicts } from "../format/constraints";
 import { formatByName } from "../format/format-host";
 import { collabState } from "../collab/collab-state";
 import { DIALOG_COMMANDS, isDialog, POPOVER_COMMANDS } from "@jxsuite/schema/dialogs";
+import { isNodeObject } from "@jxsuite/schema/guards";
 import { isPopover } from "@jxsuite/schema/overlays";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
@@ -66,19 +67,70 @@ import type {
   SerializableRect,
   SerializedKey,
   SyncedChord,
-  WireDocOp,
 } from "./iframe-protocol";
+import type { JxDocOp } from "../tabs/patch-ops";
 import type { IframeChannel } from "./iframe-channel";
 import type { OverlayLayer, OverlayPlacement } from "./iframe-overlay";
 import type { SlashCommand } from "../editor/inline-edit";
 import type { Tab } from "../tabs/tab";
-import type { JxExpressionNode, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxExpressionNode, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 import { bundleUrl } from "../services/bundle-base";
 
-/** A rect in PARENT coordinates (overlay-local from {@link canvasRectToParent}, same field shape). */
-type ParentRect = OverlayPlacement;
+/**
+ * A plain-data copy of a value bound for `postMessage`.
+ *
+ * A JSON round trip rather than `structuredClone`, which throws on exactly what this exists to
+ * drop: reactive-proxy internals and stray functions riding on a value read off a live store.
+ */
+function plainCopy<T>(value: T): T {
+  /* SAFETY: Every value posted through here is document or config data, which is JSON by contract,
+     so the round trip returns the same shape minus only what the realm boundary cannot carry. */
+  // oxlint-disable-next-line unicorn/prefer-structured-clone
+  return JSON.parse(JSON.stringify(value)) as T;
+}
 
-interface HostState {
+/** A deferred re-entry into inline editing, waiting for the host's DOM to reflect a split/insert. */
+interface PendingEnterEdit {
+  path: (string | number)[];
+  minGen: number;
+  offset?: number;
+  /** Set when the deferred re-entry is a PROP host rather than a block (see deferEnterEdit). */
+  prop?: string;
+}
+
+/** The `enterEdit` message a host posts to re-enter inline editing. */
+type EnterEditMsg = Extract<ParentToIframe, { kind: "enterEdit" }>;
+
+/** A full-render message, as one host receives it. */
+type RenderMsg = Extract<ParentToIframe, { kind: "render" }>;
+
+/**
+ * The source data a drag session retains for its drop, exactly what {@link applyDropInstruction}
+ * consumes.
+ */
+type RetainedDragData = Parameters<typeof applyDropInstruction>[2];
+
+/** The empirical zoom of a host's iframe and the iframe's parent-viewport offset. */
+export interface DragGeometry {
+  scale: number;
+  rect: { left: number; top: number };
+}
+
+/** The current edit session's editing flag + latest selection snapshot, for the parent toolbar. */
+export interface EditSnapshotState {
+  editing: boolean;
+  editingProp: string | null;
+  snapshot: SelectionSnapshot | null;
+}
+
+/**
+ * One artboard's iframe, overlay, selection and edit session.
+ *
+ * Exported for the drag coordinator, which holds one as an opaque handle and passes it back to the
+ * session API ({@link beginDragSession}/{@link hostDragGeometry}/{@link postDragMessage}) without
+ * reading its fields.
+ */
+export interface HostState {
   iframe: HTMLIFrameElement;
   /** The `.canvas-panel-canvas` element hosting the iframe + overlay (the WeakMap key). */
   canvasEl: HTMLElement;
@@ -101,7 +153,7 @@ interface HostState {
   /** Primary selected path (mirrors `session.selection`'s last entry), for hover de-dupe. */
   selectionPath: (string | number)[] | null;
   /** The whole selection this host last measured, so a re-measure redraws every box. */
-  selectionPaths: JxPath[];
+  selectionPaths: readonly JxPath[];
   /** Id of the most recent selection `measure` request, so stale `geometry` replies are dropped. */
   selReqId: number;
   /**
@@ -157,7 +209,7 @@ interface HostState {
   /** Highest snapshot `seq` seen, so stale (re-ordered) snapshots are dropped. */
   lastSnapshotSeq: number;
   /** The last non-null selection rect drawn (parent/overlay coords) — toolbar position fallback. */
-  lastSelectionRect: ParentRect | null;
+  lastSelectionRect: OverlayPlacement | null;
   /** The node the pointer last hovered (iframe-viewport rect), so a zoom can hold it still. */
   lastHover: NodeHit | null;
   /**
@@ -228,13 +280,7 @@ interface HostState {
    * render acks (`renderComplete`) at a bumped one — both satisfy `gen >= minGen`. An immediate
    * `enterEdit` would race the escalated ASYNC render and silently fail to find the element.
    */
-  pendingEnterEdit: {
-    path: (string | number)[];
-    minGen: number;
-    offset?: number;
-    /** Set when the deferred re-entry is a PROP host rather than a block (see deferEnterEdit). */
-    prop?: string;
-  } | null;
+  pendingEnterEdit: PendingEnterEdit | null;
   /**
    * Stylebook capability (set by {@link mountStylebookCanvas}, cleared by page mounts). The specimen
    * doc's paths decode to TAGS, not tab-document paths: hits route to the injected stylebook
@@ -250,13 +296,6 @@ interface HostState {
   panReqId: number;
 }
 
-/**
- * Opaque drag-target host handle for the coordinator bridge. The bridge passes it back to the
- * session API ({@link beginDragSession}/{@link hostDragGeometry}/{@link postDragMessage}) without
- * reading its fields.
- */
-export type DragHost = HostState;
-
 const hosts = new WeakMap<HTMLElement, HostState>();
 
 /** Every live host, so the selection watcher can re-measure each one when selection changes. */
@@ -271,7 +310,7 @@ const liveHosts = new Set<HostState>();
 let currentDragSeq = 0;
 
 /** Parent-retained source data keyed by `dragSeq` (the block fragment never crosses the boundary). */
-const retainedSrcData = new Map<number, Record<string, unknown>>();
+const retainedSrcData = new Map<number, RetainedDragData>();
 
 /**
  * The last session whose cursor-carrying `dragOver` arrived FROM an iframe, and when. While a
@@ -421,9 +460,10 @@ export function requestCanvasEval(
   }
   evalReqId += 1;
   const reqId = evalReqId;
-  // Expression nodes come off the reactive document — only plain values may cross postMessage.
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const wireExprs = JSON.parse(JSON.stringify(exprs)) as { id: string; node: JxExpressionNode }[];
+  /* Expression nodes come off the reactive document — only plain values may cross postMessage.
+     SAFETY: A request's nodes are expression nodes by the caller's contract, and the frame re-checks
+     `operator` before evaluating one (`iframe-eval.ts`), reporting anything else per expression. */
+  const wireExprs = plainCopy(exprs) as { id: string; node: JxExpressionNode }[];
   target.channel.post({
     contextPath: contextPath ? [...contextPath] : null,
     exprs: wireExprs,
@@ -541,7 +581,7 @@ export function liveDragHostAt(cursor: { x: number; y: number }): HostState | nu
 export function beginDragSession(
   host: HostState,
   src: DragSrcKind,
-  srcData: Record<string, unknown>,
+  srcData: RetainedDragData,
 ): number {
   currentDragSeq += 1;
   retainedSrcData.set(currentDragSeq, srcData);
@@ -569,7 +609,7 @@ export function beginDragSession(
 export function adoptDragSession(
   _host: HostState,
   _src: DragSrcKind,
-  srcData: Record<string, unknown>,
+  srcData: RetainedDragData,
   seq: number,
 ): number {
   currentDragSeq = seq;
@@ -587,10 +627,7 @@ export function currentDragSession(): number {
  * read FRESH so a pan/zoom mid-drag is reflected. NOT `effectiveZoom()` (a separate path that can
  * desync). The matching iframe parent-viewport rect is returned so the cursor map cancels the pan.
  */
-export function hostDragGeometry(host: HostState): {
-  scale: number;
-  rect: { left: number; top: number };
-} {
+export function hostDragGeometry(host: HostState): DragGeometry {
   const rect = rectOf(host.iframe);
   const scale = host.iframe.clientWidth > 0 ? rect.width / host.iframe.clientWidth : 1;
   return { rect, scale };
@@ -1317,7 +1354,7 @@ export function postDialogOpen(tab: { id: string }, path: JxPath | null): void {
  * `host` is deliberately not a pane-scoped parameter name (see `PANE_PARAM_NAMES`), and the body
  * reads no focus: `panelHostingCanvas` resolves the stage from the host's own element.
  */
-export function postPatchToHosts(forwardOps: WireDocOp[], tabId: string | null): number {
+export function postPatchToHosts(forwardOps: JxDocOp[], tabId: string | null): number {
   let posted = 0;
   for (const host of liveHosts) {
     if (!host.iframe.isConnected) {
@@ -1457,14 +1494,14 @@ function hostTab(state: HostState): Tab | null {
 }
 
 /**
- * The tab a drag TARGET is showing — the one public reader on the opaque {@link DragHost} handle.
+ * The tab a drag TARGET is showing — the one public reader on the opaque {@link HostState} handle.
  *
  * `panels/canvas-dnd-bridge.ts` binds a session to the host under the cursor and then had nothing
  * to ask it, so the one fact it needed about the drag — what the dragged node is CALLED — came from
  * `activeTab`. The bridge is not supposed to read the handle's fields (that is what "opaque"
  * means), so the answer is a function rather than a widened type.
  */
-export function dragHostTab(host: DragHost): Tab | null {
+export function dragHostTab(host: HostState): Tab | null {
   return hostTab(host);
 }
 
@@ -1499,7 +1536,7 @@ function shownSelections(): Map<string, readonly JxPath[]> {
     if (!tab) {
       continue;
     }
-    const sel = (tab.session.selection ?? []) as readonly JxPath[];
+    const sel: readonly JxPath[] = tab.session.selection;
     // Track the selection deeply enough that a change WITHIN the set re-measures: the effect
     // Reads every path, not just the array reference.
     void sel.map((path) => path.join("/")).join("|");
@@ -1698,7 +1735,7 @@ function requestSelection(host: HostState, sel: readonly JxPath[]): void {
   }
   const primary = primarySelection(sel);
   host.selectionPath = primary;
-  host.selectionPaths = sel as JxPath[];
+  host.selectionPaths = sel;
   if (!host.iframe.isConnected) {
     liveHosts.delete(host);
     return;
@@ -2017,7 +2054,7 @@ function hideInsertZoneNow(state: HostState): void {
  */
 function insertButtonHovered(state: HostState): boolean {
   const btn = state.overlay.insertButton;
-  return state.insertHover || (typeof btn.matches === "function" && btn.matches(":hover"));
+  return state.insertHover || btn.matches(":hover");
 }
 
 /**
@@ -2173,7 +2210,8 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
          behind that message with it. The null check is the same guard for a `targetPath` an edit
          has since invalidated, which threw for the same reason. */
       const target = getNodeAtPath(tab.doc.document, msg.targetPath);
-      if (!target || typeof target !== "object") {
+      // A path can resolve to a string child or to nothing at all, whatever the declared type says.
+      if (!isNodeObject(target)) {
         return;
       }
       if (POPOVER_COMMANDS.has(msg.command)) {
@@ -2370,7 +2408,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         // The iframe could not resolve is simply absent from `hits`.
         const primaryKey = JSON.stringify(state.selectionPath);
         const co: OverlayPlacement[] = [];
-        let rect: ParentRect | null = null;
+        let rect: OverlayPlacement | null = null;
         if (state.stylebook) {
           const [hit] = msg.hits;
           rect = hit ? canvasRectToParent(hit.rect) : null;
@@ -2762,9 +2800,8 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       const { rect: ifr, scale } = hostDragGeometry(state);
       const left = msg.rect.x * scale + ifr.left;
       const top = msg.rect.y * scale + ifr.top;
-      canvasSlashHandler?.show({
+      const request: CanvasSlashRequest = {
         filter: msg.filter,
-        ...(msg.showFilter === true ? { showFilter: true } : {}),
         onDismiss: () => state.channel.post({ kind: "slashDismissed" }),
         onSelect: (cmd) => state.channel.post({ cmd: { ...cmd }, kind: "slashSelect" }),
         rect: {
@@ -2774,7 +2811,11 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
           top,
           width: msg.rect.width * scale,
         },
-      });
+      };
+      if (msg.showFilter === true) {
+        request.showFilter = true;
+      }
+      canvasSlashHandler?.show(request);
       return;
     }
     case "slashNav": {
@@ -2871,12 +2912,14 @@ function deferEnterEdit(
   offset?: number,
   prop?: string,
 ): void {
-  state.pendingEnterEdit = {
-    minGen: state.lastRenderedGen,
-    path: [...path],
-    ...(offset === undefined ? {} : { offset }),
-    ...(prop === undefined ? {} : { prop }),
-  };
+  const pending: PendingEnterEdit = { minGen: state.lastRenderedGen, path: [...path] };
+  if (offset !== undefined) {
+    pending.offset = offset;
+  }
+  if (prop !== undefined) {
+    pending.prop = prop;
+  }
+  state.pendingEnterEdit = pending;
 }
 
 /** Ask the host's iframe to (re-)enter inline editing on `path` (a plain copy crosses the bridge). */
@@ -2886,12 +2929,14 @@ function reenterEdit(
   offset?: number,
   prop?: string,
 ): void {
-  state.channel.post({
-    kind: "enterEdit",
-    path: [...path],
-    ...(offset === undefined ? {} : { offset }),
-    ...(prop === undefined ? {} : { prop }),
-  });
+  const enter: EnterEditMsg = { kind: "enterEdit", path: [...path] };
+  if (offset !== undefined) {
+    enter.offset = offset;
+  }
+  if (prop !== undefined) {
+    enter.prop = prop;
+  }
+  state.channel.post(enter);
 }
 
 /**
@@ -3087,11 +3132,9 @@ function preparePassRender(
     // So a JSON round-trip (NOT structuredClone, which would throw) drops residual functions /
     // Reactive proxy artifacts that would otherwise raise DataCloneError and silently drop the
     // Entire message.
-    // oxlint-disable-next-line unicorn/prefer-structured-clone
-    const cloneableDoc = JSON.parse(JSON.stringify(resolved.renderDoc)) as unknown;
+    const cloneableDoc = plainCopy(resolved.renderDoc);
     // The RAW page doc (forward-op + data-jx-path coordinate space) crosses as the shadow doc.
-    // oxlint-disable-next-line unicorn/prefer-structured-clone
-    const cloneableShadow = JSON.parse(JSON.stringify(doc)) as unknown;
+    const cloneableShadow = plainCopy(doc);
     // Which tags can hold a caret depends on the document's vocabulary, so the format's verdicts
     // Ride with the render rather than being baked into the frame. Absent for a native document,
     // Where the studio's own element metadata answers on its own.
@@ -3101,21 +3144,27 @@ function preparePassRender(
     const renderTab = tabId ? (workspace.tabs.get(tabId) ?? null) : null;
     const formatElements = formatByName(renderTab?.doc.sourceFormat)?.studio?.elements;
     const editableTags = formatElements ? formatEditableVerdicts(formatElements) : undefined;
-    return {
+    const prepared: PreparedRender = {
       assets: resolved.assets,
       doc: cloneableDoc,
       docBase: resolved.docBase ?? `${canvasBaseOrigin()}/`,
       mapperCtx: resolved.mapperCtx,
-      /* Still a cast, but no longer a lie: `WireMapperCtx.canvasMode` is typed `string` (it mirrors
-         `PathMapCtx`, which carries the mode for `isEditableMode` and takes `CanvasMode | string`),
-         so this narrows a string to the union. It used to narrow it to a union that did not list
-         `git-diff` while git-diff renders went through here every day. */
+      /* SAFETY: `WireMapperCtx.canvasMode` is typed `string` only because it mirrors `PathMapCtx`,
+         which takes `CanvasMode | string`; `resolveCanvasDocument` fills it with the mode this host
+         was asked to render (`modeOverride ?? canvasModeOfTab(tab)`), and only a canvas mode ever
+         mounts a host. It used to narrow to a union that did not list `git-diff` while git-diff
+         renders went through here every day. */
       mode: resolved.mapperCtx.canvasMode as CanvasMode,
       shadowDoc: cloneableShadow,
       siteStyle: resolved.siteStyle,
-      ...(editableTags ? { editableTags } : {}),
-      ...(allowAutoRequests ? { allowAutoRequests: true } : {}),
     };
+    if (editableTags) {
+      prepared.editableTags = editableTags;
+    }
+    if (allowAutoRequests) {
+      prepared.allowAutoRequests = true;
+    }
+    return prepared;
   });
   byDoc.set(doc, { mode: modeOverride, payload, tabId, viewTabId });
   return payload;
@@ -3180,18 +3229,12 @@ export async function mountIframeCanvas(
     paneOfContainer(canvasEl),
     modeOverride,
   );
-  const message: ParentToIframe = {
+  const message: RenderMsg = {
     ...prepared,
     // Per-TAB, and read at POST time so a scheme flip that raced the shared resolution is not
     // Baked into the payload every host shares. `viewTab` is this artboard's tab — defaulted from
     // `tabOfContainer(canvasEl)`, the same route the rest of this mount takes.
     colorScheme: schemeWireFor(viewTab),
-    /* Per-ARTBOARD, and post-time for a sharper version of the same reason. `preparePassRender`
-       memoizes on the document and hands the SAME payload object to every host in the pass, and a
-       git-diff pass has two hosts holding two documents — but marks are a function of BOTH sides,
-       not of the document this host draws, so they are not derivable from that cache key at all.
-       Baking them in would make the two artboards race for whose marks the pass kept. */
-    ...(diffMarks ? { diffMarks } : {}),
     gen,
     kind: "render",
     // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
@@ -3199,6 +3242,15 @@ export async function mountIframeCanvas(
     popoverOpen: viewTab?.session.ui.openPopover ?? null,
     dialogOpen: viewTab?.session.ui.openDialog ?? null,
   };
+  /* Diff marks are per-ARTBOARD, and post-time for a sharper version of the colour scheme's
+     reason. `preparePassRender` memoizes on the document and hands the SAME payload object to every
+     host in the pass, and a git-diff pass has two hosts holding two documents — but marks are a
+     function of BOTH sides, not of the document this host draws, so they are not derivable from
+     that cache key at all. Baking them in would make the two artboards race for whose marks the
+     pass kept. */
+  if (diffMarks) {
+    message.diffMarks = diffMarks;
+  }
   state.popoverOpen = message.popoverOpen ?? null;
   state.dialogOpen = message.dialogOpen ?? null;
   // Preview is the fidelity view: no editing messages are honoured from it, no overlay is painted
@@ -3250,10 +3302,8 @@ export function mountStylebookCanvas(
   state.iframe.style.width = widthPx ? `${widthPx}px` : "100%";
   // Two independent plain clones: the iframe renders `doc` and folds styleUpdates into `shadowDoc`
   // (and fake test channels pass messages by reference, so sharing one object would alias them).
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const cloneableDoc = JSON.parse(JSON.stringify(generated.doc)) as unknown;
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const cloneableShadow = JSON.parse(JSON.stringify(generated.doc)) as unknown;
+  const cloneableDoc = plainCopy(generated.doc);
+  const cloneableShadow = plainCopy(generated.doc);
   const message: ParentToIframe = {
     // The specimen carries no tab identity, but the STAGE it is mounted into does: a stylebook is
     // Opened as a tab like anything else, and its `previewColorScheme` is that tab's.
@@ -3371,8 +3421,7 @@ export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement 
  * off a tab's reactive record is a proxy, and a proxy cannot be structured-cloned.
  */
 export function postRedefineElementToLiveHosts(doc: JxMutableNode, base: string): number {
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const plain = JSON.parse(JSON.stringify(doc)) as JxMutableNode;
+  const plain = plainCopy(doc);
   let posted = 0;
   for (const host of liveHosts) {
     if (!host.iframe.isConnected) {
@@ -3398,13 +3447,8 @@ export function postSiteStyleToLiveHosts(): void {
     return;
   }
   // Site config comes off a reactive store — only plain values may cross postMessage.
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const siteStyle = JSON.parse(JSON.stringify(config.style ?? null)) as Record<
-    string,
-    unknown
-  > | null;
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const media = JSON.parse(JSON.stringify(config.$media ?? {})) as Record<string, string>;
+  const siteStyle = plainCopy(config.style ?? null);
+  const media = plainCopy(config.$media ?? {});
   for (const host of liveHosts) {
     if (!host.iframe.isConnected) {
       liveHosts.delete(host);
@@ -3422,11 +3466,10 @@ export function postSiteStyleToLiveHosts(): void {
  * received it — zero means no stylebook iframe is live yet and the caller should fall through to a
  * full render. Each post is followed by a selection re-measure so the box tracks the reflow.
  */
-export function postStyleUpdateToStylebookHosts(style: Record<string, unknown>): number {
+export function postStyleUpdateToStylebookHosts(style: JxStyle): number {
   let posted = 0;
   // Style objects come off the reactive doc — only plain values may cross postMessage.
-  // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const cloneable = JSON.parse(JSON.stringify(style)) as Record<string, unknown>;
+  const cloneable = plainCopy(style);
   for (const host of liveHosts) {
     if (!host.iframe.isConnected) {
       liveHosts.delete(host);
@@ -3462,12 +3505,8 @@ export function panToStylebookTag(tag: string): void {
 
 // ─── Format-toolbar bridge (Phase 4b-2) ─────────────────────────────────────────
 
-/** The current edit session's editing flag + latest selection snapshot, for the parent toolbar. */
-export function getEditSnapshot(): {
-  editing: boolean;
-  editingProp: string | null;
-  snapshot: SelectionSnapshot | null;
-} {
+/** The current edit session's state, for the parent toolbar. */
+export function getEditSnapshot(): EditSnapshotState {
   /* The same connectivity guard {@link isCaretActive} has, and for the same reason: a session
      belongs to a frame, and a frame that has left the document has no caret in it. `releaseHost`
      clears `activeEditHost`, so this is the second line rather than the first — it covers the frame
@@ -3578,7 +3617,7 @@ export function commitActiveEditSession(): void {
 /** The live host backing the active panel's canvas (for non-edit selection-bar positioning). */
 function hostForActivePanel(): HostState | null {
   const panel = getActivePanel();
-  return panel ? hostForCanvas(panel.canvas as HTMLElement) : null;
+  return panel ? hostForCanvas(panel.canvas) : null;
 }
 
 /**
@@ -3592,7 +3631,7 @@ function hostForActivePanel(): HostState | null {
  * (where it evaluates to exactly `editZoom` — the iframe's layout width is `renderWidth / editZoom`
  * while its rendered width is `renderWidth`).
  */
-export function getEditBarAnchorRect(): ParentRect | null {
+export function getEditBarAnchorRect(): OverlayPlacement | null {
   // The bar rests on the SELECTED ELEMENT's box, edit session or not. It used to prefer the caret's
   // Snapshot rect while editing, so it hopped line to line with the caret and sat over the text the
   // Author was typing; the snapshot still feeds the format state, never the position. Only an edit

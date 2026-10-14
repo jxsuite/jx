@@ -29,7 +29,7 @@ import {
   tagNameToClassName,
   titleToTagName,
 } from "../src/shared";
-import type { JxElement, JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
+import type { JsonObject, JxElement, JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── Detection ──────────────────────────────────────────────────────────────
 
@@ -86,9 +86,15 @@ describe("isTemplateString", () => {
 
 describe("isDynamic", () => {
   test("returns false for null/non-object", () => {
-    expect(isDynamic(null as unknown as JxMutableNode)).toBe(false);
+    // Held as members of a JSON object so each reads back as a JsonValue rather than its literal.
+    const decoded: JsonObject = { nullNode: null, numberNode: 42 };
+    /* SAFETY: deliberately unsound. A node decoded from document JSON can be `null`, which
+       JxMutableNode omits; isDynamic must reject it, which is what this test pins. */
+    expect(isDynamic(decoded.nullNode as JxMutableNode)).toBe(false);
     expect(isDynamic("string")).toBe(false);
-    expect(isDynamic(42 as unknown as JxMutableNode)).toBe(false);
+    /* SAFETY: deliberately unsound. A node decoded from document JSON can be a number, which
+       JxMutableNode omits; isDynamic must reject it, which is what this test pins. */
+    expect(isDynamic(decoded.numberNode as JxMutableNode)).toBe(false);
   });
 
   test("returns true for state with $prototype", () => {
@@ -148,7 +154,7 @@ describe("isDynamic", () => {
       isDynamic({
         tagName: "span",
         textContent: { $ref: "#/state/label" },
-      } as unknown as JxMutableNode),
+      }),
     ).toBe(true);
   });
 
@@ -179,7 +185,7 @@ describe("isDynamic", () => {
       isDynamic({
         children: [{ tagName: "span", textContent: { $ref: "#/state/label" } }],
         tagName: "div",
-      } as any),
+      }),
     ).toBe(true);
   });
 
@@ -204,7 +210,7 @@ describe("isNodeDynamic", () => {
       isNodeDynamic({
         children: [{ tagName: "span", textContent: { $ref: "#/state/x" } }],
         tagName: "div",
-      } as any),
+      }),
     ).toBe(false);
   });
 
@@ -262,7 +268,7 @@ describe("hasAnyIsland", () => {
           { tagName: "span", textContent: { $ref: "#/state/x" } },
         ],
         tagName: "div",
-      } as any),
+      }),
     ).toBe(true);
   });
 
@@ -293,7 +299,7 @@ describe("buildInitialScope", () => {
 
   test("array values are cloned", () => {
     const items = [1, 2, 3];
-    const scope = buildInitialScope({ items } as unknown as Record<string, JxStateDefinition>);
+    const scope = buildInitialScope({ items });
     expect(scope.items).toEqual([1, 2, 3]);
     expect(scope.items).not.toBe(items);
   });
@@ -311,7 +317,7 @@ describe("buildInitialScope", () => {
       count: 0,
       inc: { $prototype: "Function", body: "state.count++" },
     });
-    expect(typeof scope.inc).toBe("function");
+    expect(scope.inc).toBeFunction();
   });
 
   test("Function $prototype with returning body creates getter", () => {
@@ -469,7 +475,7 @@ describe("getPathValue", () => {
 describe("cloneValue", () => {
   test("clones objects deeply", () => {
     const obj = { a: { b: 1 } };
-    const clone = cloneValue(obj) as any;
+    const clone = cloneValue(obj);
     expect(clone).toEqual(obj);
     expect(clone).not.toBe(obj);
     expect(clone.a).not.toBe(obj.a);
@@ -910,7 +916,7 @@ describe("buildInner", () => {
   });
 
   test("returns empty for no content", () => {
-    const def = {} as any;
+    const def: JxElement = {};
     const context = { media: {}, scope: null, scopeDefs: {} };
     expect(buildInner(def, null, context, () => "")).toBe("");
   });
@@ -963,7 +969,7 @@ describe("compileStyles", () => {
   });
 
   test("auto-generates className for elements needing CSS", () => {
-    const doc = {
+    const doc: JxElement = {
       children: [],
       style: {
         "@media (min-width: 1024px)": { display: "flex" },
@@ -971,7 +977,7 @@ describe("compileStyles", () => {
       tagName: "div",
     };
     compileStyles(doc);
-    expect((doc as any).className).toMatch(/^jx-\d+$/);
+    expect(doc.className).toMatch(/^jx-\d+$/);
   });
 
   test("resolves custom media queries via mediaQueries map", () => {
@@ -1161,11 +1167,11 @@ describe("renderStaticNode", () => {
   });
 
   test("renders number", () => {
-    expect(renderStaticNode(42 as unknown as string, null)).toBe("42");
+    expect(renderStaticNode(42, null)).toBe("42");
   });
 
   test("renders boolean", () => {
-    expect(renderStaticNode(true as unknown as string, null)).toBe("true");
+    expect(renderStaticNode(true, null)).toBe("true");
   });
 
   test("renders array of nodes", () => {
@@ -1173,7 +1179,7 @@ describe("renderStaticNode", () => {
       [
         { tagName: "p", textContent: "One" },
         { tagName: "p", textContent: "Two" },
-      ] as unknown as JxElement,
+      ],
       null,
     );
     expect(result).toContain("<p>One</p>");
@@ -1181,8 +1187,8 @@ describe("renderStaticNode", () => {
   });
 
   test("returns empty for null/undefined", () => {
-    expect(renderStaticNode(null as unknown as string, null)).toBe("");
-    expect(renderStaticNode(undefined as unknown as string, null)).toBe("");
+    expect(renderStaticNode(null, null)).toBe("");
+    expect(renderStaticNode(undefined, null)).toBe("");
   });
 
   test("renders basic element with textContent", () => {
@@ -1362,9 +1368,13 @@ describe("compileStyles — non-media at-rules", () => {
     /* The project path split an `@` block into per-selector pushes with the stop as the scope. Each
        half was valid CSS on its own, and the last definition of a `@keyframes` name replaces every
        earlier one, so the compiled page animated only the final stop. */
-    const result = compileStyles({ children: [], id: "sheet", tagName: "div" }, {}, {
-      "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
-    } as never);
+    const result = compileStyles(
+      { children: [], id: "sheet", tagName: "div" },
+      {},
+      {
+        "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+      },
+    );
     expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
     // One definition of the name, not one per stop.
     expect(result.split("@keyframes toast-in").length - 1).toBe(1);
@@ -1379,7 +1389,7 @@ describe("compileStyles — non-media at-rules", () => {
         "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
       },
       tagName: "div",
-    } as never);
+    });
     expect(result).toContain("#toast { animation: toast-in 180ms ease-out }");
     expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
     expect(result).not.toContain("#toast from");
@@ -1646,7 +1656,7 @@ describe("a static build says what it drops", () => {
       fontFamily: { $ref: "#/state/face" },
       padding: "4px",
     };
-    const css = buildComponentCSS("x-card", style as never);
+    const css = buildComponentCSS("x-card", style);
     // The bytes: only the static declaration survives, exactly as before.
     expect(css).toContain("padding: 4px");
     expect(css).not.toContain("state.tint");
@@ -1664,14 +1674,16 @@ describe("a static build says what it drops", () => {
 
   test("draining clears, so one build does not inherit another's", () => {
     takeDroppedReactiveStyles();
-    buildComponentCSS("x-a", { color: "${state.c}" } as never);
-    expect(takeDroppedReactiveStyles()).toHaveLength(1);
-    expect(takeDroppedReactiveStyles()).toEqual([]);
+    buildComponentCSS("x-a", { color: "${state.c}" });
+    const first = takeDroppedReactiveStyles();
+    const second = takeDroppedReactiveStyles();
+    expect(first).toHaveLength(1);
+    expect(second).toEqual([]);
   });
 
   test("a wholly static style records nothing", () => {
     takeDroppedReactiveStyles();
-    buildComponentCSS("x-b", { color: "red", ":hover": { color: "blue" } } as never);
+    buildComponentCSS("x-b", { color: "red", ":hover": { color: "blue" } });
     expect(takeDroppedReactiveStyles()).toEqual([]);
   });
 });

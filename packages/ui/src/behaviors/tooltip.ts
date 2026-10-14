@@ -51,8 +51,9 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+
 import { close, openAt, supportsAnchorPositioning } from "./popover.ts";
-import type { PopoverElement } from "./popover.ts";
 
 /** The reactive scope a `jx-tooltip` document hands its handlers. */
 export interface TooltipState {
@@ -66,8 +67,25 @@ export interface TooltipState {
   placement?: string;
   /** Whether the platform is placing the tip against the control it was shown from. */
   anchored?: boolean;
-  [key: string]: unknown;
+  /**
+   * The id of the control the tip is wired to, from the reflected `for` attribute; null when a host
+   * clears it.
+   */
+  for?: string | null;
 }
+
+/** The reactive scope a hinted kit control hands {@link mintHintId}. */
+export interface HintState {
+  /** The control's own id stem, minted at mount. */
+  uid?: string;
+}
+
+/**
+ * The root a tip's id lookups run against. An element's root node is the Document, the
+ * DocumentFragment or ShadowRoot holding it, or — while it is detached — its topmost ancestor
+ * element. Every one of them can be queried; only the first two can look an id up directly.
+ */
+type LookupRoot = ParentNode & { getElementById?: (elementId: string) => HTMLElement | null };
 
 /**
  * How long a tip stays up after the pointer leaves the control, in milliseconds.
@@ -113,7 +131,7 @@ function watchEscape(root: Node, dismiss: () => void): () => void {
   if (!entry) {
     const set = new Set<() => void>();
     const listener = (event: Event): void => {
-      if ((event as KeyboardEvent).key !== "Escape") {
+      if (!(event instanceof KeyboardEvent) || event.key !== "Escape") {
         return;
       }
       for (const fn of set) {
@@ -197,7 +215,7 @@ const watchers = new WeakMap<object, () => void>();
  */
 export function supportsInterestInvokers(): boolean {
   return (
-    typeof HTMLButtonElement === "function" && "interestForElement" in HTMLButtonElement.prototype
+    isFunction(globalThis.HTMLButtonElement) && "interestForElement" in HTMLButtonElement.prototype
   );
 }
 
@@ -216,12 +234,12 @@ function platformOwns(tip: HTMLElement, trigger: Element): boolean {
 
 /** Show the tip from its control, so the platform knows what the hint belongs to. */
 function showTip(tip: HTMLElement, source: Element | null): void {
-  openAt(tip as PopoverElement, source);
+  openAt(tip, source);
 }
 
 /** Hide the tip. `open` and `data-open` follow from the platform's own toggle. */
 function hideTip(tip: HTMLElement): void {
-  close(tip as PopoverElement);
+  close(tip);
 }
 
 /**
@@ -291,7 +309,7 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
   };
   const showLater = (): void => {
     cancel();
-    const delay = Number((tip as { delay?: unknown }).delay) || 0;
+    const delay = "delay" in tip ? Number(tip.delay) || 0 : 0;
     showTimer = setTimeout(show, delay);
   };
   const hideLater = (): void => {
@@ -389,8 +407,10 @@ export function bindTooltip(tip: HTMLElement, trigger: Element): () => void {
  * miss.
  */
 function triggerOf(state: TooltipState, tip: HTMLElement): HTMLElement | null {
-  const root = tip.getRootNode() as Document | ShadowRoot;
-  const named = typeof state["for"] === "string" ? state["for"] : "";
+  /* SAFETY: `tip` is an Element, and the root node of an element is never a Text, Comment or Attr
+     node: it is a Document, a DocumentFragment or an Element, each of them a ParentNode. */
+  const root = tip.getRootNode() as LookupRoot;
+  const named = state.for ?? "";
   const byFor = named === "" ? null : (root.getElementById?.(named) ?? null);
   if (byFor) {
     return byFor;
@@ -414,7 +434,9 @@ function anchorOf(state: TooltipState, tip: HTMLElement): HTMLElement | null {
   if (wired) {
     return wired;
   }
-  const root = tip.getRootNode() as Document | ShadowRoot;
+  /* SAFETY: `tip` is an Element, and the root node of an element is never a Text, Comment or Attr
+     node: it is a Document, a DocumentFragment or an Element, each of them a ParentNode. */
+  const root = tip.getRootNode() as LookupRoot;
   const own = tip.id;
   if (!/^[\w-]+$/.test(own)) {
     return null;
@@ -464,7 +486,7 @@ export function placeTooltip(state: TooltipState, tip: HTMLElement): void {
       state.flipped = true;
     }
   };
-  if (typeof requestAnimationFrame === "function") {
+  if (isFunction(globalThis.requestAnimationFrame)) {
     requestAnimationFrame(measure);
   } else {
     measure();
@@ -516,7 +538,7 @@ export function measureAnchoredFlip(state: TooltipState, tip: HTMLElement): () =
     }
     state.flipped = own.bottom <= box.top;
   };
-  if (!anchor || typeof requestAnimationFrame !== "function") {
+  if (!anchor || !isFunction(globalThis.requestAnimationFrame)) {
     /* No control to be on a side of, or no frames to coalesce to: one synchronous reading, which
        is nothing at all in the first case, and no watch. */
     measure();
@@ -539,7 +561,7 @@ export function measureAnchoredFlip(state: TooltipState, tip: HTMLElement): () =
      listener before it scrolls. Removal keys on `capture` alone, which is why it is spelled twice. */
   window.addEventListener("scroll", schedule, { capture: true, passive: true });
   window.addEventListener("resize", schedule);
-  const observer = typeof ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+  const observer = isFunction(globalThis.ResizeObserver) ? new ResizeObserver(schedule) : null;
   if (observer) {
     observer.observe(tip);
     observer.observe(anchor);
@@ -576,8 +598,8 @@ export function onTooltipBeforeToggle(state: TooltipState, event: Event): void {
   if (!(tip instanceof HTMLElement)) {
     return;
   }
-  const opening = (event as { newState?: string }).newState === "open";
-  const { source } = event as Event & { source?: unknown };
+  const opening = "newState" in event && event.newState === "open";
+  const source = "source" in event ? event.source : null;
   const from = source instanceof Element ? source : anchorOf(state, tip);
   state.anchored = opening && from !== null;
   if (!opening) {
@@ -602,7 +624,7 @@ export function onTooltipToggle(state: TooltipState, event: Event): void {
   if (!(tip instanceof HTMLElement)) {
     return;
   }
-  const opening = (event as { newState?: string }).newState === "open";
+  const opening = "newState" in event && event.newState === "open";
   state.open = opening;
   if (!opening) {
     // A closed tip has no side, and the watch that was following it has nothing left to follow.
@@ -713,7 +735,7 @@ let mintedHints = 0;
  * @param state The control's reactive scope, whose `uid` this writes.
  * @param host The `jx-action-button`, `jx-button` or `jx-switch` element.
  */
-export function mintHintId(state: Record<string, unknown>, host: HTMLElement): void {
+export function mintHintId(state: HintState, host: HTMLElement): void {
   mintedHints += 1;
-  state["uid"] = `${host.localName}-${mintedHints}`;
+  state.uid = `${host.localName}-${mintedHints}`;
 }

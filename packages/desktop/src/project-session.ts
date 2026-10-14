@@ -25,6 +25,7 @@ import {
 } from "@jxsuite/server/data";
 import { applyRename, createFsWatcher, findReferences } from "@jxsuite/server/refactor";
 import { startSitePreview } from "@jxsuite/server/site-preview";
+import type { ClassJsonParam } from "@jxsuite/server/types";
 import {
   clearLivePreviewOverlay,
   livePreviewOrigin,
@@ -41,13 +42,15 @@ import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import type { ExtensionsPayloadEntry } from "@jxsuite/compiler/format-host";
 import type {
+  CodeServiceResult,
   ExtensionCatalogEntry,
   DataPushRequest,
   DataRowDelete,
   DataRowInsert,
   DataRowsQuery,
   DataRowUpdate,
-  SecretsSetRequest,
+  ProjectSchemasResponse,
+  KeyValuePatch,
 } from "@jxsuite/protocol";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
@@ -56,36 +59,36 @@ import type {
   ReferencesResult,
   RenameReport,
 } from "@jxsuite/server/refactor";
-import { openExternal as handUrlToOs } from "./utils.ts";
-import type { FormatCapability, FormatRegistry } from "@jxsuite/schema/format-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import { openExternal } from "./utils.ts";
+import type { FormatRegistry } from "@jxsuite/schema/format-registry";
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import type {
-  CodeServiceResult,
-  ComponentMeta,
-  DirEntry,
-  OpenProjectResult,
-  SiteConfig,
-} from "./rpc-schema";
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  JxMutableNode,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
+import type { ProjectOptions } from "@jxsuite/create/generate";
+import type { TemplateId } from "@jxsuite/create/templates";
+import type { FormatActionRequest } from "@jxsuite/studio/types";
+import type { ComponentMeta, DirEntry, FormatSummary, OpenProjectResult } from "./rpc-schema";
 
 // ─── Internal schema types for class.json parsing ─────────────────────────────
 
 interface ClassFieldDef {
   identifier?: string;
   name?: string;
-  type?: Record<string, unknown>;
+  /* A JSON value, not the schema object it usually is: the file is read as written, and only an
+     object (or array) `type` is merged into the property below. */
+  type?: JsonValue;
   description?: string;
-  examples?: unknown[];
+  examples?: JsonValue[];
   format?: string;
-  default?: unknown;
-  initializer?: unknown;
+  default?: JsonValue;
+  initializer?: JsonValue;
   role?: string;
   access?: string;
-}
-
-interface CtorParam {
-  $ref?: string;
-  identifier?: string;
-  name?: string;
 }
 
 interface ClassJsonDef {
@@ -95,22 +98,70 @@ interface ClassJsonDef {
   $defs?: {
     parameters?: Record<string, ClassFieldDef>;
     fields?: Record<string, ClassFieldDef>;
-    constructor?: { parameters?: CtorParam[] };
+    constructor?: { parameters?: ClassJsonParam[] };
     /* Read below for the format-capability summary. Declared here because it IS read — the omission
        was silent while this package went untypechecked, and only the `as` cast on the read kept it
        from being a hard error. */
     methods?: Record<string, { role?: string; identifier?: string; timing?: string[] }>;
   };
+  /** A format extension's `format` block, surfaced as found. */
+  format?: JsonValue;
+  /** A format extension's studio hints, surfaced as found. */
+  $studio?: JsonValue;
 }
 
-export interface StudioSchema {
+/**
+ * The studio-facing schema of a plugin class. A JSON object first, because it crosses the RPC
+ * bridge as one, and then the members {@link extractStudioSchema} writes.
+ */
+export type StudioSchema = JsonObject & {
   type?: string;
   description?: string;
-  properties: Record<string, Record<string, unknown>>;
+  properties: Record<string, JsonObject>;
   required: string[];
-  format?: Record<string, unknown>;
-  $studio?: Record<string, unknown>;
+  format?: JsonValue;
+  $studio?: JsonValue;
   capabilities?: Record<string, { identifier: string; timing: string[] }>;
+};
+
+/**
+ * A plugin module's export, as reading it can yield: a callable (a class, whose static `schema` is
+ * its JSON Schema when it declares one), an object whose members can be read in turn, or a
+ * primitive.
+ */
+type PluginExport = PluginCallable | PluginModule | JsonPrimitive | bigint | symbol | undefined;
+
+/** A function or class export. Its real signature is its own; only `schema` is read here. */
+interface PluginCallable {
+  (...args: never[]): void;
+  readonly schema?: JsonValue;
+}
+
+/** A non-primitive export, read by member name. */
+interface PluginModule {
+  readonly [member: string]: PluginExport;
+}
+
+/** A loaded plugin module's namespace object: named exports, and a default export read like one. */
+interface PluginModuleNamespace extends PluginModule {
+  readonly default?: PluginModule;
+}
+
+/**
+ * A format action as this session relays it: the wire request with its `options` opened up, because
+ * they reach the format class's parse/serialize as given, and a format may take options Studio's
+ * own requests never carry (a `gfm` flag, a `wrap` width).
+ */
+type FormatActionParams = Omit<FormatActionRequest, "options"> & {
+  options?: Record<string, JsonValue | undefined> | undefined;
+};
+
+/** What a site build answers: its counts and errors, and the origin its output is browsable at. */
+interface BuildSiteResult {
+  routes: number;
+  files: number;
+  errors: string[];
+  url?: string;
 }
 
 export interface ProxyResult {
@@ -124,14 +175,14 @@ export interface ProxyResult {
 
 let fileDialogFn: (() => Promise<string | null>) | null = null;
 
-export function setFileDialog(fn: () => Promise<string | null>) {
+export function setFileDialog(fn: (() => Promise<string | null>) | null) {
   fileDialogFn = fn;
 }
 
 // Directory picker used by New Project to choose the parent folder for the scaffolded project.
 let directoryDialogFn: (() => Promise<string | null>) | null = null;
 
-export function setDirectoryDialog(fn: () => Promise<string | null>) {
+export function setDirectoryDialog(fn: (() => Promise<string | null>) | null) {
   directoryDialogFn = fn;
 }
 
@@ -148,7 +199,7 @@ export function setDirectoryDialog(fn: () => Promise<string | null>) {
 export async function pickProjectFile(): Promise<{
   root: string;
   name: string;
-  config: SiteConfig;
+  config: ProjectConfig;
 } | null> {
   if (!fileDialogFn) {
     throw new Error("No file dialog configured");
@@ -164,7 +215,10 @@ export async function pickProjectFile(): Promise<{
   }
 
   const raw = await readFile(filePath, "utf8");
-  const config = JSON.parse(raw) as SiteConfig;
+  /* SAFETY: the file is a project.json by name (checked above), and every ProjectConfig member is
+     optional. Only `name` is read here, and a falsy one falls back to the folder name; member-level
+     checking is `validateProject`'s job, not the picker's. */
+  const config = JSON.parse(raw) as ProjectConfig;
   const root = dirname(filePath);
   return { config, name: config.name || basename(root), root };
 }
@@ -246,6 +300,7 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
     try {
       const parentPath = resolve(dirname(classJsonPath), classDef.extends["$ref"]);
       const parentContent = readFileSync(parentPath, "utf8");
+      // SAFETY: `extends.$ref` names a parent .class.json, and every ClassJsonDef member is optional.
       const parentDef = JSON.parse(parentContent) as ClassJsonDef;
       parentSchema = extractStudioSchema(parentDef, parentPath);
     } catch {}
@@ -253,7 +308,7 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
 
   const params = classDef.$defs?.parameters ?? {};
   const fields = classDef.$defs?.fields ?? {};
-  const properties: Record<string, Record<string, unknown>> = {};
+  const properties: Record<string, JsonObject> = {};
   const required: string[] = [];
 
   if (parentSchema?.properties) {
@@ -265,8 +320,8 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
 
   for (const [key, param] of Object.entries(params)) {
     const id = param.identifier ?? key;
-    const prop: Record<string, unknown> = {};
-    if (param.type && typeof param.type === "object") {
+    const prop: JsonObject = {};
+    if (isNonNullObject(param.type)) {
       Object.assign(prop, param.type);
     }
     if (param.description) {
@@ -289,8 +344,8 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
       continue;
     }
     const id = field.identifier ?? key;
-    const prop: Record<string, unknown> = {};
-    if (field.type && typeof field.type === "object") {
+    const prop: JsonObject = {};
+    if (isNonNullObject(field.type)) {
       Object.assign(prop, field.type);
     }
     if (field.description) {
@@ -299,7 +354,7 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
     if (field.default !== undefined) {
       prop.default = field.default;
     }
-    if (field.initializer !== undefined && prop.default === undefined) {
+    if (field.initializer !== undefined && !("default" in prop)) {
       prop.default = field.initializer;
     }
     if (field.examples) {
@@ -308,11 +363,12 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
     properties[id] = prop;
   }
 
-  const ctorParams: CtorParam[] = classDef.$defs?.constructor?.parameters ?? [];
+  const ctorParams: ClassJsonParam[] = classDef.$defs?.constructor?.parameters ?? [];
   const requiredSet = new Set(required);
   for (const p of ctorParams) {
     const name = p.$ref ? p.$ref.split("/").pop() : (p.identifier ?? p.name);
-    if (name && properties[name] && properties[name].default === undefined) {
+    // A constructor parameter need not name a declared property, so the lookup can miss.
+    if (name && name in properties && !("default" in properties[name])) {
       requiredSet.add(name);
     }
   }
@@ -327,12 +383,11 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): Stu
   }
 
   // Surface format-extension metadata (format block, studio hints, capability summary)
-  const def = classDef as Record<string, unknown>;
-  if (def.format) {
-    result.format = def.format as Record<string, unknown>;
+  if (classDef.format) {
+    result.format = classDef.format;
   }
-  if (def.$studio) {
-    result.$studio = def.$studio as Record<string, unknown>;
+  if (classDef.$studio) {
+    result.$studio = classDef.$studio;
   }
   const capabilityRoles = new Set(["parse", "serialize", "discover", "load"]);
   const methods = classDef.$defs?.methods ?? {};
@@ -401,24 +456,22 @@ export function createProjectSession(initialRoot: string | null) {
    * SOURCES and a built page means its output by the very same paths (`@jxsuite/server`'s
    * `site-preview.ts` has the whole argument).
    */
-  async function buildSite(): Promise<{
-    routes: number;
-    files: number;
-    errors: string[];
-    url?: string;
-  }> {
+  async function buildSite(): Promise<BuildSiteResult> {
     const root = requireRoot();
     const { buildSite: build } = await import("@jxsuite/compiler/site");
     // `clean: false` — the reader is on their way to a page, and wiping the output first would
     // Mean every asset 404s for as long as the build takes.
     const result = await build(root, { clean: false, verbose: false });
     const preview = startSitePreview(root);
-    return {
+    const reply: BuildSiteResult = {
       errors: result.errors,
       files: result.files,
       routes: result.routes,
-      ...(preview ? { url: preview.origin } : {}),
     };
+    if (preview) {
+      reply.url = preview.origin;
+    }
+    return reply;
   }
 
   /**
@@ -502,6 +555,8 @@ export function createProjectSession(initialRoot: string | null) {
     }
     let projectConfig: ProjectConfig | undefined;
     try {
+      /* SAFETY: project.json is this project's config by definition, and every ProjectConfig member
+         is optional; a file that does not parse lands in the catch and builds with no config. */
       projectConfig = JSON.parse(
         readFileSync(resolve(root, "project.json"), "utf8"),
       ) as ProjectConfig;
@@ -590,7 +645,7 @@ export function createProjectSession(initialRoot: string | null) {
   }
 
   /** List the project's registered format classes (auto-discovered from imports). */
-  async function listFormats() {
+  async function listFormats(): Promise<FormatSummary[]> {
     // No project open yet (e.g. a fresh welcome window): there are no imported formats to list, and
     // Building a registry would throw "No project open". Return empty quietly instead of logging a
     // Spurious error — the studio's welcome screen calls this before any project is loaded.
@@ -662,10 +717,7 @@ export function createProjectSession(initialRoot: string | null) {
    * The project's generated entry schemas, PRE-BUNDLED for Monaco registration — the desktop twin
    * of GET /__studio/project-schemas (regenerates missing/stale entry documents on demand).
    */
-  async function fetchProjectSchemas(): Promise<{
-    project?: Record<string, unknown>;
-    document?: Record<string, unknown>;
-  }> {
+  async function fetchProjectSchemas(): Promise<ProjectSchemasResponse> {
     if (!projectRoot) {
       return {};
     }
@@ -691,13 +743,7 @@ export function createProjectSession(initialRoot: string | null) {
   }
 
   /** Invoke a format capability (parse/serialize) through the registry. */
-  async function formatAction(params: {
-    format: string;
-    action: string;
-    source?: string;
-    doc?: Record<string, unknown>;
-    options?: Record<string, unknown>;
-  }) {
+  async function formatAction(params: FormatActionParams): Promise<JxMutableNode | string> {
     try {
       const registry = await getFormatRegistry();
       const entry = registry.byName(params.format);
@@ -707,9 +753,17 @@ export function createProjectSession(initialRoot: string | null) {
       if (params.action !== "parse" && params.action !== "serialize") {
         throw new Error(`Unsupported action "${params.action}"`);
       }
-      return params.action === "parse"
-        ? await entry.call("parse" as FormatCapability, params.source ?? "", params.options)
-        : await entry.call("serialize" as FormatCapability, params.doc ?? {}, params.options);
+      const result =
+        params.action === "parse"
+          ? await entry.call("parse", params.source ?? "", params.options)
+          : await entry.call("serialize", params.doc ?? {}, params.options);
+      /* SAFETY: narrows the registry's answer to what StudioPlatform.formatAction declares, and
+         the narrowing is not exact in one documented case. `serialize` answers a string, and a page
+         or component format's `parse` a Jx document, which is a JxMutableNode once it is JSON; a
+         content-only format's `parse` answers its entries instead (specs/extensions.md §8), which
+         the declared type does not cover. Nothing on this side reads the value: it crosses the RPC
+         bridge as JSON, and Studio's format host (formatParse, formatSerialize) is its only reader. */
+      return result as JxMutableNode | string;
     } catch (error) {
       // Re-throw as a plain Error: non-Error rejection values (e.g. Bun's ResolveMessage) do not
       // Survive the electrobun RPC bridge and crash the bun process as an unhandled rejection.
@@ -753,7 +807,7 @@ export function createProjectSession(initialRoot: string | null) {
    *   directory: string;
    *   starter?: string;
    * }} opts
-   * @returns {Promise<{ root: string; config: SiteConfig }>}
+   * @returns {Promise<{ root: string; config: ProjectConfig }>}
    */
   /** Open the native directory picker (used by the New Project modal's Import tab). */
   async function pickDirectory(): Promise<{ path: string | null }> {
@@ -769,7 +823,9 @@ export function createProjectSession(initialRoot: string | null) {
     url?: string;
     adapter?: string;
     directory: string;
-    destination: { kind: "path"; parent: string };
+    /* Optional members, though Studio always sends both: a scripted caller can omit or mistype
+       them, and the check below is what refuses that. */
+    destination?: { kind?: string; parent?: string };
     starter?: string;
     template?: string;
     design?: {
@@ -781,7 +837,7 @@ export function createProjectSession(initialRoot: string | null) {
       media?: Record<string, string>;
       logo?: { name: string; base64: string };
     };
-  }): Promise<{ root: string; config: SiteConfig }> {
+  }): Promise<{ root: string; config: ProjectConfig }> {
     if (!opts.name || !opts.directory) {
       throw new Error("name and directory are required");
     }
@@ -802,23 +858,38 @@ export function createProjectSession(initialRoot: string | null) {
     const destPath = resolve(parent, opts.directory);
 
     const { generateProject } = await import("@jxsuite/create/generate");
-    await generateProject(destPath, {
-      name: opts.name,
-      ...(opts.adapter === undefined
-        ? {}
-        : { adapter: opts.adapter as Parameters<typeof generateProject>[1]["adapter"] }),
-      ...(opts.description === undefined ? {} : { description: opts.description }),
-      ...(opts.url === undefined ? {} : { url: opts.url }),
-      ...(opts.starter === undefined ? {} : { starter: opts.starter }),
-      ...(opts.template === undefined
-        ? {}
-        : { template: opts.template as Parameters<typeof generateProject>[1]["template"] }),
-      ...(opts.design === undefined ? {} : { design: opts.design }),
-    });
+    const options: ProjectOptions = { name: opts.name };
+    if (opts.adapter !== undefined) {
+      /* SAFETY: passed through unnarrowed, as it always has been. The New Project modal offers only
+         the adapter ids ProjectOptions names, and generateProject only tests the id for membership
+         (an unknown one needs no wrangler config) before writing it into project.json. */
+      options.adapter = opts.adapter as NonNullable<ProjectOptions["adapter"]>;
+    }
+    if (opts.description !== undefined) {
+      options.description = opts.description;
+    }
+    if (opts.url !== undefined) {
+      options.url = opts.url;
+    }
+    if (opts.starter !== undefined) {
+      options.starter = opts.starter;
+    }
+    if (opts.template !== undefined) {
+      /* SAFETY: passed through unnarrowed, as it always has been. The modal offers only TemplateId
+         values, and generateProject only compares the id against the variants it knows, so an
+         unknown one scaffolds the desktop-first defaults of the blank template. */
+      options.template = opts.template as TemplateId;
+    }
+    if (opts.design !== undefined) {
+      options.design = opts.design;
+    }
+    await generateProject(destPath, options);
 
+    /* SAFETY: generateProject has just written this project.json from the options above, so it is a
+       ProjectConfig by construction. */
     const config = JSON.parse(
       await readFile(resolve(destPath, "project.json"), "utf8"),
-    ) as SiteConfig;
+    ) as ProjectConfig;
     reroot(destPath);
 
     return { config, root: destPath };
@@ -965,13 +1036,10 @@ export function createProjectSession(initialRoot: string | null) {
   }): Promise<{ sitePath: string | null }> {
     const root = requireRoot();
     let dir = resolve(root, dirname(params.filePath));
+    let rel = relative(root, dir);
 
-    while (true) {
-      const rel = relative(root, dir);
-      if (rel.startsWith("..") || rel.startsWith("/")) {
-        break;
-      }
-
+    // Walk up from the file's directory, never past the project root.
+    while (!rel.startsWith("..") && !rel.startsWith("/")) {
       const candidate = join(dir, "project.json");
       if (existsSync(candidate)) {
         return { sitePath: relPosix(root, dir) || "." };
@@ -982,6 +1050,7 @@ export function createProjectSession(initialRoot: string | null) {
         break;
       }
       dir = parent;
+      rel = relative(root, dir);
     }
 
     return { sitePath: null };
@@ -1013,10 +1082,16 @@ export function createProjectSession(initialRoot: string | null) {
 
            The cast is the same one the cloud adapter makes, for the same reason: @jxsuite/schema
            sits UNDER @jxsuite/protocol in the dependency graph, so it reports a `state` entry's
-           `type` and `format` as it finds them (`unknown`) while the wire type narrows `type` to
-           `string`. Narrowing here would be the extractor lying about a document it just read. */
-        const meta = componentMetaFrom(JSON.parse(await readFile(fp, "utf8")), match);
+           `type` and `format` as it finds them while the wire type narrows `type` to `string`.
+           Narrowing here would be the extractor lying about a document it just read.
+
+           The extractor answers null for anything that is not a component object. */
+        // SAFETY: JSON.parse with no reviver yields only JSON values.
+        const doc = JSON.parse(await readFile(fp, "utf8")) as JsonValue;
+        const meta = componentMetaFrom(doc, match);
         if (meta) {
+          /* SAFETY: the same cast the cloud adapter makes (see above): the shared extractor reports
+             a state entry's `type`/`format` as found, and the wire type is the protocol's. */
           components.push(meta as ComponentMeta);
         }
       } catch {}
@@ -1025,7 +1100,14 @@ export function createProjectSession(initialRoot: string | null) {
     return components;
   }
 
-  async function codeService(_params: unknown): Promise<CodeServiceResult | null> {
+  /**
+   * No code services on desktop: format-on-open/save is skipped. The request is accepted and not
+   * read, which is why none of its members is required here.
+   */
+  async function codeService(_request?: {
+    action?: string;
+    payload?: JsonValue;
+  }): Promise<CodeServiceResult | null> {
     return null;
   }
 
@@ -1034,8 +1116,8 @@ export function createProjectSession(initialRoot: string | null) {
    * rather than re-exporting utils' bare `(url) => boolean`, so both launchers can register it
    * straight into their handler map.
    */
-  async function openExternal(params: { url: string }): Promise<{ ok: boolean }> {
-    return { ok: handUrlToOs(params.url) };
+  async function openExternalUrl(params: { url: string }): Promise<{ ok: boolean }> {
+    return { ok: openExternal(params.url) };
   }
 
   async function locateFile(params: { name: string }): Promise<string | null> {
@@ -1094,7 +1176,7 @@ export function createProjectSession(initialRoot: string | null) {
     src: string;
     prototype?: string;
     base?: string;
-  }): Promise<unknown> {
+  }): Promise<StudioSchema | JsonValue> {
     const root = requireRoot();
 
     let moduleAbsPath: string;
@@ -1127,6 +1209,7 @@ export function createProjectSession(initialRoot: string | null) {
     if (moduleAbsPath.endsWith(".class.json")) {
       try {
         const content = readFileSync(moduleAbsPath, "utf8");
+        // SAFETY: the specifier resolved to a .class.json, and every ClassJsonDef member is optional.
         const classDef = JSON.parse(content) as ClassJsonDef;
         return extractStudioSchema(classDef, moduleAbsPath);
       } catch {
@@ -1139,20 +1222,22 @@ export function createProjectSession(initialRoot: string | null) {
     if (existsSync(classJsonPath)) {
       try {
         const content = readFileSync(classJsonPath, "utf8");
+        // SAFETY: this is the export's sibling .class.json, and every ClassJsonDef member is optional.
         const classDef = JSON.parse(content) as ClassJsonDef;
         return extractStudioSchema(classDef, classJsonPath);
       } catch {}
     }
 
     try {
-      const mod = (await import(moduleAbsPath)) as Record<string, unknown> & {
-        default?: Record<string, unknown>;
-      };
+      /* SAFETY: a dynamic import() resolves to the module's namespace object, whose members are its
+         exports. The one member read is checked callable before use, and a plugin class's static
+         `schema` is its JSON Schema by the class contract; it reaches Studio JSON-serialized. */
+      const mod = (await import(moduleAbsPath)) as PluginModuleNamespace;
       const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
-      if (typeof ExportedClass !== "function") {
+      if (!isFunction(ExportedClass)) {
         return null;
       }
-      return (ExportedClass as { schema?: unknown }).schema ?? null;
+      return ExportedClass.schema ?? null;
     } catch {
       return null;
     }
@@ -1213,7 +1298,7 @@ export function createProjectSession(initialRoot: string | null) {
     return listSecretNames(requireRoot());
   }
 
-  function setSecrets(params: SecretsSetRequest) {
+  function setSecrets(params: KeyValuePatch) {
     return setProjectSecrets(requireRoot(), params);
   }
 
@@ -1242,7 +1327,7 @@ export function createProjectSession(initialRoot: string | null) {
     fetchProjectSchemas,
     formatAction,
     openProject,
-    openExternal,
+    openExternal: openExternalUrl,
     buildSite,
     previewSite,
     setPreviewOverlay,

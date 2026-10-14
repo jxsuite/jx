@@ -22,8 +22,19 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /** Reading bytes for a servable file — separate from {@link SiteIO} because assets are binary. */
 export interface AssetIO {
-  /** The file's bytes, or null when the tree cannot produce them. */
-  bytes: (path: string) => Promise<Uint8Array | null>;
+  /**
+   * The file's bytes, or null when the tree cannot produce them.
+   *
+   * ArrayBuffer-backed because they become a `Response` body as they are: a view over a
+   * `SharedArrayBuffer` is not a `BodyInit`.
+   */
+  bytes: (path: string) => Promise<Uint8Array<ArrayBuffer> | null>;
+}
+
+/** One working tree, seen through both of the readers a site origin is handed. */
+export interface SiteTree {
+  io: SiteIO;
+  assets: AssetIO;
 }
 
 /** What this origin knows about a project, computed once per request. */
@@ -40,7 +51,7 @@ export interface ServeOptions {
 }
 
 /** Headers every response from this origin carries, whatever it is serving. */
-export function siteHeaders(contentType: string): Record<string, string> {
+export function siteHeaders(contentType: string) {
   return {
     /* Never cached. A composed page is a function of a working tree that changes under it, and it
        is not revalidatable — there is no version of it to compare against. */
@@ -94,7 +105,7 @@ export async function serveSite(
   for (const candidate of candidatePaths(requestPath)) {
     const bytes = await assets.bytes(candidate);
     if (bytes) {
-      return new Response(bytes as BodyInit, {
+      return new Response(bytes, {
         headers: siteHeaders(contentTypeFor(candidate)),
       });
     }

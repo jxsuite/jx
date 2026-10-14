@@ -24,17 +24,13 @@ import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 
 import { KIT_TAGS } from "@jxsuite/ui";
+import type { CliReport } from "../../../scripts/lib/cli-report.ts";
+import type { Finding } from "./check-styles.ts";
 import { toPosixPath } from "./lib/posix-path";
 
 export interface SourceFile {
   /** Path relative to the package root, forward slashes. */
   path: string;
-  text: string;
-}
-
-export interface PurityFinding {
-  file: string;
-  line: number;
   text: string;
 }
 
@@ -48,14 +44,14 @@ const KIT_TAG_IN_TEMPLATE = /<(jx-[a-z0-9-]+)/g;
  *
  * @param {SourceFile[]} files - The package's `src/**` TypeScript and JSON files
  * @param {readonly string[]} [kitTags] - The kit's tag names; the real ones by default
- * @returns {PurityFinding[]}
+ * @returns {Finding[]}
  */
 export function surfacePurityFindings(
   files: SourceFile[],
   kitTags: readonly string[] = KIT_TAGS,
-): PurityFinding[] {
+): Finding[] {
   const kit = new Set(kitTags);
-  const findings: PurityFinding[] = [];
+  const findings: Finding[] = [];
   for (const { path, text } of files) {
     const lines = text.split("\n");
     if (!STUDIO_TS.test(path)) {
@@ -97,14 +93,11 @@ export function collectSources(root: string): SourceFile[] {
  * The report a run prints and whether it failed. Separate from `import.meta.main` so a test can run
  * it, where a `process.exit` inside the block is something nothing can.
  *
- * @param {PurityFinding[]} findings
+ * @param {Finding[]} findings
  * @param {string} root - The package root the findings are relative to
- * @returns {{ failed: boolean; lines: string[] }}
+ * @returns {CliReport}
  */
-export function report(
-  findings: PurityFinding[],
-  root: string,
-): { failed: boolean; lines: string[] } {
+export function report(findings: Finding[], root: string): CliReport {
   if (findings.length > 0) {
     return {
       failed: true,

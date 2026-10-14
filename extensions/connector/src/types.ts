@@ -7,6 +7,9 @@
  * connection definitions declared in project.json's `data` and `connections` sections.
  */
 
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { HostEnv } from "./provider-utils.ts";
+
 // ─── Field / table schema ─────────────────────────────────────────────────────
 
 /**
@@ -22,9 +25,9 @@ export interface ColumnFieldSchema {
   items?: ColumnFieldSchema;
   properties?: Record<string, ColumnFieldSchema>;
   required?: string[];
-  enum?: unknown[];
+  enum?: JsonValue[];
   format?: string;
-  default?: unknown;
+  default?: JsonValue;
   description?: string;
 }
 
@@ -57,7 +60,8 @@ export interface ConnectionDef {
   file?: string;
   /** Connection name, injected by hosts when passing the def to connector capabilities. */
   $name?: string;
-  [key: string]: unknown;
+  /** Provider-specific identifiers; the entry is project.json data, so every value is JSON. */
+  [key: string]: JsonValue | undefined;
 }
 
 // ─── Permissions ──────────────────────────────────────────────────────────────
@@ -79,13 +83,24 @@ export const DEFAULT_PERMISSIONS: Record<PermissionAction, PermissionRule> = {
 
 // ─── Auth contract (implemented by @jxsuite/auth in Part 4b) ─────────────────
 
+/**
+ * One field of an auth provider's user or session record: JSON values, plus the `Date` fields
+ * (`createdAt`, `expiresAt`, …) a server-side adapter returns; the client copy carries ISO
+ * strings.
+ */
+export type AuthRecordValue = JsonValue | Date | undefined;
+
+/** A user or session record as the auth provider returns it. */
+export type AuthRecord = Record<string, AuthRecordValue>;
+
 /** The session shape auth hooks resolve from a request. */
 export interface SessionInfo {
   userId: string;
   role?: string;
   /** Full user record, when the auth provider exposes one. */
-  user?: Record<string, unknown>;
-  [key: string]: unknown;
+  user?: AuthRecord;
+  /** Provider extras (the session record itself, for Better Auth). */
+  [key: string]: AuthRecordValue | AuthRecord;
 }
 
 export interface AuthorizeInput {
@@ -102,38 +117,30 @@ export interface AuthorizeDecision {
   status?: number;
   error?: string;
   /** Columns forced onto insert/update payloads (e.g. the owner id). */
-  setColumns?: Record<string, unknown>;
+  setColumns?: JsonObject;
   /** Row filter scoping reads/writes to the owner: `WHERE <field> = <value>`. */
-  whereOwner?: { field: string; value: unknown } | null;
+  whereOwner?: { field: string; value: JsonValue } | null;
 }
 
 /** The hooks an auth mount publishes on the shared server context. */
 export interface JxAuthHooks {
-  getSession: (request: Request, env: Record<string, unknown>) => Promise<SessionInfo | null>;
-  authorize: (input: AuthorizeInput, env: Record<string, unknown>) => Promise<AuthorizeDecision>;
+  getSession: (request: Request, env: HostEnv) => Promise<SessionInfo | null>;
+  authorize: (input: AuthorizeInput, env: HostEnv) => Promise<AuthorizeDecision>;
 }
 
 /**
  * One shared mutable context per worker isolate, passed to every mount in `server.order`
  * (specs/extensions.md §11). The auth mount (order 10) sets `auth`; the data mount (order 20)
- * consumes it and fails closed when it is absent.
+ * consumes it and fails closed when it is absent. A mount that publishes another service declares
+ * its member by augmenting this interface (`declare module "@jxsuite/connector/types"`).
  */
 export interface JxServerContext {
   auth?: JxAuthHooks;
-  [key: string]: unknown;
 }
 
 // ─── Deploy / dialect capability results ─────────────────────────────────────
 
-/** Result shape of the `deploySchema` connector capability. */
-export interface DeploySchemaResult {
-  statements: string[];
-  applied: boolean;
-  warnings: string[];
-}
-
-/** Result shape of the `testConnection` connector capability. */
-export interface TestConnectionResult {
-  ok: boolean;
-  error?: string;
-}
+/* The `deploySchema` and `testConnection` result shapes are declared once in @jxsuite/schema beside
+   the capability names, because the hosts that call these capabilities cannot depend on this
+   extension (specs/extensions.md §2). Re-exported so this package's dependents keep one import. */
+export type { DeploySchemaResult, TestConnectionResult } from "@jxsuite/schema/format-registry";

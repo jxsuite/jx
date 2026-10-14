@@ -18,6 +18,8 @@ import {
   topDialog,
 } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 
 void mock.module("monaco-editor/editor", () => ({
@@ -34,22 +36,25 @@ const { pluginSchemaCache } = await import("../src/services/code-services");
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 let tab: Tab;
 
-function makeDoc(state: Record<string, unknown> | undefined) {
-  return {
-    children: [{ tagName: "li", textContent: "Item" }],
-    ...(state !== undefined && { state }),
-    tagName: "ul",
-  };
+type StateDefs = Record<string, JxStateDefinition>;
+
+function makeDoc(state: StateDefs | undefined): JxMutableNode {
+  const doc: JxMutableNode = { children: [{ tagName: "li", textContent: "Item" }] };
+  if (state !== undefined) {
+    doc.state = state;
+  }
+  doc.tagName = "ul";
+  return doc;
 }
 
-function setup(state: Record<string, unknown> | undefined) {
+function setup(state: StateDefs | undefined) {
   document.body.innerHTML = "";
   for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
     const layer = document.createElement("div");
@@ -60,7 +65,7 @@ function setup(state: Record<string, unknown> | undefined) {
   resetStudioState();
   installMockPlatform();
   pluginSchemaCache.clear();
-  tab = resetWorkspaceWithTab(makeDoc(state) as never);
+  tab = resetWorkspaceWithTab(makeDoc(state));
   tab.session.selection = [["children", 0]];
 }
 
@@ -84,9 +89,11 @@ function control(name: string): HTMLSelectElement | null {
 
 /** The rows a picker offers, as `[value, label]`. */
 function options(name: string): [string, string][] {
-  return [...(dialog()?.querySelectorAll<HTMLOptionElement>(`[part="${name}"] option`) ?? [])]
-    .filter((el) => el.getAttribute("part") !== "unlisted")
-    .map((el) => [el.value, el.textContent?.trim() ?? ""]);
+  return [
+    ...(dialog()?.querySelectorAll<HTMLOptionElement>(`[part="${name}"] option`) ?? []),
+  ].flatMap((el): [string, string][] =>
+    el.getAttribute("part") === "unlisted" ? [] : [[el.value, el.textContent.trim()]],
+  );
 }
 
 async function pick(name: string, value: string) {
@@ -114,11 +121,20 @@ function confirmDialog() {
 
 /** The refusal under the name field, which is `jx-textfield`'s own error line. */
 function errorText(): string {
-  return dialog()?.querySelector('[part="new-name"] [part="error"]')?.textContent?.trim() ?? "";
+  return dialog()?.querySelector('[part="new-name"] [part="error"]')?.textContent.trim() ?? "";
 }
 
-function child0() {
-  return (tab.doc.document.children as Record<string, unknown>[])[0];
+/** The document's first child: the selected element, or the repeater that replaced it. */
+function child0(): JxMutableNode | undefined {
+  const nodes = tab.doc.document.children;
+  if (!Array.isArray(nodes)) {
+    throw new TypeError("the document's children are not an array");
+  }
+  const [first] = nodes;
+  if (isString(first)) {
+    throw new TypeError("the document's first child is a text node");
+  }
+  return first;
 }
 
 /**
@@ -203,7 +219,7 @@ describe("existing array defs", () => {
     expect(repeater.tagName).toBeUndefined();
     expect(repeater.$prototype).toBe("Array");
     expect(repeater.items).toEqual({ $ref: "#/state/rows" });
-    expect((repeater.map as Record<string, unknown>).tagName).toBe("li");
+    expect(repeater.map?.tagName).toBe("li");
     expect(repeater.filter).toBeUndefined();
     expect(repeater.sort).toBeUndefined();
     expect(tab.doc.dirty).toBe(true);
@@ -232,7 +248,7 @@ describe("existing array defs", () => {
     await pick("source", "extra");
     confirmDialog();
     await done;
-    expect((child0() as Record<string, unknown>).items).toEqual({
+    expect(child0()?.items).toEqual({
       $ref: "#/state/extra",
     });
   });
@@ -253,7 +269,7 @@ describe("existing array defs", () => {
     confirmDialog();
     await done;
 
-    const repeater = child0() as Record<string, unknown>;
+    const repeater = child0()!;
     expect(repeater.filter).toEqual({ $ref: "#/state/byDate" });
     expect(repeater.sort).toBeUndefined();
   });
@@ -262,12 +278,12 @@ describe("existing array defs", () => {
     setup({ feed: { $prototype: "Fetch", $src: "./feed.js" } });
     installMockPlatform({
       fetchPluginSchema: async () => ({ returns: { type: "array" } }),
-    } as never);
+    });
     pluginSchemaCache.clear();
     const { done } = await open();
     confirmDialog();
     await done;
-    expect((child0() as Record<string, unknown>).items).toEqual({
+    expect(child0()?.items).toEqual({
       $ref: "#/state/feed",
     });
   });
@@ -357,12 +373,11 @@ describe("create new definition", () => {
     confirmDialog();
     await done;
 
-    const doc = tab.doc.document as Record<string, unknown>;
-    expect((doc.state as Record<string, unknown>).myList).toEqual({
+    expect(tab.doc.document.state?.myList).toEqual({
       default: [],
       type: "array",
     });
-    expect((child0() as Record<string, unknown>).items).toEqual({
+    expect(child0()?.items).toEqual({
       $ref: "#/state/myList",
     });
   });
@@ -372,7 +387,7 @@ describe("create new definition", () => {
     await setNewName("byKey");
     nameInput()!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await done;
-    expect((child0() as Record<string, unknown>).items).toEqual({
+    expect(child0()?.items).toEqual({
       $ref: "#/state/byKey",
     });
   });
@@ -386,7 +401,7 @@ describe("create new definition", () => {
     await setNewName("fresh");
     confirmDialog();
     await done;
-    expect((child0() as Record<string, unknown>).items).toEqual({
+    expect(child0()?.items).toEqual({
       $ref: "#/state/fresh",
     });
   });
@@ -397,8 +412,7 @@ describe("create new definition", () => {
     await setNewName("brandNew");
     confirmDialog();
     await done;
-    const doc = tab.doc.document as Record<string, unknown>;
-    expect((doc.state as Record<string, unknown>).brandNew).toEqual({
+    expect(tab.doc.document.state?.brandNew).toEqual({
       default: [],
       type: "array",
     });
@@ -413,7 +427,7 @@ describe("create new definition", () => {
     await setNewName("fresh");
     confirmDialog();
     await done;
-    const repeater = child0() as Record<string, unknown>;
+    const repeater = child0()!;
     expect(repeater.items).toEqual({ $ref: "#/state/fresh" });
     expect(repeater.filter).toEqual({ $ref: "#/state/byDate" });
   });
@@ -422,10 +436,19 @@ describe("create new definition", () => {
 // ─── The mount ────────────────────────────────────────────────────────────────
 
 describe("the mount", () => {
+  /** The layer `setup()` appended for dialogs to mount into. */
+  function dialogLayer(): HTMLElement {
+    const layer = document.querySelector("#layer-dialog");
+    if (!(layer instanceof HTMLElement)) {
+      throw new TypeError("setup() appended no #layer-dialog");
+    }
+    return layer;
+  }
+
   /** The surface with every answer stubbed, so the mount itself is what is under test. */
   function openBare(onClosed: () => void) {
     return openConvertRepeaterSurface({
-      layer: document.querySelector("#layer-dialog") as HTMLElement,
+      layer: dialogLayer(),
       onClosed,
       onConfirm: () => {},
       onName: () => {},

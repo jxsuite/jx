@@ -15,16 +15,25 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { JsonObject } from "@jxsuite/schema/types";
+import { splitFrontmatter } from "../lib/frontmatter.ts";
 import { PAGES } from "./pages.ts";
 import { BANNER, GENERATED_FIELD, SEARCH_OPT_OUT, frontmatter } from "./shared.ts";
 import { generateShortcuts } from "./studio-commands.ts";
 
 const DOCS_DIR = resolve(import.meta.dir, "../../../docs");
 
-/** The YAML block between the first two `---` lines, parsed; null when the file has none. */
-function parseFrontmatter(source: string): Record<string, unknown> | null {
-  const match = source.match(/^---\n([\s\S]*?)\n---\n/);
-  return match ? (Bun.YAML.parse(match[1]!) as Record<string, unknown>) : null;
+/**
+ * The YAML block between the first two `---` lines, parsed; null when the file has none. A block
+ * that does not parse to a mapping throws, so a broken page fails the test instead of being
+ * skipped.
+ */
+function parseFrontmatter(source: string): JsonObject | null {
+  const split = splitFrontmatter(source);
+  if (split.kind === "invalid") {
+    throw new Error(split.error);
+  }
+  return split.kind === "parsed" ? split.data : null;
 }
 
 /** The generated pages that leave the index: projections of the specs, never searched by name. */

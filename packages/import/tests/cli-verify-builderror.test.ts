@@ -5,8 +5,9 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import type { ImportSiteOptions, ImportSiteResult } from "../src/run.ts";
 
-const importSite = mock((_opts: Record<string, unknown>) =>
+const importSite = mock((_opts: ImportSiteOptions): Promise<ImportSiteResult> =>
   Promise.resolve({
     outDir: resolve("clone-out"),
     pages: [{ route: "pages/index.json", title: "Cloned", nodeCount: 42 }],
@@ -41,7 +42,7 @@ process.argv = [
   "--verify",
 ];
 
-const cliModule = (await import("../src/cli")) as { ready?: Promise<unknown> };
+const cliModule = await import("../src/cli");
 await cliModule.ready;
 
 describe("jx-import CLI when the project did not build", () => {

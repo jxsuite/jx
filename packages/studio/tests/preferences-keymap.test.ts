@@ -34,6 +34,7 @@ import {
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const RECORDS: AnyCommand[] = [
   {
@@ -102,7 +103,7 @@ function record(id: string): AnyCommand {
   return RECORDS.find((candidate) => candidate.id === id)!;
 }
 
-function stored(): unknown {
+function stored(): JsonValue {
   const raw = localStorage.getItem(KEYBINDINGS_STORAGE_KEY);
   return raw === null ? null : JSON.parse(raw);
 }

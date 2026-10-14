@@ -1,7 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import type { JxElement } from "@jxsuite/schema/types";
+import type { JxElement, JxStyle } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
 import { applyPopovers, looksLikePanel, targetIdOf } from "../src/apply-popovers.ts";
+
+/** Whether a children slot is a plain array of elements: no text, no repeater. */
+function isElementArray(children: JxElement["children"]): children is JxElement[] {
+  return Array.isArray(children) && !children.some((child) => isString(child));
+}
+
+/**
+ * The element children of `node` (the live array, so a test can splice it), failing the test where
+ * a fixture holds text or a repeater instead.
+ */
+function elementChildren(node: JxElement | undefined): JxElement[] {
+  const children = node?.children;
+  if (!isElementArray(children)) {
+    throw new Error("expected the node to carry an array of element children");
+  }
+  return children;
+}
+
+/** The style block of `node`, failing the test where the transform dropped it altogether. */
+function styleOf(node: JxElement | undefined): JxStyle {
+  const style = node?.style;
+  if (style === undefined) {
+    throw new Error("expected the node to carry a style");
+  }
+  return style;
+}
 
 /** The corpus's offcanvas drawer: an explicit id link from a real `<button>`. */
 function drawer(): JxElement {
@@ -17,11 +44,11 @@ function drawer(): JxElement {
       },
       {
         attributes: { id: "offcanvas", role: "dialog", inert: "", "aria-hidden": "true" },
-        children: [{ tagName: "p", textContent: "Menu contents" }] as JxElement[],
+        children: [{ tagName: "p", textContent: "Menu contents" }],
         style: { display: "none", position: "fixed", zIndex: "100" },
         tagName: "div",
       },
-    ] as JxElement[],
+    ],
     tagName: "div",
   };
 }
@@ -41,18 +68,18 @@ function megaMenu(): JxElement {
                 attributes: { "aria-haspopup": "true", "aria-expanded": "false" },
                 tagName: "button",
               },
-            ] as JxElement[],
+            ],
             tagName: "span",
           },
           {
-            children: [{ tagName: "a", textContent: "Pavilions" }] as JxElement[],
+            children: [{ tagName: "a", textContent: "Pavilions" }],
             style: { display: "grid", opacity: "0", position: "absolute", zIndex: "10" },
             tagName: "ul",
           },
-        ] as JxElement[],
+        ],
         tagName: "li",
       },
-    ] as JxElement[],
+    ],
     tagName: "nav",
   };
 }
@@ -63,7 +90,7 @@ describe("applyPopovers", () => {
 
     expect(applyPopovers(tree)).toEqual({ converted: 1, skippedNavigatingLinks: 0 });
 
-    const [button, panel] = tree.children as JxElement[];
+    const [button, panel] = elementChildren(tree);
     expect(button!.attributes!["popovertarget"]).toBe("offcanvas");
     expect(panel!.attributes!["popover"]).toBe("auto");
   });
@@ -75,9 +102,9 @@ describe("applyPopovers", () => {
 
     expect(applyPopovers(tree).converted).toBe(1);
 
-    const li = (tree.children as JxElement[])[0]!;
-    const [span, panel] = li.children as JxElement[];
-    const button = (span!.children as JxElement[])[0]!;
+    const [li] = elementChildren(tree);
+    const [span, panel] = elementChildren(li);
+    const [button] = elementChildren(span);
     expect(panel!.attributes!["popover"]).toBe("auto");
     expect(button!.attributes!["popovertarget"]).toBe(panel!.attributes!["id"]);
   });
@@ -90,8 +117,9 @@ describe("applyPopovers", () => {
 
     applyPopovers(tree);
 
-    const panel = ((tree.children as JxElement[])[0]!.children as JxElement[])[1]!;
-    const style = panel.style as Record<string, unknown>;
+    const [li] = elementChildren(tree);
+    const [, panel] = elementChildren(li);
+    const style = styleOf(panel);
     expect(style["display"]).toBeUndefined();
     expect(style["opacity"]).toBeUndefined();
     // The design that described the OPEN panel survives, where it belongs.
@@ -104,8 +132,7 @@ describe("applyPopovers", () => {
 
     applyPopovers(tree);
 
-    const panel = (tree.children as JxElement[])[1]!;
-    const style = panel.style as Record<string, unknown>;
+    const style = styleOf(elementChildren(tree)[1]);
     /* `display: none` has no inverse - it erased whatever the panel used when open - so nothing is
        written and the element's own default answers instead. Guessing `block` would invent a fact. */
     expect(style[":popover-open"]).toBeUndefined();
@@ -117,7 +144,7 @@ describe("applyPopovers", () => {
 
     applyPopovers(tree);
 
-    const [button, panel] = tree.children as JxElement[];
+    const [button, panel] = elementChildren(tree);
     expect(panel!.attributes!["inert"]).toBeUndefined();
     expect(panel!.attributes!["aria-hidden"]).toBeUndefined();
     // The browser maintains aria-expanded on an invoker; a captured literal is a stale second writer.
@@ -141,11 +168,11 @@ describe("invokers that are not buttons", () => {
         { attributes: { "aria-controls": "menu", href }, tagName: "a" },
         {
           attributes: { id: "menu" },
-          children: [{ tagName: "p", textContent: "items" }] as JxElement[],
+          children: [{ tagName: "p", textContent: "items" }],
           style: { opacity: "0", position: "absolute" },
           tagName: "div",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
   }
@@ -155,7 +182,7 @@ describe("invokers that are not buttons", () => {
 
     expect(applyPopovers(tree)).toEqual({ converted: 1, skippedNavigatingLinks: 0 });
 
-    const invoker = (tree.children as JxElement[])[0]!;
+    const invoker = elementChildren(tree)[0]!;
     expect(invoker.tagName).toBe("button");
     expect(invoker.attributes!["type"]).toBe("button");
     expect(invoker.attributes!["href"]).toBeUndefined();
@@ -170,7 +197,7 @@ describe("invokers that are not buttons", () => {
 
     expect(applyPopovers(tree)).toEqual({ converted: 0, skippedNavigatingLinks: 1 });
 
-    const invoker = (tree.children as JxElement[])[0]!;
+    const invoker = elementChildren(tree)[0]!;
     expect(invoker.tagName).toBe("a");
     expect(invoker.attributes!["href"]).toBe("/pavilions");
     expect(invoker.attributes!["popovertarget"]).toBeUndefined();
@@ -190,20 +217,20 @@ describe("invokers that are not buttons", () => {
             },
             {
               attributes: { id: "nested-menu" },
-              children: [{ tagName: "p", textContent: "items" }] as JxElement[],
+              children: [{ tagName: "p", textContent: "items" }],
               style: { opacity: "0", position: "absolute" },
               tagName: "div",
             },
-          ] as JxElement[],
+          ],
           tagName: "a",
         },
         {
           attributes: { id: "menu" },
-          children: [{ tagName: "p", textContent: "items" }] as JxElement[],
+          children: [{ tagName: "p", textContent: "items" }],
           style: { opacity: "0", position: "absolute" },
           tagName: "div",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
 
@@ -244,7 +271,7 @@ describe("what is not a panel", () => {
           style: { display: "none", position: "absolute" },
           tagName: "div",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
     const before = JSON.stringify(tree);
@@ -255,7 +282,7 @@ describe("what is not a panel", () => {
 
   test("two invokers cannot claim the same panel", () => {
     const tree = drawer();
-    (tree.children as JxElement[]).splice(1, 0, {
+    elementChildren(tree).splice(1, 0, {
       attributes: { "aria-controls": "offcanvas" },
       tagName: "button",
     });
@@ -290,17 +317,17 @@ describe("visibility-concealed panels", () => {
         { attributes: { "aria-controls": "p" }, tagName: "button" },
         {
           attributes: { id: "p" },
-          children: [{ tagName: "p", textContent: "x" }] as JxElement[],
+          children: [{ tagName: "p", textContent: "x" }],
           style: { position: "fixed", visibility: "hidden" },
           tagName: "div",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
 
     expect(applyPopovers(tree).converted).toBe(1);
 
-    const style = (tree.children as JxElement[])[1]!.style as Record<string, unknown>;
+    const style = styleOf(elementChildren(tree)[1]);
     expect(style["visibility"]).toBeUndefined();
     expect(style[":popover-open"]).toEqual({ visibility: "visible" });
     expect(findPopoverDefects(tree)).toEqual([]);
@@ -323,7 +350,7 @@ describe("nodes carrying no style at all", () => {
       children: [
         { attributes: { "aria-controls": "plain" }, tagName: "button" },
         { attributes: { id: "plain" }, tagName: "div" },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
     const before = JSON.stringify(tree);
@@ -336,10 +363,10 @@ describe("nodes carrying no style at all", () => {
     const tree: JxElement = {
       children: [
         {
-          children: [{ attributes: { "aria-haspopup": "true" }, tagName: "button" }] as JxElement[],
+          children: [{ attributes: { "aria-haspopup": "true" }, tagName: "button" }],
           tagName: "span",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
 

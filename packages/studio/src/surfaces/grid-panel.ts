@@ -25,13 +25,14 @@
  * @docs studio/data/grid
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import gridPanelDoc from "./grid-panel.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("grid-panel", gridPanelDoc as unknown as JxDocument);
+registerSurface("grid-panel", gridPanelDoc);
 
 /** Everything the frame draws, as one value. Every field is already a string or a boolean. */
 export interface GridPanelView {
@@ -98,7 +99,7 @@ export interface GridPanelSurfaceHandle {
 }
 
 /** The scope the document reads: {@link GridPanelView} plus the actions its controls call. */
-interface GridPanelScope extends Record<string, unknown>, GridPanelView, GridPanelActions {}
+interface GridPanelScope extends GridPanelView, GridPanelActions {}
 
 /** Write a projection into the scope. */
 function project(scope: GridPanelScope, view: GridPanelView): void {
@@ -124,8 +125,8 @@ function project(scope: GridPanelScope, view: GridPanelView): void {
 
 /** The `part` a node's definition carries, or "" for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -142,7 +143,7 @@ export function mountGridPanelSurface(
   actions: GridPanelActions,
 ): GridPanelSurfaceHandle {
   host.replaceChildren();
-  const scope = reactive<GridPanelScope>({
+  const scope: GridPanelScope = reactive<GridPanelScope>({
     addRow: actions.addRow,
     canDelete: false,
     canInsert: false,
@@ -172,7 +173,7 @@ export function mountGridPanelSurface(
     setFilter: actions.setFilter,
     view: "grid",
     viewLabel: "View",
-  }) as GridPanelScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;
@@ -186,12 +187,15 @@ export function mountGridPanelSurface(
       }
     },
   }).then((surface) => {
+    /* SAFETY: `grid-panel.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

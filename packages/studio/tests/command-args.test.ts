@@ -22,7 +22,7 @@ import {
   boundedNumberArg,
   coerceArgs,
   derivedEnumProperty,
-  describeShape,
+  coercionRowOf,
   enumArg,
   enumProperty,
   nullablePathArg,
@@ -36,7 +36,12 @@ import {
   stringProperty,
   typedArg,
 } from "../src/commands/command-args";
-import type { CoercionRow } from "../src/commands/command-args";
+import type {
+  CoercionRow,
+  CommandArgsSchema,
+  CommandArgValues,
+} from "../src/commands/command-args";
+import type { AnyCommand } from "../src/commands/registry";
 import { appCommandSet } from "../src/commands/app-commands";
 
 describe("stringArg", () => {
@@ -200,15 +205,13 @@ describe("schema fragments", () => {
   });
 
   test("argsSchema takes an explicit required list for optional arguments", () => {
-    const schema = argsSchema({ section: stringProperty("A section.") }, []) as {
-      required: string[];
-    };
+    const schema = argsSchema({ section: stringProperty("A section.") }, []);
     expect(schema.required).toEqual([]);
   });
 
   test("enumProperty copies the declared array — the schema cannot alias live state", () => {
     const declared = ["a", "b"];
-    const prop = enumProperty(declared, "d") as { enum: string[] };
+    const prop = enumProperty(declared, "d");
     declared.push("c");
     expect(prop.enum).toEqual(["a", "b"]);
   });
@@ -282,7 +285,7 @@ describe("typedArg", () => {
   });
 });
 
-describe("describeShape — which reader a property's shape names", () => {
+describe("coercionRowOf — which reader a property's shape names", () => {
   const rows: [string, object, CoercionRow][] = [
     ["a declared enum", enumProperty(["a"], "d"), "enum"],
     ["a derived enum", derivedEnumProperty(() => ["a"], "d"), "enum"],
@@ -316,7 +319,7 @@ describe("describeShape — which reader a property's shape names", () => {
   ];
 
   test.each(rows)("%s", (_label, property, row) => {
-    expect(describeShape(property)).toBe(row);
+    expect(coercionRowOf(property)).toBe(row);
   });
 
   test("classifying a derived enum does not read its getter", () => {
@@ -329,7 +332,7 @@ describe("describeShape — which reader a property's shape names", () => {
       },
       type: "string",
     };
-    expect(describeShape(property)).toBe("enum");
+    expect(coercionRowOf(property)).toBe("enum");
     expect(reads).toBe(0);
   });
 });
@@ -637,7 +640,7 @@ describe("coerceArgs — the pass registry.run makes before run", () => {
     expect(coerceArgs("a.one", schema, { blob: { any: "thing" } })).toEqual({
       blob: { any: "thing" },
     });
-    expect(describeShape({ description: "Anything at all." })).toBe("pass-through");
+    expect(coercionRowOf({ description: "Anything at all." })).toBe("pass-through");
   });
 
   test("the result is a fresh record holding what each reader returned", () => {
@@ -662,12 +665,9 @@ describe("coerceArgs — the pass registry.run makes before run", () => {
  * caller finds the hole.
  */
 describe("every shipped args schema", () => {
-  interface Shape {
-    additionalProperties?: boolean;
-    properties?: Record<string, object>;
-    required?: readonly string[];
-  }
-  const withArgs = appCommandSet().filter((command) => command.args !== undefined);
+  const withArgs = appCommandSet().filter(
+    (command): command is AnyCommand & { args: CommandArgsSchema } => command.args !== undefined,
+  );
 
   test("there are schemas to sweep", () => {
     expect(withArgs.length).toBeGreaterThan(60);
@@ -676,9 +676,9 @@ describe("every shipped args schema", () => {
   test("lands every property in a named coercion row, never the pass-through", () => {
     const strays: string[] = [];
     for (const command of withArgs) {
-      const { properties = {} } = command.args as Shape;
+      const { properties = {} } = command.args;
       for (const [key, property] of Object.entries(properties)) {
-        if (describeShape(property) === "pass-through") {
+        if (coercionRowOf(property) === "pass-through") {
           strays.push(`${command.id}.${key}`);
         }
       }
@@ -690,7 +690,7 @@ describe("every shipped args schema", () => {
 
   test("closes its key set and requires only keys it declares", () => {
     for (const command of withArgs) {
-      const { additionalProperties, properties = {}, required = [] } = command.args as Shape;
+      const { additionalProperties, properties = {}, required = [] } = command.args;
       // An open key set would let a misspelt argument through unread, which is the shot check's
       // Headline failure arriving at run time with nothing to say.
       expect(additionalProperties, `${command.id} leaves additionalProperties open`).toBe(false);
@@ -709,16 +709,16 @@ describe("every shipped args schema", () => {
       if (command.keybinding === undefined) {
         continue;
       }
-      const { required = [] } = command.args as Shape;
+      const { required = [] } = command.args;
       expect(required, `${command.id} is keybound but requires ${required.join(", ")}`).toEqual([]);
-      expect(() => coerceArgs(command.id, command.args!, {})).not.toThrow();
+      expect(() => coerceArgs(command.id, command.args, {})).not.toThrow();
     }
   });
 
   test("declares optional what its run defaults — the six records the pass found", () => {
     // Each `run` reads `pane` through a fallback to the focused pane, and the popover/dialog pair
     // Default `open` to true and `path` to the selection's. The schemas said otherwise.
-    const optional: Record<string, string[]> = {
+    const optional = {
       "canvas.setColorScheme": ["pane"],
       "canvas.setDialogOpen": ["open", "pane", "path"],
       "canvas.setLayoutVisible": ["pane"],
@@ -728,7 +728,7 @@ describe("every shipped args schema", () => {
     };
     for (const [id, keys] of Object.entries(optional)) {
       const command = withArgs.find((c) => c.id === id)!;
-      const { required = [] } = command.args as Shape;
+      const { required = [] } = command.args;
       for (const key of keys) {
         expect(required, `${id} still requires "${key}"`).not.toContain(key);
       }
@@ -742,13 +742,17 @@ describe("every shipped args schema", () => {
        for the manifest as shipped, and a step the static check somehow admitted fails here rather
        than in a capture. Quarantined shots are read past, as the checker and the runner read past
        them. */
+    /* SAFETY: manifest.json is the committed screenshot manifest, JSON by construction, so every
+       step's `args` holds JSON values. The shape below is the subset of `Manifest`
+       (scripts/screenshots/lib/types.ts) this sweep reads, and every field of a shot is optional
+       here, so a shot that omits one reads as empty exactly as the runner reads it. */
     const manifest = (await Bun.file(
       resolve(import.meta.dir, "../../../scripts/screenshots/manifest.json"),
     ).json()) as {
       shots: {
         status?: { state?: string };
-        steps?: { args?: Record<string, unknown>; cmd?: string }[];
-        then?: { steps?: { args?: Record<string, unknown>; cmd?: string }[] }[];
+        steps?: { args?: CommandArgValues; cmd?: string }[];
+        then?: { steps?: { args?: CommandArgValues; cmd?: string }[] }[];
       }[];
     };
     const byId = new Map(withArgs.map((command) => [command.id, command]));
@@ -763,7 +767,7 @@ describe("every shipped args schema", () => {
         if (!command) {
           continue;
         }
-        expect(() => coerceArgs(command.id, command.args!, step.args ?? {})).not.toThrow();
+        expect(() => coerceArgs(command.id, command.args, step.args ?? {})).not.toThrow();
         checked += 1;
       }
     }

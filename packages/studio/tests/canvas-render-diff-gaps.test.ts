@@ -235,9 +235,9 @@ beforeEach(() => {
   initCanvasRender({
     gitDiffState: null,
     openFileFromTree: () => {},
-    setCanvasMode: (_tab: unknown, mode: string) => setMode(mode),
+    setCanvasMode: (_tab: Tab | null, mode: string) => setMode(mode),
     setGitDiffState: () => {},
-  } as never);
+  });
   resetWorkspaceWithTab();
 });
 
@@ -270,7 +270,7 @@ describe("the modes whose panel owns its own reactivity", () => {
     await flush();
 
     expect(library.render).toHaveBeenCalledTimes(1);
-    const [drawnOn, tab] = library.render.mock.calls[0]! as unknown as [CanvasSurface, Tab];
+    const [drawnOn, tab] = library.render.mock.calls[0]!;
     expect(drawnOn).toBe(surfaceForPane(PRIMARY_PANE));
     expect(tab).toBe(activeTab.value!);
     expect(stage().style.padding).toBe("0px");
@@ -285,7 +285,7 @@ describe("the modes whose panel owns its own reactivity", () => {
     await flush();
 
     expect(entry.render).toHaveBeenCalledTimes(1);
-    const [drawnOn, tab] = entry.render.mock.calls[0]! as unknown as [CanvasSurface, Tab];
+    const [drawnOn, tab] = entry.render.mock.calls[0]!;
     expect(drawnOn).toBe(surfaceForPane(PRIMARY_PANE));
     expect(tab).toBe(activeTab.value!);
     expect(stage().style.padding).toBe("0px");
@@ -425,14 +425,14 @@ describe("the notice a stale companion draws", () => {
       },
       id: SECONDARY_PANE,
       tabOrder: [page.id],
-    } as never);
+    });
     registerCanvasSurface(SECONDARY_PANE, wrap);
     try {
       renderCanvas(SECONDARY_PANE);
       await flush();
 
       const button = wrap.querySelector('[part="empty-action"]')!;
-      expect(button.textContent?.trim()).toBe("Keep This Document");
+      expect(button.textContent.trim()).toBe("Keep This Document");
       expect(paneById(SECONDARY_PANE)?.derived).not.toBeNull();
 
       pointer(button, "click");
@@ -494,7 +494,16 @@ describe("the surface registry's guards", () => {
       // Stopped and its record forgotten.
       const ghost = registerCanvasSurface("ghost", document.createElement("div"));
       const stop = mock(() => {});
-      ghost.panels.push({ renderScope: { stop } } as never);
+      ghost.panels.push({
+        _width: null,
+        canvas: document.createElement("div"),
+        element: document.createElement("div"),
+        mediaName: "",
+        ready: true,
+        renderScope: { run: (fn) => fn(), stop },
+        scrollContainer: document.createElement("div"),
+        viewport: document.createElement("div"),
+      });
       disposePaneSurface("ghost");
 
       expect(released).toEqual([ghost]);

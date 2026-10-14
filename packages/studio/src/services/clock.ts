@@ -19,6 +19,11 @@
  * value the formatter reads back.
  */
 
+import { isNumber } from "@jxsuite/schema/guards";
+
+/** One minute in milliseconds: the unit the relative-time formatters count up from. */
+export const MINUTE = 60_000;
+
 /** Epoch milliseconds the clock is pinned to, or `null` while it follows the real clock. */
 let _pinned: number | null = null;
 
@@ -43,7 +48,7 @@ export function now(): number {
  *   photograph the wall clock and the capture would be accepted.
  */
 export function pinClock(at: number | string | Date): number {
-  const ms = at instanceof Date ? at.getTime() : typeof at === "number" ? at : Date.parse(at);
+  const ms = at instanceof Date ? at.getTime() : isNumber(at) ? at : Date.parse(at);
   if (!Number.isFinite(ms)) {
     throw new TypeError(`clock: cannot pin to ${JSON.stringify(at)}`);
   }

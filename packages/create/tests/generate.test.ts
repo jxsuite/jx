@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { generateProject } from "../generate";
@@ -7,9 +7,18 @@ import { generateProject } from "../generate";
 import TEMPLATE_VERSIONS from "../template-versions.json";
 
 const TMP = resolve(tmpdir(), `jx-create-test-${Date.now()}`);
+const STARTER_FIXTURE = resolve(tmpdir(), `jx-create-array-starter-${Date.now()}`);
+
+// Every starter id resolves to a local tree whose project.json is a JSON array, not an object.
+// Generate.ts imports @jxsuite/starters lazily, so registering this after the static import works.
+void mock.module("@jxsuite/starters", () => ({ getStarterDir: () => STARTER_FIXTURE }));
 
 afterEach(() => {
   rmSync(TMP, { force: true, recursive: true });
+});
+
+afterAll(() => {
+  rmSync(STARTER_FIXTURE, { force: true, recursive: true });
 });
 
 describe("generateProject — wrangler.jsonc", () => {
@@ -79,13 +88,32 @@ describe("generateProject — wrangler.jsonc", () => {
 
     // Every @jxsuite range a scaffold emits must come FROM the map, so a future hardcoded literal
     // In generate.ts is red here rather than discovered by a user's failing install.
-    const mapped = new Set(Object.values(TEMPLATE_VERSIONS));
+    const mapped = Object.values(TEMPLATE_VERSIONS);
     for (const bag of [pkg.dependencies, pkg.devDependencies]) {
       for (const [name, range] of Object.entries(bag ?? {})) {
         if (name.startsWith("@jxsuite/")) {
-          expect(mapped.has(range as string)).toBe(true);
+          expect(mapped.some((known) => known === range)).toBe(true);
         }
       }
     }
+  });
+});
+
+describe("generateProject — starter project.json", () => {
+  test("rejects a starter whose project.json is not a JSON object, and rolls back", async () => {
+    mkdirSync(STARTER_FIXTURE, { recursive: true });
+    writeFileSync(join(STARTER_FIXTURE, "project.json"), "[]");
+
+    let failure: unknown;
+    try {
+      await generateProject(TMP, { name: "My Site", starter: "listy" });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toEqual(
+      new TypeError('Starter "listy" has a project.json that is not a JSON object'),
+    );
+    expect(existsSync(TMP)).toBe(false);
   });
 });

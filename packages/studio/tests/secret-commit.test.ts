@@ -23,8 +23,9 @@ import { resetSchemaForms } from "../src/ui/schema-form";
 import { initLayers } from "../src/ui/layers";
 import { projectState } from "../src/store";
 import type { MockPlatformState } from "./harness";
-import type { SecretsSetRequest, StudioPlatform } from "../src/types";
+import type { KeyValuePatch, StudioPlatform } from "../src/types";
 import type { SettingsContribution } from "../src/settings/contributed-section";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   if (!document.querySelector(`#${id}`)) {
@@ -73,8 +74,8 @@ function commitValue(el: HTMLInputElement, value: string): void {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function config(): Record<string, unknown> {
-  return projectState!.projectConfig as unknown as Record<string, unknown>;
+function config(): ProjectConfig | null {
+  return projectState!.projectConfig;
 }
 
 let container: HTMLElement;
@@ -118,7 +119,7 @@ beforeEach(() => {
 
 describe("secret control inside a contributed section", () => {
   test("stores the VALUE via setSecrets and the derived env NAME in project.json", async () => {
-    const secretWrites: SecretsSetRequest[] = [];
+    const secretWrites: KeyValuePatch[] = [];
     const state = await mount({
       setSecrets: async (req) => {
         secretWrites.push(req);
@@ -136,12 +137,12 @@ describe("secret control inside a contributed section", () => {
     // The VALUE went to the platform secret store under the derived env name…
     expect(secretWrites).toEqual([{ set: { MAIN_URL: "postgres://user:pw@host/db" } }]);
     // …and project.json carries only the NAME.
-    const connections = config().connections as Record<string, Record<string, unknown>>;
-    expect(connections.main!.urlEnv).toBe("MAIN_URL");
+    expect(config()?.connections).toMatchObject({ main: { urlEnv: "MAIN_URL" } });
     const written = state.calls.find((c) => c[0] === "writeFile" && c[1] === "project.json");
     expect(written).toBeDefined();
-    expect(written![2] as string).toContain('"urlEnv": "MAIN_URL"');
-    expect(written![2] as string).not.toContain("postgres://");
+    const writtenText = written?.[2];
+    expect(writtenText).toContain('"urlEnv": "MAIN_URL"');
+    expect(writtenText).not.toContain("postgres://");
 
     // The redrawn field advertises where the secret lives, and holds none of it.
     const after = secretField();
@@ -170,8 +171,7 @@ describe("actions slot", () => {
     document.body.append(container);
     renderContributedSection(container, CONNECTIONS_CONTRIBUTION, { actions: actions! });
     await settle();
-    const probe = () =>
-      container.querySelector('[part="test"] [part="control"]') as HTMLElement | null;
+    const probe = () => container.querySelector('[part="test"] [part="control"]');
     expect(container.querySelector('[part="data-actions"]')).not.toBeNull();
     expect(container.querySelector('[part="push"]')).not.toBeNull();
     // No entry selected yet: Test Connection is present but disabled.

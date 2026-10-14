@@ -8,33 +8,36 @@
  */
 
 import { mock, spyOn } from "bun:test";
+import type { DbPushOptions } from "../src/site/db-push.ts";
+import type { buildSite } from "../src/site/site-build.ts";
+import type { ProjectValidationResult } from "@jxsuite/schema/validate-project";
+
+/** The exit code `process.exit` was called with. */
+type ExitCode = Parameters<typeof process.exit>[0];
+
+/** The options object the CLI hands `buildSite`. */
+type BuildSiteOptions = NonNullable<Parameters<typeof buildSite>[1]>;
 
 export class ExitSentinelError extends Error {
-  code: number | undefined;
-  constructor(code?: number) {
+  code: ExitCode;
+  constructor(code?: ExitCode) {
     super(`process.exit(${code})`);
     this.name = "ExitSentinelError";
     this.code = code;
   }
 }
 
-export interface BuildResult {
-  errors: string[];
-  routes: number;
-  files: number;
-}
-
-let buildSiteImpl: (root: string, opts: Record<string, unknown>) => Promise<BuildResult> = () =>
+let buildSiteImpl: (root: string, opts: BuildSiteOptions) => ReturnType<typeof buildSite> = () =>
   Promise.resolve({ errors: [], files: 0, routes: 0 });
 
-export const buildSiteCalls: { root: string; opts: Record<string, unknown> }[] = [];
+export const buildSiteCalls: { root: string; opts: BuildSiteOptions }[] = [];
 
 export function setBuildSite(impl: typeof buildSiteImpl) {
   buildSiteImpl = impl;
 }
 
 void mock.module("../src/site/site-build.ts", () => ({
-  buildSite: (root: string, opts: Record<string, unknown>) => {
+  buildSite: (root: string, opts: BuildSiteOptions) => {
     buildSiteCalls.push({ opts, root });
     return buildSiteImpl(root, opts);
   },
@@ -79,12 +82,7 @@ void mock.module("../src/site/schema-command.ts", () => ({
   },
 }));
 
-export interface ValidationResult {
-  valid: boolean;
-  errors: unknown[] | null;
-}
-
-let validateProjectFileImpl: (root: string) => Promise<ValidationResult> = () =>
+let validateProjectFileImpl: (root: string) => Promise<ProjectValidationResult> = () =>
   Promise.resolve({ errors: null, valid: true });
 
 export const validateProjectFileCalls: string[] = [];
@@ -106,6 +104,15 @@ export interface ProjectTreeResultLike {
   issues: { file: string; errors: unknown[] }[];
   lint?: { file: string; severity: string; message: string; source: string; rule: string }[];
 }
+
+/** One accessibility error the lint pass reports, shared by the `validate` lint scenarios. */
+export const BUTTON_NAME_FINDING = {
+  file: "pages/index.json",
+  message: "the <button> has no accessible name.",
+  rule: "interactive-unnamed",
+  severity: "error",
+  source: "accessibility",
+};
 
 let validateProjectTreeImpl: (
   root: string,
@@ -152,17 +159,17 @@ export interface DbPushResultLike {
   wranglerPath: string | null;
 }
 
-let dbPushImpl: (root: string, opts: Record<string, unknown>) => Promise<DbPushResultLike> = () =>
+let dbPushImpl: (root: string, opts: DbPushOptions) => Promise<DbPushResultLike> = () =>
   Promise.resolve({ bindingsPatched: false, results: [], wranglerPath: null });
 
-export const dbPushCalls: { root: string; opts: Record<string, unknown> }[] = [];
+export const dbPushCalls: { root: string; opts: DbPushOptions }[] = [];
 
 export function setDbPush(impl: typeof dbPushImpl) {
   dbPushImpl = impl;
 }
 
 void mock.module("../src/site/db-push.ts", () => ({
-  dbPush: (root: string, opts: Record<string, unknown>) => {
+  dbPush: (root: string, opts: DbPushOptions) => {
     dbPushCalls.push({ opts, root });
     return dbPushImpl(root, opts);
   },
@@ -170,7 +177,8 @@ void mock.module("../src/site/db-push.ts", () => ({
 
 export const runDevCalls: { root: string; port: number | undefined }[] = [];
 
-let runDevImpl: (root: string, port?: number) => unknown = () => ({});
+// The CLI discards what `runDev` returns, so a stub's return value is never read.
+let runDevImpl: (root: string, port?: number) => void = () => ({});
 
 export function setRunDev(impl: typeof runDevImpl) {
   runDevImpl = impl;
@@ -194,6 +202,11 @@ void mock.module("../src/site/preview-server.ts", () => ({
 
 const originalArgv = process.argv;
 
+/** What the harness reads from an entrypoint module: the promise its body runs in. */
+interface EntryModule {
+  ready?: Promise<unknown>;
+}
+
 /**
  * Import an entrypoint with staged argv; returns logs, errors, and the exit code (if any).
  *
@@ -210,17 +223,17 @@ export async function runEntry(entry: "cli" | "compile-cli", args: string[]) {
   const errSpy = spyOn(console, "error").mockImplementation((...a: unknown[]) => {
     errors.push(a.map(String).join(" "));
   });
-  const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+  const exitSpy = spyOn(process, "exit").mockImplementation((code) => {
     throw new ExitSentinelError(code);
-  }) as never);
+  });
 
-  let exitCode: number | undefined;
+  let exitCode: ExitCode;
   let exited = false;
   try {
     // The entry runs its body in an exported `ready` promise instead of a top-level await, so await
     // That: Bun's test runtime drops a dynamically-imported module's top-level-await continuation
     // (it never resumes on Windows), which would leave the entry's effects unexecuted.
-    const mod = (await import(`../src/${entry}.ts`)) as { ready?: Promise<unknown> };
+    const mod: EntryModule = await import(`../src/${entry}.ts`);
     await mod.ready;
   } catch (error) {
     if (error instanceof ExitSentinelError) {

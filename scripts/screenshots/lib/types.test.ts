@@ -2,6 +2,9 @@
 // `variants`; scripts/screenshots/README.md, "The five verbs"). These are inert JSON literals;
 // Nothing awaits a shot.
 import { describe, expect, test } from "bun:test";
+
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
 import {
   CONTRACT_VERSION,
   DEFAULT_DEVICE_SCALE_FACTOR,
@@ -17,16 +20,16 @@ import {
   shotImages,
   validateManifest,
 } from "./types";
-import type { Manifest, Shot } from "./types";
+import type { Shot } from "./types";
 
 /** A minimal manifest that passes, so each test can state exactly one deviation from it. */
-function manifest(shots: unknown[], defaults?: unknown): unknown {
-  return {
-    contract: CONTRACT_VERSION,
-    outDir: "docs/images",
-    ...(defaults === undefined ? {} : { defaults }),
-    shots,
-  };
+function manifest(shots: JsonValue[], defaults?: JsonValue): JsonObject {
+  const root: JsonObject = { contract: CONTRACT_VERSION, outDir: "docs/images" };
+  if (defaults !== undefined) {
+    root.defaults = defaults;
+  }
+  root.shots = shots;
+  return root;
 }
 
 const HERO = {
@@ -139,7 +142,7 @@ describe("validateManifest", () => {
   });
 
   test("input steps are checked kind by kind, and their region must be a region id", () => {
-    const step = (s: unknown) => () => validateManifest(manifest([{ ...HERO, steps: [s] }]));
+    const step = (s: JsonValue) => () => validateManifest(manifest([{ ...HERO, steps: [s] }]));
     expect(step({ input: "press" })).toThrow("input must be one of");
     expect(step({ input: "hover" })).toThrow('input "hover" needs a region id');
     expect(step({ input: "type" })).toThrow('input "type" needs text');
@@ -149,7 +152,7 @@ describe("validateManifest", () => {
   });
 
   test("an expect entry carries exactly one of region | state, and the region is an id", () => {
-    const entry = (e: unknown) => () => validateManifest(manifest([{ ...HERO, expect: [e] }]));
+    const entry = (e: JsonValue) => () => validateManifest(manifest([{ ...HERO, expect: [e] }]));
     expect(entry({})).toThrow("exactly one of region | state");
     expect(entry({ region: "rail", state: {} })).toThrow("exactly one of region | state");
     expect(entry({ region: "#tab-strip" })).toThrow("is not a region id");
@@ -178,7 +181,7 @@ describe("validateManifest", () => {
   });
 
   test("open fields are typed, and an unknown one is a failure rather than a silent no-op", () => {
-    const open = (o: unknown) => () => validateManifest(manifest([{ ...HERO, open: o }]));
+    const open = (o: JsonValue) => () => validateManifest(manifest([{ ...HERO, open: o }]));
     expect(open({ project: 3 })).toThrow("open.project must be a non-empty string");
     expect(open({ fit: "cover" })).toThrow("open.fit must be");
     expect(open({ fit: 0.75 })).not.toThrow();
@@ -222,7 +225,7 @@ describe("resolveShot", () => {
   };
 
   test("folds defaults in and leaves every field decided", () => {
-    const m = validateManifest(manifest([HERO], defaults)) as Manifest;
+    const m = validateManifest(manifest([HERO], defaults));
     const resolved = resolveShot(m, m.shots[0]!);
     expect(resolved.open).toEqual({
       clock: null,
@@ -239,12 +242,12 @@ describe("resolveShot", () => {
   });
 
   test("the shot wins over defaults, and docks merge per dock id", () => {
-    const shot: Shot = {
+    const shot = {
       capture: [{ image: "x" }],
       name: "x",
       open: { docks: { problems: { collapsed: true } }, project: "examples", theme: "light" },
-    };
-    const m = validateManifest(manifest([shot], defaults)) as Manifest;
+    } satisfies Shot;
+    const m = validateManifest(manifest([shot], defaults));
     const resolved = resolveShot(m, m.shots[0]!);
     expect(resolved.open.project).toBe("examples");
     expect(resolved.open.theme).toBe("light");
@@ -255,9 +258,7 @@ describe("resolveShot", () => {
   });
 
   test("with no defaults at all the boot state is still total", () => {
-    const m = validateManifest(
-      manifest([{ capture: [{ image: "w" }], name: "welcome" }]),
-    ) as Manifest;
+    const m = validateManifest(manifest([{ capture: [{ image: "w" }], name: "welcome" }]));
     const resolved = resolveShot(m, m.shots[0]!);
     expect(resolved.open.project).toBeNull();
     expect(resolved.open.profile).toBe(DEFAULT_PROFILE);

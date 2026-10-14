@@ -10,21 +10,43 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const require = createRequire(import.meta.url);
 
 const MANIFEST_PATH = resolve(import.meta.dir, "../jx-extension.json");
 
-function loadJson(path: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+/** The value at `keys` under `value`, or `undefined` where a step is not an object: `?.` for JSON. */
+function at(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
 }
 
-const manifest = loadJson(MANIFEST_PATH) as {
-  name: string;
-  title: string;
-  classes: Record<string, string>;
-  schemas: { project: string; document: string };
-};
+function objectOf(value: JsonValue | undefined, label: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new Error(`${label} is not a JSON object`);
+  }
+  return value;
+}
+
+function stringOf(value: JsonValue | undefined, label: string): string {
+  if (!isString(value)) {
+    throw new Error(`${label} is not a string`);
+  }
+  return value;
+}
+
+function loadJson(path: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(path, "utf8"));
+  return objectOf(parsed, path);
+}
+
+const manifest = loadJson(MANIFEST_PATH);
+const manifestClasses = objectOf(manifest.classes, "manifest.classes");
 
 /** An ajv instance with the shipped core + field-union defaults registered (standalone validation). */
 function makeAjv() {
@@ -43,25 +65,20 @@ describe("jx-extension.json manifest", () => {
   });
 
   test("carries the package name and is wired through package.json", () => {
-    const pkg = loadJson(resolve(import.meta.dir, "../package.json")) as {
-      name: string;
-      jx: string;
-      exports: Record<string, string>;
-      files: string[];
-    };
+    const pkg = loadJson(resolve(import.meta.dir, "../package.json"));
     expect(manifest.name).toBe(pkg.name);
     expect(pkg.jx).toBe("./jx-extension.json");
-    expect(pkg.exports["./jx-extension.json"]).toBe("./jx-extension.json");
-    expect(pkg.exports["./Content.class.json"]).toBe("./src/Content.class.json");
-    expect(pkg.exports["./content-loader"]).toBe("./src/content-loader.ts");
-    expect(pkg.exports["./schemas/project.fragment.schema.json"]).toBeDefined();
-    expect(pkg.exports["./schemas/document.fragment.schema.json"]).toBeDefined();
+    expect(at(pkg, "exports", "./jx-extension.json")).toBe("./jx-extension.json");
+    expect(at(pkg, "exports", "./Content.class.json")).toBe("./src/Content.class.json");
+    expect(at(pkg, "exports", "./content-loader")).toBe("./src/content-loader.ts");
+    expect(at(pkg, "exports", "./schemas/project.fragment.schema.json")).toBeDefined();
+    expect(at(pkg, "exports", "./schemas/document.fragment.schema.json")).toBeDefined();
     expect(pkg.files).toContain("jx-extension.json");
     expect(pkg.files).toContain("schemas/");
   });
 
   test("every classes entry points at an existing descriptor", () => {
-    expect(Object.keys(manifest.classes).toSorted()).toEqual([
+    expect(Object.keys(manifestClasses).toSorted()).toEqual([
       "Content",
       "ContentCollection",
       "ContentEntry",
@@ -69,15 +86,21 @@ describe("jx-extension.json manifest", () => {
       "Markdown",
       "MarkdownCollection",
     ]);
-    for (const ref of Object.values(manifest.classes)) {
-      const classPath = resolve(dirname(MANIFEST_PATH), ref);
+    for (const [name, ref] of Object.entries(manifestClasses)) {
+      const classPath = resolve(dirname(MANIFEST_PATH), stringOf(ref, `manifest.classes.${name}`));
       expect(existsSync(classPath)).toBe(true);
     }
   });
 
   test("schema fragments exist at the declared paths", () => {
-    const projectPath = resolve(dirname(MANIFEST_PATH), manifest.schemas.project);
-    const documentPath = resolve(dirname(MANIFEST_PATH), manifest.schemas.document);
+    const projectPath = resolve(
+      dirname(MANIFEST_PATH),
+      stringOf(at(manifest, "schemas", "project"), "manifest.schemas.project"),
+    );
+    const documentPath = resolve(
+      dirname(MANIFEST_PATH),
+      stringOf(at(manifest, "schemas", "document"), "manifest.schemas.document"),
+    );
     expect(existsSync(projectPath)).toBe(true);
     expect(existsSync(documentPath)).toBe(true);
   });
@@ -89,8 +112,7 @@ describe("project fragment", () => {
   test("is a standalone-valid 2020-12 document contributing `content`", () => {
     expect(fragment.$id).toBe("https://jxsuite.com/schema/ext/parser/project/v1");
     expect(fragment.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
-    const properties = fragment.properties as Record<string, unknown>;
-    expect(Object.keys(properties)).toEqual(["content"]);
+    expect(Object.keys(objectOf(fragment.properties, "fragment.properties"))).toEqual(["content"]);
     expect(() => makeAjv().compile(fragment)).not.toThrow();
   });
 
@@ -123,9 +145,11 @@ describe("project fragment", () => {
        so the order is user-facing: the four every type has stay where they were, and the options
        for publishing a folder of notes come after them. Alphabetical order once pushed `schema`,
        the one field a first-time author edits, below the fold of the tutorial's screenshots. */
-    const types = (fragment.properties as Record<string, { additionalProperties: unknown }>)
-      .content!.additionalProperties as { properties: Record<string, unknown> };
-    expect(Object.keys(types.properties)).toEqual([
+    const typeProperties = objectOf(
+      at(fragment, "properties", "content", "additionalProperties", "properties"),
+      "content.additionalProperties.properties",
+    );
+    expect(Object.keys(typeProperties)).toEqual([
       "$elements",
       "format",
       "schema",
@@ -142,7 +166,7 @@ describe("project fragment", () => {
 
   test("accepts the whole alerts option as a boolean and a where filter with a literal object", () => {
     const validate = makeAjv().compile(fragment);
-    const type = (extra: Record<string, unknown>) => ({
+    const type = (extra: JsonObject) => ({
       content: { kb: { format: "Markdown", source: "./kb", ...extra } },
     });
     expect(validate(type({ alerts: false }))).toBe(true);
@@ -173,8 +197,7 @@ describe("document fragment", () => {
 
   test("is a standalone-valid 2020-12 document with $defs.ContentPathsSource", () => {
     expect(fragment.$id).toBe("https://jxsuite.com/schema/ext/parser/document/v1");
-    const defs = fragment.$defs as Record<string, unknown>;
-    expect(defs.ContentPathsSource).toBeDefined();
+    expect(at(fragment, "$defs", "ContentPathsSource")).toBeDefined();
     expect(() => makeAjv().compile(fragment)).not.toThrow();
   });
 

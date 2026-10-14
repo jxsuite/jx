@@ -51,13 +51,16 @@ import type {
   GridSource,
 } from "../grid-source";
 import type { ContentSectionEntry } from "../../types";
+import type { EntryFields } from "../../content/entry-fields";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import { isJsonPrimitive, isNonNullObject, isString } from "@jxsuite/schema/guards";
 
 /** The synthetic identity column: the entry's project path. Editable only on pending inserts. */
 export const PATH_FIELD = "__path";
 
 interface EntryRecord {
-  frontmatter: Record<string, unknown>;
-  document: Record<string, unknown>;
+  frontmatter: EntryFields;
+  document: JxMutableNode;
   rawText: string;
   formatName: string;
 }
@@ -69,13 +72,17 @@ interface CollectionInfo {
   ext: string;
 }
 
+/** The open project's `content` section (collection name → entry), or an empty one. */
+function contentSection(): Record<string, ContentSectionEntry> {
+  /* SAFETY: `content` is the parser extension's section — collection name → entry object, its
+     project fragment schema the source of truth. `ContentSectionEntry` names only the fields Studio
+     reads, every one optional, and both readers below test `source` before using it. */
+  return (projectState?.projectConfig?.content ?? {}) as Record<string, ContentSectionEntry>;
+}
+
 /** Resolve a content type's definition, source dir, and entry extension from project config. */
 export function collectionInfo(typeName: string): CollectionInfo | null {
-  const content = (projectState?.projectConfig?.content ?? {}) as Record<
-    string,
-    ContentSectionEntry
-  >;
-  const def = content[typeName];
+  const def = contentSection()[typeName];
   if (!def?.source) {
     return null;
   }
@@ -91,11 +98,7 @@ export function collectionInfo(typeName: string): CollectionInfo | null {
 
 /** Directory-backed collections in the project (for "Edit collection in Grid" affordances). */
 export function collectionDirs(): { name: string; dir: string }[] {
-  const content = (projectState?.projectConfig?.content ?? {}) as Record<
-    string,
-    ContentSectionEntry
-  >;
-  return Object.entries(content)
+  return Object.entries(contentSection())
     .filter(([, def]) => {
       const source = def.source?.replace(/^\.\//, "") ?? "";
       return source !== "" && !/\.[a-z0-9]+$/i.test(source);
@@ -160,14 +163,14 @@ async function mapLimit<T, R>(
 }
 
 /** Frontmatter value → grid cell value. Nested objects surface as read-only JSON text. */
-function toCellValue(value: unknown): GridCellValue {
-  if (value === null || value === undefined) {
+function toCellValue(value: JxDocumentValue | undefined): GridCellValue {
+  if (value === undefined) {
     return null;
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (isJsonPrimitive(value)) {
     return value;
   }
-  if (Array.isArray(value) && value.every((v) => typeof v !== "object" || v === null)) {
+  if (Array.isArray(value) && value.every((v) => !isNonNullObject(v))) {
     return value.map(String);
   }
   return JSON.stringify(value);
@@ -187,9 +190,7 @@ function openTabFor(path: string) {
 function extraRowsAreStrings(rows: Record<string, GridCellValue>[], field: string): boolean {
   return rows.every((row) => {
     const value = row[field];
-    return value === null || value === undefined || typeof value !== "string"
-      ? true
-      : !value.startsWith("{") && !value.startsWith("[");
+    return !isString(value) || (!value.startsWith("{") && !value.startsWith("["));
   });
 }
 
@@ -294,7 +295,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
           return {
             document: parsed.document,
             formatName: parsed.format.name,
-            frontmatter: parsed.frontmatter ?? {},
+            frontmatter: parsed.frontmatter,
             rawText: text,
           };
         } catch {
@@ -393,7 +394,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
   };
 
   const rowFor = (path: string, entry: EntryRecord): GridRow => {
-    const cells: Record<string, GridCellValue> = { [PATH_FIELD]: path };
+    const cells: GridRow["cells"] = { [PATH_FIELD]: path };
     for (const column of buildColumns()) {
       if (column.field === PATH_FIELD) {
         continue;
@@ -490,7 +491,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
       // Inserts: new entry files from the Path cell.
       for (const insert of batch.inserts) {
         const rawPath = insert.cells[PATH_FIELD];
-        if (typeof rawPath !== "string" || rawPath.trim() === "") {
+        if (!isString(rawPath) || rawPath.trim() === "") {
           result.inserts.push({ error: "Path is required", ok: false, tempKey: insert.tempKey });
           continue;
         }
@@ -522,7 +523,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
           continue;
         }
         try {
-          const frontmatter: Record<string, unknown> = {};
+          const frontmatter: Record<string, GridCellValue> = {};
           for (const [field, value] of Object.entries(insert.cells)) {
             if (field !== PATH_FIELD && value !== null) {
               frontmatter[field] = value;
@@ -539,7 +540,7 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
           entries.set(path, {
             document: parsed.document,
             formatName: parsed.format.name,
-            frontmatter: parsed.frontmatter ?? {},
+            frontmatter: parsed.frontmatter,
             rawText: text,
           });
           result.inserts.push({ newKey: path, ok: true, tempKey: insert.tempKey });

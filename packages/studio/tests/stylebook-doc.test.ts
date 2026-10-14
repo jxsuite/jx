@@ -11,18 +11,19 @@ import {
   hasTagStyle,
   transposeStylebookStyle,
 } from "../src/panels/stylebook-doc";
+import type { BuildStylebookDocOpts } from "../src/panels/stylebook-doc";
 import { serializeJxPath } from "../src/canvas/path-mapping";
-import type { StylebookEntry } from "../src/panels/stylebook-panel";
 import type { ComponentEntry } from "../src/files/components";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
-const META = {
+const META: BuildStylebookDocOpts["meta"] = {
   $sections: [
     {
       elements: [
         { tag: "h1", text: "Heading" },
         { tag: "p", text: "Paragraph" },
-      ] as StylebookEntry[],
+      ],
       label: "Text",
     },
     {
@@ -34,18 +35,18 @@ const META = {
           ],
           tag: "ul",
         },
-      ] as StylebookEntry[],
+      ],
       label: "List",
     },
   ],
 };
 
-function build(overrides: Partial<Parameters<typeof buildStylebookDoc>[0]> = {}) {
+function build(overrides: Partial<BuildStylebookDocOpts> = {}) {
   return buildStylebookDoc({
     components: [],
     customizedOnly: false,
     effectiveMedia: { "--md": "(max-width: 768px)" },
-    effectiveStyle: {} as JxStyle,
+    effectiveStyle: {},
     filter: "",
     meta: META,
     projectRoot: "examples",
@@ -53,15 +54,30 @@ function build(overrides: Partial<Parameters<typeof buildStylebookDoc>[0]> = {})
   });
 }
 
-const kids = (n: JxMutableNode) => n.children as JxMutableNode[];
-const cls = (n: JxMutableNode) => (n.attributes as Record<string, string>).class;
+/** The generator emits element children only; a text child or a repeater here is a test failure. */
+function kids(n: JxMutableNode): JxMutableNode[] {
+  const { children } = n;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected an array of children");
+  }
+  const elements: JxMutableNode[] = [];
+  for (const child of children) {
+    if (isString(child)) {
+      throw new TypeError(`expected element children, got text ${JSON.stringify(child)}`);
+    }
+    elements.push(child);
+  }
+  return elements;
+}
+
+const cls = (n: JxMutableNode) => n.attributes?.class;
 
 describe("buildStylebookDoc — tree shape", () => {
   test("root carries sb-root, $media, and the transposed style; sections wrap labelled card bodies", () => {
-    const { doc } = build({ effectiveStyle: { h1: { color: "red" } } as JxStyle });
+    const { doc } = build({ effectiveStyle: { h1: { color: "red" } } });
     expect(cls(doc)).toBe("sb-root");
-    expect((doc as { $media?: unknown }).$media).toEqual({ "--md": "(max-width: 768px)" });
-    expect((doc.style as Record<string, unknown>)["& .element-card-preview h1"]).toEqual({
+    expect(doc.$media).toEqual({ "--md": "(max-width: 768px)" });
+    expect(doc.style?.["& .element-card-preview h1"]).toEqual({
       color: "red",
     });
 
@@ -84,9 +100,7 @@ describe("buildStylebookDoc — tree shape", () => {
       meta: {
         $sections: [
           {
-            elements: [
-              { attributes: { type: "text" }, style: "width: 40px", tag: "input" },
-            ] as StylebookEntry[],
+            elements: [{ attributes: { type: "text" }, style: "width: 40px", tag: "input" }],
             label: "Forms",
           },
         ],
@@ -126,7 +140,7 @@ describe("buildStylebookDoc — tree shape", () => {
 
     const custom = build({
       customizedOnly: true,
-      effectiveStyle: { "@md": { p: { color: "blue" } } } as JxStyle,
+      effectiveStyle: { "@md": { p: { color: "blue" } } },
     });
     // Only <p> is customized (under a media block — hasTagStyle looks there too).
     expect(custom.tagToCardPath.has("p")).toBe(true);
@@ -151,18 +165,14 @@ describe("buildStylebookDoc — tree shape", () => {
         ],
         source: "local",
         tagName: "user-card",
-      } as never,
-      { package: "sl", source: "npm", tagName: "sl-button" } as never,
+      },
+      { package: "sl", source: "npm", tagName: "sl-button" },
     ];
     const { doc, tagToCardPath } = build({ components });
-    expect((doc as { $elements?: unknown[] }).$elements).toEqual([
-      { $ref: "/examples/components/user-card.json" },
-    ]);
+    expect(doc.$elements).toEqual([{ $ref: "/examples/components/user-card.json" }]);
     // An ABSOLUTE projectRoot must not produce a protocol-relative "//home/…" ref.
     const absolute = build({ components, projectRoot: "/home/user/site" });
-    expect((absolute.doc as { $elements?: { $ref: string }[] }).$elements?.[0]?.$ref).toBe(
-      "/home/user/site/components/user-card.json",
-    );
+    expect(absolute.doc.$elements).toEqual([{ $ref: "/home/user/site/components/user-card.json" }]);
     const compSection = kids(doc).at(-1)!;
     expect(kids(compSection)[0]!.textContent).toBe("Components");
     const cards = kids(kids(compSection)[1]!);
@@ -185,9 +195,9 @@ describe("transposeStylebookStyle", () => {
       "--accent": "#f00",
       "font-family": "serif",
       h1: { "font-size": "2rem" },
-      "table th": undefined as never,
+      "table th": undefined,
       table: { th: { padding: "4px" } },
-    } as JxStyle) as Record<string, unknown>;
+    });
     expect(out["--accent"]).toBe("#f00");
     expect(out["font-family"]).toBe("serif");
     expect(out["& .element-card-preview h1"]).toEqual({ "font-size": "2rem" });
@@ -205,7 +215,7 @@ describe("transposeStylebookStyle", () => {
     const out = transposeStylebookStyle({
       h1: { "@md": { color: "green" }, color: "red" },
       ul: { li: { "@md": { margin: "0" } } },
-    } as JxStyle) as Record<string, unknown>;
+    });
     expect(out["& .element-card-preview h1"]).toEqual({ "@md": { color: "green" }, color: "red" });
     expect(out["& .element-card-preview ul"]).toEqual({ li: { "@md": { margin: "0" } } });
     expect(out["@md"]).toBeUndefined();
@@ -215,7 +225,7 @@ describe("transposeStylebookStyle", () => {
     // Still needed: a bare `h1` rule on the generated root would reach the card chrome.
     const out = transposeStylebookStyle({
       "@md": { h1: { "font-weight": "700" }, "line-height": "1.4" },
-    } as JxStyle) as Record<string, unknown>;
+    });
     expect(out["@md"]).toEqual({
       "& .element-card-preview h1": { "font-weight": "700" },
       "line-height": "1.4",
@@ -228,7 +238,7 @@ describe("transposeStylebookStyle", () => {
     const out = transposeStylebookStyle({
       "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
       h1: { animation: "toast-in 180ms" },
-    } as JxStyle) as Record<string, unknown>;
+    });
     expect(out["@keyframes toast-in"]).toEqual({ from: { opacity: "0" }, to: { opacity: "1" } });
   });
 
@@ -236,7 +246,7 @@ describe("transposeStylebookStyle", () => {
     const out = transposeStylebookStyle({
       "@--": { width: "1280px" },
       a: { ":hover": { color: "blue" }, "@--": { x: "y" }, color: "navy" },
-    } as JxStyle) as Record<string, unknown>;
+    });
     expect(out["& .element-card-preview a"]).toEqual({
       ":hover": { color: "blue" },
       color: "navy",
@@ -247,11 +257,11 @@ describe("transposeStylebookStyle", () => {
 
 describe("hasTagStyle", () => {
   test("finds direct, compound, and media-scoped customization; misses empty rules", () => {
-    const style = {
+    const style: JxStyle = {
       "@md": { p: { color: "blue" } },
       table: { th: { padding: "2px" } },
       ul: {},
-    } as JxStyle;
+    };
     expect(hasTagStyle(style, "table th")).toBe(true);
     expect(hasTagStyle(style, "p")).toBe(true);
     expect(hasTagStyle(style, "ul")).toBe(false);

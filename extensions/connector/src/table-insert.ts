@@ -7,6 +7,7 @@
  */
 
 import { lowerActionDef, makeActionHandler } from "./table-actions.ts";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { ActionDef } from "./table-actions.ts";
 import type { LowerContext } from "./table-state.ts";
 
@@ -23,7 +24,7 @@ export class TableInsert {
   }
 
   /** Static `lower` capability: compile away into an inline Function def. */
-  static lower(def: ActionDef, context: LowerContext = {}): Record<string, unknown> {
+  static lower(def: ActionDef, context: LowerContext = {}): JsonObject {
     return lowerActionDef("POST", def, context);
   }
 }

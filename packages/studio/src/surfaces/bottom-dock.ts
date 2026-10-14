@@ -15,23 +15,14 @@
  * @docs studio/interface
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import bottomDockDoc from "./bottom-dock.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { JxElement } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceTab } from "../ui/surface";
 
-registerSurface("bottom-dock", bottomDockDoc as unknown as JxDocument);
-
-/** One tab of the strip, as the document draws it. */
-export interface BottomTabView {
-  /** The panel id — the row's identity, the strip's `selected` value, and `data-tab`. */
-  key: string;
-  /** The record's title with its badge already appended ("Problems 2"). */
-  label: string;
-  /** The tab element's own id, which the one panel names as its `aria-labelledby`. */
-  tabId: string;
-}
+registerSurface("bottom-dock", bottomDockDoc);
 
 /** What the dock says right now. */
 export interface BottomDockValues {
@@ -41,7 +32,7 @@ export interface BottomDockValues {
   tabId: string;
   /** `dock.bottom/panel:<id>`, or empty when no tab is showing and the body has no identity. */
   bodyRegion: string;
-  tabs: BottomTabView[];
+  tabs: SurfaceTab[];
 }
 
 export interface BottomDockActions {
@@ -62,7 +53,7 @@ export interface BottomDockHandle {
   dispose: () => void;
 }
 
-interface BottomDockScope extends Record<string, unknown>, BottomDockValues, BottomDockActions {}
+interface BottomDockScope extends BottomDockValues, BottomDockActions {}
 
 function project(scope: BottomDockScope, values: BottomDockValues): void {
   scope.tab = values.tab;
@@ -73,8 +64,8 @@ function project(scope: BottomDockScope, values: BottomDockValues): void {
 
 /** The `part` a node was declared with, or the empty string. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -90,7 +81,7 @@ export function mountBottomDockSurface(
   actions: BottomDockActions,
   options: BottomDockOptions,
 ): BottomDockHandle {
-  const scope = reactive<BottomDockScope>({ ...values, ...actions }) as BottomDockScope;
+  const scope: BottomDockScope = reactive<BottomDockScope>({ ...values, ...actions });
 
   container.textContent = "";
   // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types

@@ -4,12 +4,25 @@
  */
 import { resetWorkspaceWithTab } from "./harness";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { registerRenderer, render, renderOnly, updateSession } from "../src/store";
+import { registerRenderer, render, renderOnly, requireShellRef, updateSession } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 afterEach(() => {
   closeAllTabs();
+});
+
+describe("requireShellRef", () => {
+  test("hands back a region the shell has", () => {
+    const region = document.createElement("div");
+    expect(requireShellRef(region, "left-panel")).toBe(region);
+  });
+
+  test("throws a TypeError naming a region initShellRefs() has not found", () => {
+    expect(() => requireShellRef(null, "left-panel")).toThrow(
+      new TypeError("#left-panel is not in the shell yet; initShellRefs() has not found it"),
+    );
+  });
 });
 
 describe("renderer error guards", () => {
@@ -56,7 +69,7 @@ describe("renderer error guards", () => {
 describe("updateSession", () => {
   test("writes hover, clipboard, and canvas patches to the tab it is GIVEN", () => {
     const tab = resetWorkspaceWithTab();
-    const clip = { tagName: "p", textContent: "copied" } as JxMutableNode;
+    const clip: JxMutableNode = { tagName: "p", textContent: "copied" };
     updateSession(tab, {
       canvas: { error: "boom", status: "error" },
       clipboard: clip,

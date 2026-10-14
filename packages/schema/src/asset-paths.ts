@@ -11,6 +11,8 @@
  * Pure string math only — no node imports — so browser hosts can import this module.
  */
 
+import { isString } from "./guards";
+
 /** Prefix for npm package specifiers in `$src` (spec §12): `npm:<pkg>[/subpath]`. */
 export const NPM_SPECIFIER_PREFIX = "npm:";
 
@@ -88,6 +90,26 @@ export interface AssetMount {
    */
   filter?: (path: string) => boolean;
 }
+
+/**
+ * The project.json section key content types live under; also the URL namespace of their asset
+ * mounts (`/content/<type>`). Shared by the parser's content loader, which declares the mounts, and
+ * Studio's canvas, which rebuilds them in a browser.
+ */
+export const CONTENT_SECTION_KEY = "content";
+
+/** Content type names (and locale segments) safe to place in a URL path segment unescaped. */
+export const SAFE_CONTENT_TYPE_NAME = /^[\w.~-]+$/;
+
+/**
+ * The placeholder a content type's `source` may carry to say "one directory per locale".
+ *
+ * `./blog/{locale}/` is one content type spread over N directories, not N content types. That
+ * distinction is what keeps a translated post the same post: it keeps one schema, one set of
+ * relationship targets, and one name in `$paths`, and differs only in which directory it was read
+ * from — which is exactly the model `site-architecture.md` §13 uses for routes.
+ */
+export const LOCALE_PLACEHOLDER = "{locale}";
 
 /** Normalize a path or prefix for comparison: forward slashes, no trailing slash. */
 function normalizeDir(value: string): string {
@@ -580,7 +602,7 @@ export function formatSrcset(candidates: readonly SrcsetCandidate[]): string {
  * @returns {string} `""` or a path with a leading slash and no trailing one
  */
 export function siteBasePath(url: string | undefined | null): string {
-  if (typeof url !== "string" || url === "") {
+  if (!isString(url) || url === "") {
     return "";
   }
   let pathname: string;

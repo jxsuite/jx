@@ -27,6 +27,8 @@ afterEach(() => {
 });
 
 async function icon(attrs: Record<string, string>): Promise<JxIcon> {
+  /* SAFETY: registerUi() in beforeAll defined jx-icon, so createElement returns the upgraded
+     element, and jx-icon.json declares the name, weight, label and mirror props JxIcon names. */
   const el = document.createElement("jx-icon") as JxIcon;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);

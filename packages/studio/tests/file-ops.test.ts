@@ -1,24 +1,50 @@
 import "./with-dom.js";
-import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { registerPlatform } from "../src/platform";
 import { exportFile, openFile, parseSourceForPath, saveFile } from "../src/files/file-ops";
 import { activeTab, closeTab, openTab } from "../src/workspace/workspace";
 import { openMediaTab } from "../src/media/media-open";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { Mock } from "bun:test";
 import type { StudioPlatform } from "../src/types";
 
 beforeAll(() => {
   seedMarkdownFormat();
 });
 
-const formatPlatform = { formatAction: mockFormatAction };
+/** What a test's mock platform received: the method, the path, and the bytes. */
+type PlatformWrite = (string | File | Blob | ArrayBuffer)[];
+
+/** Register a platform that implements `formatAction` plus only the `methods` a test supplies. */
+function registerPartialPlatform(methods: Partial<StudioPlatform> = {}): void {
+  /* SAFETY: the paths under test reach the platform for `formatAction` (format-host's parse and
+     serialize), `locateFile` (openFile) and `writeFile` (saveFile), and each test supplies the ones
+     its path calls. A member left out stays `undefined`, as on the partial platforms these suites
+     always registered, so a path that started calling one throws rather than reading an answer. */
+  registerPlatform({ formatAction: mockFormatAction, ...methods } as StudioPlatform);
+}
+
+/** A `FileSystemFileHandle` whose writable stream hands each write to `onWrite`. */
+function writableHandle(onWrite: (content: string) => void, name = "export.json") {
+  /* SAFETY: saveFile and exportFile call only `createWritable()` on the handle, then `write()` and
+     `close()` on the stream (plus `name` after an export), which is all this object implements. */
+  return {
+    createWritable: async () => ({
+      close: async () => {},
+      write: async (content: string) => {
+        onWrite(content);
+      },
+    }),
+    name,
+  } as FileSystemFileHandle;
+}
 
 // ─── parseSourceForPath ──────────────────────────────────────────────────────
 
 describe("parseSourceForPath", () => {
   beforeAll(() => {
-    registerPlatform(formatPlatform as unknown as StudioPlatform);
+    registerPartialPlatform();
   });
 
   test("returns content state for plain markdown", async () => {
@@ -27,8 +53,8 @@ describe("parseSourceForPath", () => {
       "---\ntitle: Test Post\n---\n\n# Hello\n\nWorld",
     );
     expect(result.document).toBeDefined();
-    expect((result.document as JxMutableNode).children).toBeDefined();
-    expect((result.frontmatter as Record<string, unknown>).title).toBe("Test Post");
+    expect(result.document.children).toBeDefined();
+    expect(result.frontmatter.title).toBe("Test Post");
     expect(result.mode).toBe("content");
     expect(result.format.name).toBe("Markdown");
   });
@@ -38,7 +64,7 @@ describe("parseSourceForPath", () => {
       "comp.md",
       "---\ntagName: my-component\n---\n# Content\n",
     );
-    expect((result.document as JxMutableNode).tagName).toBe("my-component");
+    expect(result.document.tagName).toBe("my-component");
     expect(result.frontmatter).toEqual({});
     expect(result.mode).toBe("component");
   });
@@ -49,8 +75,8 @@ describe("parseSourceForPath", () => {
       "---\ntitle: Test Post\n---\n\n# Content doc",
     );
     expect(result.frontmatter).toBeDefined();
-    expect((result.frontmatter as Record<string, unknown>).children).toBeUndefined();
-    expect((result.frontmatter as Record<string, unknown>).title).toBe("Test Post");
+    expect(result.frontmatter.children).toBeUndefined();
+    expect(result.frontmatter.title).toBe("Test Post");
   });
 
   test("throws for unregistered extensions", async () => {
@@ -65,8 +91,10 @@ describe("parseSourceForPath", () => {
 
 describe("openFile", () => {
   beforeEach(() => {
-    registerPlatform(formatPlatform as unknown as StudioPlatform);
-    delete (window as any).showOpenFilePicker;
+    // No project to resolve the picked file against, so it opens without a documentPath.
+    registerPartialPlatform({ locateFile: async () => null });
+    // The File System Access pickers are not in TypeScript's DOM lib, so they are removed by name.
+    Reflect.deleteProperty(window, "showOpenFilePicker");
     // Close any existing tabs
     for (const id of activeTab.value ? [activeTab.value.id] : []) {
       closeTab(id);
@@ -80,7 +108,7 @@ describe("openFile", () => {
       }),
       name: "component.json",
     };
-    (window as any).showOpenFilePicker = async () => [mockHandle];
+    Object.assign(window, { showOpenFilePicker: async () => [mockHandle] });
 
     await openFile();
 
@@ -97,22 +125,25 @@ describe("openFile", () => {
       }),
       name: "post.md",
     };
-    (window as any).showOpenFilePicker = async () => [mockHandle];
+    Object.assign(window, { showOpenFilePicker: async () => [mockHandle] });
 
     await openFile();
 
     const tab = activeTab.value;
     expect(tab).not.toBeNull();
     expect(tab!.doc.sourceFormat).toBe("Markdown");
-    expect((tab as unknown as { fileHandle: unknown }).fileHandle).toEqual(mockHandle);
+    // The tab keeps the picker's own handle; the stub implements only what openFile reads.
+    expect<FileSystemFileHandle | typeof mockHandle | null>(tab!.fileHandle).toEqual(mockHandle);
   });
 
   test("handles AbortError silently", async () => {
     const error = new Error("User cancelled");
     error.name = "AbortError";
-    (window as any).showOpenFilePicker = async () => {
-      throw error;
-    };
+    Object.assign(window, {
+      showOpenFilePicker: async () => {
+        throw error;
+      },
+    });
 
     // Should not throw
     await openFile();
@@ -130,13 +161,12 @@ describe("saveFile", () => {
   });
 
   test("saves via platform when documentPath exists", async () => {
-    let written: any = null;
-    registerPlatform({
-      ...formatPlatform,
-      writeFile: (path: any, content: any) => {
+    let written: { content: string; path: string } | null = null;
+    registerPartialPlatform({
+      writeFile: async (path, content) => {
         written = { content, path };
       },
-    } as any);
+    });
 
     openTab({
       document: { children: [], tagName: "div" },
@@ -148,25 +178,20 @@ describe("saveFile", () => {
     await saveFile();
 
     expect(written).not.toBeNull();
-    expect(written.path).toBe("pages/index.json");
+    expect(written!.path).toBe("pages/index.json");
     expect(activeTab.value!.doc.dirty).toBe(false);
   });
 
   test("saves via File System Access API when fileHandle exists", async () => {
-    let writtenContent = null;
-    const mockHandle = {
-      createWritable: async () => ({
-        close: async () => {},
-        write: async (content: any) => {
-          writtenContent = content;
-        },
-      }),
-    };
+    let writtenContent: string | null = null;
+    const mockHandle = writableHandle((content) => {
+      writtenContent = content;
+    });
 
-    registerPlatform(formatPlatform as unknown as StudioPlatform);
+    registerPartialPlatform();
     openTab({
       document: { children: [], tagName: "div" },
-      fileHandle: mockHandle as unknown as FileSystemFileHandle,
+      fileHandle: mockHandle,
       id: "test-save-fs",
     });
     activeTab.value!.doc.dirty = true;
@@ -178,7 +203,7 @@ describe("saveFile", () => {
   });
 
   test("shows message when no save target", async () => {
-    registerPlatform(formatPlatform as unknown as StudioPlatform);
+    registerPartialPlatform();
     openTab({
       document: { tagName: "div" },
       id: "test-no-target",
@@ -189,13 +214,12 @@ describe("saveFile", () => {
   });
 
   test("serializes markdown source format via the format class", async () => {
-    let writtenContent = null;
-    registerPlatform({
-      ...formatPlatform,
-      writeFile: (_path: any, content: any) => {
+    let writtenContent: string | null = null;
+    registerPartialPlatform({
+      writeFile: async (_path, content) => {
         writtenContent = content;
       },
-    } as any);
+    });
 
     openTab({
       document: {
@@ -211,17 +235,16 @@ describe("saveFile", () => {
     await saveFile();
 
     expect(writtenContent).toBeDefined();
-    expect(typeof writtenContent).toBe("string");
+    expect(isString(writtenContent)).toBe(true);
   });
 
   test("component with duplicate default slots still saves (warn, not block)", async () => {
-    let written: any = null;
-    registerPlatform({
-      ...formatPlatform,
-      writeFile: (path: any, content: any) => {
+    let written: { content: string; path: string } | null = null;
+    registerPartialPlatform({
+      writeFile: async (path, content) => {
         written = { content, path };
       },
-    } as any);
+    });
 
     openTab({
       document: {
@@ -237,18 +260,17 @@ describe("saveFile", () => {
     await saveFile();
 
     expect(written).not.toBeNull();
-    expect(written.path).toBe("components/my-card.json");
+    expect(written!.path).toBe("components/my-card.json");
     expect(activeTab.value!.doc.dirty).toBe(false);
   });
 
   test("component with valid slots saves without warning", async () => {
-    let written: any = null;
-    registerPlatform({
-      ...formatPlatform,
-      writeFile: (path: any, content: any) => {
+    let written: { content: string; path: string } | null = null;
+    registerPartialPlatform({
+      writeFile: async (path, content) => {
         written = { content, path };
       },
-    } as any);
+    });
 
     openTab({
       document: {
@@ -267,12 +289,11 @@ describe("saveFile", () => {
   });
 
   test("handles save error gracefully", async () => {
-    registerPlatform({
-      ...formatPlatform,
-      writeFile: () => {
+    registerPartialPlatform({
+      writeFile: async () => {
         throw new Error("disk full");
       },
-    } as any);
+    });
 
     openTab({
       document: { tagName: "div" },
@@ -290,17 +311,16 @@ describe("saveFile", () => {
      open destroyed the PNG. The assertion is that NOTHING is written — a returned `false` alone would
      have passed against the broken code, which wrote and then reported success. */
   test("refuses a media tab rather than writing the stub document over the file", async () => {
-    const writes: unknown[][] = [];
-    registerPlatform({
-      ...formatPlatform,
-      uploadFile: (...args: unknown[]) => {
-        writes.push(["uploadFile", ...args]);
-        return { path: String(args[0]) };
+    const writes: PlatformWrite[] = [];
+    registerPartialPlatform({
+      uploadFile: async (path, data) => {
+        writes.push(["uploadFile", path, data]);
+        return { path };
       },
-      writeFile: (...args: unknown[]) => {
-        writes.push(["writeFile", ...args]);
+      writeFile: async (path, content) => {
+        writes.push(["writeFile", path, content]);
       },
-    } as any);
+    });
 
     const tab = openMediaTab("public/hero.png");
 
@@ -312,13 +332,12 @@ describe("saveFile", () => {
      `canvasMode === "media"` would have left it able to overwrite itself from the Code view. It is a
      media file either way, which is what the guard actually keys on. */
   test("refuses an .svg media tab, whose source alternate has the same stub behind it", async () => {
-    const writes: unknown[][] = [];
-    registerPlatform({
-      ...formatPlatform,
-      writeFile: (...args: unknown[]) => {
-        writes.push(args);
+    const writes: PlatformWrite[] = [];
+    registerPartialPlatform({
+      writeFile: async (path, content) => {
+        writes.push([path, content]);
       },
-    } as any);
+    });
 
     const tab = openMediaTab("public/icon.svg");
     tab.session.ui.canvasMode = "source";
@@ -331,25 +350,34 @@ describe("saveFile", () => {
 // ─── exportFile ───────────────────────────────────────────────────────────────
 
 describe("exportFile", () => {
+  let anchorClicks: Mock<() => void> | null = null;
+
+  /* The download fallback clicks a detached `<a download>`. Stubbing `click` keeps happy-dom from
+     navigating, and each call's receiver is the link, so its `download` name is the file offered. */
+  function downloadNames(): string[] {
+    return (anchorClicks?.mock.contexts ?? []).flatMap((link) =>
+      link instanceof HTMLAnchorElement ? [link.download] : [],
+    );
+  }
+
   beforeEach(() => {
-    delete (window as any).showSaveFilePicker;
+    anchorClicks = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    Reflect.deleteProperty(window, "showSaveFilePicker");
     for (const id of activeTab.value ? [activeTab.value.id] : []) {
       closeTab(id);
     }
   });
 
+  afterEach(() => {
+    anchorClicks?.mockRestore();
+  });
+
   test("exports via showSaveFilePicker when available", async () => {
-    let writtenContent = null;
-    const mockHandle = {
-      createWritable: async () => ({
-        close: async () => {},
-        write: async (content: any) => {
-          writtenContent = content;
-        },
-      }),
-      name: "export.json",
-    };
-    (window as any).showSaveFilePicker = async () => mockHandle;
+    let writtenContent: string | null = null;
+    const mockHandle = writableHandle((content) => {
+      writtenContent = content;
+    });
+    Object.assign(window, { showSaveFilePicker: async () => mockHandle });
 
     openTab({
       document: { children: [], tagName: "div" },
@@ -363,18 +391,6 @@ describe("exportFile", () => {
   });
 
   test("falls back to download when showSaveFilePicker unavailable", async () => {
-    let clickedLink = false;
-    const origCreate = document.createElement.bind(document);
-    document.createElement = (tag: any, ...args: any) => {
-      const el = origCreate(tag, ...args);
-      if (tag === "a") {
-        el.click = () => {
-          clickedLink = true;
-        };
-      }
-      return el;
-    };
-
     openTab({
       document: { children: [], tagName: "div" },
       id: "test-download",
@@ -382,24 +398,11 @@ describe("exportFile", () => {
 
     await exportFile();
 
-    expect(clickedLink).toBe(true);
+    expect(downloadNames()).toEqual(["component.json"]);
     expect(activeTab.value!.doc.dirty).toBe(false);
-    document.createElement = origCreate;
   });
 
   test("uses .md extension for content mode", async () => {
-    let downloadName: any = null;
-    const origCreate = document.createElement.bind(document);
-    document.createElement = (tag: any, ...args: any) => {
-      const el = origCreate(tag, ...args);
-      if (tag === "a") {
-        el.click = () => {
-          downloadName = el.download;
-        };
-      }
-      return el;
-    };
-
     openTab({
       document: { children: [{ tagName: "p", textContent: "Hello" }] },
       id: "test-md-export",
@@ -411,16 +414,17 @@ describe("exportFile", () => {
 
     await exportFile();
 
-    expect(downloadName).toBe("content.md");
-    document.createElement = origCreate;
+    expect(downloadNames()).toEqual(["content.md"]);
   });
 
   test("handles AbortError silently", async () => {
     const error = new Error("User cancelled");
     error.name = "AbortError";
-    (window as any).showSaveFilePicker = async () => {
-      throw error;
-    };
+    Object.assign(window, {
+      showSaveFilePicker: async () => {
+        throw error;
+      },
+    });
 
     openTab({
       document: { tagName: "div" },

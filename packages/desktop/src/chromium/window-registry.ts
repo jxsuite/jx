@@ -34,6 +34,7 @@ import {
   watch,
   writeFileSync,
 } from "node:fs";
+import { isNonNullObject, isNumber } from "@jxsuite/schema/guards";
 import { join, resolve } from "node:path";
 import { dataFile } from "../user-config";
 
@@ -95,7 +96,7 @@ function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    return isNonNullObject(error) && "code" in error && error.code === "EPERM";
   }
 }
 
@@ -131,10 +132,19 @@ export function unregisterWindow(pid: number): void {
   }
 }
 
+/**
+ * Whether a parsed registry file is a window entry. Only the numeric `pid` is checked: it is the
+ * entry's identity, and every file in the directory is written whole by {@link registerWindow}, so a
+ * file carrying a pid carries the rest of the record beside it.
+ */
+function isWindowEntry(value: unknown): value is WindowEntry {
+  return isNonNullObject(value) && "pid" in value && isNumber(value.pid);
+}
+
 function readEntry(pid: number): WindowEntry | null {
   try {
-    const parsed = JSON.parse(readFileSync(entryFile(pid), "utf8")) as WindowEntry;
-    return typeof parsed?.pid === "number" ? parsed : null;
+    const parsed: unknown = JSON.parse(readFileSync(entryFile(pid), "utf8"));
+    return isWindowEntry(parsed) ? parsed : null;
   } catch {
     return null;
   }

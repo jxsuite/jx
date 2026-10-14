@@ -12,21 +12,34 @@
  */
 import { flush, registerPrimaryStage, resetWorkspaceWithTab, stubRect } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import type { ApplyFormatIntent } from "../src/canvas/iframe-protocol";
 import type { JxPath } from "../src/state";
+import type { CanvasPanel } from "../src/types";
 import {
   registerCanvasSurface,
   surfaceForPane,
   unregisterCanvasSurface,
 } from "../src/canvas/surface-registry";
 
-type AnyRec = Record<string, any>;
+/** The members of a `draggable()` config the drag-handle case calls. */
+interface DraggableConfig {
+  getInitialData: () => JsonObject;
+  onGenerateDragPreview: (args: { nativeSetDragImage: null }) => void;
+}
 
-const draggables: AnyRec[] = [];
+/** What the mocked iframe host reports, and what it was asked to apply. */
+interface EditHostStub {
+  anchor: { left: number; top: number; width: number; height: number } | null;
+  editing: boolean;
+  posted: ApplyFormatIntent[];
+}
+
+const draggables: DraggableConfig[] = [];
 let previewsDisabled = 0;
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: (cfg: AnyRec) => {
+  draggable: (cfg: DraggableConfig) => {
     draggables.push(cfg);
     return () => {};
   },
@@ -37,16 +50,12 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-
   },
 }));
 
-const host: {
-  anchor: { left: number; top: number; width: number; height: number } | null;
-  editing: boolean;
-  posted: AnyRec[];
-} = { anchor: null, editing: false, posted: [] };
+const host: EditHostStub = { anchor: null, editing: false, posted: [] };
 
 void mock.module("../src/canvas/iframe-host", () => ({
   getEditBarAnchorRect: () => host.anchor,
   getEditSnapshot: () => ({ editing: host.editing, editingProp: null, snapshot: null }),
-  postApplyFormat: (intent: AnyRec) => host.posted.push(intent),
+  postApplyFormat: (intent: ApplyFormatIntent) => host.posted.push(intent),
   requestCanvasEval: () => Promise.resolve(null),
 }));
 
@@ -89,7 +98,22 @@ function setup(docNode: JxMutableNode, selection: JxPath | null) {
 }
 
 function bar(): HTMLElement | null {
-  return (view.blockActionBarEl?.querySelector('[part="bar"]') as HTMLElement) ?? null;
+  const el = view.blockActionBarEl?.querySelector('[part="bar"]');
+  return el instanceof HTMLElement ? el : null;
+}
+
+/** A base-media panel whose page scrolls in `scroller`, the one member the bar's clipping reads. */
+function scrollerPanel(scroller: HTMLElement): CanvasPanel {
+  return {
+    _width: null,
+    canvas: document.createElement("div"),
+    element: document.createElement("div"),
+    mediaName: "base",
+    ready: false,
+    renderScope: null,
+    scrollContainer: scroller,
+    viewport: document.createElement("div"),
+  };
 }
 
 /** Render, then let the document reconcile: the bar is a mount, not a synchronous template. */
@@ -271,11 +295,7 @@ describe("block action bar gaps", () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
     const { panels } = surfaceForPane("primary");
     const scroller = document.createElement("div");
-    panels.push({
-      canvas: document.createElement("div"),
-      mediaName: "base",
-      scrollContainer: scroller,
-    } as unknown as (typeof panels)[number]);
+    panels.push(scrollerPanel(scroller));
     try {
       // A 800px stage whose top 300px is the band; the page scrolls in the 500px below it.
       stubRect(surfaceForPane("primary").wrap, { height: 800, left: 0, top: 0, width: 1600 });
@@ -304,11 +324,7 @@ describe("block action bar gaps", () => {
     setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
     const { panels } = surfaceForPane("primary");
     const scroller = document.createElement("div");
-    panels.push({
-      canvas: document.createElement("div"),
-      mediaName: "base",
-      scrollContainer: scroller,
-    } as unknown as (typeof panels)[number]);
+    panels.push(scrollerPanel(scroller));
     try {
       // The same 800px stage: a 300px band, then the page's scroller.
       stubRect(surfaceForPane("primary").wrap, { height: 800, left: 0, top: 0, width: 1600 });

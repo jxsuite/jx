@@ -11,8 +11,10 @@
  * format-dispatch view reuses FormatRegistry (including its extension/capability conflict checks).
  */
 
-import { FormatEntry, FormatRegistry } from "./format-registry";
+import { FormatEntry, FormatRegistry, classDefFrom } from "./format-registry";
 import type { FormatHostIO } from "./format-registry";
+import { isJsonObject, isString } from "./guards";
+import type { JsonObject, JsonValue } from "../types";
 
 export type {
   CapabilityInfo,
@@ -240,18 +242,23 @@ async function loadExtension(
     }
   }
 
-  let manifest: ExtensionManifest;
+  let loaded: JsonValue;
   try {
-    manifest = (await io.loadJson(manifestPath)) as unknown as ExtensionManifest;
+    loaded = await io.loadJson(manifestPath);
   } catch (error) {
     throw new Error(
       `Extension "${specifier}": cannot read manifest ${manifestPath}: ${errorMessage(error)}`,
       { cause: error },
     );
   }
-  if (!manifest || typeof manifest !== "object" || typeof manifest.name !== "string") {
+  if (!isJsonObject(loaded) || !isString(loaded.name)) {
     throw new Error(`Extension "${specifier}": ${EXTENSION_MANIFEST} must declare a "name"`);
   }
+  /* SAFETY: `name` was just checked to be a string. The other members are the shapes
+     extension-manifest.schema.json declares (string `title`/`description`, a `classes` map of
+     paths, a `schemas` record of paths), which every first-party extension's manifest test
+     validates its manifest against; this module resolves only the paths. */
+  const manifest: ExtensionManifest = loaded as JsonObject & ExtensionManifest;
   if (!specifier.startsWith(".") && manifest.name !== specifier) {
     throw new Error(
       `Extension "${specifier}": manifest name "${manifest.name}" does not match the specifier`,
@@ -261,7 +268,7 @@ async function loadExtension(
   const classes: FormatEntry[] = [];
   for (const [name, ref] of Object.entries(manifest.classes ?? {})) {
     const classPath = io.resolvePath(manifestPath, ref);
-    let classDef: Record<string, unknown>;
+    let classDef: JsonValue;
     try {
       classDef = await io.loadJson(classPath);
     } catch (error) {
@@ -270,7 +277,7 @@ async function loadExtension(
         { cause: error },
       );
     }
-    classes.push(new FormatEntry(name, classPath, classDef, io));
+    classes.push(new FormatEntry(name, classPath, classDefFrom(classDef), io));
   }
 
   const schemas: ExtensionInfo["schemas"] = {};
@@ -287,6 +294,6 @@ async function loadExtension(
   return { specifier, manifestPath, manifest, classes, schemas };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

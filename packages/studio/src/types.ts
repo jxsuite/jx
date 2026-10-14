@@ -2,6 +2,7 @@
 import type { CollabHandle } from "@jxsuite/collab/provider";
 import type {
   ContentTypeSchema,
+  JsonObject,
   JxMutableNode,
   JxPath,
   ProjectConfig,
@@ -39,6 +40,7 @@ import type {
   ImportReadyEvent,
   ImportSiteOptions,
   ImportSiteSummary,
+  JsonValue,
   PackageInfo,
   PackageOpResult,
   PackageVersionInfo,
@@ -47,9 +49,8 @@ import type {
   RecentProjectEntry,
   ReferencesResult,
   RenameResult,
-  SecretsSetRequest,
+  KeyValuePatch,
   SecretsSetResponse,
-  SettingsPatch,
   StarterInfo,
   UploadResult,
 } from "@jxsuite/protocol";
@@ -80,7 +81,6 @@ export type {
   DataRowsResult,
   DataRowUpdate,
   DirEntry,
-  ErrorBody,
   ExtensionCatalogEntry,
   ExtensionContributionInfo,
   ExtensionProjectBlock,
@@ -109,9 +109,8 @@ export type {
   ReferencesResult,
   RenameResult,
   SecretsListResponse,
-  SecretsSetRequest,
+  KeyValuePatch,
   SecretsSetResponse,
-  SettingsPatch,
   StarterInfo,
 } from "@jxsuite/protocol";
 
@@ -291,6 +290,21 @@ export interface SitePreviewResult extends SiteBuildResult {
  */
 export type FsResyncReason = "reconnect" | "commit" | "open";
 
+/**
+ * One request to a format class's capability (`POST /__studio/format`, or the desktop RPC of the
+ * same name): `parse` reads `source` into a Jx document, `serialize` writes `doc` back out as text,
+ * and the answer is that document or that text. The backend refuses an action the format does not
+ * declare, so `action` stays an open name.
+ */
+export interface FormatActionRequest {
+  action: string;
+  format: string;
+  source?: string | undefined;
+  /** The document to serialize, merged with its frontmatter. */
+  doc?: JxMutableNode | undefined;
+  options?: { mode?: string | undefined; frontmatter?: boolean | undefined } | undefined;
+}
+
 export interface StudioPlatform {
   id: string;
   projectRoot: string;
@@ -464,8 +478,10 @@ export interface StudioPlatform {
     options?: { onResync?: (reason: FsResyncReason) => void },
   ) => () => void;
   discoverComponents: (dir?: string) => Promise<ComponentMeta[]>;
-  addPackage: (name: string) => Promise<unknown>;
-  removePackage: (name: string) => Promise<unknown>;
+  /* Resolves once the dependency is added (or removed) and rejects when it could not be. No caller
+     reads an answer, and the desktop RPC carries none. */
+  addPackage: (name: string) => Promise<void>;
+  removePackage: (name: string) => Promise<void>;
   listPackages: () => Promise<PackageInfo[]>;
   /**
    * Run `bun install` in the project root. Optional: platforms without a Bun-capable backend omit
@@ -493,7 +509,7 @@ export interface StudioPlatform {
    * section.
    */
   getAppInfo?: () => Promise<AppInfo>;
-  codeService: (action: string, payload: unknown) => Promise<CodeServiceResult | null>;
+  codeService: (action: string, payload: JsonValue) => Promise<CodeServiceResult | null>;
   resolveSiteContext: (filePath: string) => Promise<{
     sitePath: string | null;
     projectConfig?: ProjectConfig;
@@ -535,7 +551,7 @@ export interface StudioPlatform {
    */
   fetchProjectSchemas?: () => Promise<ProjectSchemasResponse>;
   /** Invoke a format capability (parse/serialize) — { format, action, source?, doc?, options? }. */
-  formatAction?: (payload: Record<string, unknown>) => Promise<unknown>;
+  formatAction?: (payload: FormatActionRequest) => Promise<JxMutableNode | string>;
   // ─── Data surface + secrets (owner console; specs/extensions.md §13) ────────
   // Optional as a family: backends without the connector data routes omit them all, and Studio
   // Hides the data grid and connection/push/test actions. Row CRUD is the ADMIN path — it
@@ -548,21 +564,21 @@ export interface StudioPlatform {
   dataPush?: (opts?: { connection?: string; dryRun?: boolean }) => Promise<DataPushResult>;
   /** Page a table's rows with introspected column metadata. */
   dataRows?: (query: DataRowsQuery) => Promise<DataRowsResult>;
-  dataInsertRow?: (req: DataRowInsert) => Promise<{ row: Record<string, unknown> }>;
-  dataUpdateRow?: (req: DataRowUpdate) => Promise<{ row: Record<string, unknown> }>;
+  dataInsertRow?: (req: DataRowInsert) => Promise<{ row: JsonObject }>;
+  dataUpdateRow?: (req: DataRowUpdate) => Promise<{ row: JsonObject }>;
   dataDeleteRow?: (req: DataRowDelete) => Promise<{ ok: boolean }>;
   /** Configured secret env-var NAMES — never values. */
   listSecrets?: () => Promise<string[]>;
   /** Write/remove secrets in the backend store (.dev.vars locally); names-only response. */
-  setSecrets?: (req: SecretsSetRequest) => Promise<SecretsSetResponse>;
-  fetchPluginSchema: (src: string, prototype?: string, base?: string) => Promise<unknown>;
+  setSecrets?: (req: KeyValuePatch) => Promise<SecretsSetResponse>;
+  fetchPluginSchema: (src: string, prototype?: string, base?: string) => Promise<JsonValue>;
   /**
    * Resolve a class-prototype config through the backend's `/__jx_resolve__` pipeline (with the
    * project's content types loaded) and return the parsed result. Used by the tab-bar's dynamic
    * route-param picker to enumerate ContentCollection entries. Optional: platforms without a
    * resolve backend omit it and the picker falls back to a plain fetch.
    */
-  resolveClass?: (body: Record<string, unknown>) => Promise<unknown>;
+  resolveClass?: (body: JsonObject) => Promise<JsonValue>;
   gitStatus: () => Promise<GitStatusResult>;
   gitBranches: () => Promise<GitBranchesResult>;
   gitLog: (limit?: number) => Promise<GitLogEntry[]>;
@@ -816,7 +832,7 @@ export interface StudioPlatform {
    * injects credentials — an OAuth token on the cloud platform, the user's pasted API token locally
    * — so no secret ever rides in the request body.
    */
-  cfApi?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>;
+  cfApi?: (path: string, init?: { method?: string; body?: unknown }) => Promise<JsonValue>;
   // ─── User settings (backend-persisted; undefined on dev-server) ─────────────
   /**
    * Read the user-level settings map (e.g. the AI connection parameters) from a backend store
@@ -834,7 +850,7 @@ export interface StudioPlatform {
    * held no settings could, and did, clear the credentials another window had just stored. It also
    * preserves keys this build does not know: one written by a newer version, or by hand.
    */
-  patchSettings?: (patch: SettingsPatch) => Promise<Record<string, string>>;
+  patchSettings?: (patch: KeyValuePatch) => Promise<Record<string, string>>;
   /**
    * Be told when the backend store changes — by another window, or by hand. Returns the
    * unsubscribe.
@@ -937,5 +953,4 @@ export interface ProjectState {
   selectedPath: string | null;
   searchQuery: string;
   projectDirs?: string[];
-  [key: string]: unknown;
 }

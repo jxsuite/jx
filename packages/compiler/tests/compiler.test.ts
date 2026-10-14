@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { compile, isDynamic, runCli } from "../src/compiler";
 import { isClassJsonSrc } from "../src/shared";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonValue, JxMappedArray, JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── isClassJsonSrc ─────────────────────────────────────────────────────────
 
@@ -28,7 +28,13 @@ describe("isClassJsonSrc", () => {
 // ─── isDynamic — Five-Shape state Grammar ────────────────────────────────────
 
 describe("isDynamic", () => {
-  test("null → false", () => expect(isDynamic(null as unknown as JxMutableNode)).toBe(false));
+  test("null → false", () => {
+    // A child slot as a parsed document carries it, before any schema validation.
+    const absent: JsonValue = JSON.parse("null");
+    // SAFETY: A JSON `null` slot is outside JxMutableNode, and isDynamic's first check
+    // (`!isNonNullObject(def)` → false) runs before any member read, which is what this pins.
+    expect(isDynamic(absent as JxMutableNode)).toBe(false);
+  });
   test("non-object → false", () => expect(isDynamic("string")).toBe(false));
   test("fully static node → false", () => {
     expect(isDynamic({ tagName: "div", textContent: "hello" })).toBe(false);
@@ -90,8 +96,12 @@ describe("isDynamic", () => {
   test("children.$prototype Array → true", () => {
     expect(
       isDynamic({
-        children: { $prototype: "Array" },
-      } as unknown as JxMutableNode),
+        /*
+         * SAFETY: A repeater with no `items` is outside JxMappedArray on purpose; isDynamic tests
+         * children with isMappedArray, which reads only `$prototype`, never `items`.
+         */
+        children: { $prototype: "Array" } as JxMappedArray,
+      }),
     ).toBe(true);
   });
   test("$ref in non-reserved property → true", () => {
@@ -99,7 +109,7 @@ describe("isDynamic", () => {
       isDynamic({
         tagName: "span",
         textContent: { $ref: "#/state/$x" },
-      } as unknown as JxMutableNode),
+      }),
     ).toBe(true);
   });
 
@@ -125,7 +135,7 @@ describe("isDynamic", () => {
       isDynamic({
         children: [{ tagName: "span" }, { tagName: "p", textContent: { $ref: "#/state/$x" } }],
         tagName: "div",
-      } as any),
+      }),
     ).toBe(true);
   });
   test("all-static children array → false", () => {
@@ -414,7 +424,7 @@ describe("compile — dynamic documents (custom element tagName → element targ
     expect(html).toContain("@vue/reactivity");
     expect(html).toContain("lit-html");
     expect(files.length).toBe(1);
-    expect((files[0] as { tagName?: string }).tagName).toBe("my-counter");
+    expect(files[0]).toHaveProperty("tagName", "my-counter");
     expect(html).toContain("<my-counter></my-counter>");
     expect(html).toContain('src="./my-counter.js"');
   });
@@ -614,8 +624,8 @@ describe("compile — markdown file input", () => {
     const filePath = join(fixDir, "page.md");
     writeFileSync(filePath, "# Hello World\n\nSome paragraph text.\n");
     try {
-      const { buildProjectFormatRegistry } = await import("../src/site/format-host");
-      const formats = await buildProjectFormatRegistry(fixDir, {
+      const { buildProjectExtensionRegistry } = await import("../src/site/format-host");
+      const { formats } = await buildProjectExtensionRegistry(fixDir, {
         extensions: ["@jxsuite/parser"],
       });
       const { html } = await compile(filePath, { formats });
@@ -644,8 +654,14 @@ describe("compile — file-based input with no matching format class", () => {
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain('No format class registered for ".csv"');
-      expect((caught as Error).message).toContain('project.json "extensions"');
+      expect(caught).toHaveProperty(
+        "message",
+        expect.stringContaining('No format class registered for ".csv"'),
+      );
+      expect(caught).toHaveProperty(
+        "message",
+        expect.stringContaining('project.json "extensions"'),
+      );
     } finally {
       rmSync(fixDir, { force: true, recursive: true });
     }

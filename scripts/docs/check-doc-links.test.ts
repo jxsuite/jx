@@ -16,12 +16,12 @@ import { PAGES } from "./generators/pages.ts";
 import { headingsOf, renderedHeadingText } from "./lib/headings.ts";
 
 const PUBLISHED = new Set(["framework/site/i18n", "studio/interface"]);
-const ANCHORS: Record<string, Set<string>> = {
-  "framework/site/i18n": new Set(["content-in-one-directory-per-locale"]),
-  "studio/interface": new Set(["the-jump-bar"]),
-  here: new Set(["a-real-heading"]),
-};
-const anchorsFor = (slug: string) => ANCHORS[slug];
+const ANCHORS = new Map([
+  ["framework/site/i18n", new Set(["content-in-one-directory-per-locale"])],
+  ["studio/interface", new Set(["the-jump-bar"])],
+  ["here", new Set(["a-real-heading"])],
+]);
+const anchorsFor = (slug: string) => ANCHORS.get(slug);
 // Mirrors the real reader: the site root is a page, and these two exist under pages/.
 const siteRouteExists = (route: string) =>
   route.replaceAll(/^\/+|\/+$/g, "") === "" || ["download", "templates"].includes(route);

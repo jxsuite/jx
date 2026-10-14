@@ -198,7 +198,7 @@ describe("a $ref style value", () => {
        an element named `color`, carrying a declaration named `$ref`. */
     const state = reactive({ tint: "red" });
     const el = div();
-    applyStyle(el, { color: { $ref: "#/state/tint" } } as never, {}, state);
+    applyStyle(el, { color: { $ref: "#/state/tint" } }, {}, state);
     expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { color: var(--jx-r0-0) }`);
     expect(getComputedStyle(el).color).toBe("red");
     state.tint = "blue";
@@ -209,7 +209,7 @@ describe("a $ref style value", () => {
   test("works inside a nested block, where a template used to reach the sheet literally", () => {
     const state = reactive({ tint: "red" });
     const el = div();
-    applyStyle(el, { ":hover": { color: { $ref: "#/state/tint" } } } as never, {}, state);
+    applyStyle(el, { ":hover": { color: { $ref: "#/state/tint" } } }, {}, state);
     expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"]:hover { color: var(--jx-r0-0) }`);
     expect(el.style.getPropertyValue("--jx-r0-0")).toBe("red");
   });
@@ -254,11 +254,12 @@ describe("the <style> fallback", () => {
   /** And one step further down: a `<style>` element that exposes no `sheet` to insert into. */
   function noCssom(): Document {
     const doc = noConstructable();
-    const create = doc.createElement.bind(doc);
     Object.defineProperty(doc, "createElement", {
       configurable: true,
       value: (tagName: string) => {
-        const el = create(tagName);
+        /* What `createElement` does in an HTML document for the lowercase names the engine passes,
+           reached by a method this override does not shadow. */
+        const el = doc.createElementNS("http://www.w3.org/1999/xhtml", tagName);
         if (tagName === "style") {
           Object.defineProperty(el, "sheet", { configurable: true, value: null });
         }
@@ -373,7 +374,7 @@ describe("the cascade premises the design rests on", () => {
     const el = document.createElement("div");
     applyStyle(el, { color: "rgb(2, 2, 2)" });
     const clone = document.createElement("div");
-    clone.dataset.jx = el.dataset.jx as string;
+    clone.dataset.jx = el.dataset.jx;
     clone.classList.add("probe");
     document.body.append(clone);
     expect(getComputedStyle(clone).color).toBe("rgb(2, 2, 2)");

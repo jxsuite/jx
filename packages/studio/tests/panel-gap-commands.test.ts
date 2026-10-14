@@ -56,14 +56,14 @@ let ctx: CommandContext = makeContext();
 let registry: CommandRegistry;
 
 /** A document with one expression def, one plain state entry, and a styled child. */
-const DOC = {
+const DOC: JxMutableNode = {
   children: [{ style: { ":hover": { color: "red" } }, tagName: "p", textContent: "Hi" }],
   state: {
     count: { default: 0, type: "number" },
     toggle0: { $expression: { operator: "=", target: null } },
   },
   tagName: "div",
-} as unknown as JxMutableNode;
+};
 
 function openDoc(doc: JxMutableNode = structuredClone(DOC)) {
   closeAllTabs();
@@ -189,7 +189,7 @@ describe("data.expandRow", () => {
   });
 
   test("a document with no state says so", () => {
-    openDoc({ children: [], tagName: "div" } as unknown as JxMutableNode);
+    openDoc({ children: [], tagName: "div" });
     expect(() => registry.run("data.expandRow", { name: "count" })).toThrow("it defines: nothing");
   });
 });

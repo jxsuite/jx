@@ -30,8 +30,12 @@ import { clearTyping, noteTyping } from "../src/tabs/typing";
 import { componentRegistry } from "../src/files/components";
 import { setProjectState } from "../src/store";
 import { transactDoc, mutateRemoveNode } from "../src/tabs/transact";
-import type { GitStatusResult, StudioPlatform } from "../src/types";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { GitStatusResult } from "../src/types";
+import { isFunction } from "@jxsuite/schema/guards";
+import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { LayoutHit } from "../src/canvas/iframe-protocol";
+import type { CanvasView, EditorKind } from "../src/commands/context";
+import type { KeyScope } from "../src/commands/levels";
 import type { LiveContextSources } from "../src/commands/live-context";
 
 let canvasMode = "design";
@@ -78,9 +82,13 @@ beforeEach(() => {
  */
 describe("project.isMultilingual", () => {
   const withLocales = (locales: string[], defaultLocale?: string) => {
+    const i18n: NonNullable<ProjectConfig["i18n"]> = { locales };
+    if (defaultLocale) {
+      i18n.defaultLocale = defaultLocale;
+    }
     resetStudioState({
       isSiteProject: true,
-      projectConfig: { i18n: { locales, ...(defaultLocale ? { defaultLocale } : {}) } },
+      projectConfig: { i18n },
       projectRoot: "/project",
     });
     return context();
@@ -191,7 +199,7 @@ describe("document and editor", () => {
   /* The projection kept a placeholder saying panes had yet to land, long after they had, so it
      could never answer 2. */
   test("a split grid is two panes, and the projection says so", () => {
-    resetWorkspaceWithTab({ children: [], tagName: "div" } as unknown as JxMutableNode);
+    resetWorkspaceWithTab({ children: [], tagName: "div" });
     openTab({ document: { tagName: "div" }, documentPath: "b.json", id: "b" });
     splitRight();
     expect(workspace.panes.length).toBe(2);
@@ -204,7 +212,7 @@ describe("document and editor", () => {
      pipeline and the assistant were both reading a hard-coded `false`. Every `when: ctx.pane.derived`
      predicate was therefore permanently off, and no test could tell that from "no derived pane". */
   test("a derived pane in the grid is a fact the projection reports", () => {
-    resetWorkspaceWithTab({ children: [], tagName: "div" } as unknown as JxMutableNode);
+    resetWorkspaceWithTab({ children: [], tagName: "div" });
     openTab({ document: { tagName: "div" }, documentPath: "b.json", id: "b" });
     splitRight();
     expect(context().pane.derived).toBe(false);
@@ -226,7 +234,7 @@ describe("document and editor", () => {
     expect(context().pane.count).toBe(2);
   });
 
-  test.each([
+  test.each<[string, EditorKind, CanvasView]>([
     ["design", "canvas", "design"],
     ["edit", "canvas", "edit"],
     ["preview", "canvas", "preview"],
@@ -238,8 +246,8 @@ describe("document and editor", () => {
   ])("canvasMode %s → editor.kind %s / canvas.view %s", (mode, kind, canvasView) => {
     canvasMode = mode;
     const ctx = context();
-    expect(ctx.editor.kind).toBe(kind as never);
-    expect(ctx.canvas.view).toBe(canvasView as never);
+    expect(ctx.editor.kind).toBe(kind);
+    expect(ctx.canvas.view).toBe(canvasView);
   });
 
   test("an unrecognised canvas mode still reports a canvas", () => {
@@ -310,7 +318,7 @@ describe("selection", () => {
   });
 
   test("a registered component tag reads as an instance", () => {
-    componentRegistry.push({ path: "/project/card.jx.json", tagName: "jx-card" } as never);
+    componentRegistry.push({ path: "/project/card.jx.json", tagName: "jx-card" });
     activeTab.value!.session.selection = [["children", 1]];
     expect(context().selection.isComponentInstance).toBe(true);
     activeTab.value!.session.selection = [["children", 0]];
@@ -319,7 +327,14 @@ describe("selection", () => {
 
   test("layout chrome is flagged separately from the document selection", () => {
     expect(context().selection.isLayoutNode).toBe(false);
-    shell.layoutSelection = { path: [], source: "layout" } as never;
+    const header: LayoutHit = {
+      className: "",
+      layoutFile: "layouts/base.json",
+      layoutPath: [],
+      rect: { height: 0, width: 0, x: 0, y: 0 },
+      tagName: "header",
+    };
+    shell.layoutSelection = header;
     expect(context().selection.isLayoutNode).toBe(true);
   });
 });
@@ -434,11 +449,11 @@ describe("collab, ai and capabilities", () => {
 
   test("capabilities are presence-of-method on the PAL", () => {
     const { platform } = installMockPlatform({
-      dataRows: (async () => ({})) as never,
-      gitClone: (async () => ({ ok: true, root: "/x" })) as never,
-      newWindow: (async () => {}) as never,
+      dataRows: async () => ({ columns: [], rows: [], total: 0 }),
+      gitClone: async () => ({ ok: true, root: "/x" }),
+      newWindow: async () => {},
     });
-    const ctx = createLiveContext(sources({ platform: () => platform as StudioPlatform }))();
+    const ctx = createLiveContext(sources({ platform: () => platform }))();
     expect(ctx.capability).toEqual({
       dataRows: true,
       // Off: the harness's mock ships `codeService` but not `findReferences`, and the capability now
@@ -455,16 +470,16 @@ describe("collab, ai and capabilities", () => {
 
   test("findReferences follows its own PAL member, not codeService", () => {
     const { platform } = installMockPlatform({
-      findReferences: (async () => ({
+      findReferences: async () => ({
         errors: [],
         files: [],
         filesReferencing: 0,
         path: null,
         refsTotal: 0,
         tagName: null,
-      })) as never,
+      }),
     });
-    const ctx = createLiveContext(sources({ platform: () => platform as StudioPlatform }))();
+    const ctx = createLiveContext(sources({ platform: () => platform }))();
     expect(ctx.capability.findReferences).toBe(true);
   });
 
@@ -475,11 +490,10 @@ describe("collab, ai and capabilities", () => {
     const { platform } = installMockPlatform();
     // Dropped rather than overridden: `exactOptionalPropertyTypes` refuses an explicit `undefined`
     // For an optional member, and the state under test is the member being ABSENT.
-    const textOnly = { ...platform } as Partial<StudioPlatform>;
-    delete textOnly.readFileBytes;
-    const ctx = createLiveContext(sources({ platform: () => textOnly as StudioPlatform }))();
+    const { readFileBytes: _dropped, ...textOnly } = platform;
+    const ctx = createLiveContext(sources({ platform: () => textOnly }))();
     expect(ctx.capability.readFileBytes).toBe(false);
-    expect(typeof textOnly.readFile).toBe("function");
+    expect(isFunction(textOnly.readFile)).toBe(true);
   });
 });
 
@@ -505,7 +519,7 @@ describe("keyScopeStack", () => {
     },
   );
 
-  test.each([
+  test.each<[EditorKind, CanvasView, KeyScope[]]>([
     ["grid", "design", ["grid", "global"]],
     ["code", "design", ["code", "global"]],
     ["canvas", "design", ["canvas", "global"]],
@@ -517,10 +531,10 @@ describe("keyScopeStack", () => {
     ["none", "design", ["global"]],
   ])("editor %s / view %s → %p", (kind, view, expected) => {
     const ctx = makeContext({
-      canvas: { view: view as never },
-      editor: { kind: kind as never },
+      canvas: { view },
+      editor: { kind },
     });
-    expect(keyScopeStack(ctx)).toEqual(expected as never);
+    expect(keyScopeStack(ctx)).toEqual(expected);
   });
 
   test("the live context feeds the stack directly", () => {
@@ -548,7 +562,7 @@ describe("keyScopeStack", () => {
 // ─── Modes → the two axes ─────────────────────────────────────────────────────
 
 describe("editorKindForMode / canvasViewForMode", () => {
-  test.each([
+  test.each<[string, EditorKind, CanvasView]>([
     ["edit", "canvas", "edit"],
     ["design", "canvas", "design"],
     ["preview", "canvas", "preview"],
@@ -559,8 +573,8 @@ describe("editorKindForMode / canvasViewForMode", () => {
     ["git-diff", "diff", "design"],
     ["manage", "library", "design"],
   ])("%s → kind %s / view %s", (mode, kind, view) => {
-    expect(editorKindForMode(mode)).toBe(kind as never);
-    expect(canvasViewForMode(mode)).toBe(view as never);
+    expect(editorKindForMode(mode)).toBe(kind);
+    expect(canvasViewForMode(mode)).toBe(view);
   });
 
   test("an unknown mode is a canvas view — the format-declared default", () => {

@@ -11,38 +11,31 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** One entry in {@link registry.json} — everything the picker UI needs to render a template card. */
-export interface StarterMeta {
-  /** Stable id; also the directory name under `sites/` and the value threaded as `starter`. */
-  id: string;
-  /** Human-facing display name, e.g. "Bistro & Café". */
-  name: string;
-  /** Industry archetype label, e.g. "Restaurant & Food". */
-  industry: string;
-  /** One-line summary shown under the name. */
-  tagline: string;
-  /** Longer description for the showcase / tooltip. */
-  description: string;
-  /** Short bullets naming the Jx features the starter demonstrates. */
-  features: string[];
-  /** Accent colour (hex) — mirrors the site's primary token; used for card theming. */
-  accent: string;
-  /** Small preview image as a self-contained `data:` URI so the picker needs no extra plumbing. */
-  thumbnail: string;
-}
+import type { StarterInfo } from "@jxsuite/protocol";
+
+/**
+ * One entry in `registry.json`. The wire contract owns the declaration (`StarterInfo`); this
+ * package keeps exporting it under its published name so existing importers keep compiling.
+ */
+export type { StarterInfo as StarterMeta } from "@jxsuite/protocol";
 
 const STARTERS_DIR = import.meta.dirname;
 
 /** Absolute path to the directory holding the per-starter project trees. */
 export const SITES_DIR = join(STARTERS_DIR, "sites");
 
-let _cache: StarterMeta[] | null = null;
+let _cache: StarterInfo[] | null = null;
 
 /** Read and cache the starter registry. */
-export function listStarters(): StarterMeta[] {
+export function listStarters(): StarterInfo[] {
   if (!_cache) {
     const raw = readFileSync(join(STARTERS_DIR, "registry.json"), "utf8");
-    _cache = JSON.parse(raw) as StarterMeta[];
+    /*
+     * SAFETY: registry.json is a committed file shipped inside this package, never user input, and
+     * tests/registry.test.ts asserts that every entry carries each StarterInfo member as a non-empty
+     * string (features as a non-empty string array), so the parsed array matches StarterInfo[].
+     */
+    _cache = JSON.parse(raw) as StarterInfo[];
   }
   return _cache;
 }
@@ -51,9 +44,9 @@ export function listStarters(): StarterMeta[] {
  * Look up a single starter's metadata by id.
  *
  * @param {string} id
- * @returns {StarterMeta | undefined}
+ * @returns {StarterInfo | undefined}
  */
-export function getStarter(id: string): StarterMeta | undefined {
+export function getStarter(id: string): StarterInfo | undefined {
   return listStarters().find((s) => s.id === id);
 }
 

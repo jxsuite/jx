@@ -21,28 +21,46 @@ import {
 import { hintOf } from "./kit-readers";
 import { reactive } from "@vue/reactivity";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { SessionMeta } from "../src/services/ai-session-store";
 import { fetchAvailableModels, resetModelCache } from "../src/services/ai-models";
 
 const { platform: mockPlatform } = installMockPlatform();
 
-// Model-picker fetches resolve instantly with one model.
-(globalThis as Record<string, unknown>).fetch = async () =>
-  Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 });
+/** Answer every `fetch` from `answer`, keeping Bun's `preconnect` so the stub is a whole `fetch`. */
+function stubFetch(answer: () => Promise<Response>) {
+  globalThis.fetch = Object.assign(answer, { preconnect: globalThis.fetch.preconnect });
+}
 
-// Deterministic rAF for the panel's coalesced render loop.
-(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
-  cb: FrameRequestCallback,
-) => setTimeout(() => cb(0), 0) as unknown as number;
+// Model-picker fetches resolve instantly with one model.
+stubFetch(async () => Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 }));
+
+/* Deterministic rAF for the panel's coalesced render loop. The handle is a plain counter: the
+   panel never cancels a frame, so nothing reads it back. */
+let frameHandle = 0;
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
+  setTimeout(() => cb(0), 0);
+  frameHandle += 1;
+  return frameHandle;
+};
 
 // ─── Document-assistant mock ─────────────────────────────────────────────────
 
-const chatState = reactive({
+/** The members of the assistant's chat state that the panel reads and this file drives. */
+interface MockChatState {
+  contextWarning: boolean;
+  error: string | null;
+  messages: LiveMessage[];
+  status: "idle" | "streaming" | "error";
+  tokenCount: number;
+  retryLast: () => void;
+}
+
+const chatState = reactive<MockChatState>({
   contextWarning: false,
-  error: null as string | null,
-  messages: [] as Message[],
-  status: "idle" as "idle" | "streaming" | "error",
+  error: null,
+  messages: [],
+  status: "idle",
   /* Both have been computed by `services/context-manager.ts` on every turn since it was written
      and stored by `chat-state.ts` with no reader anywhere; the header is the first. */
   tokenCount: 0,
@@ -75,15 +93,16 @@ function endLiveTurn() {
 }
 
 let msgCounter = 0;
-function pushMessage(role: Message["role"], content: string, extra: Partial<Message> = {}) {
+function pushMessage(role: LiveMessage["role"], content: string, extra: Partial<LiveMessage> = {}) {
   msgCounter += 1;
-  chatState.messages.push({
+  const message: LiveMessage = {
     content,
     id: `m${msgCounter}`,
     role,
     timestamp: msgCounter,
     ...extra,
-  } as Message);
+  };
+  chatState.messages.push(message);
 }
 
 let activeId: string | null = null;
@@ -197,12 +216,12 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 initLayers();
 
 function q<T extends Element = HTMLElement>(sel: string) {
-  return host.querySelector(sel) as T | null;
+  return host.querySelector<T>(sel);
 }
 
 /** Every node matching, in document order. */
 function nodes<T extends Element = HTMLElement>(sel: string) {
-  return [...host.querySelectorAll(sel)] as T[];
+  return [...host.querySelectorAll<T>(sel)];
 }
 
 /**
@@ -218,7 +237,7 @@ function lastUserRow(): HTMLElement | undefined {
 
 /** Query inside the dialog layer — where Preferences renders. */
 function d<T extends Element = HTMLElement>(sel: string) {
-  return document.querySelector(`#layer-dialog ${sel}`) as T | null;
+  return document.querySelector<T>(`#layer-dialog ${sel}`);
 }
 
 /**
@@ -229,9 +248,9 @@ function d<T extends Element = HTMLElement>(sel: string) {
  * union that can never fire on one side reads as a substrate still in play.
  */
 function dialogButton(label: string) {
-  return [...document.querySelectorAll("#layer-dialog jx-button")].find((b) =>
-    b.textContent?.includes(label),
-  ) as HTMLElement | undefined;
+  return [...document.querySelectorAll<HTMLElement>("#layer-dialog jx-button")].find((b) =>
+    b.textContent.includes(label),
+  );
 }
 
 /**
@@ -334,8 +353,9 @@ describe("ai-panel", () => {
     clearSeededSettings();
     const realFetch = globalThis.fetch;
     // Managed platform, Workers AI not yet connected.
-    (globalThis as Record<string, unknown>).fetch = async () =>
-      Response.json({ models: [], configured: false, managed: true }, { status: 200 });
+    stubFetch(async () =>
+      Response.json({ models: [], configured: false, managed: true }, { status: 200 }),
+    );
     await fetchAvailableModels({ force: true });
     const cfConnect = mock(async () => ({
       status: "connected" as const,
@@ -350,11 +370,12 @@ describe("ai-panel", () => {
     expect(d('[part="ai-creds-form"]')).not.toBeNull();
 
     // Connecting flips /models to configured — the notice retires.
-    (globalThis as Record<string, unknown>).fetch = async () =>
+    stubFetch(async () =>
       Response.json(
         { models: [{ id: "@cf/meta/llama-4" }], configured: true, managed: true },
         { status: 200 },
-      );
+      ),
+    );
     pointer(d('[part="managed-connect"] [part="connect"] [part="control"]')!, "click");
     await flush(6);
     expect(cfConnect).toHaveBeenCalledTimes(1);
@@ -366,7 +387,7 @@ describe("ai-panel", () => {
     chatState.messages.length = 0;
     delete mockPlatform.cfConnect;
     resetModelCache();
-    (globalThis as Record<string, unknown>).fetch = realFetch;
+    globalThis.fetch = realFetch;
     await flush(3);
   });
 
@@ -374,11 +395,12 @@ describe("ai-panel", () => {
     localStorage.clear();
     clearSeededSettings();
     const realFetch = globalThis.fetch;
-    (globalThis as Record<string, unknown>).fetch = async () =>
+    stubFetch(async () =>
       Response.json(
         { models: [{ id: "@cf/meta/llama-4" }], configured: true, managed: true },
         { status: 200 },
-      );
+      ),
+    );
     await fetchAvailableModels({ force: true });
     pushMessage("user", "cloud hello");
     await flush(3);
@@ -386,7 +408,7 @@ describe("ai-panel", () => {
     expect(q('[part="composer-input"]')).not.toBeNull();
     chatState.messages.length = 0;
     resetModelCache();
-    (globalThis as Record<string, unknown>).fetch = realFetch;
+    globalThis.fetch = realFetch;
     await flush(3);
   });
 
@@ -710,7 +732,8 @@ describe("retry", () => {
     sendMessage.mockClear();
     pointer(q('[part="error-retry"]')!, "click");
     await flush(4);
-    expect(sendMessage).not.toHaveBeenCalled();
+    // Nothing was sent, and there was nothing to send.
+    expect(sendMessage.mock.calls).toEqual([]);
     chatState.error = null;
     chatState.status = "idle";
   });
@@ -756,8 +779,9 @@ describe("restore to here", () => {
        guards again rather than trusting the renderer. */
     expect(q('[part="changes-restore"]')).toBeNull();
     handleRestore(id);
-    expect(notices().at(-1)).toContain("layouts/base.json");
-    expect(notices().at(-1)).toContain("undo cannot reach");
+    const refusal = notices().at(-1);
+    expect(refusal).toContain("layouts/base.json");
+    expect(refusal).toContain("undo cannot reach");
   });
 
   test("with no tab open it says where to go rather than restoring the wrong document", async () => {
@@ -889,6 +913,8 @@ describe("the Assistant command family", () => {
     );
     // `when` is asked of a snapshot; the selection can go away before the run. A silent no-op
     // Would look exactly like a chip that had landed.
+    /* SAFETY: `record()` returns the stored `AnyCommand`, whose args are erased to `never`;
+       assistant.attachSelection declares no `args`, so the registry hands its `run` undefined too. */
     void record("assistant.attachSelection").run(emptyContext(), undefined as never);
     expect(notices().at(-1)).toBe("Nothing is selected to attach.");
   });
@@ -1002,7 +1028,11 @@ describe("a turn suspended on a question", () => {
     /* The answer must NOT become a user message: `toMessagesArray` serialises verbatim and a
        provider requires the `tool` reply to follow its `tool_calls` request. */
     const { settled } = await raiseQuestion();
-    setValue(q('[part="composer-input"]') as HTMLTextAreaElement, "the pricing page only");
+    const composer = q('[part="composer-input"]');
+    if (!(composer instanceof HTMLTextAreaElement)) {
+      throw new TypeError("the composer is not a textarea");
+    }
+    setValue(composer, "the pricing page only");
     key(q('[part="composer-input"]')!, "Enter");
     await flush(3);
 
@@ -1018,7 +1048,11 @@ describe("a turn suspended on a question", () => {
 
   test("an option button answers it", async () => {
     const { settled } = await raiseQuestion(["All of them", "Just the marketing pages"]);
-    pointer([...host.querySelectorAll('[part="ask-option"]')][1] as HTMLElement, "click");
+    const option = [...host.querySelectorAll('[part="ask-option"]')].at(1);
+    if (!option) {
+      throw new Error("the question offers no second option");
+    }
+    pointer(option, "click");
     await flush(3);
     expect(await settled).toEqual({ answer: "Just the marketing pages", skipped: false });
     expect(sendMessage).not.toHaveBeenCalled();
@@ -1069,9 +1103,10 @@ describe("the New Project Import hand-off", () => {
     const turn = buildImportTurn(BRIEF);
     const { body, contextLines } = splitAttachedContext(turn);
     expect(body).toBe("Modernise the typography");
-    expect(contextLines.join(" ")).toContain("url: https://example.com/");
-    expect(contextLines.join(" ")).toContain("destination: /home/dev/Sites/example");
-    expect(contextLines.join(" ")).toContain("Call import_site with the url");
+    const context = contextLines.join(" ");
+    expect(context).toContain("url: https://example.com/");
+    expect(context).toContain("destination: /home/dev/Sites/example");
+    expect(context).toContain("Call import_site with the url");
   });
 
   test("the breakpoint policy is a sentence the model can act on, in all three shapes", () => {

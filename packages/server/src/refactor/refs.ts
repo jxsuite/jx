@@ -26,6 +26,8 @@
  * @docs studio/projects/pages-layouts-components
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { classifyRef, looksLikeFileRef, rewriteRef } from "./paths.ts";
 import type { RemapCtx } from "./paths.ts";
 
@@ -37,8 +39,14 @@ export interface RefChange {
 }
 
 export interface RewriteResult {
-  doc: unknown;
+  doc: JsonValue;
   changes: RefChange[];
+}
+
+/** The outcome of {@link rewriteTagName}: the same document, and how many nodes were renamed. */
+export interface TagRewriteResult {
+  doc: JsonValue;
+  count: number;
 }
 
 /**
@@ -74,14 +82,14 @@ const PROSE_KEYS = new Set(["textContent", "innerHTML"]);
 
 /** Offer a scalar string reference under `key` to the visitor, writing back any replacement. */
 function visitScalar(
-  container: Record<string, unknown>,
+  container: JsonObject,
   key: string,
   refType: string,
   visit: RefVisitor,
   rootRelativeBare: boolean,
 ): void {
   const value = container[key];
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return;
   }
   const out = visit(value, refType, rootRelativeBare);
@@ -104,13 +112,13 @@ function visitScalar(
  * would.
  */
 function visitKeys(
-  container: Record<string, unknown>,
+  container: JsonObject,
   refType: string,
   visit: RefVisitor,
   rootRelativeBare: boolean,
 ): void {
   const entries = Object.entries(container);
-  const renamed = entries.map(([key, value]): [string, unknown] => {
+  const renamed = entries.map(([key, value]): [string, JsonValue] => {
     const out = visit(key, refType, rootRelativeBare);
     return [out === null ? key : out, value];
   });
@@ -126,9 +134,9 @@ function visitKeys(
 }
 
 /** Offer a string array member (e.g. an `$elements` entry) to the visitor. */
-function visitIndexed(arr: unknown[], index: number, refType: string, visit: RefVisitor): void {
+function visitIndexed(arr: JsonValue[], index: number, refType: string, visit: RefVisitor): void {
   const value = arr[index];
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return;
   }
   const out = visit(value, refType, false);
@@ -146,15 +154,14 @@ function visitUrls(value: string, visit: RefVisitor): string {
 }
 
 /** Walk a `style` value tree, visiting `url(...)` in every string it contains. */
-function walkStyle(node: unknown, visit: RefVisitor): void {
+function walkStyle(node: JsonValue | undefined, visit: RefVisitor): void {
   if (Array.isArray(node)) {
-    const arr = node as unknown[];
-    for (let i = 0; i < arr.length; i += 1) {
-      const item = arr[i];
-      if (typeof item === "string") {
+    for (let i = 0; i < node.length; i += 1) {
+      const item = node[i];
+      if (isString(item)) {
         const out = visitUrls(item, visit);
         if (out !== item) {
-          arr[i] = out;
+          node[i] = out;
         }
       } else {
         walkStyle(item, visit);
@@ -162,16 +169,15 @@ function walkStyle(node: unknown, visit: RefVisitor): void {
     }
     return;
   }
-  if (!node || typeof node !== "object") {
+  if (!isJsonObject(node)) {
     return;
   }
-  const obj = node as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    const value = obj[key];
-    if (typeof value === "string") {
+  for (const key of Object.keys(node)) {
+    const value = node[key];
+    if (isString(value)) {
       const out = visitUrls(value, visit);
       if (out !== value) {
-        obj[key] = out;
+        node[key] = out;
       }
     } else {
       walkStyle(value, visit);
@@ -185,56 +191,53 @@ function walkStyle(node: unknown, visit: RefVisitor): void {
  * This is the single definition of "what counts as a reference" in a Jx document. Mutates `doc`
  * only where the visitor asks it to.
  */
-export function walkDocRefs(node: unknown, visit: RefVisitor): void {
+export function walkDocRefs(node: JsonValue | undefined, visit: RefVisitor): void {
   if (Array.isArray(node)) {
-    for (const item of node as unknown[]) {
+    for (const item of node) {
       walkDocRefs(item, visit);
     }
     return;
   }
-  if (!node || typeof node !== "object") {
+  if (!isJsonObject(node)) {
     return;
   }
-  const obj = node as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    const value = obj[key];
+  for (const key of Object.keys(node)) {
+    const value = node[key];
     switch (key) {
       case "$ref": {
         // File-path $ref only; state-scope refs (#/…, $map/…) are filtered by classifyRef.
-        visitScalar(obj, key, "$ref", visit, false);
+        visitScalar(node, key, "$ref", visit, false);
         break;
       }
       case "$layout": {
-        visitScalar(obj, key, "$layout", visit, true);
+        visitScalar(node, key, "$layout", visit, true);
         break;
       }
       case "$src":
       case "$implementation": {
-        visitScalar(obj, key, key, visit, false);
+        visitScalar(node, key, key, visit, false);
         break;
       }
       case "src":
       case "href": {
-        visitScalar(obj, key, "attr", visit, false);
+        visitScalar(node, key, "attr", visit, false);
         break;
       }
       case "imports": {
-        if (value && typeof value === "object" && !Array.isArray(value)) {
-          const imp = value as Record<string, unknown>;
-          for (const name of Object.keys(imp)) {
-            visitScalar(imp, name, "imports", visit, false);
+        if (isJsonObject(value)) {
+          for (const name of Object.keys(value)) {
+            visitScalar(value, name, "imports", visit, false);
           }
         }
         break;
       }
       case "$elements": {
         if (Array.isArray(value)) {
-          const els = value as unknown[];
-          for (let i = 0; i < els.length; i += 1) {
-            if (typeof els[i] === "string") {
-              visitIndexed(els, i, "$elements", visit);
+          for (let i = 0; i < value.length; i += 1) {
+            if (isString(value[i])) {
+              visitIndexed(value, i, "$elements", visit);
             } else {
-              walkDocRefs(els[i], visit);
+              walkDocRefs(value[i], visit);
             }
           }
         } else {
@@ -255,8 +258,8 @@ export function walkDocRefs(node: unknown, visit: RefVisitor): void {
          * renaming a file at the project root could rewrite an unrelated copy DESTINATION that
          * merely shared its name.
          */
-        if (value && typeof value === "object" && !Array.isArray(value)) {
-          visitKeys(value as Record<string, unknown>, "copy", visit, true);
+        if (isJsonObject(value)) {
+          visitKeys(value, "copy", visit, true);
         }
         break;
       }
@@ -272,7 +275,7 @@ export function walkDocRefs(node: unknown, visit: RefVisitor): void {
          * resolve-and-compare gate, which only matches a value resolving to the file or directory
          * in question. A remote `https://…` source is filtered by `classifyRef` before that.
          */
-        visitScalar(obj, key, "source", visit, false);
+        visitScalar(node, key, "source", visit, false);
         break;
       }
       /*
@@ -292,17 +295,16 @@ export function walkDocRefs(node: unknown, visit: RefVisitor): void {
        * file in question.
        */
       default: {
-        if (typeof value === "string") {
+        if (isString(value)) {
           if (!PROSE_KEYS.has(key) && looksLikeFileRef(value)) {
-            visitScalar(obj, key, "path", visit, false);
+            visitScalar(node, key, "path", visit, false);
           }
         } else if (Array.isArray(value)) {
-          const arr = value as unknown[];
-          for (let i = 0; i < arr.length; i += 1) {
-            const item = arr[i];
-            if (typeof item === "string") {
+          for (let i = 0; i < value.length; i += 1) {
+            const item = value[i];
+            if (isString(item)) {
               if (!PROSE_KEYS.has(key) && looksLikeFileRef(item)) {
-                visitIndexed(arr, i, "path", visit);
+                visitIndexed(value, i, "path", visit);
               }
             } else {
               walkDocRefs(item, visit);
@@ -317,7 +319,7 @@ export function walkDocRefs(node: unknown, visit: RefVisitor): void {
 }
 
 /** Rewrite every file-path reference in `doc` for a rename described by `ctx`. Mutates `doc`. */
-export function rewriteDocRefs(doc: unknown, ctx: RemapCtx): RewriteResult {
+export function rewriteDocRefs(doc: JsonValue, ctx: RemapCtx): RewriteResult {
   const changes: RefChange[] = [];
   walkDocRefs(doc, (value, refType, rootRelativeBare) => {
     const cls = classifyRef(value);
@@ -339,29 +341,28 @@ export function rewriteDocRefs(doc: unknown, ctx: RemapCtx): RewriteResult {
  * null, they are only counted — the read side of the same traversal.
  */
 function walkTags(
-  node: unknown,
+  node: JsonValue | undefined,
   oldTag: string,
   newTag: string | null,
   counter: { n: number },
 ): void {
   if (Array.isArray(node)) {
-    for (const item of node as unknown[]) {
+    for (const item of node) {
       walkTags(item, oldTag, newTag, counter);
     }
     return;
   }
-  if (!node || typeof node !== "object") {
+  if (!isJsonObject(node)) {
     return;
   }
-  const obj = node as Record<string, unknown>;
-  if (obj.tagName === oldTag) {
+  if (node.tagName === oldTag) {
     if (newTag !== null) {
-      obj.tagName = newTag;
+      node.tagName = newTag;
     }
     counter.n += 1;
   }
-  for (const key of Object.keys(obj)) {
-    walkTags(obj[key], oldTag, newTag, counter);
+  for (const key of Object.keys(node)) {
+    walkTags(node[key], oldTag, newTag, counter);
   }
 }
 
@@ -371,11 +372,7 @@ function walkTags(
  * `$elements`, `cases`) are intentionally left to `rewriteDocRefs`, so the two passes compose.
  * Mutates `doc`.
  */
-export function rewriteTagName(
-  doc: unknown,
-  oldTag: string,
-  newTag: string,
-): { doc: unknown; count: number } {
+export function rewriteTagName(doc: JsonValue, oldTag: string, newTag: string): TagRewriteResult {
   const counter = { n: 0 };
   if (oldTag !== newTag) {
     walkTags(doc, oldTag, newTag, counter);
@@ -389,7 +386,7 @@ export function rewriteTagName(
  * A component's OWN definition file answers 1 for its root node, which is why the usage query skips
  * the definition file rather than subtracting one — a component may legitimately nest itself.
  */
-export function countTagUses(doc: unknown, tag: string): number {
+export function countTagUses(doc: JsonValue, tag: string): number {
   const counter = { n: 0 };
   walkTags(doc, tag, null, counter);
   return counter.n;

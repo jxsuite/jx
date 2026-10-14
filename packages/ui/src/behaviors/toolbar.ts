@@ -63,7 +63,6 @@ const TEXT_TYPES = new Set(["", "text", "search", "url", "tel", "password", "ema
 export interface ToolbarState {
   orientation?: string;
   label?: string;
-  [key: string]: unknown;
 }
 
 /** A toolbar item: a control, or the kit element that wraps one. */
@@ -98,7 +97,7 @@ function itemFor(bar: HTMLElement, node: HTMLElement): ItemElement {
   let item: ItemElement = node;
   for (let el = node.parentElement; el && el !== bar; el = el.parentElement) {
     if (el.localName.includes("-")) {
-      item = el as ItemElement;
+      item = el;
     }
   }
   return item;
@@ -249,7 +248,7 @@ function atEdge(node: HTMLInputElement | HTMLTextAreaElement, forward: boolean):
     // A live selection is a gesture in progress; the arrow that collapses it is the control's.
     return false;
   }
-  return forward ? start >= String(node.value ?? "").length : start <= 0;
+  return forward ? start >= node.value.length : start <= 0;
 }
 
 /** Whether `node` is a control with a text caret the arrow keys move. */

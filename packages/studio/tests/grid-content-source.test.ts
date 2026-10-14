@@ -48,7 +48,7 @@ function setup(
   platformOverrides: Partial<StudioPlatform> = {},
 ) {
   const { state } = installMockPlatform(
-    { formatAction: mockFormatAction, ...platformOverrides } as unknown as Partial<StudioPlatform>,
+    { formatAction: mockFormatAction, ...platformOverrides },
     {
       "content/posts/hello.md": HELLO_MD,
       "content/posts/world.md": WORLD_MD,
@@ -140,18 +140,21 @@ describe("load", () => {
      * that produced world-then-hello; the order must now be hello-then-world regardless.
      */
     const seen: string[] = [];
-    setup({}, {
-      readFile: async (path: string) => {
-        seen.push(path);
-        if (path.endsWith("hello.md")) {
-          await new Promise((resolve) => {
-            setTimeout(resolve, 20);
-          });
-          return HELLO_MD;
-        }
-        return WORLD_MD;
+    setup(
+      {},
+      {
+        readFile: async (path: string) => {
+          seen.push(path);
+          if (path.endsWith("hello.md")) {
+            await new Promise((resolve) => {
+              setTimeout(resolve, 20);
+            });
+            return HELLO_MD;
+          }
+          return WORLD_MD;
+        },
       },
-    } as unknown as Partial<StudioPlatform>);
+    );
 
     const { rows } = await createCollectionSource("posts").rows();
     expect(rows.map((row) => row.key)).toEqual([
@@ -181,7 +184,7 @@ describe("load", () => {
         open -= 1;
         return HELLO_MD;
       },
-    } as unknown as Partial<StudioPlatform>);
+    });
     const { total } = await createCollectionSource("posts").rows();
     expect(total).toBe(42);
     expect(peak).toBe(32);
@@ -476,8 +479,9 @@ describe("pages source", () => {
       inserts: [],
     });
     expect(edit.cells[0]!.ok).toBeTrue();
-    expect(state.files.get("pages/index.md")).toContain("title: Start");
-    expect(state.files.get("pages/index.md")).toContain("Welcome");
+    const edited = state.files.get("pages/index.md");
+    expect(edited).toContain("title: Start");
+    expect(edited).toContain("Welcome");
 
     const insert = await source.commit({
       cells: [],

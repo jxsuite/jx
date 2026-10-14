@@ -10,6 +10,7 @@
  * @docs extending/ui-kit
  */
 import { defineElement, preloadDocument, preloadModule } from "@jxsuite/runtime";
+import type { JxScope } from "@jxsuite/runtime/types";
 import * as color from "./color.ts";
 import * as colorArea from "./behaviors/color-area.ts";
 import * as colorField from "./behaviors/color-field.ts";
@@ -50,8 +51,12 @@ export {
 /** The base every kit document resolves its references against. */
 export const KIT_BASE = "jx-ui:/components/";
 
-/** Behaviour modules, under the `$src` specifiers the documents use. */
-export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
+/**
+ * Behaviour modules, under the `$src` specifiers the documents use. The runtime reads each
+ * namespace's exports into scope, so every entry must be a `JxScope`: export name → value, narrowed
+ * where the runtime uses it.
+ */
+export const KIT_MODULES = {
   "jx-ui:/behaviors/color-area.ts": colorArea,
   "jx-ui:/behaviors/color-field.ts": colorField,
   "jx-ui:/behaviors/color-slider.ts": colorSlider,
@@ -74,7 +79,7 @@ export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
   "jx-ui:/behaviors/toast-host.ts": toastHost,
   "jx-ui:/color.ts": color,
   "jx-ui:/icons.ts": icons,
-};
+} as const satisfies Readonly<Record<string, JxScope>>;
 
 export interface RegisterUiOptions {
   /** Adopt the theme into the document as well. Default is true. */

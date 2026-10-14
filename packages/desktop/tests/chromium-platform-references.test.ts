@@ -1,5 +1,8 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterAll, describe, expect, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
+import { decodeRequest } from "./_rpc-frame";
+import type { ReceivedMessage } from "./_rpc-frame";
 
 // Covers src/chromium/platform.ts's `findReferences` bridge — the usage query behind the delete
 // Confirmation and the inspector's "used on N pages". The target object is the params payload
@@ -7,11 +10,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 // The shape on the wire and the value handed back.
 
 // ─── Embedded mock RPC server ──────────────────────────────────────────────
-
-interface ReceivedMessage {
-  method: string;
-  params?: Record<string, unknown>;
-}
 
 const received: ReceivedMessage[] = [];
 
@@ -25,12 +23,13 @@ const server = Bun.serve({
   port: 0,
   websocket: {
     message(ws, raw) {
-      const msg = JSON.parse(raw as string) as {
-        id: number;
-        method: string;
-        params?: Record<string, unknown>;
-      };
-      received.push({ method: msg.method, ...(msg.params ? { params: msg.params } : {}) });
+      const msg = decodeRequest(raw);
+      // Recorded the way the assertions read it: method first, `params` only when sent.
+      const entry: ReceivedMessage = { method: msg.method };
+      if (msg.params) {
+        entry.params = msg.params;
+      }
+      received.push(entry);
 
       if (msg.method !== "findReferences") {
         ws.send(JSON.stringify({ error: `Unknown method: ${msg.method}`, id: msg.id }));
@@ -39,13 +38,15 @@ const server = Bun.serve({
 
       // Answer from the params as received: the backend reads `path`/`tagName` off the top level of
       // The payload, so a platform that nested the target under a key gets a null-and-empty answer.
-      const target = (msg.params ?? {}) as { path?: string; tagName?: string };
-      if (target.path === "components/missing.json") {
+      const target = msg.params ?? {};
+      const path = isString(target.path) ? target.path : undefined;
+      const tagName = isString(target.tagName) ? target.tagName : undefined;
+      if (path === "components/missing.json") {
         ws.send(JSON.stringify({ error: "No such file: components/missing.json", id: msg.id }));
         return;
       }
       const files =
-        target.path === "components/card.json"
+        path === "components/card.json"
           ? [
               {
                 count: 2,
@@ -56,7 +57,7 @@ const server = Bun.serve({
                 ],
               },
             ]
-          : target.tagName === "desk-solo"
+          : tagName === "desk-solo"
             ? [
                 {
                   count: 1,
@@ -72,9 +73,9 @@ const server = Bun.serve({
             errors: [],
             files,
             filesReferencing: files.length,
-            path: target.path ?? null,
+            path: path ?? null,
             refsTotal: files.reduce((sum, f) => sum + f.count, 0),
-            tagName: target.tagName ?? (target.path ? "desk-card" : null),
+            tagName: tagName ?? (path ? "desk-card" : null),
           },
         }),
       );
@@ -91,7 +92,7 @@ Object.defineProperty(globalThis, "location", {
 });
 
 // If a DOM shim replaced WebSocket, restore Bun's native implementation.
-const wsStr = globalThis.WebSocket?.toString() ?? "";
+const wsStr = globalThis.WebSocket.toString();
 if (wsStr.includes("WebSocketImplementation") || wsStr.includes("DOMException")) {
   // @ts-expect-error -- deleting a required global; Bun re-exposes its built-in WebSocket
   delete globalThis.WebSocket;

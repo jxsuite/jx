@@ -1,10 +1,12 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import {
   collectSlots,
   exportCemManifest,
   validateComponentSlots,
 } from "../src/services/cem-export";
+import type { JxStateDefinition } from "@jxsuite/schema/types";
 
 // ─── collectSlots ───────────────────────────────────────────────────────────
 
@@ -164,11 +166,15 @@ describe("validateComponentSlots", () => {
 describe("exportCemManifest", () => {
   const helpers = {
     collectCssParts: () => [],
-    defCategory: (d: any) => {
-      if (!d || typeof d !== "object") {
+    defCategory: (d: JxStateDefinition) => {
+      if (!isNonNullObject(d)) {
         return "unknown";
       }
-      if (d.$prototype === "Function" || d.body || d.src) {
+      if (
+        ("$prototype" in d && d.$prototype === "Function") ||
+        ("body" in d && d.body) ||
+        ("src" in d && d.src)
+      ) {
         return "function";
       }
       return "state";
@@ -317,6 +323,9 @@ describe("exportCemManifest", () => {
       };
       exportCemManifest(S, { ...helpers, collectCssParts: () => [{ name: "button" }] });
 
+      /* SAFETY: the blob is `JSON.stringify` of the manifest `exportCemManifest` builds, whose one
+         Module carries the one class declaration with a `members` array and, because the helper
+         Above reports a part, a `cssParts` array. */
       const manifest = JSON.parse(await blobs[0]!.text()) as {
         modules: { declarations: { members: unknown[]; cssParts: unknown[] }[] }[];
       };

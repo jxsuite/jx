@@ -11,15 +11,10 @@
  */
 
 import { BLESSED_GLOBALS, BLESSED_OPERATORS, PURE_METHOD_OPS } from "@jxsuite/runtime/expression";
-import { catalog as packagedCatalog } from "@jxsuite/formulas";
-import { isJsonObject, isNamedFormulaDef } from "@jxsuite/schema/guards";
+import { catalog } from "@jxsuite/formulas";
+import { isJsonObject, isNamedFormulaDef, isNonNullObject, isString } from "@jxsuite/schema/guards";
 
-import type {
-  CemParameter,
-  JxExpressionNode,
-  JxExpressionOperand,
-  JxStateDefinition,
-} from "@jxsuite/schema/types";
+import type { CemParameter, JxExpressionNode, JxStateDefinition } from "@jxsuite/schema/types";
 import type { JsonValue } from "../types";
 
 export interface FormulaParameterInfo {
@@ -132,171 +127,174 @@ function aggregateMeta(op: string, description: string, withInitial: boolean): O
   };
 }
 
-const OPERATOR_META: Record<string, OperatorMeta> = {
-  "!": {
-    description: "Logical NOT operator (ECMA `!`): coerces the operand to boolean and negates it.",
-    group: "Unary",
-    insert: () => ({ operator: "!", target: null }),
-    parameters: [{ description: "Operand to negate", name: "target" }],
-  },
-  "!==": binaryMeta(
-    "Comparison",
-    "!==",
-    "Strict inequality operator (ECMA `!==`): true when the operands differ without coercion.",
-  ),
-  "%": binaryMeta(
-    "Arithmetic",
-    "%",
-    "Remainder operator (ECMA `%`): remainder of dividing the left operand by the right.",
-  ),
-  "&&": binaryMeta(
-    "Logical",
-    "&&",
-    "Logical AND operator (ECMA `&&`): yields the right operand when the left is truthy.",
-  ),
-  "*": binaryMeta(
-    "Arithmetic",
-    "*",
-    "Multiplication operator (ECMA `*`): numeric product of the operands.",
-  ),
-  "*=": assignMeta("*=", "Multiplication"),
-  "+": binaryMeta(
-    "Arithmetic",
-    "+",
-    "Addition operator (ECMA `+`): numeric addition, or string concatenation.",
-  ),
-  "+=": assignMeta("+=", "Addition"),
-  "-": binaryMeta(
-    "Arithmetic",
-    "-",
-    "Subtraction operator (ECMA `-`); with no value operand it is unary negation.",
-  ),
-  "-=": assignMeta("-=", "Subtraction"),
-  "/": binaryMeta("Arithmetic", "/", "Division operator (ECMA `/`): quotient of the operands."),
-  "/=": assignMeta("/=", "Division"),
-  "<": binaryMeta(
-    "Comparison",
-    "<",
-    "Less-than operator (ECMA `<`): relational comparison of the operands.",
-  ),
-  "<=": binaryMeta(
-    "Comparison",
-    "<=",
-    "Less-than-or-equal operator (ECMA `<=`): relational comparison of the operands.",
-  ),
-  "=": assignMeta("=", "Simple"),
-  "===": binaryMeta(
-    "Comparison",
-    "===",
-    "Strict equality operator (ECMA `===`): true when the operands are equal without coercion.",
-  ),
-  ">": binaryMeta(
-    "Comparison",
-    ">",
-    "Greater-than operator (ECMA `>`): relational comparison of the operands.",
-  ),
-  ">=": binaryMeta(
-    "Comparison",
-    ">=",
-    "Greater-than-or-equal operator (ECMA `>=`): relational comparison of the operands.",
-  ),
-  "??": binaryMeta(
-    "Logical",
-    "??",
-    "Nullish coalescing operator (ECMA `??`): yields the right operand when the left is null or undefined.",
-  ),
-  "?:": {
-    description:
-      "Conditional operator (ECMA `?:`): evaluates the test in target, yielding value when truthy, initial otherwise.",
-    group: "Conditional",
-    insert: () => ({ initial: null, operator: "?:", target: null, value: null }),
-    parameters: [
-      { description: "Test condition", name: "target" },
-      { description: "Result when the test is truthy", name: "value" },
-      { description: "Result when the test is falsy", name: "initial" },
-    ],
-  },
-  "||": binaryMeta(
-    "Logical",
-    "||",
-    "Logical OR operator (ECMA `||`): yields the right operand when the left is falsy.",
-  ),
-  call: {
-    description:
-      "Function.prototype.call (ECMA): invokes a named formula (#/state/…) or blessed pure global (window#/…) with positional arguments.",
-    group: "Function",
-    insert: () => ({ operator: "call", target: { $ref: "" }, value: [] }),
-    parameters: [
-      { description: "Callee pointer: #/state/<formula> or window#/<global>", name: "target" },
-      { description: "Positional argument list", name: "value" },
-    ],
-  },
-  filter: aggregateMeta(
-    "filter",
-    "Array.prototype.filter (ECMA): keeps elements whose per-item expression is truthy.",
-    false,
-  ),
-  map: aggregateMeta(
-    "map",
-    "Array.prototype.map (ECMA): transforms each element via the per-item expression.",
-    false,
-  ),
-  pop: arrayMeta(
-    "pop",
-    "Array.prototype.pop (ECMA): removes and returns the last element of the target array.",
-    false,
-  ),
-  push: arrayMeta(
-    "push",
-    "Array.prototype.push (ECMA): appends the value to the target array.",
-    true,
-  ),
-  reduce: aggregateMeta(
-    "reduce",
-    "Array.prototype.reduce (ECMA): folds the array into an accumulator via the per-item expression.",
-    true,
-  ),
-  shift: arrayMeta(
-    "shift",
-    "Array.prototype.shift (ECMA): removes and returns the first element of the target array.",
-    false,
-  ),
-  splice: {
-    description:
-      "Array.prototype.splice (ECMA): removes and/or inserts elements at an index of the target array.",
-    group: "Array methods",
-    insert: () => ({ operator: "splice", target: { $ref: "" }, value: [null] }),
-    parameters: [
-      REF_TARGET,
-      { description: "Arguments: start, deleteCount, items…", name: "value" },
-    ],
-  },
-  switch: {
-    description:
-      "Switch selection (ECMA `switch` semantics): matches the target's string form against case keys, falling back to default.",
-    group: "Conditional",
-    insert: () => ({ cases: {}, default: null, operator: "switch", target: null }),
-    parameters: [
-      { description: "Discriminant value", name: "target" },
-      { description: "Matched value → result operand map", name: "cases" },
-      { description: "Result when no case matches", name: "default" },
-    ],
-  },
-  unshift: arrayMeta(
-    "unshift",
-    "Array.prototype.unshift (ECMA): prepends the value to the target array.",
-    true,
-  ),
-};
+const OPERATOR_META = new Map<string, OperatorMeta>(
+  Object.entries({
+    "!": {
+      description:
+        "Logical NOT operator (ECMA `!`): coerces the operand to boolean and negates it.",
+      group: "Unary",
+      insert: () => ({ operator: "!", target: null }),
+      parameters: [{ description: "Operand to negate", name: "target" }],
+    },
+    "!==": binaryMeta(
+      "Comparison",
+      "!==",
+      "Strict inequality operator (ECMA `!==`): true when the operands differ without coercion.",
+    ),
+    "%": binaryMeta(
+      "Arithmetic",
+      "%",
+      "Remainder operator (ECMA `%`): remainder of dividing the left operand by the right.",
+    ),
+    "&&": binaryMeta(
+      "Logical",
+      "&&",
+      "Logical AND operator (ECMA `&&`): yields the right operand when the left is truthy.",
+    ),
+    "*": binaryMeta(
+      "Arithmetic",
+      "*",
+      "Multiplication operator (ECMA `*`): numeric product of the operands.",
+    ),
+    "*=": assignMeta("*=", "Multiplication"),
+    "+": binaryMeta(
+      "Arithmetic",
+      "+",
+      "Addition operator (ECMA `+`): numeric addition, or string concatenation.",
+    ),
+    "+=": assignMeta("+=", "Addition"),
+    "-": binaryMeta(
+      "Arithmetic",
+      "-",
+      "Subtraction operator (ECMA `-`); with no value operand it is unary negation.",
+    ),
+    "-=": assignMeta("-=", "Subtraction"),
+    "/": binaryMeta("Arithmetic", "/", "Division operator (ECMA `/`): quotient of the operands."),
+    "/=": assignMeta("/=", "Division"),
+    "<": binaryMeta(
+      "Comparison",
+      "<",
+      "Less-than operator (ECMA `<`): relational comparison of the operands.",
+    ),
+    "<=": binaryMeta(
+      "Comparison",
+      "<=",
+      "Less-than-or-equal operator (ECMA `<=`): relational comparison of the operands.",
+    ),
+    "=": assignMeta("=", "Simple"),
+    "===": binaryMeta(
+      "Comparison",
+      "===",
+      "Strict equality operator (ECMA `===`): true when the operands are equal without coercion.",
+    ),
+    ">": binaryMeta(
+      "Comparison",
+      ">",
+      "Greater-than operator (ECMA `>`): relational comparison of the operands.",
+    ),
+    ">=": binaryMeta(
+      "Comparison",
+      ">=",
+      "Greater-than-or-equal operator (ECMA `>=`): relational comparison of the operands.",
+    ),
+    "??": binaryMeta(
+      "Logical",
+      "??",
+      "Nullish coalescing operator (ECMA `??`): yields the right operand when the left is null or undefined.",
+    ),
+    "?:": {
+      description:
+        "Conditional operator (ECMA `?:`): evaluates the test in target, yielding value when truthy, initial otherwise.",
+      group: "Conditional",
+      insert: () => ({ initial: null, operator: "?:", target: null, value: null }),
+      parameters: [
+        { description: "Test condition", name: "target" },
+        { description: "Result when the test is truthy", name: "value" },
+        { description: "Result when the test is falsy", name: "initial" },
+      ],
+    },
+    "||": binaryMeta(
+      "Logical",
+      "||",
+      "Logical OR operator (ECMA `||`): yields the right operand when the left is falsy.",
+    ),
+    call: {
+      description:
+        "Function.prototype.call (ECMA): invokes a named formula (#/state/…) or blessed pure global (window#/…) with positional arguments.",
+      group: "Function",
+      insert: () => ({ operator: "call", target: { $ref: "" }, value: [] }),
+      parameters: [
+        { description: "Callee pointer: #/state/<formula> or window#/<global>", name: "target" },
+        { description: "Positional argument list", name: "value" },
+      ],
+    },
+    filter: aggregateMeta(
+      "filter",
+      "Array.prototype.filter (ECMA): keeps elements whose per-item expression is truthy.",
+      false,
+    ),
+    map: aggregateMeta(
+      "map",
+      "Array.prototype.map (ECMA): transforms each element via the per-item expression.",
+      false,
+    ),
+    pop: arrayMeta(
+      "pop",
+      "Array.prototype.pop (ECMA): removes and returns the last element of the target array.",
+      false,
+    ),
+    push: arrayMeta(
+      "push",
+      "Array.prototype.push (ECMA): appends the value to the target array.",
+      true,
+    ),
+    reduce: aggregateMeta(
+      "reduce",
+      "Array.prototype.reduce (ECMA): folds the array into an accumulator via the per-item expression.",
+      true,
+    ),
+    shift: arrayMeta(
+      "shift",
+      "Array.prototype.shift (ECMA): removes and returns the first element of the target array.",
+      false,
+    ),
+    splice: {
+      description:
+        "Array.prototype.splice (ECMA): removes and/or inserts elements at an index of the target array.",
+      group: "Array methods",
+      insert: () => ({ operator: "splice", target: { $ref: "" }, value: [null] }),
+      parameters: [
+        REF_TARGET,
+        { description: "Arguments: start, deleteCount, items…", name: "value" },
+      ],
+    },
+    switch: {
+      description:
+        "Switch selection (ECMA `switch` semantics): matches the target's string form against case keys, falling back to default.",
+      group: "Conditional",
+      insert: () => ({ cases: {}, default: null, operator: "switch", target: null }),
+      parameters: [
+        { description: "Discriminant value", name: "target" },
+        { description: "Matched value → result operand map", name: "cases" },
+        { description: "Result when no case matches", name: "default" },
+      ],
+    },
+    unshift: arrayMeta(
+      "unshift",
+      "Array.prototype.unshift (ECMA): prepends the value to the target array.",
+      true,
+    ),
+  }),
+);
 
 /** Catalog entries for every blessed operator, in `BLESSED_OPERATORS` iteration order. */
 export function operatorEntries(): FormulaCatalogEntry[] {
   const out: FormulaCatalogEntry[] = [];
   for (const op of BLESSED_OPERATORS) {
-    // Own-property lookup only: a bare index would resolve inherited Object.prototype members for
-    // Ops like "toLocaleString", yielding a bogus meta whose undefined group/description breaks
-    // The palette's substring filter.
-    const meta = Object.hasOwn(OPERATOR_META, op) ? OPERATOR_META[op] : undefined;
+    // A Map lookup is own-entries only: a bare object index would resolve inherited
+    // Object.prototype members for ops like "toLocaleString", yielding a bogus meta whose
+    // Undefined group/description breaks the palette's substring filter.
+    const meta = OPERATOR_META.get(op);
     if (meta) {
       out.push({
         description: meta.description,
@@ -317,39 +315,41 @@ export function operatorEntries(): FormulaCatalogEntry[] {
 // ─── Pure standard-library methods (derived, spec.md §19.4d) ────────────────
 
 /** Prototype owner per pure method — drives grouping and the derived description. */
-const PURE_METHOD_PROTO: Record<string, string> = {
-  at: "Array/String",
-  charAt: "String",
-  concat: "Array/String",
-  endsWith: "String",
-  flat: "Array",
-  includes: "Array/String",
-  indexOf: "Array/String",
-  join: "Array",
-  lastIndexOf: "Array/String",
-  normalize: "String",
-  padEnd: "String",
-  padStart: "String",
-  repeat: "String",
-  replaceAll: "String",
-  slice: "Array/String",
-  split: "String",
-  startsWith: "String",
-  toFixed: "Number",
-  toLocaleLowerCase: "String",
-  toLocaleString: "Number",
-  toLocaleUpperCase: "String",
-  toLowerCase: "String",
-  toPrecision: "Number",
-  toReversed: "Array",
-  toSorted: "Array",
-  toSpliced: "Array",
-  toUpperCase: "String",
-  trim: "String",
-  trimEnd: "String",
-  trimStart: "String",
-  with: "Array",
-};
+const PURE_METHOD_PROTO = new Map<string, string>(
+  Object.entries({
+    at: "Array/String",
+    charAt: "String",
+    concat: "Array/String",
+    endsWith: "String",
+    flat: "Array",
+    includes: "Array/String",
+    indexOf: "Array/String",
+    join: "Array",
+    lastIndexOf: "Array/String",
+    normalize: "String",
+    padEnd: "String",
+    padStart: "String",
+    repeat: "String",
+    replaceAll: "String",
+    slice: "Array/String",
+    split: "String",
+    startsWith: "String",
+    toFixed: "Number",
+    toLocaleLowerCase: "String",
+    toLocaleString: "Number",
+    toLocaleUpperCase: "String",
+    toLowerCase: "String",
+    toPrecision: "Number",
+    toReversed: "Array",
+    toSorted: "Array",
+    toSpliced: "Array",
+    toUpperCase: "String",
+    trim: "String",
+    trimEnd: "String",
+    trimStart: "String",
+    with: "Array",
+  }),
+);
 
 /** Methods that take no argument — their insert seed omits `value`. */
 export const ZERO_ARG_METHODS = new Set([
@@ -369,7 +369,7 @@ export const ZERO_ARG_METHODS = new Set([
 
 /** The derived catalog entry for one pure method operator (spec.md §19.4d). */
 function pureMethodEntry(op: string): FormulaCatalogEntry {
-  const proto = PURE_METHOD_PROTO[op] ?? "Standard library";
+  const proto = PURE_METHOD_PROTO.get(op) ?? "Standard library";
   return {
     description: `${proto}.prototype.${op} (ECMA) — pure: never mutates the receiver. Receiver in target; argument (or argument list) in value.`,
     group: `${proto} methods`,
@@ -390,14 +390,16 @@ function pureMethodEntry(op: string): FormulaCatalogEntry {
  * Synthetic blessed helpers wrap constructor-shaped standard-library APIs (spec.md §19.4c); their
  * catalog descriptions name the wrapped API rather than claiming a literal global exists.
  */
-const HELPER_DESCRIPTIONS: Record<string, string> = {
-  "Intl/formatDate":
-    "Intl.formatDate(value, locale?, options?) — blessed helper wrapping new Intl.DateTimeFormat(locale, options).format(new Date(value)).",
-  "Intl/formatNumber":
-    "Intl.formatNumber(value, locale?, options?) — blessed helper wrapping new Intl.NumberFormat(locale, options).format(value).",
-  "Intl/formatRelativeTime":
-    "Intl.formatRelativeTime(value, unit, locale?, options?) — blessed helper wrapping new Intl.RelativeTimeFormat(locale, options).format(value, unit).",
-};
+const HELPER_DESCRIPTIONS = new Map<string, string>(
+  Object.entries({
+    "Intl/formatDate":
+      "Intl.formatDate(value, locale?, options?) — blessed helper wrapping new Intl.DateTimeFormat(locale, options).format(new Date(value)).",
+    "Intl/formatNumber":
+      "Intl.formatNumber(value, locale?, options?) — blessed helper wrapping new Intl.NumberFormat(locale, options).format(value).",
+    "Intl/formatRelativeTime":
+      "Intl.formatRelativeTime(value, unit, locale?, options?) — blessed helper wrapping new Intl.RelativeTimeFormat(locale, options).format(value, unit).",
+  }),
+);
 
 /** Catalog entries derived from `BLESSED_GLOBALS`; grouped by namespace (bare → globalThis). */
 export function globalEntries(): FormulaCatalogEntry[] {
@@ -408,7 +410,7 @@ export function globalEntries(): FormulaCatalogEntry[] {
     const label = name.replaceAll("/", ".");
     out.push({
       description:
-        HELPER_DESCRIPTIONS[name] ??
+        HELPER_DESCRIPTIONS.get(name) ??
         `${label} — blessed pure global from the ECMAScript standard library, invoked via the call operator (window#/${name}).`,
       group,
       insert: () => ({ operator: "call", target: { $ref: `window#/${name}` }, value: [] }),
@@ -425,30 +427,41 @@ export function globalEntries(): FormulaCatalogEntry[] {
 
 /** Normalize a `(string | CemParameter)` parameter declaration to display metadata. */
 function toParameterInfo(p: string | CemParameter): FormulaParameterInfo | null {
-  if (typeof p === "string") {
+  if (isString(p)) {
     return p ? { name: p } : null;
   }
-  if (!isJsonObject(p) || typeof p.name !== "string" || !p.name) {
+  /* Document state is checked here rather than trusted: `isNamedFormulaDef` only proved an array.
+     An array entry has no string `name`, so `isNonNullObject` refuses exactly what `isJsonObject`
+     did, without intersecting away the optional members' `undefined`. */
+  if (!isNonNullObject(p) || !isString(p.name) || !p.name) {
     return null;
   }
   const info: FormulaParameterInfo = { name: p.name };
   const { type } = p;
-  if (typeof type === "string") {
+  if (isString(type)) {
     info.type = type;
   } else if (isJsonObject(type)) {
-    if (typeof type.text === "string") {
+    if (isString(type.text)) {
       info.type = type.text;
-    } else if (typeof type.type === "string") {
+    } else if (isString(type.type)) {
       info.type = type.type;
     }
   }
-  if (typeof p.description === "string") {
+  if (isString(p.description)) {
     info.description = p.description;
   }
-  if ("default" in p && p.default !== undefined) {
-    info.default = p.default as JsonValue;
+  if (p.default !== undefined) {
+    info.default = p.default;
   }
   return info;
+}
+
+/** Display metadata for each well-formed parameter declaration, in declaration order. */
+function parameterInfos(declared: readonly (string | CemParameter)[]): FormulaParameterInfo[] {
+  return declared.flatMap((p) => {
+    const info = toParameterInfo(p);
+    return info === null ? [] : [info];
+  });
 }
 
 /** Catalog entries for the document's named formulas (parameterized `$expression` entries). */
@@ -460,13 +473,11 @@ export function namedFormulaEntries(
     if (!isNamedFormulaDef(def)) {
       continue;
     }
-    const parameters = (def.parameters as (string | CemParameter)[])
-      .map((p) => toParameterInfo(p))
-      .filter((p): p is FormulaParameterInfo => p !== null);
+    const parameters = parameterInfos(def.parameters);
     const description =
-      typeof def.description === "string" && def.description
+      isString(def.description) && def.description
         ? def.description
-        : typeof def.$title === "string" && def.$title
+        : isString(def.$title) && def.$title
           ? def.$title
           : `Named formula "${key}" from document state.`;
     out.push({
@@ -475,7 +486,7 @@ export function namedFormulaEntries(
       insert: () => ({
         operator: "call",
         target: { $ref: `#/state/${key}` },
-        value: parameters.map((p) => (p.default ?? null) as JxExpressionOperand),
+        value: parameters.map((p) => p.default ?? null),
       }),
       kind: "formula",
       label: key,
@@ -499,13 +510,11 @@ export function packagedFormulaEntries(
   state?: Record<string, JxStateDefinition> | null,
 ): FormulaCatalogEntry[] {
   const out: FormulaCatalogEntry[] = [];
-  for (const formula of packagedCatalog) {
+  for (const formula of catalog) {
     if (state?.[formula.name]) {
       continue;
     }
-    const parameters = formula.parameters
-      .map((p) => toParameterInfo(p))
-      .filter((p): p is FormulaParameterInfo => p !== null);
+    const parameters = parameterInfos(formula.parameters);
     out.push({
       description: formula.description,
       ensure: {
@@ -520,7 +529,7 @@ export function packagedFormulaEntries(
       insert: () => ({
         operator: "call",
         target: { $ref: `#/state/${formula.name}` },
-        value: parameters.map((p) => (p.default ?? null) as JxExpressionOperand),
+        value: parameters.map((p) => p.default ?? null),
       }),
       kind: "formula",
       label: formula.name,

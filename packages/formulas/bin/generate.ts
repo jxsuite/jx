@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BLESSED_OPERATORS, isBlessedGlobal, isMutating } from "@jxsuite/runtime/expression";
+import { isJsonObject, isRef, isString } from "@jxsuite/schema/guards";
+
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const formulasDir = join(root, "formulas");
@@ -16,31 +19,39 @@ const formulasDir = join(root, "formulas");
 interface CatalogEntry {
   name: string;
   description: string;
-  parameters: unknown[];
-  expression: Record<string, unknown>;
+  parameters: JsonValue[];
+  expression: JsonObject;
+}
+
+/** Read one of a formula's JSON files, which must hold an object at its top level. */
+async function readJsonObject(path: string, label: string): Promise<JsonObject> {
+  const parsed: JsonValue = await Bun.file(path).json();
+  if (!isJsonObject(parsed)) {
+    throw new Error(`${label}: must hold a JSON object`);
+  }
+  return parsed;
 }
 
 /** Walk an expression tree and throw on anything impure or off the blessed sets. */
-function assertPure(node: unknown, formulaName: string): void {
-  if (node === null || typeof node !== "object") {
-    return;
-  }
+function assertPure(node: JsonValue, formulaName: string): void {
   if (Array.isArray(node)) {
     for (const item of node) {
       assertPure(item, formulaName);
     }
     return;
   }
-  const record = node as Record<string, unknown>;
-  if (typeof record.operator === "string") {
-    if (!BLESSED_OPERATORS.has(record.operator)) {
-      throw new Error(`${formulaName}: operator "${record.operator}" is not blessed`);
+  if (!isJsonObject(node)) {
+    return;
+  }
+  if (isString(node.operator)) {
+    if (!BLESSED_OPERATORS.has(node.operator)) {
+      throw new Error(`${formulaName}: operator "${node.operator}" is not blessed`);
     }
-    if (isMutating(record.operator)) {
-      throw new Error(`${formulaName}: mutating operator "${record.operator}" in a pure formula`);
+    if (isMutating(node.operator)) {
+      throw new Error(`${formulaName}: mutating operator "${node.operator}" in a pure formula`);
     }
-    if (record.operator === "call") {
-      const callee = (record.target as { $ref?: string } | null)?.$ref ?? "";
+    if (node.operator === "call") {
+      const callee = isRef(node.target) ? node.target.$ref : "";
       if (!isBlessedGlobal(callee)) {
         throw new Error(
           `${formulaName}: call target "${callee}" must be a blessed pure global (window#/…)`,
@@ -48,7 +59,7 @@ function assertPure(node: unknown, formulaName: string): void {
       }
     }
   }
-  for (const value of Object.values(record)) {
+  for (const value of Object.values(node)) {
     assertPure(value, formulaName);
   }
 }
@@ -59,19 +70,16 @@ for (const dir of dirents
   .filter((d) => d.isDirectory())
   .map((d) => d.name)
   .toSorted()) {
-  const meta = (await Bun.file(join(formulasDir, dir, "formula.json")).json()) as Record<
-    string,
-    unknown
-  >;
-  const expression = (await Bun.file(join(formulasDir, dir, "expression.json")).json()) as Record<
-    string,
-    unknown
-  >;
+  const meta = await readJsonObject(join(formulasDir, dir, "formula.json"), `${dir}/formula.json`);
+  const expression = await readJsonObject(
+    join(formulasDir, dir, "expression.json"),
+    `${dir}/expression.json`,
+  );
 
   if (meta.name !== dir) {
     throw new Error(`${dir}: formula.json name "${String(meta.name)}" must match the folder name`);
   }
-  if (typeof meta.description !== "string" || meta.description.length === 0) {
+  if (!isString(meta.description) || meta.description.length === 0) {
     throw new Error(`${dir}: a description is required (editor tooltip + LLM contract)`);
   }
   if (!Array.isArray(meta.parameters) || meta.parameters.length === 0) {
@@ -105,9 +113,6 @@ export interface FormulaCatalogEntry {
 
 export const catalog: FormulaCatalogEntry[] = `;
 
-await Bun.write(
-  join(root, "src", "catalog.ts"),
-  `${banner}${JSON.stringify(entries, null, 2)} as unknown as FormulaCatalogEntry[];\n`,
-);
+await Bun.write(join(root, "src", "catalog.ts"), `${banner}${JSON.stringify(entries, null, 2)};\n`);
 
 console.log(`catalog.ts: ${entries.length} formulas`);

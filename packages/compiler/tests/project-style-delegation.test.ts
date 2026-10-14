@@ -69,11 +69,15 @@ describe("compileStyles — the project block is the site builder's", () => {
        against; the build drops it for the same reason but says so, through the same recorder the
        element styles use — so delegating the project half did not lose the report. */
     takeDroppedReactiveStyles();
-    const built = compileStyles({ children: [], tagName: "div" }, {}, {
-      "--tint": "${state.tint}",
-      padding: "4px",
-      ".card": { color: { $ref: "#/state/fg" } },
-    } as never);
+    const built = compileStyles(
+      { children: [], tagName: "div" },
+      {},
+      {
+        "--tint": "${state.tint}",
+        padding: "4px",
+        ".card": { color: { $ref: "#/state/fg" } },
+      },
+    );
     expect(sheetOf(built)).toBe("body { padding: 4px }");
     const dropped = takeDroppedReactiveStyles();
     expect(dropped).toHaveLength(2);

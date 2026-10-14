@@ -48,10 +48,12 @@ function usageResult(files: number, refs: number): ReferencesResult {
   };
 }
 
-function install(findReferences: StudioPlatform["findReferences"] | null): void {
-  registerPlatform(
-    (findReferences === null ? {} : { findReferences }) as unknown as StudioPlatform,
-  );
+function install(findReferences: NonNullable<StudioPlatform["findReferences"]> | null): void {
+  const members: Partial<StudioPlatform> = findReferences === null ? {} : { findReferences };
+  /* SAFETY: the dialogs under test reach the platform only through services/references.ts, which
+     reads `findReferences` alone and reads its absence as "this host cannot count"; no other
+     member of the adapter is ever called here. */
+  registerPlatform(members as StudioPlatform);
 }
 
 /** The text of the dialog currently mounted in the overlay layers. */
@@ -200,7 +202,7 @@ function installIndex(hits: Record<string, { file: string; ref: string }[]>): vo
     const files = found.map((hit) => ({
       count: 1,
       path: hit.file,
-      refs: [{ count: 1, ref: hit.ref, refType: "path" } as ReferenceHit],
+      refs: [{ count: 1, ref: hit.ref, refType: "path" } satisfies ReferenceHit],
     }));
     return {
       errors: [],

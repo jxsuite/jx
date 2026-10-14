@@ -16,19 +16,14 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { bootStudio } from "./studio-shell-fixture";
 import { activeTab } from "../src/workspace/workspace";
 import { shell } from "../src/shell";
-
-interface AutomationApi {
-  run: (id: string, args?: Record<string, unknown>) => Promise<void>;
-  probe: {
-    commands: () => { id: string; title: string; enabled: boolean; args?: object }[];
-    seeds: () => { id: string; boundary: string }[];
-  };
-}
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { AutomationApi } from "../src/services/automation";
+import type { CommandArgValues } from "../src/commands/command-args";
 
 await bootStudio({ url: "http://localhost/?automation=1" });
 
 function api(): AutomationApi {
-  const hook = (globalThis as Record<string, unknown>).__jxAutomation as AutomationApi | undefined;
+  const hook = globalThis.__jxAutomation;
   if (!hook) {
     throw new Error("__jxAutomation was not installed");
   }
@@ -36,7 +31,7 @@ function api(): AutomationApi {
 }
 
 /** Run through the hook expecting a refusal, and return the message it refused with. */
-async function refusal(id: string, args?: Record<string, unknown>): Promise<string> {
+async function refusal(id: string, args?: CommandArgValues): Promise<string> {
   try {
     await api().run(id, args);
   } catch (error) {
@@ -102,11 +97,14 @@ describe("the hook installed, over the composed registry", () => {
     const record = api()
       .probe.commands()
       .find((c) => c.id === "view.setActivity");
-    const schema = record?.args as { properties: { tab: { enum: string[] } } } | undefined;
-    expect(schema?.properties.tab.enum).toContain("layers");
+    const schema = record?.args;
+    const properties = isJsonObject(schema) ? schema["properties"] : undefined;
+    const tab = isJsonObject(properties) ? properties["tab"] : undefined;
+    const tabEnum = isJsonObject(tab) ? tab["enum"] : undefined;
+    expect(tabEnum).toContain("layers");
     // The three ids this phase renamed are gone from the enum, which is what turns a stale
     // Manifest step red in the PR that renamed them.
-    expect(schema?.properties.tab.enum).not.toContain("head");
+    expect(tabEnum).not.toContain("head");
   });
 });
 
@@ -169,7 +167,7 @@ describe("run() reaches the implementations", () => {
 
 describe("the Data panel the commands drive", () => {
   test("view.setActivity data renders the definitions, the values and Refresh", async () => {
-    activeTab.value!.doc.document.state = { count: { default: 0, type: "number" } } as never;
+    activeTab.value!.doc.document.state = { count: { default: 0, type: "number" } };
     await api().run("view.setActivity", { tab: "data" });
     await flush();
     // ONE panel: the definition row, and what the canvas resolved it to. `state` and `data` were

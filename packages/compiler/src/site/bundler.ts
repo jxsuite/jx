@@ -16,7 +16,6 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { isNpmSpecifier, NPM_SPECIFIER_PREFIX } from "@jxsuite/schema/asset-paths";
-import type { BunPlugin } from "bun";
 
 /** Import specifiers left external in client bundles — provided by the page importmap. */
 export const CLIENT_EXTERNALS = ["@vue/reactivity", "lit-html"];
@@ -111,16 +110,28 @@ export interface BundleOptions {
   onFileLoaded?: (path: string) => void;
 }
 
+/**
+ * The part of a plugin builder the hooks use, typed so that both Bun's `PluginBuilder` and
+ * esbuild's `PluginBuild` are assignable to it: a plugin written against it is a plugin for either
+ * backend.
+ */
 interface PluginBuild {
   onResolve: (
     options: { filter: RegExp },
-    callback: (args: { path: string; importer: string }) => unknown,
+    callback: (args: { path: string; importer: string }) => ReturnType<BundleResolver["resolve"]>,
   ) => void;
-  onLoad: (options: { filter: RegExp }, callback: (args: { path: string }) => unknown) => void;
+  /** An `undefined` result hands the file back to the backend's own loader. */
+  onLoad: (options: { filter: RegExp }, callback: (args: { path: string }) => undefined) => void;
+}
+
+/** A plugin in the one shape both `Bun.build` and `esbuild.build` accept. */
+interface BundlePlugin {
+  name: string;
+  setup: (build: PluginBuild) => void;
 }
 
 /** Wrap the hooks as the one-plugin array both backends take. */
-function hookPlugins(opts: BundleOptions): NonNullable<Parameters<typeof Bun.build>[0]["plugins"]> {
+function hookPlugins(opts: BundleOptions): BundlePlugin[] {
   const { onFileLoaded, resolver } = opts;
   if (resolver === undefined && onFileLoaded === undefined) {
     return [];
@@ -136,7 +147,7 @@ function hookPlugins(opts: BundleOptions): NonNullable<Parameters<typeof Bun.bui
       });
     }
   };
-  return [{ name: "jx-bundle-hooks", setup } as unknown as BunPlugin];
+  return [{ name: "jx-bundle-hooks", setup }];
 }
 
 /**
@@ -184,6 +195,24 @@ function shouldMinify(opts: BundleOptions): boolean {
   return opts.minify ?? opts.target === "browser";
 }
 
+/** The resolution options both backends spell the same way, present only when they apply. */
+interface SharedResolution {
+  conditions?: string[];
+  define?: Record<string, string>;
+}
+
+/** Export conditions when the caller gave some, and {@link BROWSER_DEFINE} for browser bundles. */
+function sharedResolution(opts: BundleOptions): SharedResolution {
+  const shared: SharedResolution = {};
+  if (opts.conditions) {
+    shared.conditions = opts.conditions;
+  }
+  if (opts.target === "browser") {
+    shared.define = { ...BROWSER_DEFINE };
+  }
+  return shared;
+}
+
 /** Map a bundle target to esbuild's platform (conditions carry the workerd specifics). */
 function esbuildPlatform(target: BundleTargetName): "browser" | "node" {
   return target === "node" || target === "bun" ? "node" : "browser";
@@ -210,8 +239,7 @@ export async function bundleEntry(request: BundleRequest, opts: BundleOptions): 
     const esbuild = await import("esbuild");
     await esbuild.build({
       bundle: true,
-      ...(opts.conditions ? { conditions: opts.conditions } : {}),
-      ...(opts.target === "browser" ? { define: { ...BROWSER_DEFINE } } : {}),
+      ...sharedResolution(opts),
       entryPoints: [request.entryPath],
       external,
       format: "esm",
@@ -219,14 +247,13 @@ export async function bundleEntry(request: BundleRequest, opts: BundleOptions): 
       minify: shouldMinify(opts),
       outfile: request.outfile,
       platform: esbuildPlatform(opts.target),
-      plugins: plugins as unknown as NonNullable<Parameters<typeof esbuild.build>[0]["plugins"]>,
+      plugins,
     });
     return;
   }
 
   const result = await Bun.build({
-    ...(opts.conditions ? { conditions: opts.conditions } : {}),
-    ...(opts.target === "browser" ? { define: { ...BROWSER_DEFINE } } : {}),
+    ...sharedResolution(opts),
     entrypoints: [request.entryPath],
     external,
     format: "esm",
@@ -305,8 +332,7 @@ export async function bundleSource(
     const esbuild = await import("esbuild");
     await esbuild.build({
       bundle: true,
-      ...(opts.conditions ? { conditions: opts.conditions } : {}),
-      ...(opts.target === "browser" ? { define: { ...BROWSER_DEFINE } } : {}),
+      ...sharedResolution(opts),
       external: opts.external ?? [],
       format: "esm",
       logLevel: "silent",

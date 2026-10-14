@@ -20,25 +20,54 @@ import { TableInsert } from "../src/table-insert";
 import { TableUpdate } from "../src/table-update";
 import { TableDelete } from "../src/table-delete";
 import { lowerActionDef } from "../src/table-actions";
+import type { ActionScope } from "../src/table-actions";
 import type { TableDef } from "../src/types";
+import type { JsonValue } from "@jxsuite/schema/types";
 
-const globalRef = globalThis as Record<string, unknown>;
+/** The live state an action handler runs against here: one template field plus the `_v` counter. */
+interface GreetingScope extends ActionScope {
+  q: string;
+}
+
 const realFetch = globalThis.fetch;
 
 afterEach(() => {
-  delete globalRef.document;
-  globalRef.fetch = realFetch;
+  Reflect.deleteProperty(globalThis, "document");
+  globalThis.fetch = realFetch;
 });
 
+/** Answer every `fetch` from `respond`, keeping Bun's `preconnect` so the stub is a whole `fetch`. */
+function installFetch(respond: (url: string, init: RequestInit) => Response): void {
+  const { preconnect } = realFetch;
+  const stub = async (input: string | URL | Request, init?: RequestInit) =>
+    respond(String(input), init ?? {});
+  globalThis.fetch = Object.assign(stub, { preconnect });
+}
+
 /** Stub a browser: a document global plus a fetch recorder returning the given payload. */
-function stubBrowser(payload: unknown, status = 200): { urls: string[] } {
+function stubBrowser(payload: JsonValue, status = 200) {
   const urls: string[] = [];
-  globalRef.document = {};
-  globalRef.fetch = (async (input: string | URL | Request) => {
-    urls.push(String(input));
+  Object.assign(globalThis, { document: {} });
+  installFetch((url) => {
+    urls.push(url);
     return Response.json(payload, { status });
-  }) as typeof globalThis.fetch;
+  });
   return { urls };
+}
+
+/** The seeded `comments` table as sqlite stores it: booleans land as 0/1 integers. */
+interface SeedDatabase {
+  comments: { approved: number; id: string; message: string };
+}
+
+/** A stand-in form: an EventTarget carrying the `tagName` and `reset()` the action handler reads. */
+class ResettableForm extends EventTarget {
+  readonly tagName = "FORM";
+  resetCount = 0;
+
+  reset(): void {
+    this.resetCount += 1;
+  }
 }
 
 describe("table-shared helpers", () => {
@@ -98,7 +127,7 @@ describe("lower capabilities", () => {
     expect(lowered.$prototype).toBe("Request");
     expect(lowered.timing).toBe("client");
     expect(lowered.default).toEqual([]);
-    const url = lowered.url as string;
+    const { url } = lowered;
     expect(url).toStartWith("/_jx/data/comments?filter=");
     expect(url).toContain("${state.search}");
     expect(url).toContain("_v=${(state._v || 0)}");
@@ -121,7 +150,7 @@ describe("lower capabilities", () => {
     expect(insert.$prototype).toBe("Function");
     expect(insert.parameters).toEqual(["event"]);
     expect(insert.timing).toBe("client");
-    const insertBody = insert.body as string;
+    const insertBody = insert.body;
     expect(insertBody).toContain("fetch(\"/_jx/data/comments\", { method: 'POST'");
     expect(insertBody).toContain('"source": "web"');
     expect(insertBody).toContain("state._v = (state._v || 0) + 1;");
@@ -132,27 +161,27 @@ describe("lower capabilities", () => {
       { id: { $ref: "#/$params/id" }, table: "comments" },
       { route: { _pathParams: { id: "42" } } },
     );
-    expect(update.body as string).toContain("fetch(\"/_jx/data/comments/42\", { method: 'PATCH'");
-    expect(update.body as string).not.toContain("form.reset");
+    const updateBody = update.body;
+    expect(updateBody).toContain("fetch(\"/_jx/data/comments/42\", { method: 'PATCH'");
+    expect(updateBody).not.toContain("form.reset");
 
     const remove = TableDelete.lower({ id: "${state.selected}", table: "comments" });
-    expect(remove.body as string).toContain("fetch(`/_jx/data/comments/${state.selected}`");
-    expect(remove.body as string).toContain("method: 'DELETE'");
+    const removeBody = remove.body;
+    expect(removeBody).toContain("fetch(`/_jx/data/comments/${state.selected}`");
+    expect(removeBody).toContain("method: 'DELETE'");
   });
 
   test("lowered action bodies execute: fetch fires and state._v bumps on success", async () => {
     const lowered = lowerActionDef("POST", { table: "comments", values: { message: "hi" } });
     const calls: { url: string; init: RequestInit }[] = [];
-    globalRef.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      calls.push({ init: init ?? {}, url: String(input) });
+    installFetch((url, init) => {
+      calls.push({ init, url });
       return Response.json({ ok: true }, { status: 201 });
-    }) as typeof globalThis.fetch;
+    });
 
-    const handler = new Function("state", "event", lowered.body as string) as (
-      state: Record<string, unknown>,
-      event?: unknown,
-    ) => void;
-    const state: Record<string, unknown> = {};
+    // `new Function` stringifies its body argument itself, so String() hands it the same text.
+    const handler = new Function("state", "event", String(lowered.body));
+    const state = {};
     handler(state);
     await new Promise((resolve) => {
       setTimeout(resolve, 5);
@@ -161,13 +190,13 @@ describe("lower capabilities", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe("/_jx/data/comments");
     expect(calls[0]!.init.method).toBe("POST");
-    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ message: "hi" });
-    expect(state._v).toBe(1);
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ message: "hi" });
+    expect(state).toEqual({ _v: 1 });
   });
 });
 
 describe("node-side resolution", () => {
-  const tables: Record<string, TableDef> = {
+  const tables = {
     comments: {
       connection: "main",
       schema: {
@@ -175,7 +204,7 @@ describe("node-side resolution", () => {
         type: "object",
       },
     },
-  };
+  } satisfies Record<string, TableDef>;
 
   test("TableQuery/TableEntry resolve against a real local sqlite database", async () => {
     const root = mkdtempSync(join(tmpdir(), "jx-table-node-"));
@@ -194,33 +223,33 @@ describe("node-side resolution", () => {
       const { resolveDialect } = await import("../src/connectors");
       const { Kysely } = await import("kysely");
       const { dialect } = await resolveDialect("main", projectConfig, { JX_PROJECT_ROOT: root });
-      const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect });
+      const db = new Kysely<SeedDatabase>({ dialect });
       await db.insertInto("comments").values({ approved: 1, id: "c1", message: "hello" }).execute();
       await db.insertInto("comments").values({ approved: 1, id: "c2", message: "two" }).execute();
       await db.insertInto("comments").values({ approved: 1, id: "c3", message: "three" }).execute();
       await db.destroy();
 
-      const rows = (await queryTable({
+      const rows = await queryTable({
         _project,
         filter: { approved: true },
         table: "comments",
-      })) as Record<string, unknown>[];
+      });
       expect(rows).toHaveLength(3);
       expect(rows[0]!.approved).toBe(true);
 
-      const limited = (await queryTable({
+      const limited = await queryTable({
         _project,
         limit: 1,
         table: "comments",
-      })) as Record<string, unknown>[];
+      });
       expect(limited).toHaveLength(1);
 
-      const paged = (await queryTable({
+      const paged = await queryTable({
         _project,
         offset: 1,
         sort: { field: "id", order: "asc" },
         table: "comments",
-      })) as Record<string, unknown>[];
+      });
       expect(paged.map((r) => r.id)).toEqual(["c2", "c3"]);
 
       const entry = await getEntry({ _project, table: "comments" }, "c1");
@@ -228,7 +257,7 @@ describe("node-side resolution", () => {
       expect(await getEntry({ _project, table: "comments" }, "ghost")).toBeNull();
 
       const viaClass = await new TableEntry({ _project, id: "c1", table: "comments" }).resolve();
-      expect((viaClass as Record<string, unknown>).message).toBe("hello");
+      expect(viaClass).toMatchObject({ message: "hello" });
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
@@ -278,19 +307,19 @@ describe("browser resolution", () => {
 
   test("action handlers post form-free payloads and bump scope._v", async () => {
     const calls: { url: string; init: RequestInit }[] = [];
-    globalRef.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      calls.push({ init: init ?? {}, url: String(input) });
+    installFetch((url, init) => {
+      calls.push({ init, url });
       return Response.json({}, { status: 200 });
-    }) as typeof globalThis.fetch;
+    });
 
-    const scope: Record<string, unknown> = { q: "hello" };
+    const scope: GreetingScope = { q: "hello" };
     const insert = new TableInsert({
       table: "comments",
       values: { message: "${state.q} world" },
     }).resolve();
     expect(await insert(scope)).toBe(true);
-    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ message: "hello world" });
-    expect(scope._v).toBe(1);
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ message: "hello world" });
+    expect(scope).toHaveProperty("_v", 1);
 
     const update = new TableUpdate({
       id: "c1",
@@ -305,18 +334,12 @@ describe("browser resolution", () => {
     await remove(scope);
     expect(calls[2]!.init.method).toBe("DELETE");
     expect(calls[2]!.init.body).toBeUndefined();
-    expect(scope._v).toBe(3);
+    expect(scope).toHaveProperty("_v", 3);
   });
 
   test("a real submit event is prevented, and a failed template value falls back to its raw text", async () => {
-    globalRef.fetch = (async () =>
-      Response.json({}, { status: 200 })) as unknown as typeof globalThis.fetch;
-    let prevented = false;
-    const event = {
-      preventDefault: () => {
-        prevented = true;
-      },
-    } as unknown as Event;
+    installFetch(() => Response.json({}, { status: 200 }));
+    const event = new Event("submit", { cancelable: true });
 
     const insert = new TableInsert({
       table: "comments",
@@ -324,23 +347,18 @@ describe("browser resolution", () => {
       values: { message: "${state.missing.deep}" },
     }).resolve();
     expect(await insert({}, event)).toBe(true);
-    expect(prevented).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   test("a POST from a real form resets it once the request succeeds", async () => {
-    let reset = false;
-    globalRef.fetch = (async () =>
-      Response.json({}, { status: 200 })) as unknown as typeof globalThis.fetch;
-    const form = {
-      reset: () => {
-        reset = true;
-      },
-      tagName: "FORM",
-    } as unknown as HTMLFormElement;
-    const event = { target: form } as unknown as Event;
+    installFetch(() => Response.json({}, { status: 200 }));
+    const form = new ResettableForm();
+    const event = new Event("submit");
+    // Dispatching is what sets `event.target`, exactly as a browser submit would.
+    form.dispatchEvent(event);
 
     const insert = new TableInsert({ table: "comments", values: {} }).resolve();
     expect(await insert({}, event)).toBe(true);
-    expect(reset).toBe(true);
+    expect(form.resetCount).toBe(1);
   });
 });

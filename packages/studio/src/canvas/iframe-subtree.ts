@@ -12,6 +12,7 @@
  */
 
 import { releaseElementStyles, renderNode, runScoped } from "@jxsuite/runtime";
+import { isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../state";
 import { makeStamper } from "./iframe-render";
 import { prepareForEditMode } from "../utils/edit-display";
@@ -39,11 +40,14 @@ export function renderSubtreeIframe(
   docPath: JxPath,
   ctx: IframeRenderCtx,
 ): HTMLElement | Text {
+  /* SAFETY: a widening of getNodeAtPath's declared return. A patch path addresses an entry of a
+   * `children` array, which the schema types as `JxMutableNode | string`, and a missing step
+   * answers undefined, so those three cases are the whole range. */
   const node = getNodeAtPath(shadowDoc, docPath) as JxMutableNode | string | undefined;
   if (node === undefined) {
     throw new Error(`iframe-patch-node-not-found:${docPath.join("/")}`);
   }
-  const def = typeof node === "string" ? node : prepareForEditMode(stripEventHandlers(node));
+  const def = isString(node) ? node : prepareForEditMode(stripEventHandlers(node));
   const { result: rendered, stop } = runScoped(() =>
     renderNode(def, ctx.defs, {
       _path: docPathToRenderPath(docPath, ctx),
@@ -98,7 +102,7 @@ function docPathToRenderPath(docPath: JxPath, ctx: IframeRenderCtx): (string | n
   const { mapperCtx } = ctx;
   if (mapperCtx.layoutWrapped && mapperCtx.pageContentPrefix && docPath[0] === "children") {
     const [, idx] = docPath;
-    return typeof idx === "number"
+    return isNumber(idx)
       ? [
           ...mapperCtx.pageContentPrefix,
           idx + (mapperCtx.pageContentOffset ?? 0),

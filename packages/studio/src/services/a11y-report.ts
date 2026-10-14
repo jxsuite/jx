@@ -38,8 +38,10 @@
 import { activeTab } from "../workspace/workspace";
 import { clearProblems, notify, problemFindings } from "./notify";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
+import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { NotifyOptions } from "./notify";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import type { JxElement } from "@jxsuite/schema/types";
+import type { JxAttributeValue, JxElement } from "@jxsuite/schema/types";
 
 /** WCAG success criteria these checks bind to, by the id ATAG B.3.1 asks a report to carry. */
 export type A11yCriterion =
@@ -113,14 +115,14 @@ const VAGUE_LINK_TEXT = new Set([
 ]);
 
 /** The attribute bag, whatever shape the author wrote it in. */
-function attrs(node: JxElement): Record<string, unknown> {
-  return (node.attributes ?? {}) as Record<string, unknown>;
+function attrs(node: JxElement): Record<string, JxAttributeValue> {
+  return node.attributes ?? {};
 }
 
 /** An attribute's literal string value, or null when it is absent or a binding. */
 function literal(node: JxElement, name: string): string | null {
   const value = attrs(node)[name];
-  return typeof value === "string" ? value : null;
+  return isString(value) ? value : null;
 }
 
 /** Whether an attribute is present at all, however it was written. */
@@ -131,15 +133,15 @@ function has(node: JxElement, name: string): boolean {
 /** The element's own text, when it is a literal rather than a binding. */
 function ownText(node: JxElement): string {
   const parts: string[] = [];
-  if (typeof node.textContent === "string") {
+  if (isString(node.textContent)) {
     parts.push(node.textContent);
   }
   const { children } = node;
   if (Array.isArray(children)) {
     for (const child of children) {
-      if (typeof child === "string") {
+      if (isString(child)) {
         parts.push(child);
-      } else if (child && typeof child === "object") {
+      } else if (isNonNullObject(child)) {
         parts.push(ownText(child));
       }
     }
@@ -158,13 +160,13 @@ function* walk(node: JxElement): Generator<JxElement> {
   const { children } = node;
   if (Array.isArray(children)) {
     for (const child of children) {
-      if (child && typeof child === "object") {
+      if (isNonNullObject(child)) {
         yield* walk(child);
       }
     }
   }
   for (const branch of Object.values(node.cases ?? {})) {
-    if (branch && typeof branch === "object") {
+    if (isNonNullObject(branch)) {
       yield* walk(branch);
     }
   }
@@ -177,7 +179,7 @@ function hasAccessibleName(node: JxElement): boolean {
     literal(node, "aria-labelledby") !== null ||
     has(node, "aria-label") ||
     has(node, "aria-labelledby") ||
-    (typeof node.title === "string" && node.title !== "") ||
+    (isString(node.title) && node.title !== "") ||
     ownText(node) !== ""
   );
 }
@@ -197,7 +199,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
 
   for (const node of walk(doc)) {
     index += 1;
-    const tag = typeof node.tagName === "string" ? node.tagName.toLowerCase() : "";
+    const tag = isString(node.tagName) ? node.tagName.toLowerCase() : "";
     const where = tag === "" ? `element ${index}` : `<${tag}>`;
 
     // ── 1.1.1 Non-text Content ────────────────────────────────────────────────
@@ -308,7 +310,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     }
 
     // ── 2.4.3 Focus Order — a positive tabindex reorders the whole page ──────
-    if (typeof node.tabIndex === "number" && node.tabIndex > 0) {
+    if (isNumber(node.tabIndex) && node.tabIndex > 0) {
       findings.push({
         criterion: "1.3.1",
         detail:
@@ -322,7 +324,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     }
 
     // ── 4.1.1 Parsing — a duplicate id breaks every reference to it ──────────
-    if (typeof node.id === "string" && node.id !== "") {
+    if (isString(node.id) && node.id !== "") {
       const seen = seenIds.get(node.id);
       if (seen !== undefined) {
         findings.push({
@@ -354,7 +356,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
   }
 
   // ── 3.1.1 Language of Page ────────────────────────────────────────────────
-  if (typeof doc.lang !== "string" || doc.lang === "") {
+  if (!isString(doc.lang) || doc.lang === "") {
     findings.push({
       criterion: "3.1.1",
       detail:
@@ -370,7 +372,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
   // The structural rules, from the engine every judge of a Jx document shares.
   for (const defect of findA11yDefects(doc)) {
     findings.push({
-      criterion: defect.criterion as A11yCriterion,
+      criterion: defect.criterion,
       detail: defect.detail,
       id: `${defect.rule}:${defect.path.join("/")}`,
       message: defect.message,
@@ -457,14 +459,19 @@ export function reportA11yProblems(doc: JxElement, path?: string): number {
   clearProblems((record) => record.source === A11Y_PROBLEM_SOURCE);
   const findings = checkDocument(doc);
   for (const finding of findings) {
-    notify(finding.severity, finding.message, {
+    const options: NotifyOptions = {
       detail: `WCAG ${finding.criterion} — ${finding.detail}`,
       key: `a11y.${finding.id}`,
       source: A11Y_PROBLEM_SOURCE,
       tier: "problem",
-      ...(finding.action === undefined ? {} : { action: finding.action }),
-      ...(path === undefined ? {} : { path }),
-    });
+    };
+    if (finding.action !== undefined) {
+      options.action = finding.action;
+    }
+    if (path !== undefined) {
+      options.path = path;
+    }
+    notify(finding.severity, finding.message, options);
   }
   /*
    * And then the honest half. A report that lists nothing reads as "this page is accessible", which

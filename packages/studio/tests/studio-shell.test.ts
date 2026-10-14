@@ -34,31 +34,62 @@ import { shell } from "../src/shell";
 import { resetZoom } from "../src/canvas/canvas-utils";
 import { getCssInitialMap } from "../src/panels/style-utils";
 import type { Tab } from "../src/tabs/tab";
+import type { PaneDerivation } from "../src/workspace/workspace";
+import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { FsEvent } from "../src/types";
+import type { ToolbarCtx } from "../src/surfaces/commandbar";
+import type { PaneContextCtx } from "../src/panels/pane-context";
+import type { initWelcome } from "../src/surfaces/welcome";
+import type { initBlockActionBar } from "../src/panels/block-action-bar";
+import type { initCanvasRender } from "../src/canvas/canvas-render";
+import type { initCanvasPatcher } from "../src/canvas/canvas-patcher";
+import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
+import type { ProjectOpenTarget, StageContext, StudioCommandHooks } from "../src/editor/shortcuts";
+import type { CommandRegistry } from "../src/commands/registry";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { CommandContext } from "../src/commands/context";
+import type { CollabParser } from "../src/collab/collab-session";
+import type { MonacoBuffer } from "../src/services/monaco-buffer";
 
 // ─── Global stubs (must exist before studio.ts is imported) ──────────────────
 
-(globalThis as any).requestIdleCallback = (cb: (d: unknown) => void) =>
-  setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0);
-(globalThis as any).cancelIdleCallback = (id: number) => clearTimeout(id);
+globalThis.requestIdleCallback = (cb: IdleRequestCallback) =>
+  Number(setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0));
+globalThis.cancelIdleCallback = (id: number) => clearTimeout(id);
 
 const noop = () => {
   /* Stub */
 };
+/** A stub stream has no listeners, so no event it is handed is ever dispatched. */
+const dispatchNothing = () => false;
+/** An inert `EventSource`: whole enough to stand in for the global, and never opening a stream. */
 class StubEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+  readonly CONNECTING = 0;
+  readonly OPEN = 1;
+  readonly CLOSED = 2;
+  readyState = 0;
+  withCredentials = false;
   url: string;
-  onmessage: unknown = null;
-  onerror: unknown = null;
+  onopen: EventSource["onopen"] = null;
+  onmessage: EventSource["onmessage"] = null;
+  onerror: EventSource["onerror"] = null;
   addEventListener = noop;
   removeEventListener = noop;
+  dispatchEvent = dispatchNothing;
   close = noop;
-  constructor(url: string) {
-    this.url = url;
+  constructor(url: string | URL) {
+    this.url = String(url);
   }
 }
-(globalThis as any).EventSource = StubEventSource;
+globalThis.EventSource = StubEventSource;
 
-const fetchMock = mock(async () => new Response("{}", { status: 404 }));
-globalThis.fetch = fetchMock as unknown as typeof fetch;
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(async () => new Response("{}", { status: 404 }), {
+  preconnect: globalThis.fetch.preconnect,
+});
 
 // ─── Shell DOM scaffold (initShellRefs queries these at import time) ──────────
 
@@ -86,15 +117,15 @@ let welcomeCtx: any = null;
 let blockBarCtx: any = null;
 let canvasRenderCtx: any = null;
 let canvasPatcherCtx: any = null;
-let shortcutsGet: ((surface: unknown) => any) | null = null;
-let shortcutHooks: Record<string, unknown> | null = null;
+let shortcutsGet: StageContext | null = null;
+let shortcutHooks: StudioCommandHooks | null = null;
 
 const statusMessages: string[] = [];
 /** Records WHICH pane each render was scheduled for — the effects are per-pane now. */
 const scheduleCanvasRenderMock = mock((_paneId?: string) => {});
 const renderCanvasMock = mock(() => {});
 let consumePatchedReturn = false;
-const consumePatchedMock = mock((_doc: object, _paneId?: string) => consumePatchedReturn);
+const consumePatchedMock = mock((_doc: JxMutableNode, _paneId?: string) => consumePatchedReturn);
 let newProjectResult: { root: string } | null = null;
 let addRepoResult: { root: string } | null = null;
 let pickerEnabled = false;
@@ -154,7 +185,7 @@ void mock.module("../src/services/notify.ts", () =>
 const openInBrowserRuns = mock(() => {});
 
 void mock.module("../src/surfaces/commandbar.ts", () => ({
-  mount: (_el: HTMLElement, ctx: unknown) => {
+  mount: (_el: HTMLElement, ctx: ToolbarCtx) => {
     toolbarCtx = ctx;
   },
   render: mock(() => {}),
@@ -162,13 +193,16 @@ void mock.module("../src/surfaces/commandbar.ts", () => ({
   unmount: mock(() => {}),
 }));
 
+/** The pane chrome's repaint, which the diff's Visual/Code switch is wired to. */
+const paneChromeRenderMock = mock(() => {});
+
 void mock.module("../src/panels/pane-context.ts", () => ({
   // The grid hands every cell its chrome host, so this is on the boot's import graph.
   attachPaneChromeHost: mock(() => {}),
-  mount: (_el: HTMLElement, ctx: unknown) => {
+  mount: (_el: HTMLElement, ctx: PaneContextCtx) => {
     paneCtx = ctx;
   },
-  render: mock(() => {}),
+  render: paneChromeRenderMock,
   // The bar's memo of a `$paths` enumeration is keyed on the project's file listing, so the boot
   // Drops it beside the other three derived caches when a watcher event lands.
   resetParamValues: mock(() => {}),
@@ -176,7 +210,7 @@ void mock.module("../src/panels/pane-context.ts", () => ({
 }));
 
 void mock.module("../src/surfaces/welcome.ts", () => ({
-  initWelcome: (ctx: unknown) => {
+  initWelcome: (ctx: Parameters<typeof initWelcome>[0]) => {
     welcomeCtx = ctx;
   },
   renderWelcome: mock(() => {}),
@@ -186,13 +220,13 @@ void mock.module("../src/editor/shortcuts.ts", () => ({
   // The registry is the first argument; the STAGE-context reader is the second — it takes a
   // Surface now, because a wheel belongs to the stage the pointer is over rather than to the
   // Focused pane.
-  initShortcuts: (_registry: unknown, get: (surface: unknown) => unknown) => {
-    shortcutsGet = get as (surface: unknown) => any;
+  initShortcuts: (_registry: CommandRegistry, get: StageContext) => {
+    shortcutsGet = get;
   },
   // The grid installs one disposer per cell; the fixture only has to hand one back.
   installStageGestures: () => () => {},
-  registerStudioCommands: (_registry: unknown, hooks: unknown) => {
-    shortcutHooks = hooks as Record<string, unknown>;
+  registerStudioCommands: (_registry: CommandRegistry, hooks: StudioCommandHooks) => {
+    shortcutHooks = hooks;
   },
 }));
 
@@ -201,6 +235,8 @@ void mock.module("../src/editor/shortcuts.ts", () => ({
    bar's own test file's business; this file owns the wiring. */
 const suppressBarMock = mock(() => {});
 const releaseBarMock = mock(() => {});
+/** The exemption question the guard asks of every pointerdown's target. */
+const isEditChromeTargetMock = mock((_target: EventTarget | null) => editChromeTarget);
 /** Whether the next pointerdown lands on edit-session chrome (the bar, its menus, the slash menu). */
 let editChromeTarget = false;
 
@@ -214,16 +250,16 @@ void mock.module("../src/panels/block-action-bar.ts", () => ({
   runCommand: mock(() => {}),
   selectionCommandRegistry: mock(() => ({ forPlacement: () => [] })),
   showCommandOverflow: mock(() => {}),
-  withCommandTarget: mock((_path: unknown, fn: () => void) => fn()),
+  withCommandTarget: mock((_path: JxPath, fn: () => void) => fn()),
   dismissBlockActionBar: mock(() => {}),
   dismissLinkPopover: mock(() => {}),
-  initBlockActionBar: (ctx: unknown) => {
+  initBlockActionBar: (ctx: Parameters<typeof initBlockActionBar>[0]) => {
     blockBarCtx = ctx;
   },
   // The inline-format family, composed into the app-wide registry by the bootstrap. A mock that
   // Stops at the exports one caller uses fails the boot at IMPORT time.
   formatCommands: mock(() => []),
-  isEditChromeTarget: mock(() => editChromeTarget),
+  isEditChromeTarget: isEditChromeTargetMock,
   registerSelectionCommands: mock(() => {}),
   releaseBlockActionBar: releaseBarMock,
   renderBlockActionBar: mock(() => {}),
@@ -231,7 +267,7 @@ void mock.module("../src/panels/block-action-bar.ts", () => ({
 }));
 
 void mock.module("../src/canvas/canvas-render.ts", () => ({
-  initCanvasRender: (ctx: unknown) => {
+  initCanvasRender: (ctx: Parameters<typeof initCanvasRender>[0]) => {
     canvasRenderCtx = ctx;
   },
   redefineElementOnCanvases: mock(() => 0),
@@ -246,7 +282,7 @@ void mock.module("../src/canvas/canvas-patcher.ts", () => ({
   classifyOps: mock(() => ({ patchable: false, reason: "mock" })),
   consumePatchedDocument: consumePatchedMock,
   escalateToFullRender: mock(() => {}),
-  initCanvasPatcher: (ctx: unknown) => {
+  initCanvasPatcher: (ctx: Parameters<typeof initCanvasPatcher>[0]) => {
     canvasPatcherCtx = ctx;
   },
 }));
@@ -267,7 +303,7 @@ void mock.module("../src/new-project/add-repo-modal.ts", () => ({
 // Capture the left-panel mount ctx (setGitDiffState / renderCanvas / cloneRepository arrows).
 let leftPanelCtx: any = null;
 void mock.module("../src/panels/left-panel.ts", () => ({
-  mount: (ctx: unknown) => {
+  mount: (ctx: NavigatorPanelDeps) => {
     leftPanelCtx = ctx;
   },
   render: mock(() => {}),
@@ -300,22 +336,18 @@ void mock.module("../src/canvas/iframe-host.ts", () => ({
 
 // Wrap collab-session: capture the source parser studio injects at init.
 const collabSnapshot = { ...(await import("../src/collab/collab-session")) };
-type CollabParserFn = (
-  tab: Tab,
-  text: string,
-) => Promise<{ document: Record<string, unknown>; frontmatter?: Record<string, unknown> }>;
-let collabParser: CollabParserFn | null = null;
+let collabParser: CollabParser | null = null;
 /** The freeze notifier studio injects — the other half of the same injection. */
 let collabNotifier: ((message: string) => void) | null = null;
 void mock.module("../src/collab/collab-session.ts", () => ({
   ...collabSnapshot,
   configureCollabNotifier: (fn: ((message: string) => void) | null) => {
     collabNotifier = fn;
-    collabSnapshot.configureCollabNotifier(fn as never);
+    collabSnapshot.configureCollabNotifier(fn);
   },
-  configureCollabParser: (fn: CollabParserFn | null) => {
+  configureCollabParser: (fn: CollabParser | null) => {
     collabParser = fn;
-    collabSnapshot.configureCollabParser(fn as never);
+    collabSnapshot.configureCollabParser(fn);
   },
 }));
 
@@ -330,16 +362,16 @@ const CARD_DOC = JSON.stringify({ children: [], tagName: "my-card" });
  * building a second one — `startFsSync` returns an inert no-op when the platform has no watcher,
  * and an inert subscription proves nothing about what the boot wired into it.
  */
-let fsWatcher: ((events: { isDir: boolean; path: string; type: string }[]) => void) | null = null;
+let fsWatcher: ((events: FsEvent[]) => void) | null = null;
 
 const { platform, state } = installMockPlatform(
   {
-    subscribeFileEvents: ((handler: typeof fsWatcher) => {
+    subscribeFileEvents: (handler) => {
       fsWatcher = handler;
       return () => {
         fsWatcher = null;
       };
-    }) as never,
+    },
   },
   {
     "components/card.json": CARD_DOC,
@@ -373,7 +405,7 @@ async function waitFor(cond: () => boolean, tries = 40): Promise<void> {
   }
 }
 
-function openShellTab(doc?: Record<string, unknown>, opts: Record<string, unknown> = {}): Tab {
+function openShellTab(doc?: JxMutableNode, opts: Partial<Parameters<typeof openTab>[0]> = {}): Tab {
   closeAllTabs();
   return openTab({
     document: doc ?? { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" },
@@ -394,6 +426,33 @@ function openTwoShellTabs(): [Tab, Tab] {
     id: "shell-tab-away",
   });
   return [home, away];
+}
+
+/** The lens a pane is deriving, or null when it holds a companion or nothing at all. */
+function lensOf(paneId: string): Extract<PaneDerivation, { kind: "lens" }> | null {
+  const derived = paneById(paneId)?.derived;
+  return derived?.kind === "lens" ? derived : null;
+}
+
+/** The members of a Monaco function editor these tests hand the shell. */
+interface FunctionEditorStub {
+  dispose?: () => void;
+  getValue: () => string;
+  getModel?: () => object | null;
+  hasTextFocus?: () => boolean;
+  _editingTab?: Tab | null;
+}
+
+/** Hand a stub to the shell as the dock's function editor, returning the handle it now holds. */
+function installFunctionEditor(stub: FunctionEditorStub): NonNullable<typeof view.functionEditor> {
+  /* SAFETY: every path these tests drive reads only the stub's members off the editor:
+     `closeFunctionEditor` (getValue, the optional `_commitBody` and `_writes`, then `dispose`
+     through `disposeFunctionEditor`) and the quit gate's `tabBufferUnsaved` (getModel,
+     `_editingTab`, `_writes`). No test here mounts, lays out or decorates the editor, which is
+     everything else the Monaco type declares. */
+  const editor = stub as NonNullable<typeof view.functionEditor>;
+  view.functionEditor = editor;
+  return editor;
 }
 
 beforeEach(() => {
@@ -581,7 +640,7 @@ describe("navigateToComponent", () => {
     expect(child.documentPath).toBe("components/card.json");
     // A PREVIEW tab: drilling in is browsing, so the second drill-in takes the same slot.
     expect(child.preview).toBe(true);
-    expect((child.doc.document as any).tagName).toBe("my-card");
+    expect(child.doc.document.tagName).toBe("my-card");
     expect(shell.leftTab).toBe("layers");
   });
 
@@ -677,10 +736,10 @@ describe("closeFunctionEditor", () => {
   test("no-op when nothing is being edited", async () => {
     openShellTab();
     const editor = { dispose: mock(() => {}), getValue: () => "x" };
-    view.functionEditor = editor as any;
+    const installed = installFunctionEditor(editor);
     await toolbarCtx.closeFunctionEditor();
     expect(editor.dispose).not.toHaveBeenCalled();
-    expect(view.functionEditor).toBe(editor as any);
+    expect(view.functionEditor).toBe(installed);
     view.functionEditor = null;
   });
 
@@ -692,9 +751,9 @@ describe("closeFunctionEditor", () => {
     });
     tab.session.ui.editingFunction = { defName: "fn", type: "def" };
     const editor = { dispose: mock(() => {}), getValue: () => "return 42;" };
-    view.functionEditor = editor as any;
+    installFunctionEditor(editor);
     await toolbarCtx.closeFunctionEditor();
-    expect((tab.doc.document as any).state.fn.body).toBe("return 42;");
+    expect(tab.doc.document.state?.fn).toMatchObject({ body: "return 42;" });
     expect(editor.dispose).toHaveBeenCalled();
     expect(view.functionEditor).toBeNull();
     expect(tab.session.ui.editingFunction).toBeNull();
@@ -707,15 +766,15 @@ describe("closeFunctionEditor", () => {
       tagName: "div",
     });
     tab.session.ui.editingFunction = { defName: "fn", type: "def" };
-    view.functionEditor = { dispose: mock(() => {}), getValue: () => "return 42 ;" } as any;
+    installFunctionEditor({ dispose: mock(() => {}), getValue: () => "return 42 ;" });
     const originalCodeService = platform.codeService;
-    platform.codeService = (async () => ({ code: "return 42;" })) as any;
+    platform.codeService = async () => ({ code: "return 42;" });
     try {
       await toolbarCtx.closeFunctionEditor();
     } finally {
       platform.codeService = originalCodeService;
     }
-    expect((tab.doc.document as any).state.fn.body).toBe("return 42;");
+    expect(tab.doc.document.state?.fn).toMatchObject({ body: "return 42;" });
   });
 
   test("merges an event handler body onto the existing binding", async () => {
@@ -724,12 +783,12 @@ describe("closeFunctionEditor", () => {
       tagName: "div",
     });
     tab.session.ui.editingFunction = { eventKey: "onclick", path: ["children", 0], type: "event" };
-    view.functionEditor = { dispose: mock(() => {}), getValue: () => "go(e)" } as any;
+    installFunctionEditor({ dispose: mock(() => {}), getValue: () => "go(e)" });
     await toolbarCtx.closeFunctionEditor();
-    const [node] = (tab.doc.document as any).children;
-    expect(node.onclick.body).toBe("go(e)");
-    expect(node.onclick.arguments).toEqual(["e"]);
-    expect(node.onclick.$prototype).toBe("Function");
+    // The body lands on the binding that was there, which keeps its own arguments and prototype.
+    expect(tab.doc.document.children).toEqual([
+      { onclick: { $prototype: "Function", arguments: ["e"], body: "go(e)" }, tagName: "button" },
+    ]);
   });
 
   test("clears the editing flag even when no editor instance exists", async () => {
@@ -746,8 +805,8 @@ describe("canvas render effects", () => {
     const tab = openShellTab();
     await flush();
     scheduleCanvasRenderMock.mockClear();
-    tab.doc.document = { children: [], tagName: "span" } as any;
-    expect(scheduleCanvasRenderMock).toHaveBeenCalled();
+    tab.doc.document = { children: [], tagName: "span" };
+    expect(scheduleCanvasRenderMock).toHaveBeenCalledWith(PRIMARY_PANE);
   });
 
   test("a surgically patched document skips the full render", async () => {
@@ -756,7 +815,7 @@ describe("canvas render effects", () => {
     consumePatchedReturn = true;
     scheduleCanvasRenderMock.mockClear();
     consumePatchedMock.mockClear();
-    tab.doc.document = { children: [], tagName: "em" } as any;
+    tab.doc.document = { children: [], tagName: "em" };
     expect(consumePatchedMock).toHaveBeenCalled();
     const fromDocEffect = scheduleCanvasRenderMock.mock.calls.length;
     expect(fromDocEffect).toBe(0);
@@ -778,8 +837,8 @@ describe("canvas render effects", () => {
 
     // One document root replaced in each pane, so both doc-effects run.
     paneById(PRIMARY_PANE)!.activeTabId = "shell-tab";
-    workspace.tabs.get("shell-tab")!.doc.document = { children: [], tagName: "b" } as never;
-    workspace.tabs.get("side-tab")!.doc.document = { children: [], tagName: "i" } as never;
+    workspace.tabs.get("shell-tab")!.doc.document = { children: [], tagName: "b" };
+    workspace.tabs.get("side-tab")!.doc.document = { children: [], tagName: "i" };
     await flush();
 
     const asked = consumePatchedMock.mock.calls.map(([, paneId]) => paneId);
@@ -810,8 +869,9 @@ describe("canvas render effects", () => {
     await flush();
     scheduleCanvasRenderMock.mockClear();
 
-    const lens = paneById(SECONDARY_PANE)!.derived as { media: string | null };
-    lens.media = "tablet";
+    const lens = lensOf(SECONDARY_PANE);
+    expect(lens).not.toBeNull();
+    lens!.media = "tablet";
     await flush();
 
     expect(scheduleCanvasRenderMock.mock.calls.map(([paneId]) => paneId)).toContain(SECONDARY_PANE);
@@ -823,7 +883,7 @@ describe("canvas render effects", () => {
     await flush();
     scheduleCanvasRenderMock.mockClear();
     shell.settingsTab = "fonts";
-    expect(scheduleCanvasRenderMock).toHaveBeenCalled();
+    expect(scheduleCanvasRenderMock).toHaveBeenCalledWith(PRIMARY_PANE);
   });
 
   /*
@@ -956,7 +1016,7 @@ describe("canvas render effects", () => {
       files: [{ path: "pages/a.json", status: "M" }],
       isRepo: true,
       remotes: [],
-    } as never;
+    };
     try {
       setPaneDerivation(SECONDARY_PANE, {
         diff: null,
@@ -970,11 +1030,7 @@ describe("canvas render effects", () => {
         zoom: 1,
       });
 
-      const lens = () =>
-        paneById(SECONDARY_PANE)?.derived as {
-          diff: { filePath: string } | null;
-          status: string;
-        } | null;
+      const lens = () => lensOf(SECONDARY_PANE);
       // Nothing was driven by hand: the rAF the follow schedules is the only thing that runs.
       await waitFor(() => lens()?.diff != null);
 
@@ -1047,9 +1103,9 @@ describe("openRecentProject", () => {
     const { activities, resetActivities } = await import("../src/panels/activity-panel");
     resetActivities();
     const originalRead = platform.readFile;
-    platform.readFile = (async () => {
+    platform.readFile = async () => {
       throw new Error("project.json is not there");
-    }) as never;
+    };
     try {
       await toolbarCtx.openRecentProject("/gone/site");
     } finally {
@@ -1068,7 +1124,7 @@ describe("openRecentProject", () => {
   test("expands and loads conventional directories found at the project root", async () => {
     const originalList = platform.listDirectory;
     const listed: string[] = [];
-    platform.listDirectory = (async (dir: string) => {
+    platform.listDirectory = async (dir: string) => {
       listed.push(dir);
       if (dir === ".") {
         return [
@@ -1078,7 +1134,7 @@ describe("openRecentProject", () => {
         ];
       }
       return [];
-    }) as any;
+    };
     try {
       await toolbarCtx.openRecentProject("/recent/site");
     } finally {
@@ -1095,7 +1151,7 @@ describe("openRecentProject", () => {
     setFormats([]);
     expect(formatForPath("pages/contact.md")).toBeUndefined();
     // …and the newly-opened project's backend registry claims .md.
-    (platform as any).listFormats = async () => [
+    platform.listFormats = async () => [
       {
         capabilities: { parse: { identifier: "parse", timing: ["client"] } },
         documentKinds: ["page"],
@@ -1114,7 +1170,7 @@ describe("openRecentProject", () => {
       // Opening any .md fails with "No format class imported".
       expect(formatForPath("pages/contact.md")?.name).toBe("Markdown");
     } finally {
-      delete (platform as any).listFormats;
+      delete platform.listFormats;
       setFormats([]);
     }
   });
@@ -1311,7 +1367,7 @@ describe("openFileFromTree", () => {
     resetStudioState({ selectedPath: null });
     await canvasRenderCtx.openFileFromTree("pages/a.json");
     expect(activeTab.value?.id).toBe("pages/a.json");
-    expect((activeTab.value!.doc.document as any).tagName).toBe("main");
+    expect(activeTab.value!.doc.document.tagName).toBe("main");
     expect(workspace.tabs.has("pages/a.json")).toBe(true);
   });
 });
@@ -1327,11 +1383,12 @@ describe("wiring arrows", () => {
   test("toolbar renderCanvas delegates to the canvas renderer", () => {
     renderCanvasMock.mockClear();
     toolbarCtx.renderCanvas();
-    expect(renderCanvasMock).toHaveBeenCalledTimes(1);
+    // Once, and with no pane named: the arrow defers to the renderer's own default.
+    expect(renderCanvasMock.mock.calls).toEqual([[]]);
   });
 
   test("tab bar exposes parseMediaEntries from canvas-media utils", () => {
-    expect(typeof paneCtx.parseMediaEntries).toBe("function");
+    expect(paneCtx.parseMediaEntries).toBeTypeOf("function");
     expect(paneCtx.parseMediaEntries(null)).toEqual({
       baseWidth: 320,
       featureQueries: [],
@@ -1346,8 +1403,8 @@ describe("wiring arrows", () => {
   });
 
   test("tab bar exposes exportFile; canvas render ctx exposes the git-diff hooks", () => {
-    expect(typeof paneCtx.exportFile).toBe("function");
-    expect(typeof canvasRenderCtx.setCanvasMode).toBe("function");
+    expect(paneCtx.exportFile).toBeTypeOf("function");
+    expect(canvasRenderCtx.setCanvasMode).toBeTypeOf("function");
     canvasRenderCtx.setGitDiffState({ path: "x" });
     expect(canvasRenderCtx.gitDiffState).toEqual({ path: "x" });
     canvasRenderCtx.setGitDiffState(null);
@@ -1364,16 +1421,22 @@ describe("wiring arrows", () => {
     /* The half lives in `diff-view.ts`, which is not reactive, and the pod is not drawn over the
        Code half — so without this arrow the pod would float over a Monaco it cannot zoom until
        something unrelated repainted the bar. */
-    const chrome = (await import("../src/panels/pane-context.ts")) as unknown as {
-      render: ReturnType<typeof mock>;
-    };
     const { diffCommands } = await import("../src/canvas/diff-toolbar");
     const { resetDiffViews } = await import("../src/canvas/diff-view");
+    const { emptyContext } = await import("../src/commands/context");
     const setView = diffCommands().find((command) => command.id === "diff.setView")!;
-    chrome.render.mockClear();
+    /* SAFETY: `AnyCommand` erases each record's own args type to `never`. diff.setView reads its
+       args only through `enumArg(…, "view", ["visual", "code"])` and `paneOfArgs`, so a
+       CommandArgValues record naming a pane and one of those two views is exactly its contract. */
+    const run = setView.run as (
+      ctx: CommandContext,
+      args: CommandArgValues,
+    ) => Promise<void> | void;
+    paneChromeRenderMock.mockClear();
     try {
-      await setView.run({} as never, { pane: "primary", view: "code" } as never);
-      expect(chrome.render).toHaveBeenCalledTimes(1);
+      await run(emptyContext(), { pane: "primary", view: "code" });
+      // Once, with no pane named: the chrome repaints every pane's bar.
+      expect(paneChromeRenderMock.mock.calls).toEqual([[]]);
     } finally {
       resetDiffViews();
     }
@@ -1388,7 +1451,7 @@ describe("shortcuts context", () => {
     // Whichever pane the keyboard happens to be in.
     const ctx = shortcutsGet!(surfaceForPane("primary"));
     expect(ctx.canvasMode).toBe("design");
-    expect(typeof ctx.applyTransform).toBe("function");
+    expect(ctx.applyTransform).toBeTypeOf("function");
     ctx.setPan(12, 34);
     expect(surfaceForPane("primary").panX).toBe(12);
     expect(surfaceForPane("primary").panY).toBe(34);
@@ -1400,9 +1463,9 @@ describe("shortcuts context", () => {
      they arrive once at registration instead of on every wheel event. */
   test("hands the command set the three verbs the bootstrap owns", () => {
     expect(shortcutHooks).not.toBeNull();
-    expect(typeof shortcutHooks!.saveDocument).toBe("function");
-    expect(typeof shortcutHooks!.openProject).toBe("function");
-    expect(typeof shortcutHooks!.openInBrowser).toBe("function");
+    expect(shortcutHooks!.saveDocument).toBeTypeOf("function");
+    expect(shortcutHooks!.openProject).toBeTypeOf("function");
+    expect(shortcutHooks!.openInBrowser).toBeTypeOf("function");
   });
 
   test("Open in Browser runs the toolbar's implementation, not a second copy of it", () => {
@@ -1413,9 +1476,10 @@ describe("shortcuts context", () => {
     // `toolbar.test.ts` against the real module.
     openInBrowserRuns.mockClear();
 
-    (shortcutHooks!.openInBrowser as () => void)();
+    void shortcutHooks!.openInBrowser();
 
-    expect(openInBrowserRuns).toHaveBeenCalledTimes(1);
+    // Once, handed nothing: the toolbar resolves the target itself.
+    expect(openInBrowserRuns.mock.calls).toEqual([[]]);
   });
 });
 
@@ -1510,7 +1574,7 @@ describe("unsaved-changes guard", () => {
   test("and while a buffer holds typing the document has not been given", () => {
     const tab = openShellTab();
     tab.doc.dirty = false;
-    const buffer = {
+    const buffer: MonacoBuffer & FunctionEditorStub = {
       _editingTab: tab,
       getModel: () => ({}),
       getValue: () => "typed();",
@@ -1518,7 +1582,7 @@ describe("unsaved-changes guard", () => {
     };
     const writes = bufferWrites(buffer);
     writes.markTyped();
-    view.functionEditor = buffer as never;
+    installFunctionEditor(buffer);
     try {
       const typed = new Event("beforeunload", { cancelable: true });
       window.dispatchEvent(typed);
@@ -1547,6 +1611,7 @@ describe("parent-chrome commit guard", () => {
     editChromeTarget = false;
     suppressBarMock.mockClear();
     releaseBarMock.mockClear();
+    isEditChromeTargetMock.mockClear();
   });
 
   /** Dispatch a capture-phase pointerdown at `target` (the document when none is given). */
@@ -1570,7 +1635,7 @@ describe("parent-chrome commit guard", () => {
     editingOverride = true;
     try {
       pointerDownAt();
-      expect(commitEditMock).toHaveBeenCalled();
+      expect(commitEditMock).toHaveBeenCalledWith();
     } finally {
       editingOverride = false;
       commitEditMock.mockClear();
@@ -1585,6 +1650,8 @@ describe("parent-chrome commit guard", () => {
    */
   test("a chrome pointerdown suppresses the block action bar", () => {
     pointerDownAt();
+    // The exemption was asked of the pointerdown's own target, and it did not apply.
+    expect(isEditChromeTargetMock).toHaveBeenCalledWith(document);
     expect(suppressBarMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1593,6 +1660,8 @@ describe("parent-chrome commit guard", () => {
     editChromeTarget = true;
     try {
       pointerDownAt();
+      // The exemption is decided on the target the pointer landed on.
+      expect(isEditChromeTargetMock).toHaveBeenCalledWith(document);
       expect(suppressBarMock).not.toHaveBeenCalled();
       expect(commitEditMock).not.toHaveBeenCalled();
     } finally {
@@ -1611,8 +1680,10 @@ describe("parent-chrome commit guard", () => {
     surfaceForPane("primary").wrap.append(inStage);
     try {
       pointerDownAt(inStage);
+      // The guard saw the stage element itself, not a retargeted ancestor.
+      expect(isEditChromeTargetMock).toHaveBeenCalledWith(inStage);
       expect(suppressBarMock).not.toHaveBeenCalled();
-      expect(commitEditMock).toHaveBeenCalled();
+      expect(commitEditMock).toHaveBeenCalledWith();
     } finally {
       editingOverride = false;
       commitEditMock.mockClear();
@@ -1683,7 +1754,7 @@ describe("collab parser wiring", () => {
         name: "Markdown",
         remote: false,
         studio: null,
-      } as never,
+      },
     ]);
     try {
       const tab = openShellTab(undefined, { documentPath: "pages/x.md", id: "md-tab" });
@@ -1719,8 +1790,8 @@ describe("collab parser wiring", () => {
 
 describe("multi-window project routing", () => {
   test("openRecentProject routes to a new window when this window holds a project", async () => {
-    const openInNew = mock(async (_root: string) => {});
-    (platform as any).openProjectInNewWindow = openInNew;
+    const openInNew = mock(async (_root: string) => ({ focused: false }));
+    platform.openProjectInNewWindow = openInNew;
     try {
       const before = state.calls.filter((c) => c[0] === "readFile").length;
       await toolbarCtx.openRecentProject("/other/site");
@@ -1729,13 +1800,13 @@ describe("multi-window project routing", () => {
       expect(state.calls.filter((c) => c[0] === "readFile").length).toBe(before);
       expect(statusMessages).toHaveLength(0);
     } finally {
-      delete (platform as any).openProjectInNewWindow;
+      delete platform.openProjectInNewWindow;
     }
   });
 
   test("setWindowProject dedupe bails; a fresh bind proceeds to open", async () => {
     let deduped = true;
-    (platform as any).setWindowProject = mock(async (_root: string) => ({ deduped }));
+    platform.setWindowProject = mock(async (_root: string) => ({ config: null, deduped }));
     try {
       await toolbarCtx.openRecentProject("/recent/site");
       expect(statusMessages).toHaveLength(0); // Focused the other window and bailed.
@@ -1744,7 +1815,7 @@ describe("multi-window project routing", () => {
       await toolbarCtx.openRecentProject("/recent/site");
       expect(statusMessages).toHaveLength(0);
     } finally {
-      delete (platform as any).setWindowProject;
+      delete platform.setWindowProject;
     }
   });
 
@@ -1758,13 +1829,12 @@ describe("multi-window project routing", () => {
     function installNewWindowPlatform(focused = false) {
       const openInNew = mock(async (_root: string) => ({ focused }));
       const pick = mock(async () => ({ name: "Other", root: "/other/site" }));
-      (platform as any).openProjectInNewWindow = openInNew;
-      (platform as any).pickProject = pick;
+      platform.openProjectInNewWindow = openInNew;
+      platform.pickProject = pick;
       return { openInNew, pick };
     }
 
-    const runHook = (target: string) =>
-      (shortcutHooks!.openProject as (t: string) => Promise<string>)(target);
+    const runHook = (target: ProjectOpenTarget) => shortcutHooks!.openProject(target);
 
     test('"newWindow" picks a project and opens it elsewhere, leaving this window on its own', async () => {
       const { openInNew, pick } = installNewWindowPlatform();
@@ -1782,8 +1852,8 @@ describe("multi-window project routing", () => {
         expect(state.calls.filter((c) => c[0] === "openProject")).toHaveLength(bindingPicks);
         expect(platform.projectRoot).toBe(rootBefore);
       } finally {
-        delete (platform as any).openProjectInNewWindow;
-        delete (platform as any).pickProject;
+        delete platform.openProjectInNewWindow;
+        delete platform.pickProject;
       }
     });
 
@@ -1793,21 +1863,21 @@ describe("multi-window project routing", () => {
         expect(await runHook("newWindow")).toBe("focused");
         expect(openInNew).toHaveBeenCalledWith("/other/site");
       } finally {
-        delete (platform as any).openProjectInNewWindow;
-        delete (platform as any).pickProject;
+        delete platform.openProjectInNewWindow;
+        delete platform.pickProject;
       }
     });
 
     test("a cancelled picker opens no window and changes nothing", async () => {
       const openInNew = mock(async (_root: string) => ({ focused: false }));
-      (platform as any).openProjectInNewWindow = openInNew;
-      (platform as any).pickProject = mock(async () => null);
+      platform.openProjectInNewWindow = openInNew;
+      platform.pickProject = mock(async () => null);
       try {
         expect(await runHook("newWindow")).toBe("cancelled");
         expect(openInNew).not.toHaveBeenCalled();
       } finally {
-        delete (platform as any).openProjectInNewWindow;
-        delete (platform as any).pickProject;
+        delete platform.openProjectInNewWindow;
+        delete platform.pickProject;
       }
     });
 
@@ -1862,7 +1932,7 @@ describe("remaining wiring arrows", () => {
   test("the bootstrap paints the statusbar once, directly", () => {
     // `setStatusbarRenderer` is gone with `statusMessage`: it existed only so a transient message
     // Could ask the bar to repaint. The bar's own effect owns that now.
-    expect(renderStatusbarMock).toHaveBeenCalled();
+    expect(renderStatusbarMock).toHaveBeenCalledWith();
   });
 
   test("an upload refreshes all three caches that list project files", async () => {

@@ -1,7 +1,8 @@
 import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { flush, installMockPlatform, renderInto, resetStudioState } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
-import { html } from "lit-html";
+import { html, nothing } from "lit-html";
+import { isSymbol } from "@jxsuite/schema/guards";
 import {
   getPanel,
   isPanelVisible,
@@ -17,7 +18,7 @@ import {
 import type { NavigatorPanelDeps, PanelRecord } from "../src/panels/panel-registry";
 import { setProjectState } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
-import { cleanupGitPanel, renderGitPanel } from "../src/panels/git-panel";
+import { cleanupGitPanel } from "../src/panels/git-panel";
 import {
   navigatorPanelSet,
   registerNavigatorPanels,
@@ -30,6 +31,7 @@ import {
   PANEL_PLACEMENT_MATRIX,
   panelPlacements,
 } from "../src/commands/levels";
+import type { PlaceablePanel } from "../src/commands/levels";
 import {
   DEFAULT_PANEL_ID,
   migratePanelId,
@@ -48,6 +50,14 @@ function record(over: Partial<PanelRecord> = {}): PanelRecord {
     render: () => html`<p>body</p>`,
     ...over,
   };
+}
+
+/** A Navigator panel record as an extension hands it in: its level is whatever string it carries. */
+function panelFromData(id: string, level: string): PlaceablePanel {
+  /* SAFETY: deliberately off-type. `PlaceablePanel` types `level` as a Level, but
+     `checkPanelPlacement` re-checks `isLevel` before anything else, precisely because records
+     arrive as data; that runtime check is what a record built here exists to reach. */
+  return { dock: "navigator", id, level } as PlaceablePanel;
 }
 
 afterEach(() => {
@@ -161,11 +171,7 @@ describe("panel placement matrix", () => {
   });
 
   test("an unknown level is reported before any placement is checked", () => {
-    const violations = checkPanelPlacement({
-      id: "bogus",
-      level: "range" as never,
-      dock: "navigator",
-    });
+    const violations = checkPanelPlacement(panelFromData("bogus", "range"));
     expect(violations).toHaveLength(1);
     expect(violations[0]?.message).toMatch(/unknown level "range"/);
   });
@@ -220,7 +226,9 @@ describe("the Navigator's panel set", () => {
     // The other, and its predicate went in the same commit that gave it a body.
     const panel = navigatorPanelSet().find((p) => p.id === "search");
     expect(panel?.when?.(emptyContext())).toBe(false);
-    expect(() => panel!.render({} as never)).toThrow(/declared but not built/);
+    expect(() =>
+      panel!.render({ deps: projectPanelDeps(), doc: null, rerender: () => {} }),
+    ).toThrow(/declared but not built/);
   });
 
   test("Problems is built, and it is the Bottom dock's — one record, one host (§16.3)", () => {
@@ -230,7 +238,9 @@ describe("the Navigator's panel set", () => {
     expect(panel?.level).toBe("project");
     expect(panel?.when).toBeUndefined();
     expect(panel?.badge).toBeDefined();
-    expect(() => panel!.render({ deps: {} as never, doc: null, rerender: () => {} })).not.toThrow();
+    expect(() =>
+      panel!.render({ deps: projectPanelDeps(), doc: null, rerender: () => {} }),
+    ).not.toThrow();
     expect(navigatorPanelSet().map((p) => p.id)).not.toContain("problems");
   });
 
@@ -281,17 +291,23 @@ describe("the Navigator's panel set", () => {
 /**
  * The deps a PROJECT-level panel may touch, and a tripwire for everything else.
  *
- * Only the one renderer a project-level record still delegates to is real. Every other member of
- * {@link NavigatorPanelDeps} is a document-level renderer or a document-level gesture registration,
- * so reaching for one IS the violation this suite is looking for — and the error names which. Files
- * is a document mounted by its own `afterRender` and reaches for NOTHING, which is why its entry is
- * gone rather than stubbed: a regression that made it delegate again lands on the Proxy.
+ * None is real any more. Every member of {@link NavigatorPanelDeps} is a document-level renderer or
+ * a document-level gesture registration, so reaching for one IS the violation this suite is looking
+ * for — and the error names which. Files and Source Control are documents mounted by their own
+ * `afterRender` and reach for NOTHING on a paint (Source Control only holds the deps for a later
+ * gesture), which is why their entries are gone rather than stubbed: a regression that made either
+ * delegate again lands on the Proxy.
  */
 function projectPanelDeps(): NavigatorPanelDeps {
-  const provided: Partial<NavigatorPanelDeps> = { renderGitPanel };
+  const provided: Partial<NavigatorPanelDeps> = {};
+  /* SAFETY: every member the record does not hold THROWS on read instead of answering undefined,
+     so no caller can observe a missing member as a present one; the full type is only the
+     signature the panels are handed, and any read past it is the defect the trap reports. */
   return new Proxy(provided, {
     get(target, prop) {
-      if (typeof prop === "symbol" || prop in target) {
+      if (isSymbol(prop) || prop in target) {
+        /* SAFETY: a symbol, or a key `in` already found on the record or its prototype chain: the
+           read answers exactly what the plain object would, and the keyof claim only types it. */
         return target[prop as keyof NavigatorPanelDeps];
       }
       throw new Error(
@@ -321,7 +337,7 @@ describe("every project-level panel renders with no document open", () => {
   afterEach(() => {
     cleanupGitPanel();
     resetProjectShell();
-    setProjectState(null as never);
+    setProjectState(null);
     closeAllTabs();
   });
 
@@ -337,7 +353,7 @@ describe("every project-level panel renders with no document open", () => {
       projectRoot: ".",
       searchQuery: "",
       selectedPath: null,
-    } as never);
+    });
     closeAllTabs();
     registerNavigatorPanels();
 
@@ -358,7 +374,7 @@ describe("every project-level panel renders with no document open", () => {
         const body = panel.render(paneCtx);
         // A TemplateResult is committed for real, because a directive that throws does it on
         // Commit rather than on construction.
-        if (typeof body === "object" && "strings" in body) {
+        if (body !== nothing) {
           painted.set(panel.id, await renderInto(body));
           continue;
         }
@@ -389,7 +405,7 @@ describe("every project-level panel renders with no document open", () => {
        it settles inside the same paint that mounts it, so the answer is held back to see what the
        panel draws while the read is still in flight. */
     const answer = platform.gitStatus;
-    platform.gitStatus = (() => new Promise(() => {})) as typeof answer;
+    platform.gitStatus = () => new Promise<never>(() => {});
     const cold = await paint();
     expect(cold.get("git")?.textContent).toContain("Loading");
 
@@ -402,7 +418,7 @@ describe("every project-level panel renders with no document open", () => {
     // Addressed by role, because Files is a document too (`surfaces/files-panel.json`).
     expect(settled.get("files")?.querySelector('[role="tree"]')).not.toBeNull();
 
-    shell.git.branches = { branches: ["main"], current: "main" } as never;
+    shell.git.branches = { branches: ["main"], current: "main" };
     shell.git.status = {
       ahead: 1,
       behind: 0,
@@ -410,7 +426,7 @@ describe("every project-level panel renders with no document open", () => {
       files: [{ path: "pages/index.json", staged: false, status: "M" }],
       isRepo: true,
       remotes: ["origin"],
-    } as never;
+    };
     const tracked = await paint();
     // Addressed by `part`, because Source Control is a document now (`surfaces/git-panel.json`).
     expect(tracked.get("git")?.querySelector('[part="branch-name"]')?.textContent).toBe("main");
@@ -553,7 +569,14 @@ describe("railDeclarations", () => {
 
 describe("panelContext", () => {
   test("sources the Source Control badge from the project record, not the focused tab", () => {
-    shell.git.status = { files: [{}, {}, {}] } as never;
+    shell.git.status = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: ["a.json", "b.json", "c.json"].map((path) => ({ path, status: "M" })),
+      isRepo: true,
+      remotes: [],
+    };
     expect(panelContext().git.dirtyCount).toBe(3);
     shell.git.status = null;
     expect(panelContext().git.dirtyCount).toBe(0);
@@ -605,6 +628,6 @@ describe("migratePanelId", () => {
     // Under any name — so it migrates to nothing and the boot path's `?? DEFAULT_PANEL_ID` runs.
     expect(migratePanelId("problems")).toBeNull();
     expect(migratePanelId("problems") ?? DEFAULT_PANEL_ID).toBe(DEFAULT_PANEL_ID);
-    expect(NAVIGATOR_PANEL_IDS as readonly string[]).not.toContain("problems");
+    expect(NAVIGATOR_PANEL_IDS).not.toContain<string>("problems");
   });
 });

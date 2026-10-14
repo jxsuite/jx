@@ -12,7 +12,12 @@ import {
 import type { IconList, IconManifest } from "../src/icons-build.ts";
 
 const here = resolve(import.meta.dir);
+/* SAFETY: icons/list.json is the committed allow-list scripts/build-icons.ts reads as this same
+   IconList, a map of icon name to weight array; the committed-manifest tests below assert every
+   weight it names is one of ICON_WEIGHTS, so a list of another shape fails here. */
 const list = JSON.parse(readFileSync(resolve(here, "../icons/list.json"), "utf8")) as IconList;
+/* SAFETY: icons/manifest.json is written only by scripts/build-icons.ts, from buildManifest(),
+   whose return type is IconManifest; the tests below re-check its names, weights and viewBox. */
 const manifest = JSON.parse(
   readFileSync(resolve(here, "../icons/manifest.json"), "utf8"),
 ) as IconManifest;

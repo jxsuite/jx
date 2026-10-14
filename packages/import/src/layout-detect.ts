@@ -1,3 +1,4 @@
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
 export interface LayoutResult {
@@ -12,7 +13,7 @@ export interface LayoutResult {
  * values. Used to detect structurally identical subtrees across pages.
  */
 export function hashSubtree(node: JxElement | string): string {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return `#text`;
   }
 
@@ -21,7 +22,7 @@ export function hashSubtree(node: JxElement | string): string {
 
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      childHashes.push(hashSubtree(child as JxElement | string));
+      childHashes.push(hashSubtree(child));
     }
   }
 
@@ -38,10 +39,10 @@ export function hashSubtree(node: JxElement | string): string {
  * headers/footers, not fuzzy matches.
  */
 export function treesEqual(a: JxElement | string, b: JxElement | string): boolean {
-  if (typeof a === "string" && typeof b === "string") {
+  if (isString(a) && isString(b)) {
     return a === b;
   }
-  if (typeof a === "string" || typeof b === "string") {
+  if (isString(a) || isString(b)) {
     return false;
   }
 
@@ -60,7 +61,7 @@ export function treesEqual(a: JxElement | string, b: JxElement | string): boolea
   }
 
   for (let i = 0; i < aChildren.length; i++) {
-    if (!treesEqual(aChildren[i] as JxElement | string, bChildren[i] as JxElement | string)) {
+    if (!treesEqual(aChildren[i]!, bChildren[i]!)) {
       return false;
     }
   }
@@ -83,9 +84,7 @@ export function detectLayout(pages: Map<string, JxElement>): LayoutResult | null
   }
 
   const entries = [...pages.entries()];
-  const allRoots = entries.map(([, doc]) =>
-    Array.isArray(doc.children) ? (doc.children as (JxElement | string)[]) : [],
-  );
+  const allRoots = entries.map(([, doc]) => (Array.isArray(doc.children) ? doc.children : []));
   const firstRoot = allRoots[0]!;
 
   // Find shared prefix (header elements)
@@ -129,20 +128,20 @@ export function detectLayout(pages: Map<string, JxElement>): LayoutResult | null
 
   const layout: JxElement = {
     tagName: "div",
-    children: [...(headerChildren as JxElement[]), slot, ...(footerChildren as JxElement[])],
+    children: [...headerChildren, slot, ...footerChildren],
   };
 
   // Strip shared elements from each page
   const strippedPages = new Map<string, JxElement>();
   for (const [route, doc] of entries) {
-    const children = Array.isArray(doc.children) ? (doc.children as (JxElement | string)[]) : [];
+    const children = Array.isArray(doc.children) ? doc.children : [];
 
     const endIdx = sharedSuffixLen > 0 ? children.length - sharedSuffixLen : children.length;
     const uniqueChildren = children.slice(sharedPrefixLen, endIdx);
 
     strippedPages.set(route, {
       ...doc,
-      children: uniqueChildren as JxElement[],
+      children: uniqueChildren,
       $layout: "layouts/base.json",
     });
   }

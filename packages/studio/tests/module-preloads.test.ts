@@ -11,8 +11,6 @@ import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { installModulePreloadBatcher } from "../src/services/module-preloads";
 
-type PatchedHead = HTMLHeadElement & { __modulePreloadsBatched?: boolean };
-
 function preloadLink(href: string): HTMLLinkElement {
   const link = document.createElement("link");
   link.rel = "modulepreload";
@@ -26,10 +24,10 @@ let originalRaf: typeof requestAnimationFrame;
 beforeEach(() => {
   frames = [];
   originalRaf = globalThis.requestAnimationFrame;
-  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+  globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
     frames.push(cb);
     return frames.length;
-  }) as typeof requestAnimationFrame;
+  };
 });
 
 /** Runs every rAF callback queued so far, draining frames scheduled during the flush itself. */
@@ -59,7 +57,7 @@ describe("installModulePreloadBatcher", () => {
     const patchedOnce = document.head.appendChild;
     installModulePreloadBatcher();
     expect(document.head.appendChild).toBe(patchedOnce);
-    expect((document.head as PatchedHead).__modulePreloadsBatched).toBe(true);
+    expect(document.head).toHaveProperty("__modulePreloadsBatched", true);
   });
 
   test("a modulepreload link is not inserted synchronously", () => {

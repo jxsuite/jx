@@ -16,6 +16,7 @@ import { createLocalIo } from "./io.ts";
 import { runImportPipeline } from "./pipeline.ts";
 import type { BreakpointPolicy } from "./breakpoint-plan.ts";
 import type { ImportPhase, ImportProgressEvent } from "./pipeline.ts";
+import type { VerifyOptions } from "./verify.ts";
 import type { Browser } from "puppeteer-core";
 
 export type { ImportPhase, ImportProgressEvent } from "./pipeline.ts";
@@ -65,6 +66,15 @@ export interface ImportSiteOptions {
   signal?: AbortSignal;
 }
 
+/** One page's verify outcome, as counts rather than the verifier's full lists. */
+export interface VerifiedPageSummary {
+  route: string;
+  fidelity: number;
+  consoleErrors: number;
+  failedRequests: number;
+  error?: string;
+}
+
 export interface ImportSiteResult {
   outDir: string;
   pages: { route: string; title: string; nodeCount: number }[];
@@ -92,13 +102,7 @@ export interface ImportSiteResult {
      * The counts alongside it are what a percentage cannot say: a page that 404s on fifteen images
      * scores badly, and only `failedRequests` says why.
      */
-    pages: {
-      route: string;
-      fidelity: number;
-      consoleErrors: number;
-      failedRequests: number;
-      error?: string;
-    }[];
+    pages: VerifiedPageSummary[];
   } | null;
   warnings: string[];
 }
@@ -250,15 +254,18 @@ export async function importSite(
     for (const [route, ref] of references) {
       verifyPages.set(route, { sourceUrl: ref.sourceUrl, screenshot: Buffer.from(ref.screenshot) });
     }
-    const verifyResult = await verifyProject({
+    const verifyOptions: VerifyOptions = {
       projectDir: outDir,
       pages: verifyPages,
       threshold: verifyThreshold,
       minFidelity: verifyMinFidelity,
       fullPage: verifyFullPage,
       onProgress: (msg) => progress("verify", msg),
-      ...(browser === undefined ? {} : { browser }),
-    });
+    };
+    if (browser !== undefined) {
+      verifyOptions.browser = browser;
+    }
+    const verifyResult = await verifyProject(verifyOptions);
     /*
      * Build errors were logged inside the verifier and dropped there. They are warnings on the
      * import as a whole: a project that did not compile is not a clone of anything, however the
@@ -288,13 +295,7 @@ export async function importSite(
       minFidelity: verifyMinFidelity,
       buildErrors: verifyResult.buildErrors,
       pages: verifyResult.pages.map((page) => {
-        const entry: {
-          route: string;
-          fidelity: number;
-          consoleErrors: number;
-          failedRequests: number;
-          error?: string;
-        } = {
+        const entry: VerifiedPageSummary = {
           route: page.route,
           fidelity: page.fidelity,
           consoleErrors: page.consoleErrors.length,
@@ -322,8 +323,11 @@ function throwIfAborted(signal?: AbortSignal): void {
  * absent `signal` and the pipeline would reject it. Copying present keys is also what keeps every
  * default in ONE place — restating `maxPages = 25` here is how the CLI and the cloud drift apart.
  */
-function pick<T extends object, K extends keyof T>(source: T, keys: readonly K[]): Pick<T, K> {
-  const out = {} as Pick<T, K>;
+function pick<T extends object, K extends keyof T>(
+  source: T,
+  keys: readonly K[],
+): Partial<Pick<T, K>> {
+  const out: Partial<Pick<T, K>> = {};
   for (const key of keys) {
     if (source[key] !== undefined) {
       out[key] = source[key];

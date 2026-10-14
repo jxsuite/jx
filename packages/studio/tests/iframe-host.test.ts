@@ -1,7 +1,10 @@
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import {
   flush,
+  installMockPlatform,
   registerPrimaryStage,
   resetStudioState,
   resetWorkspaceWithTab,
@@ -20,7 +23,17 @@ import { initShellRefs, registerRenderer } from "../src/store";
 import { activeCanvasSurface, surfaceForPane } from "../src/canvas/canvas-surface";
 import { canvasPerf, resetCanvasPerf } from "../src/canvas/canvas-perf";
 import { clearDragGhost, setDragGhost } from "../src/panels/drag-ghost";
-import type { WireDocOp } from "../src/canvas/iframe-protocol";
+import type {
+  DropPreview,
+  FileDropHit,
+  InsertZone,
+  IframeToParent,
+  ParentToIframe,
+} from "../src/canvas/iframe-protocol";
+import type { JxDocOp } from "../src/tabs/patch-ops";
+import type { IframeChannel, postMessageChannel } from "../src/canvas/iframe-channel";
+import type { resolveCanvasDocument } from "../src/canvas/canvas-live-render";
+import type { CanvasSlashRequest, HostState } from "../src/canvas/iframe-host";
 import type { CanvasPanel } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
 import { registerCanvasSurface } from "../src/canvas/surface-registry";
@@ -30,52 +43,128 @@ import { registerCanvasSurface } from "../src/canvas/surface-registry";
    binding still sees what the render mutated. */
 const canvasPanels = activeCanvasSurface().panels;
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js` (imported first) calls happy-dom's `GlobalRegistrator.register()`, which
+   installs the window's DetachedWindowAPI on `globalThis.happyDOM`; `setURL` is part of that API. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
 // ─── Mocks: capture the channel and stub the parent-side resolver ───────────────
 
+/** The options the host hands `postMessageChannel` for its parent-side canvas channel. */
+type HostChannelOptions = Parameters<typeof postMessageChannel<ParentToIframe, IframeToParent>>[0];
+
 interface FakeChannel {
-  opts: Record<string, unknown>;
-  posts: Record<string, unknown>[];
-  deliver: (m: Record<string, unknown>) => void;
+  opts: HostChannelOptions;
+  posts: ParentToIframe[];
+  deliver: (message: IframeToParent) => void;
   /** Whether the host really disposed this channel — the only honest teardown signal there is. */
   disposed?: boolean;
 }
 const channels: FakeChannel[] = [];
 
 void mock.module("../src/canvas/iframe-channel", () => ({
-  postMessageChannel: (opts: Record<string, unknown>) => {
-    let handler: ((m: Record<string, unknown>) => void) | null = null;
-    const rec: FakeChannel = { deliver: (m) => handler?.(m), opts, posts: [] };
+  postMessageChannel: (opts: HostChannelOptions): IframeChannel<ParentToIframe, IframeToParent> => {
+    let handler: ((message: IframeToParent) => void) | null = null;
+    const rec: FakeChannel = { deliver: (message) => handler?.(message), opts, posts: [] };
     channels.push(rec);
     return {
       dispose: () => {
         rec.disposed = true;
       },
-      onMessage: (h: (m: Record<string, unknown>) => void) => {
-        handler = h;
+      onMessage: (next) => {
+        handler = next;
         return () => {};
       },
-      post: (m: Record<string, unknown>) => {
-        rec.posts.push(m);
+      post: (message) => {
+        rec.posts.push(message);
         // Exercise the host's real target (iframe.contentWindow?.postMessage) for coverage; it's a
-        // No-op against a detached happy-dom iframe.
-        (opts.target as { postMessage: (m: unknown, o: string) => void }).postMessage(
-          m,
-          opts.targetOrigin as string,
-        );
+        // No-op against a detached happy-dom iframe. Enveloped as the real channel sends it.
+        opts.target.postMessage({ "jx:canvas": opts.token, payload: message }, opts.targetOrigin);
       },
     };
   },
 }));
+
+/** A matcher for the posts of one message kind, narrowing the union to that member. */
+function ofKind<K extends ParentToIframe["kind"]>(kind: K) {
+  return (message: ParentToIframe): message is Extract<ParentToIframe, { kind: K }> =>
+    message.kind === kind;
+}
+
+/** The posts of one kind a channel has received, in order. */
+function postsOfKind<K extends ParentToIframe["kind"]>(
+  channel: FakeChannel,
+  kind: K,
+): Extract<ParentToIframe, { kind: K }>[] {
+  return channel.posts.filter(ofKind(kind));
+}
+
+/**
+ * A stage panel carrying only the members these tests give it.
+ *
+ * @param fields The panel's artboard canvas, plus its media name and ready flag when a test needs
+ *   them.
+ */
+function stagePanel(fields: {
+  canvas: HTMLElement;
+  mediaName?: string | null;
+  ready?: boolean;
+}): CanvasPanel {
+  /* SAFETY: Everything this file drives reads a stage panel through `canvas` (the
+     canvas-surface lookup that maps an artboard to its pane), `mediaName` (hit → activeMedia,
+     getActivePanel) and `ready` (canvas-patcher's every-panel-ready gate). `element`,
+     `viewport`, `scrollContainer`, `_width` and `renderScope` belong to the DOM renderer in
+     canvas-render.ts, which these tests never run. A missing or null `mediaName` is the
+     "no breakpoint" panel the tests mean. */
+  return fields as CanvasPanel;
+}
+
+/** The live host mounted on `canvasEl`; a test that asks for one has just mounted it. */
+function hostOf(canvasEl: HTMLElement): HostState {
+  const host = hostForCanvas(canvasEl);
+  if (!host) {
+    throw new Error("no canvas host is mounted on this element");
+  }
+  return host;
+}
+
+/** The element `selector` matches under `root`, failing the test when the host drew none. */
+function partOf(root: ParentNode, selector: string): HTMLElement {
+  const element = root.querySelector(selector);
+  if (!(element instanceof HTMLElement)) {
+    throw new TypeError(`no element matches ${selector}`);
+  }
+  return element;
+}
+
+/** A document's element children, failing loudly when the fixture holds anything else. */
+function elementChildren(node: JxMutableNode | null): JxMutableNode[] {
+  const children = node?.children;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected the document to hold an array of children");
+  }
+  return children.map((child) => {
+    if (isString(child)) {
+      throw new TypeError("expected an element child, found a text node");
+    }
+    return child;
+  });
+}
 
 // The host now imports applyDropInstruction (panels/dnd → stylebook-panel); stub it light.
 void mock.module("../src/panels/stylebook-panel", () => ({
   renderComponentPreview: async () => document.createElement("div"),
 }));
 
-const DEFAULT_RESOLVED = {
+/**
+ * What the stubbed `resolveCanvasDocument` resolves with: the real result type, less the media
+ * context (`assets`) that none of these renders set.
+ */
+type ResolvedFixture = Omit<Awaited<ReturnType<typeof resolveCanvasDocument>>, "assets">;
+
+const DEFAULT_RESOLVED: ResolvedFixture = {
   docBase: "http://localhost:3000/doc.json",
   mapperCtx: {
     arrayPaths: [],
@@ -87,7 +176,7 @@ const DEFAULT_RESOLVED = {
   renderDoc: { children: ["hi"], tagName: "div" },
   siteStyle: null,
 };
-let resolved: Record<string, unknown> = structuredClone(DEFAULT_RESOLVED);
+let resolved: ResolvedFixture = structuredClone(DEFAULT_RESOLVED);
 let resolveCalls = 0;
 void mock.module("../src/canvas/canvas-live-render", () => ({
   resolveCanvasDocument: () => {
@@ -154,7 +243,7 @@ describe("mountIframeCanvas", () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
 
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
 
     const iframe = canvasEl.querySelector("iframe");
     expect(iframe).toBeTruthy();
@@ -177,7 +266,7 @@ describe("mountIframeCanvas", () => {
     resetWorkspaceWithTab();
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
 
     const opened: string[] = [];
@@ -198,7 +287,7 @@ describe("mountIframeCanvas", () => {
     resetWorkspaceWithTab();
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
     const opened: string[] = [];
     setPreviewNavigateHandler((url) => opened.push(url));
@@ -222,26 +311,20 @@ describe("mountIframeCanvas", () => {
     document.body.append(canvasEl);
 
     // Unarmed: edit/design renders omit the flag, so the runtime keeps auto-requests suppressed.
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
-    const first = channels[0]!.posts.find((p) => p.kind === "render") as Record<string, unknown>;
+    const first = channels[0]!.posts.find(ofKind("render"))!;
     expect(first.allowAutoRequests).toBeUndefined();
 
     // Armed by Refresh: the NEXT render of THAT pane carries it.
     allowAutoRequestsOnNextRender(PRIMARY_PANE);
-    await mountIframeCanvas(2, { tagName: "div" } as never, canvasEl);
-    const renders = channels[0]!.posts.filter((p) => p.kind === "render") as Record<
-      string,
-      unknown
-    >[];
+    await mountIframeCanvas(2, { tagName: "div" }, canvasEl);
+    const renders = postsOfKind(channels[0]!, "render");
     expect(renders.at(-1)!.allowAutoRequests).toBe(true);
 
     // One-shot: a later render (e.g. an escalation) must not inherit it.
-    await mountIframeCanvas(3, { tagName: "div" } as never, canvasEl);
-    const after = channels[0]!.posts.filter((p) => p.kind === "render") as Record<
-      string,
-      unknown
-    >[];
+    await mountIframeCanvas(3, { tagName: "div" }, canvasEl);
+    const after = postsOfKind(channels[0]!, "render");
     expect(after.at(-1)!.allowAutoRequests).toBeUndefined();
   });
 
@@ -254,13 +337,13 @@ describe("mountIframeCanvas", () => {
    */
   describe("render fan-out across the hosts of one pass", () => {
     /** Three artboards of one pass, mounted the way canvas-render mounts them. */
-    async function mountPass(gen: number, doc: unknown, tabId: string | null = null) {
+    async function mountPass(gen: number, doc: JxMutableNode, tabId: string | null = null) {
       const els: HTMLElement[] = [];
       for (let i = 0; i < 3; i++) {
         const el = document.createElement("div");
         document.body.append(el);
         els.push(el);
-        await mountIframeCanvas(gen, doc as never, el, 360 + i * 360, tabId);
+        await mountIframeCanvas(gen, doc, el, 360 + i * 360, tabId);
       }
       for (const channel of channels) {
         channel.deliver({ kind: "ready" });
@@ -301,8 +384,8 @@ describe("mountIframeCanvas", () => {
       const el = document.createElement("div");
       const el2 = document.createElement("div");
       document.body.append(el, el2);
-      await mountIframeCanvas(4, before as never, el, 800, null);
-      await mountIframeCanvas(4, after as never, el2, 800, null);
+      await mountIframeCanvas(4, before, el, 800, null);
+      await mountIframeCanvas(4, after, el2, 800, null);
       // Identity, not generation, is what distinguishes them — the diff stage renders two different
       // Documents side by side in one pass.
       expect(resolveCalls).toBe(2);
@@ -315,8 +398,8 @@ describe("mountIframeCanvas", () => {
       const el = document.createElement("div");
       const el2 = document.createElement("div");
       document.body.append(el, el2);
-      await mountIframeCanvas(5, doc as never, el, null, "tab-a");
-      await mountIframeCanvas(5, doc as never, el2, null, "tab-b");
+      await mountIframeCanvas(5, doc, el, null, "tab-a");
+      await mountIframeCanvas(5, doc, el2, null, "tab-b");
       expect(resolveCalls).toBe(2);
     });
 
@@ -335,7 +418,7 @@ describe("mountIframeCanvas", () => {
       channels.length = 0;
       await mountPass(12, { tagName: "div" });
       for (const channel of channels) {
-        expect((channel.posts.at(-1) as Record<string, unknown>).allowAutoRequests).toBeUndefined();
+        expect(channel.posts.findLast(ofKind("render"))!.allowAutoRequests).toBeUndefined();
       }
     });
 
@@ -352,7 +435,10 @@ describe("mountIframeCanvas", () => {
       resetWorkspaceWithTab();
       const wrap = document.createElement("div");
       document.body.append(wrap);
-      surfaceForPane(SECONDARY_PANE).wrap = wrap;
+      const sideSurface = surfaceForPane(SECONDARY_PANE);
+      // Put back whatever the side surface held, so no later test inherits this stage.
+      const previousWrap = sideSurface.wrap;
+      sideSurface.wrap = wrap;
       const sideEl = document.createElement("div");
       wrap.append(sideEl);
       const primaryEl = document.createElement("div");
@@ -360,14 +446,14 @@ describe("mountIframeCanvas", () => {
 
       allowAutoRequestsOnNextRender(SECONDARY_PANE);
       // The FOCUSED pane renders first and must not consume the side pane's arm.
-      await mountIframeCanvas(21, { tagName: "div" } as never, primaryEl, null, null);
+      await mountIframeCanvas(21, { tagName: "div" }, primaryEl, null, null);
       const chPrimary = channels.at(-1)!;
       chPrimary.deliver({ kind: "ready" });
-      await mountIframeCanvas(22, { tagName: "aside" } as never, sideEl, null, null);
+      await mountIframeCanvas(22, { tagName: "aside" }, sideEl, null, null);
       const chSide = channels.at(-1)!;
       chSide.deliver({ kind: "ready" });
-      const primaryPost = chPrimary.posts.at(-1) as Record<string, unknown>;
-      const sidePost = chSide.posts.at(-1) as Record<string, unknown>;
+      const primaryPost = chPrimary.posts.findLast(ofKind("render"))!;
+      const sidePost = chSide.posts.findLast(ofKind("render"))!;
 
       console.log(
         `[iframe-host] Refresh armed ${SECONDARY_PANE}: primary=${String(primaryPost.allowAutoRequests)} ` +
@@ -375,7 +461,7 @@ describe("mountIframeCanvas", () => {
       );
       expect(primaryPost.allowAutoRequests).toBeUndefined();
       expect(sidePost.allowAutoRequests).toBe(true);
-      surfaceForPane(SECONDARY_PANE).wrap = undefined as never;
+      sideSurface.wrap = previousWrap;
     });
 
     test("a colour-scheme flip between artboards is not baked into the shared payload", async () => {
@@ -384,9 +470,9 @@ describe("mountIframeCanvas", () => {
       const first = document.createElement("div");
       const second = document.createElement("div");
       document.body.append(first, second);
-      await mountIframeCanvas(9, doc as never, first, null, null);
+      await mountIframeCanvas(9, doc, first, null, null);
       activeTab.value!.session.ui.previewColorScheme = "dark";
-      await mountIframeCanvas(9, doc as never, second, null, null);
+      await mountIframeCanvas(9, doc, second, null, null);
       for (const channel of channels) {
         channel.deliver({ kind: "ready" });
       }
@@ -401,12 +487,12 @@ describe("mountIframeCanvas", () => {
     resetWorkspaceWithTab();
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
     expect(channels[0]!.posts[0]).toMatchObject({ colorScheme: null, kind: "render" });
 
     activeTab.value!.session.ui.previewColorScheme = "dark";
-    await mountIframeCanvas(2, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(2, { tagName: "div" }, canvasEl);
     expect(channels[0]!.posts[1]).toMatchObject({ colorScheme: "dark", kind: "render" });
   });
 
@@ -437,12 +523,12 @@ describe("mountIframeCanvas", () => {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
       // The VIEW tab, exactly as `canvas-render.ts` passes it.
-      await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl, null, sideTab.id, sideTab);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl, null, sideTab.id, sideTab);
       channels.at(-1)!.deliver({ kind: "ready" });
       const posted = channels.at(-1)!.posts.at(-1);
       console.log(
         `[iframe-host] side=dark focused=auto → side render posts colorScheme=` +
-          `${JSON.stringify((posted as Record<string, unknown>).colorScheme)}`,
+          `${JSON.stringify(posted?.kind === "render" ? posted.colorScheme : undefined)}`,
       );
       expect(posted).toMatchObject({ colorScheme: "dark", kind: "render" });
     });
@@ -451,7 +537,7 @@ describe("mountIframeCanvas", () => {
       const { sideTab } = await twoSchemes("auto", "dark");
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(2, { tagName: "div" } as never, canvasEl, null, sideTab.id, sideTab);
+      await mountIframeCanvas(2, { tagName: "div" }, canvasEl, null, sideTab.id, sideTab);
       channels.at(-1)!.deliver({ kind: "ready" });
       expect(channels.at(-1)!.posts.at(-1)).toMatchObject({ colorScheme: null, kind: "render" });
     });
@@ -466,19 +552,22 @@ describe("mountIframeCanvas", () => {
       focusPane(PRIMARY_PANE);
       const wrap = document.createElement("div");
       document.body.append(wrap);
-      surfaceForPane(SECONDARY_PANE).wrap = wrap;
+      const sideSurface = surfaceForPane(SECONDARY_PANE);
+      // Put back whatever the side surface held, so no later test inherits this stage.
+      const previousWrap = sideSurface.wrap;
+      sideSurface.wrap = wrap;
       const canvasEl = document.createElement("div");
       wrap.append(canvasEl);
 
       mountStylebookCanvas(
         3,
-        { doc: { tagName: "div" }, pathToTag: new Map(), tagToCardPath: new Map() } as never,
+        { doc: { tagName: "div" }, pathToTag: new Map(), tagToCardPath: new Map() },
         canvasEl,
         null,
       );
       channels.at(-1)!.deliver({ kind: "ready" });
       expect(channels.at(-1)!.posts.at(-1)).toMatchObject({ colorScheme: "light", kind: "render" });
-      surfaceForPane(SECONDARY_PANE).wrap = undefined as never;
+      sideSurface.wrap = previousWrap;
     });
   });
 
@@ -487,11 +576,11 @@ describe("mountIframeCanvas", () => {
       projectConfig: {
         $media: { "--dark": "(prefers-color-scheme: dark)" },
         style: { "--brand": "#0f0" },
-      } as never,
+      },
     });
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
 
     postSiteStyleToLiveHosts();
@@ -505,7 +594,7 @@ describe("mountIframeCanvas", () => {
   test("postColorSchemeToLiveHosts posts setColorScheme to ready hosts only", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
 
     // Not ready yet — nothing posts.
     postColorSchemeToLiveHosts("dark");
@@ -526,7 +615,7 @@ describe("mountIframeCanvas", () => {
   test("postLocaleToLiveHosts carries the direction with the tag, to ready hosts only", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
 
     postLocaleToLiveHosts("ar");
     expect(channels[0]!.posts).toHaveLength(0);
@@ -554,36 +643,29 @@ describe("mountIframeCanvas", () => {
   test("postRedefineElementToLiveHosts tells every ready host, as plain data, and counts them", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     const doc = reactive({ tagName: "jx-probe", children: [{ tagName: "b" }] });
 
-    expect(postRedefineElementToLiveHosts(doc as never, "http://x/components/jx-probe.json")).toBe(
-      0,
-    );
+    expect(postRedefineElementToLiveHosts(doc, "http://x/components/jx-probe.json")).toBe(0);
     expect(channels[0]!.posts).toHaveLength(0);
 
     channels[0]!.deliver({ kind: "ready" });
-    expect(postRedefineElementToLiveHosts(doc as never, "http://x/components/jx-probe.json")).toBe(
-      1,
-    );
-    const last = channels[0]!.posts.at(-1) as { kind: string; base: string; doc: unknown };
-    expect(last.kind).toBe("redefineElement");
+    expect(postRedefineElementToLiveHosts(doc, "http://x/components/jx-probe.json")).toBe(1);
+    expect(channels[0]!.posts.at(-1)?.kind).toBe("redefineElement");
+    const last = channels[0]!.posts.findLast(ofKind("redefineElement"))!;
     expect(last.base).toBe("http://x/components/jx-probe.json");
     expect(last.doc).toEqual({ children: [{ tagName: "b" }], tagName: "jx-probe" });
     expect(last.doc).not.toBe(doc);
   });
 
   test("uses the platform's canvasUrl when set, default otherwise", async () => {
-    const g = globalThis as unknown as {
-      __jxPlatform?: { canvasUrl?: string } | undefined;
-    };
-    const saved = g.__jxPlatform;
+    const saved = globalThis.__jxPlatform;
     // With a platform that sets canvasUrl, the iframe boots from that URL.
-    g.__jxPlatform = { canvasUrl: "/__studio__/canvas.html" } as never;
+    installMockPlatform({ canvasUrl: "/__studio__/canvas.html" });
     try {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
       const iframe = canvasEl.querySelector("iframe")!;
       const src1 = iframe.getAttribute("src")!;
       expect(src1.startsWith("/__studio__/canvas.html?")).toBe(true);
@@ -591,7 +673,7 @@ describe("mountIframeCanvas", () => {
       expect(q1.get("parentOrigin")).toBe(location.origin);
       expect(q1.get("token")).toBeTruthy();
     } finally {
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 
@@ -601,17 +683,16 @@ describe("mountIframeCanvas", () => {
      unused because every other host overrode it. tests/with-dom.ts anchors the entry at the url the
      dev server really serves it from, so the answer here is byte-identical to the old literal. */
   test("with no canvasUrl the default resolves beside the bundle", async () => {
-    const g = globalThis as unknown as { __jxPlatform?: unknown };
-    const saved = g.__jxPlatform;
-    g.__jxPlatform = { id: "devserver" } as never;
+    const saved = globalThis.__jxPlatform;
+    installMockPlatform({ id: "devserver" });
     try {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(41, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(41, { tagName: "div" }, canvasEl);
       const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       expect(src.startsWith("/packages/studio/canvas.html?")).toBe(true);
     } finally {
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 
@@ -622,44 +703,42 @@ describe("mountIframeCanvas", () => {
      inside the shell's app-privileged origin in a CEF instance running
      disable-site-isolation-trials. The cross-origin loopback canvas exists so that cannot happen. */
   test("a platform that defers its canvasUrl gets about:blank, not the bundle-relative default", async () => {
-    const g = globalThis as unknown as { __jxPlatform?: unknown };
-    const saved = g.__jxPlatform;
-    g.__jxPlatform = { canvasUrlDeferred: true, id: "desktop" } as never;
+    const saved = globalThis.__jxPlatform;
+    installMockPlatform({ canvasUrlDeferred: true, id: "desktop" });
     try {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(42, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(42, { tagName: "div" }, canvasEl);
       const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       expect(src.startsWith("about:blank")).toBe(true);
       expect(src).not.toContain("canvas.html");
     } finally {
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 
   test("a deferred platform that has since resolved its url uses it", async () => {
-    const g = globalThis as unknown as { __jxPlatform?: unknown };
-    const saved = g.__jxPlatform;
-    g.__jxPlatform = {
+    const saved = globalThis.__jxPlatform;
+    installMockPlatform({
       canvasUrl: "http://127.0.0.1:5111/__studio__/canvas.html",
       canvasUrlDeferred: true,
       id: "desktop",
-    } as never;
+    });
     try {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(43, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(43, { tagName: "div" }, canvasEl);
       const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       expect(src.startsWith("http://127.0.0.1:5111/__studio__/canvas.html?")).toBe(true);
     } finally {
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 
   test("a relative canvasUrl keeps the iframe same-origin (channel origin === location.origin)", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
 
     const iframe = canvasEl.querySelector("iframe")!;
     const src = iframe.getAttribute("src")!;
@@ -674,15 +753,14 @@ describe("mountIframeCanvas", () => {
   });
 
   test("a cross-origin canvasUrl carrying ?win=7 preserves win and appends parentOrigin+token", async () => {
-    const g = globalThis as unknown as { __jxPlatform?: { canvasUrl?: string } | undefined };
-    const saved = g.__jxPlatform;
-    g.__jxPlatform = {
+    const saved = globalThis.__jxPlatform;
+    installMockPlatform({
       canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html?win=7",
-    } as never;
+    });
     try {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
       const iframe = canvasEl.querySelector("iframe")!;
       const src = iframe.getAttribute("src")!;
       // Absolute loopback origin is emitted verbatim (cross-origin), with all three query params.
@@ -695,7 +773,7 @@ describe("mountIframeCanvas", () => {
       expect(channels[0]!.opts.acceptOrigin).toBe("http://127.0.0.1:54321");
       expect(channels[0]!.opts.targetOrigin).toBe("http://127.0.0.1:54321");
     } finally {
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 
@@ -703,7 +781,7 @@ describe("mountIframeCanvas", () => {
     // The default happy-dom parent is http://localhost:3000 → parentOrigin round-trips and is passed.
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
     const u = new URL(src, location.href);
     expect(u.searchParams.get("parentOrigin")).toBe(location.origin);
@@ -714,9 +792,8 @@ describe("mountIframeCanvas", () => {
     // Not surface as a postMessage event.origin. The host must OMIT parentOrigin so the iframe falls
     // Back to acceptOrigin '*' + the shared token rather than silently stalling. The parent side here
     // Stays STRICT — it accepts/targets the real loopback iframeOrigin (asserted below).
-    const g = globalThis as unknown as { __jxPlatform?: { canvasUrl?: string } | undefined };
-    const saved = g.__jxPlatform;
-    g.__jxPlatform = { canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" } as never;
+    const saved = globalThis.__jxPlatform;
+    installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" });
     const realLocation = globalThis.location;
     // Override location with a views:// (non-http) parent for this test only.
     Object.defineProperty(globalThis, "location", {
@@ -725,7 +802,7 @@ describe("mountIframeCanvas", () => {
     });
     try {
       const canvasEl = document.createElement("div");
-      await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
       const src = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       const u = new URL(src);
       // ParentOrigin is OMITTED (the iframe-entry side then falls back to '*'); token still present.
@@ -739,32 +816,37 @@ describe("mountIframeCanvas", () => {
         configurable: true,
         value: realLocation,
       });
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 
   test("JSON round-trips the doc so non-cloneable values (functions) are dropped", async () => {
-    resolved = {
-      ...DEFAULT_RESOLVED,
-      renderDoc: { children: ["hi"], onClick: () => {}, tagName: "div" },
-    };
+    const renderDoc: JxMutableNode = { children: ["hi"], tagName: "div" };
+    /* A function is not a JSON value, so the node's type cannot hold one: define it past the type,
+       as an ordinary enumerable key, so the post's JSON round trip has something to drop. */
+    Object.defineProperty(renderDoc, "onClick", {
+      configurable: true,
+      enumerable: true,
+      value: () => {},
+      writable: true,
+    });
+    resolved = { ...DEFAULT_RESOLVED, renderDoc };
     const canvasEl = document.createElement("div");
-    await mountIframeCanvas(1, {} as never, canvasEl);
+    await mountIframeCanvas(1, {}, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
 
-    const posted = channels[0]!.posts[0] as { doc: Record<string, unknown> };
-    expect(posted.doc.onClick).toBeUndefined();
-    expect(posted.doc.tagName).toBe("div");
-    expect(posted.doc.children).toEqual(["hi"]);
+    const posted = channels[0]!.posts.find(ofKind("render"))!;
+    // Exact equality: `onClick` is gone, and nothing else changed on the way through.
+    expect(posted.doc).toEqual({ children: ["hi"], tagName: "div" });
   });
 
   test("posts the raw page doc as the iframe's shadow doc (patch source-of-truth)", async () => {
     const canvasEl = document.createElement("div");
     // The raw doc differs from the resolved render doc — it's what forward ops are recorded against.
-    await mountIframeCanvas(1, { children: ["raw"], tagName: "section" } as never, canvasEl);
+    await mountIframeCanvas(1, { children: ["raw"], tagName: "section" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
 
-    const posted = channels[0]!.posts[0] as { doc: unknown; shadowDoc: unknown };
+    const posted = channels[0]!.posts.find(ofKind("render"))!;
     expect(posted.shadowDoc).toEqual({ children: ["raw"], tagName: "section" });
     // It's a clone, not the resolved render doc (which the live-render mock returns as DEFAULT_RESOLVED).
     expect(posted.doc).toEqual(DEFAULT_RESOLVED.renderDoc);
@@ -772,8 +854,8 @@ describe("mountIframeCanvas", () => {
 
   test("reuses a single iframe + channel across re-renders of the same canvas", async () => {
     const canvasEl = document.createElement("div");
-    await mountIframeCanvas(1, {} as never, canvasEl);
-    await mountIframeCanvas(2, {} as never, canvasEl);
+    await mountIframeCanvas(1, {}, canvasEl);
+    await mountIframeCanvas(2, {}, canvasEl);
     expect(canvasEl.querySelectorAll("iframe")).toHaveLength(1);
     expect(channels).toHaveLength(1);
   });
@@ -784,7 +866,7 @@ describe("mountIframeCanvas", () => {
 
     // A breakpoint panel passes its explicit width → the iframe's layout viewport is that wide, so
     // The real @media inside the iframe evaluates against the breakpoint width.
-    await mountIframeCanvas(1, {} as never, canvasEl, 768);
+    await mountIframeCanvas(1, {}, canvasEl, 768);
     const iframe = canvasEl.querySelector("iframe")!;
     expect(iframe.style.width).toBe("768px");
     // The rest of cssText is untouched (fixed-height viewport; content scrolls inside).
@@ -792,33 +874,31 @@ describe("mountIframeCanvas", () => {
     expect(iframe.style.height).toBe("100%");
 
     // A full-width / edit-mode / git-diff panel (null width) falls back to 100%, reusing the iframe.
-    await mountIframeCanvas(2, {} as never, canvasEl, null);
+    await mountIframeCanvas(2, {}, canvasEl, null);
     expect(canvasEl.querySelectorAll("iframe")).toHaveLength(1);
     expect(iframe.style.width).toBe("100%");
   });
 
   test("posts immediately (no queue) once the iframe is ready", async () => {
     const canvasEl = document.createElement("div");
-    await mountIframeCanvas(1, {} as never, canvasEl);
+    await mountIframeCanvas(1, {}, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
     channels[0]!.posts.length = 0;
 
-    await mountIframeCanvas(7, {} as never, canvasEl);
+    await mountIframeCanvas(7, {}, canvasEl);
     expect(channels[0]!.posts).toHaveLength(1);
     expect(channels[0]!.posts[0]).toMatchObject({ gen: 7 });
   });
 
   test("non-ready messages are ignored for the render queue", async () => {
     const canvasEl = document.createElement("div");
-    await mountIframeCanvas(1, {} as never, canvasEl);
+    await mountIframeCanvas(1, {}, canvasEl);
     channels[0]!.deliver({ kind: "renderComplete", gen: 1 });
     expect(channels[0]!.posts.some((p) => p.kind === "render")).toBe(false);
   });
 });
 
 // ─── Interaction: selection + overlays from posted geometry (Phase 2) ───────────
-
-type Msg = Record<string, unknown>;
 
 async function mountReady(): Promise<HTMLElement> {
   const canvasEl = document.createElement("div");
@@ -836,7 +916,7 @@ async function mountReady(): Promise<HTMLElement> {
   // Mount for the active tab (when one exists) and ack the render so the host adopts the tab
   // Identity — doc-mutating bridge messages (editCommit/editSplit/editInsert/dropResult) route by
   // The host's tabId, never by activeTab at message time.
-  await mountIframeCanvas(1, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+  await mountIframeCanvas(1, {}, canvasEl, null, activeTab.value?.id ?? null);
   channels[0]!.deliver({ kind: "ready" });
   channels[0]!.deliver({ gen: 1, kind: "renderComplete" });
   return canvasEl;
@@ -855,7 +935,7 @@ describe("iframe canvas interaction", () => {
     });
 
     expect(activeTab.value?.session.selection).toEqual([["children", 0]]);
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("block");
     expect(sel.style.left).toBe("10px");
     expect(sel.style.top).toBe("5px");
@@ -934,9 +1014,7 @@ describe("iframe canvas interaction", () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
-    const measure = channels[0]!.posts.findLast((p) => p.kind === "measure") as
-      | { paths: (string | number)[][]; reqId: number }
-      | undefined;
+    const measure = channels[0]!.posts.findLast(ofKind("measure"));
     // The PRIMARY is posted first, so the reply can be matched by path rather than by position.
     expect(measure?.paths).toEqual([
       ["children", 1],
@@ -950,13 +1028,12 @@ describe("iframe canvas interaction", () => {
       kind: "geometry",
       reqId: measure!.reqId,
     });
-    const sel = canvasEl.querySelector(
-      ".overlay-selection:not(.overlay-coselection)",
-    ) as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection:not(.overlay-coselection)");
     expect(sel.style.top).toBe("40px");
     const co = canvasEl.querySelectorAll(".overlay-coselection");
     expect(co).toHaveLength(1);
-    expect((co[0] as HTMLElement).style.top).toBe("5px");
+    // The first match is the only one, by the length check above.
+    expect(partOf(canvasEl, ".overlay-coselection").style.top).toBe("5px");
   });
 
   test("a selection of ONE draws no co-selection box at all", async () => {
@@ -968,9 +1045,7 @@ describe("iframe canvas interaction", () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
-    const measure = channels[0]!.posts.findLast((p) => p.kind === "measure") as
-      | { paths: (string | number)[][]; reqId: number }
-      | undefined;
+    const measure = channels[0]!.posts.findLast(ofKind("measure"));
     expect(measure?.paths).toEqual([["children", 0]]);
     channels[0]!.deliver({
       hits: [{ path: ["children", 0], rect: { height: 20, width: 100, x: 10, y: 5 } }],
@@ -1009,7 +1084,7 @@ describe("iframe canvas interaction", () => {
     expect(shell.layoutSelection?.layoutPath).toEqual(["children", 0, "children", 0]);
     expect(shell.layoutSelection?.tagName).toBe("a");
     expect(activeTab.value?.session.selection).toEqual([]);
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("block");
     expect(sel.style.left).toBe("24px");
 
@@ -1027,7 +1102,7 @@ describe("iframe canvas interaction", () => {
       hit: { path: ["children", 0], rect: { height: 1, width: 1, x: 0, y: 0 } },
       kind: "hit",
     });
-    const hover = canvasEl.querySelector(".overlay-hover") as HTMLElement;
+    const hover = partOf(canvasEl, ".overlay-hover");
 
     // A different node → hover box shown.
     channels[0]!.deliver({
@@ -1061,16 +1136,16 @@ describe("iframe canvas interaction", () => {
     // Selection set from outside the canvas (e.g. the layers panel).
     tab.session.selection = [["children", 2]];
     await flush();
-    const measure = channels[0]!.posts.find((p) => p.kind === "measure") as Msg | undefined;
+    const measure = channels[0]!.posts.find(ofKind("measure"));
     expect(measure).toMatchObject({ kind: "measure", paths: [["children", 2]] });
 
-    const reqId = measure!.reqId as number;
+    const { reqId } = measure!;
     channels[0]!.deliver({
       hits: [{ path: ["children", 2], rect: { height: 12, width: 30, x: 7, y: 8 } }],
       kind: "geometry",
       reqId,
     });
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("block");
     expect(sel.style.left).toBe("7px");
 
@@ -1081,8 +1156,8 @@ describe("iframe canvas interaction", () => {
     // The matching reqId with no hit clears the box.
     tab.session.selection = [["children", 3]];
     await flush();
-    const measure2 = channels[0]!.posts.findLast((p) => p.kind === "measure") as Msg;
-    channels[0]!.deliver({ hits: [], kind: "geometry", reqId: measure2.reqId as number });
+    const measure2 = channels[0]!.posts.findLast(ofKind("measure"))!;
+    channels[0]!.deliver({ hits: [], kind: "geometry", reqId: measure2.reqId });
     expect(sel.style.display).toBe("none");
   });
 
@@ -1093,7 +1168,7 @@ describe("iframe canvas interaction", () => {
       hit: { path: ["children", 0], rect: { height: 1, width: 1, x: 0, y: 0 } },
       kind: "hit",
     });
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("block");
 
     tab.session.selection = [];
@@ -1182,7 +1257,7 @@ describe("live expression eval bridge (requestCanvasEval)", () => {
     channels[0]!.posts.length = 0;
 
     const promise = requestCanvasEval(tabId, EXPRS, ["children", 0]);
-    const posted = channels[0]!.posts.find((p) => p.kind === "evalExpr") as Msg;
+    const posted = channels[0]!.posts.find(ofKind("evalExpr"))!;
     expect(posted).toMatchObject({
       contextPath: ["children", 0],
       exprs: EXPRS,
@@ -1203,7 +1278,7 @@ describe("live expression eval bridge (requestCanvasEval)", () => {
     await mountReady();
     const tabId = activeTab.value!.id;
     const promise = requestCanvasEval(tabId, EXPRS, null);
-    const posted = channels[0]!.posts.find((p) => p.kind === "evalExpr") as Msg;
+    const posted = channels[0]!.posts.find(ofKind("evalExpr"))!;
 
     // A newer render acks before the reply lands — the reply's gen is now stale.
     channels[0]!.deliver({ gen: 2, kind: "renderComplete" });
@@ -1230,7 +1305,7 @@ describe("live expression eval bridge (requestCanvasEval)", () => {
     const result = await requestCanvasEval(tabId, EXPRS, null, 10);
     expect(result).toBeNull();
     // A late reply after the timeout is dropped without effect (its resolver is gone).
-    const posted = channels[0]!.posts.find((p) => p.kind === "evalExpr") as Msg;
+    const posted = channels[0]!.posts.find(ofKind("evalExpr"))!;
     channels[0]!.deliver({
       gen: 1,
       kind: "evalResult",
@@ -1253,7 +1328,7 @@ describe("iframe canvas patch bridge", () => {
     resetWorkspaceWithTab();
   });
 
-  const OPS: WireDocOp[] = [
+  const OPS: JxDocOp[] = [
     { key: "textContent", op: "set-key", path: ["children", 0], value: "hi" },
   ];
 
@@ -1264,7 +1339,7 @@ describe("iframe canvas patch bridge", () => {
        `postPatchToHosts` used to take the number as a parameter and a caller with two panes had
        only one to give. */
     const surface = surfaceForPane(PRIMARY_PANE);
-    surface.panels.push({ canvas: canvasEl, ready: true } as unknown as CanvasPanel);
+    surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
     surface.renderGeneration = 7;
 
     const count = postPatchToHosts(OPS, activeTab.value?.id ?? null);
@@ -1276,7 +1351,7 @@ describe("iframe canvas patch bridge", () => {
   test("postPatchToHosts returns 0 when no host is ready, so the caller escalates", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, {} as never, canvasEl);
+    await mountIframeCanvas(1, {}, canvasEl);
     // No `ready` delivered → the host can't apply a patch yet.
     expect(postPatchToHosts(OPS, activeTab.value?.id ?? null)).toBe(0);
     expect(channels[0]!.posts.some((p) => p.kind === "patch")).toBe(false);
@@ -1306,7 +1381,7 @@ describe("iframe canvas patch bridge", () => {
     });
     const canvasEl = await mountReady();
     // In the app this artboard is always in some pane's stage — that is what names the pane.
-    canvasPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: "base" }));
 
     channels[0]!.deliver({ gen: 1, kind: "patchError", message: "nope" });
     expect(escalated).toEqual([PRIMARY_PANE]);
@@ -1353,8 +1428,7 @@ describe("iframe canvas patch bridge", () => {
 // ─── Inline-edit bridge: the iframe runs the session, the parent applies (Phase 4b) ─────
 
 describe("iframe canvas inline-edit bridge", () => {
-  const docChildren = () =>
-    activeTab.value!.doc.document.children as { tagName?: string; textContent?: string }[];
+  const docChildren = () => elementChildren(activeTab.value!.doc.document);
 
   beforeEach(() => {
     resetWorkspaceWithTab({ children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" });
@@ -1381,9 +1455,7 @@ describe("iframe canvas inline-edit bridge", () => {
     activeTab.value!.doc.sourceFormat = "Markdown";
 
     await mountReady();
-    const render = channels[0]!.posts.find((p) => p.kind === "render") as
-      | { editableTags?: Record<string, boolean> }
-      | undefined;
+    const render = channels[0]!.posts.find(ofKind("render"));
     expect(render?.editableTags).toBeDefined();
     // Markdown's own verdicts: a paragraph holds a caret, a blockquote holds paragraphs, and a
     // Link is markup inside a block rather than a block.
@@ -1400,9 +1472,7 @@ describe("iframe canvas inline-edit bridge", () => {
     setFormats([]);
     resetWorkspaceWithTab({ children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" });
     await mountReady();
-    const render = channels[0]!.posts.find((p) => p.kind === "render") as
-      | { editableTags?: unknown }
-      | undefined;
+    const render = channels[0]!.posts.find(ofKind("render"));
     expect(render).toBeDefined();
     expect(render!.editableTags).toBeUndefined();
   });
@@ -1414,9 +1484,7 @@ describe("iframe canvas inline-edit bridge", () => {
     channels[0]!.posts.length = 0;
     const done = flushCanvasEdits(activeTab.value!.id);
 
-    const req = channels[0]!.posts.find((p) => p.kind === "flushEdits") as
-      | { reqId: number }
-      | undefined;
+    const req = channels[0]!.posts.find(ofKind("flushEdits"));
     expect(req).toBeDefined();
 
     let settled = false;
@@ -1533,7 +1601,7 @@ describe("iframe canvas inline-edit bridge", () => {
     registerCanvasSurface(SECONDARY_PANE, sideStage);
     const sideCanvas = document.createElement("div");
     sideStage.append(sideCanvas);
-    await mountIframeCanvas(1, {} as never, sideCanvas, null, sideTab.id);
+    await mountIframeCanvas(1, {}, sideCanvas, null, sideTab.id);
     const side = channels.at(-1)!;
     side.deliver({ kind: "ready" });
     side.deliver({ gen: 1, kind: "renderComplete" });
@@ -1558,7 +1626,7 @@ describe("iframe canvas inline-edit bridge", () => {
     await mountReady();
     channels[0]!.posts.length = 0;
     channels[0]!.deliver({
-      cmd: { tag: "h2" },
+      cmd: { description: "", label: "Heading 2", tag: "h2" },
       commitData: { textContent: "Hi" },
       kind: "editInsert",
       path: ["children", 0],
@@ -1576,8 +1644,8 @@ describe("iframe canvas inline-edit bridge", () => {
       kind: "editSplit",
       path: ["children", 0],
     });
-    (resolved.mapperCtx as { canvasMode: string }).canvasMode = "preview";
-    await mountIframeCanvas(2, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+    resolved.mapperCtx.canvasMode = "preview";
+    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
     channels[0]!.posts.length = 0;
     channels[0]!.deliver({ gen: 2, kind: "renderComplete" });
     expect(channels[0]!.posts.some((p) => p.kind === "enterEdit")).toBe(false);
@@ -1593,7 +1661,7 @@ describe("iframe canvas inline-edit bridge", () => {
       document: { children: [{ tagName: "p", textContent: "B text" }], tagName: "div" },
       id: "tab-b",
     });
-    await mountIframeCanvas(2, {} as never, canvasEl, null, tabB.id);
+    await mountIframeCanvas(2, {}, canvasEl, null, tabB.id);
     // The in-flight commit from tab A's session drains BEFORE renderComplete(2) on the FIFO.
     channels[0]!.deliver({
       children: null,
@@ -1602,12 +1670,8 @@ describe("iframe canvas inline-edit bridge", () => {
       textContent: "A text edited",
     });
     // Tab A got the edit; tab B is untouched.
-    expect((tabA.doc.document.children as { textContent?: string }[])[0]!.textContent).toBe(
-      "A text edited",
-    );
-    expect((tabB.doc.document.children as { textContent?: string }[])[0]!.textContent).toBe(
-      "B text",
-    );
+    expect(elementChildren(tabA.doc.document)[0]!.textContent).toBe("A text edited");
+    expect(elementChildren(tabB.doc.document)[0]!.textContent).toBe("B text");
     // After the ack flips the identity, commits route to tab B.
     channels[0]!.deliver({ gen: 2, kind: "renderComplete" });
     channels[0]!.deliver({
@@ -1616,9 +1680,7 @@ describe("iframe canvas inline-edit bridge", () => {
       path: ["children", 0],
       textContent: "B text edited",
     });
-    expect((tabB.doc.document.children as { textContent?: string }[])[0]!.textContent).toBe(
-      "B text edited",
-    );
+    expect(elementChildren(tabB.doc.document)[0]!.textContent).toBe("B text edited");
     expect(workspace.activeTabId).toBe("tab-b");
   });
 
@@ -1637,9 +1699,7 @@ describe("iframe canvas inline-edit bridge", () => {
       path: ["children", 0],
       textContent: "ghost",
     });
-    expect((fresh.doc.document.children as { textContent?: string }[])[0]!.textContent).toBe(
-      "fresh",
-    );
+    expect(elementChildren(fresh.doc.document)[0]!.textContent).toBe("fresh");
   });
 
   test("editCommitProp persists into the instance's $props on the live document", async () => {
@@ -1654,7 +1714,7 @@ describe("iframe canvas inline-edit bridge", () => {
       prop: "title",
       value: "Regional",
     });
-    const card = (activeTab.value!.doc.document.children as { $props?: { title?: string } }[])[0]!;
+    const card = elementChildren(activeTab.value!.doc.document)[0]!;
     expect(card.$props?.title).toBe("Regional");
   });
 
@@ -1731,7 +1791,7 @@ describe("iframe canvas inline-edit bridge", () => {
       const ch = await twoSlots(["children", 0]);
       // The deferral drains when the host acks a render at or past the gen it recorded.
       ch.deliver({ gen: 99, kind: "renderComplete" });
-      const enter = ch.posts.find((m) => m.kind === "enterEdit");
+      const enter = ch.posts.find(ofKind("enterEdit"));
       expect(enter).toMatchObject({ path: ["children", 0], prop: "subtitle" });
     });
 
@@ -1739,14 +1799,14 @@ describe("iframe canvas inline-edit bridge", () => {
       // Deferring there would re-enter a session the patch never disturbed, stealing the caret.
       const ch = await twoSlots(["children", 1]);
       ch.deliver({ gen: 99, kind: "renderComplete" });
-      expect(ch.posts.find((m) => m.kind === "enterEdit")).toBeUndefined();
+      expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
     });
 
     test("a release that did NOT transact defers nothing — there is no rebuild to survive", async () => {
       // Unchanged text commits nothing (see #182), so the instance is never replaced.
       const ch = await twoSlots(["children", 0], "Local");
       ch.deliver({ gen: 99, kind: "renderComplete" });
-      expect(ch.posts.find((m) => m.kind === "enterEdit")).toBeUndefined();
+      expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
     });
   });
 
@@ -1764,15 +1824,14 @@ describe("iframe canvas inline-edit bridge", () => {
       document: { children: [{ $props: { title: "B title" }, tagName: "x-card" }], tagName: "div" },
       id: "tab-b-prop",
     });
-    await mountIframeCanvas(2, {} as never, canvasEl, null, tabB.id);
+    await mountIframeCanvas(2, {}, canvasEl, null, tabB.id);
     channels[0]!.deliver({
       kind: "editCommitProp",
       path: ["children", 0],
       prop: "title",
       value: "A edited",
     });
-    const propOf = (t: typeof tabA) =>
-      (t.doc.document.children as { $props?: { title?: string } }[])[0]!.$props?.title;
+    const propOf = (t: typeof tabA) => elementChildren(t.doc.document)[0]!.$props?.title;
     expect(propOf(tabA)).toBe("A edited");
     expect(propOf(tabB)).toBe("B title");
   });
@@ -1917,10 +1976,7 @@ describe("iframe canvas format-toolbar bridge", () => {
     expect(anchor.top).toBe(80);
 
     const settled = anchor.settle();
-    const measure = channels[0]!.posts.findLast((p) => p.kind === "measure") as {
-      paths: (string | number)[][];
-      reqId: number;
-    };
+    const measure = channels[0]!.posts.findLast(ofKind("measure"))!;
     expect(measure.paths).toEqual([["children", 0]]);
     // The zoom reflowed the frame: the node now sits 40 px lower.
     channels[0]!.deliver({
@@ -1978,7 +2034,7 @@ describe("iframe canvas format-toolbar bridge", () => {
     // The structural bar (badge/move/convert) must position on a plain selection with no edit
     // Session: register the panel so the host resolves via getActivePanel, deliver a hit (no
     // EditStart), and confirm the anchor comes from the host's lastSelectionRect + iframe offset.
-    canvasPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: "base" }));
     channels[0]!.deliver({
       hit: { path: ["children", 0], rect: { height: 14, width: 40, x: 5, y: 9 } },
       kind: "hit",
@@ -1994,7 +2050,7 @@ describe("iframe canvas format-toolbar bridge", () => {
     const chA = channels[0]!;
     const canvasB = document.createElement("div");
     document.body.append(canvasB);
-    await mountIframeCanvas(1, {} as never, canvasB);
+    await mountIframeCanvas(1, {}, canvasB);
     const chB = channels[1]!;
     chB.deliver({ kind: "ready" });
 
@@ -2025,10 +2081,10 @@ describe("cross-frame drag session (Phase 4c)", () => {
   });
 
   /** Mount + ready a host and record the render gen via renderComplete. */
-  async function readyHostAt(gen: number): Promise<{ canvasEl: HTMLElement; host: AnyHost }> {
+  async function readyHostAt(gen: number): Promise<{ canvasEl: HTMLElement; host: HostState }> {
     const canvasEl = await mountReady();
     channels[0]!.deliver({ gen, kind: "renderComplete" });
-    const host = hostForCanvas(canvasEl) as unknown as AnyHost;
+    const host = hostOf(canvasEl);
     return { canvasEl, host };
   }
 
@@ -2057,18 +2113,16 @@ describe("cross-frame drag session (Phase 4c)", () => {
     // Assert cloneability explicitly at the wire.
     const { host } = await readyHostAt(4);
     channels[0]!.posts.length = 0;
-    const proxyPath = reactive(["children", 2]) as unknown as (string | number)[];
+    const proxyPath = reactive<(string | number)[]>(["children", 2]);
     const seq = beginDragSession(
       host,
       { path: proxyPath, type: "tree-node" },
       { path: proxyPath, type: "tree-node" },
     );
-    const msg = channels[0]!.posts.find((p) => (p as { kind?: string }).kind === "dragStart") as {
-      src: { path: (string | number)[] };
-    };
+    const msg = channels[0]!.posts.find(ofKind("dragStart"));
     // The wire src survives the same clone the real channel performs, and carries the plain path.
     expect(() => structuredClone(msg)).not.toThrow();
-    expect(msg.src.path).toEqual(["children", 2]);
+    expect(msg?.src).toMatchObject({ path: ["children", 2] });
     endDragSession(seq);
   });
 
@@ -2088,7 +2142,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
       targetPath: ["children", 0],
     });
     const doc = activeTab.value!.doc.document;
-    const kids = doc.children as { tagName: string }[];
+    const kids = elementChildren(doc);
     expect(kids.length).toBe(2);
     expect(kids[1]!.tagName).toBe("hr");
   });
@@ -2107,7 +2161,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
       kind: "dropResult",
       targetPath: ["children", 0],
     });
-    expect((activeTab.value!.doc.document.children as unknown[]).length).toBe(1);
+    expect(elementChildren(activeTab.value!.doc.document).length).toBe(1);
     endDragSession(seq);
   });
 
@@ -2125,7 +2179,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
       kind: "dropResult",
       targetPath: ["children", 0],
     });
-    expect((activeTab.value!.doc.document.children as unknown[]).length).toBe(1);
+    expect(elementChildren(activeTab.value!.doc.document).length).toBe(1);
     endDragSession(seq);
   });
 
@@ -2143,7 +2197,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
       kind: "dropResult",
       targetPath: null,
     });
-    expect((activeTab.value!.doc.document.children as unknown[]).length).toBe(1);
+    expect(elementChildren(activeTab.value!.doc.document).length).toBe(1);
   });
 
   test("dragOver (matching seq+gen) is accepted; a stale one is ignored — neither throws", async () => {
@@ -2157,7 +2211,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
     channels[0]!.deliver({ dragSeq: seq, gen: 4, kind: "dragOver", preview: null });
     channels[0]!.deliver({ dragSeq: seq, gen: 3, kind: "dragOver", preview: null });
     channels[0]!.deliver({ dragSeq: seq + 1, gen: 4, kind: "dragOver", preview: null });
-    expect((activeTab.value!.doc.document.children as unknown[]).length).toBe(1);
+    expect(elementChildren(activeTab.value!.doc.document).length).toBe(1);
     endDragSession(seq);
   });
 
@@ -2165,16 +2219,16 @@ describe("cross-frame drag session (Phase 4c)", () => {
     const { canvasEl, host } = await readyHostAt(1);
     const iframe = canvasEl.querySelector("iframe")!;
     stubRect(iframe, { height: 100, left: 200, top: 50, width: 300 });
-    expect(liveDragHostAt({ x: 250, y: 80 })).toBe(host as never);
+    expect(liveDragHostAt({ x: 250, y: 80 })).toBe(host);
     expect(liveDragHostAt({ x: 10, y: 10 })).toBeNull();
   });
 
   test("hostDragGeometry derives the EMPIRICAL scale from rect.width / iframe.clientWidth", async () => {
     const { canvasEl } = await readyHostAt(1);
-    const iframe = canvasEl.querySelector("iframe")! as HTMLIFrameElement;
+    const iframe = canvasEl.querySelector("iframe")!;
     stubRect(iframe, { height: 240, left: 10, top: 20, width: 600 });
     Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 300 });
-    const host = hostForCanvas(canvasEl) as unknown as AnyHost;
+    const host = hostOf(canvasEl);
     const geo = hostDragGeometry(host);
     expect(geo.scale).toBe(2); // 600 / 300
     expect(geo.rect.left).toBe(10);
@@ -2193,8 +2247,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
   });
 
   /** The host's overlay drop-indicator box (Phase 4c). */
-  const indicator = (canvasEl: HTMLElement) =>
-    canvasEl.querySelector(".canvas-drop-indicator") as HTMLElement;
+  const indicator = (canvasEl: HTMLElement) => partOf(canvasEl, ".canvas-drop-indicator");
 
   test("dragOver with a preview draws the indicator at scale=1 (no double-scale)", async () => {
     const { canvasEl, host } = await readyHostAt(4);
@@ -2294,7 +2347,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
       kind: "dropResult",
       targetPath: ["children", 0],
     });
-    expect((activeTab.value!.doc.document.children as unknown[]).length).toBe(1);
+    expect(elementChildren(activeTab.value!.doc.document).length).toBe(1);
   });
 
   test("adoptDragSession sets the seq + retains data so a matching dropResult applies", async () => {
@@ -2317,12 +2370,12 @@ describe("cross-frame drag session (Phase 4c)", () => {
       targetPath: ["children", 0],
     });
     // The retained (adopted) source data drove the insert — the dropResult applied.
-    expect((activeTab.value!.doc.document.children as unknown[]).length).toBe(2);
+    expect(elementChildren(activeTab.value!.doc.document).length).toBe(2);
   });
 
   test("flow-3 dragOver WITH a cursor moves the ghost to the forward-converted position", async () => {
     const { canvasEl, host } = await readyHostAt(4);
-    const iframe = canvasEl.querySelector("iframe")! as HTMLIFrameElement;
+    const iframe = canvasEl.querySelector("iframe")!;
     // Scale = rect.width / clientWidth = 600 / 300 = 2; rect left/top = 10/20.
     stubRect(iframe, { height: 240, left: 10, top: 20, width: 600 });
     Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 300 });
@@ -2342,7 +2395,7 @@ describe("cross-frame drag session (Phase 4c)", () => {
       kind: "dragOver",
       preview: null,
     });
-    const ghost = document.querySelector(".jx-drag-ghost") as HTMLElement;
+    const ghost = partOf(document, ".jx-drag-ghost");
     // Forward-convert iframe→parent: x*scale+left = 100*2+10 = 210; y*scale+top = 50*2+20 = 120.
     expect(ghost.style.left).toBe("210px");
     expect(ghost.style.top).toBe("120px");
@@ -2371,10 +2424,10 @@ describe("cross-frame drag session (Phase 4c)", () => {
 
   test("nativeDragEnter routes to the installed coordinator handler with the host", async () => {
     const { host } = await readyHostAt(4);
-    const seen: unknown[] = [];
+    const seen: HostState[] = [];
     setNativeDragEnterHandler((h) => seen.push(h));
     channels[0]!.deliver({ kind: "nativeDragEnter" });
-    expect(seen).toEqual([host as never]);
+    expect(seen).toEqual([host]);
     setNativeDragEnterHandler(() => {});
   });
 
@@ -2411,13 +2464,12 @@ describe("iframe canvas insertion '+' affordance", () => {
   });
 
   /** The host's overlay insertion "+" button. */
-  const plus = (canvasEl: HTMLElement) =>
-    canvasEl.querySelector(".insertion-helper") as HTMLButtonElement;
+  const plus = (canvasEl: HTMLElement) => partOf(canvasEl, ".insertion-helper");
 
-  const topZone = {
-    edge: "top" as const,
+  const topZone: InsertZone = {
+    edge: "top",
     index: 1,
-    insertParentPath: ["children", 0] as (string | number)[],
+    insertParentPath: ["children", 0],
     rect: { height: 0, width: 300, x: 10, y: 200 },
   };
 
@@ -2444,7 +2496,7 @@ describe("iframe canvas insertion '+' affordance", () => {
 
   test("clicking the '+' runs the injected handler with the button + captured zone", async () => {
     const canvasEl = await mountReady();
-    const seen: { btn: HTMLElement; zone: unknown }[] = [];
+    const seen: { btn: HTMLElement; zone: InsertZone }[] = [];
     setInsertZoneClickHandler((btn, zone) => seen.push({ btn, zone }));
     channels[0]!.deliver({ kind: "insertZones", zones: [topZone] });
 
@@ -2590,7 +2642,7 @@ describe("iframe canvas host viewport plumbing", () => {
     // 10 + 100*2 = 210 and clientY = top + y*scale = 20 + 50*2 = 120 (happy-dom drops the MouseEvent
     // Mixin props on a WheelEvent, so only the deltas/type/target are asserted off the live event).
     const canvasEl = await mountReady();
-    const iframe = canvasEl.querySelector("iframe")! as HTMLIFrameElement;
+    const iframe = canvasEl.querySelector("iframe")!;
     stubRect(iframe, { height: 240, left: 10, top: 20, width: 600 });
     Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 300 });
 
@@ -2600,7 +2652,7 @@ describe("iframe canvas host viewport plumbing", () => {
     const { wrap } = surfaceForPane(PRIMARY_PANE);
 
     const seen: WheelEvent[] = [];
-    const onWheel = (event: Event) => seen.push(event as WheelEvent);
+    const onWheel = (event: WheelEvent) => seen.push(event);
     wrap.addEventListener("wheel", onWheel);
     channels[0]!.deliver({
       ctrlKey: true,
@@ -2620,9 +2672,6 @@ describe("iframe canvas host viewport plumbing", () => {
     expect(seen[0]!.deltaY).toBe(7);
   });
 });
-
-/** Opaque host handle for the drag-session API tests (its internals aren't asserted directly). */
-type AnyHost = Parameters<typeof beginDragSession>[0];
 
 // ─── Zoom-aware anchor math (D-2 empirical scale on the fixed-position toolbar) ──
 
@@ -2659,7 +2708,7 @@ describe("getEditBarAnchorRect zoom scaling", () => {
     const iframe = canvasEl.querySelector("iframe")!;
     stubRect(iframe, { height: 480, left: 100, top: 50, width: 600 });
     Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 300 });
-    canvasPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: "base" }));
 
     channels[0]!.deliver({
       hit: { path: ["children", 0], rect: { height: 14, width: 40, x: 5, y: 9 } },
@@ -2682,14 +2731,14 @@ describe("hit → activeMedia", () => {
     const canvasA = await mountReady();
     const canvasB = document.createElement("div");
     document.body.append(canvasB);
-    await mountIframeCanvas(1, {} as never, canvasB, null, activeTab.value!.id);
+    await mountIframeCanvas(1, {}, canvasB, null, activeTab.value!.id);
     channels[1]!.deliver({ kind: "ready" });
     // Ack the render for the same reason `mountReady` does: the breakpoint a hit activates is
     // Written onto the tab THIS host renders, and a host adopts that identity on `renderComplete`.
     channels[1]!.deliver({ gen: 1, kind: "renderComplete" });
     canvasPanels.push(
-      { canvas: canvasA, mediaName: "base" } as unknown as CanvasPanel,
-      { canvas: canvasB, mediaName: "sm" } as unknown as CanvasPanel,
+      stagePanel({ canvas: canvasA, mediaName: "base" }),
+      stagePanel({ canvas: canvasB, mediaName: "sm" }),
     );
 
     channels[1]!.deliver({
@@ -2709,10 +2758,12 @@ describe("hit → activeMedia", () => {
   test("a git-diff panel hit never poisons the style-panel media context", async () => {
     const canvasEl = await mountReady();
     activeTab.value!.session.ui.activeMedia = "sm";
-    canvasPanels.push({
-      canvas: canvasEl,
-      mediaName: "git-diff-current",
-    } as unknown as CanvasPanel);
+    canvasPanels.push(
+      stagePanel({
+        canvas: canvasEl,
+        mediaName: "git-diff-current",
+      }),
+    );
 
     channels[0]!.deliver({
       hit: { path: ["children", 0], rect: { height: 1, width: 1, x: 0, y: 0 } },
@@ -2751,7 +2802,7 @@ describe("hit routing across panes", () => {
     activateTab(tabA.id);
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, {} as never, canvasEl, null, tabB.id);
+    await mountIframeCanvas(1, {}, canvasEl, null, tabB.id);
     channels[0]!.deliver({ kind: "ready" });
     channels[0]!.deliver({ gen: 1, kind: "renderComplete" });
     return { canvasEl, tabA, tabB };
@@ -2759,7 +2810,7 @@ describe("hit routing across panes", () => {
 
   test("the breakpoint follows the clicked pane, not the focused one", async () => {
     const { canvasEl, tabA, tabB } = await mountBackgroundHost();
-    secondaryPanels.push({ canvas: canvasEl, mediaName: "sm" } as unknown as CanvasPanel);
+    secondaryPanels.push(stagePanel({ canvas: canvasEl, mediaName: "sm" }));
     // A distinct value rather than the default, so "untouched" cannot be confused with "written
     // The same null the hit would have written".
     tabA.session.ui.activeMedia = "lg";
@@ -2792,9 +2843,11 @@ describe("hit routing across panes", () => {
 
     channels[0]!.deliver({
       hit: {
+        className: "",
         layoutFile: "layouts/base.json",
-        path: ["$layout", "children", 0],
+        layoutPath: ["children", 0],
         rect: { height: 1, width: 1, x: 0, y: 0 },
+        tagName: "a",
       },
       kind: "layoutHit",
     });
@@ -2843,10 +2896,10 @@ describe("hit routing across panes", () => {
 
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, {} as never, canvasEl, null, tabB.id);
+    await mountIframeCanvas(1, {}, canvasEl, null, tabB.id);
     channels[0]!.deliver({ kind: "ready" });
     channels[0]!.deliver({ gen: 1, kind: "renderComplete" });
-    secondaryPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    secondaryPanels.push(stagePanel({ canvas: canvasEl, mediaName: "base" }));
     return { canvasEl, tabA, tabB };
   }
 
@@ -2880,8 +2933,8 @@ describe("hit routing across panes", () => {
     const { canvasEl, tabA } = await mountSplitBackgroundHost();
     // Re-mount this host in PREVIEW: every message in `PREVIEW_BLOCKED` is dropped from it —
     // `hit` and `contextMenu` among them — and this one must survive that gate.
-    (resolved.mapperCtx as { canvasMode: string }).canvasMode = "preview";
-    await mountIframeCanvas(2, {} as never, canvasEl, null, "tab-side-pane");
+    resolved.mapperCtx.canvasMode = "preview";
+    await mountIframeCanvas(2, {}, canvasEl, null, "tab-side-pane");
     activateTab(tabA.id);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
 
@@ -2901,8 +2954,7 @@ describe("hit routing across panes", () => {
 // ─── Tab identity bookkeeping details ───────────────────────────────────────────
 
 describe("host tab-identity bookkeeping", () => {
-  const firstChildText = (t: { doc: { document: { children?: unknown } } }) =>
-    (t.doc.document.children as { textContent?: string }[])[0]!.textContent;
+  const firstChildText = (t: Tab) => elementChildren(t.doc.document)[0]!.textContent;
 
   beforeEach(() => {
     resetWorkspaceWithTab({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" });
@@ -2916,7 +2968,7 @@ describe("host tab-identity bookkeeping", () => {
       document: { children: [{ tagName: "p", textContent: "B" }], tagName: "div" },
       id: "tab-b2",
     });
-    await mountIframeCanvas(2, {} as never, canvasEl, null, tabB.id);
+    await mountIframeCanvas(2, {}, canvasEl, null, tabB.id);
     // A patch ack for the new gen must not adopt the pending identity…
     channels[0]!.deliver({ gen: 2, kind: "patchComplete" });
     channels[0]!.deliver({
@@ -2937,7 +2989,7 @@ describe("host tab-identity bookkeeping", () => {
       document: { children: [{ tagName: "p", textContent: "B" }], tagName: "div" },
       id: "tab-b3",
     });
-    await mountIframeCanvas(2, {} as never, canvasEl, null, tabB.id);
+    await mountIframeCanvas(2, {}, canvasEl, null, tabB.id);
     channels[0]!.deliver({ gen: 2, kind: "renderError", message: "boom" });
     channels[0]!.deliver({ gen: 2, kind: "renderComplete" });
     channels[0]!.deliver({
@@ -2955,8 +3007,8 @@ describe("host tab-identity bookkeeping", () => {
     channels[0]!.posts.length = 0;
     // On a STAGE, because the generation a patch carries is the stage's — see the finding-9 test
     // In `canvas-idle.test.ts` for what a host with no resolvable stage is answered with now.
-    canvasPanels.push({ canvas: canvasEl, ready: true } as unknown as CanvasPanel);
-    const ops: WireDocOp[] = [
+    canvasPanels.push(stagePanel({ canvas: canvasEl, ready: true }));
+    const ops: JxDocOp[] = [
       { key: "textContent", op: "set-key", path: ["children", 0], value: "x" },
     ];
     expect(postPatchToHosts(ops, "some-other-tab")).toBe(0);
@@ -2981,19 +3033,12 @@ describe("host tab-identity bookkeeping", () => {
 // ─── Slash-menu + context-menu bridge cases (host-side coordinate conversion) ────
 
 describe("slash/context bridge messages", () => {
-  interface SlashShown {
-    rect: { left: number; top: number; bottom: number; width: number; height: number };
-    filter: string;
-    onSelect: (cmd: { label: string; tag: string; description: string }) => void;
-    onDismiss: () => void;
-  }
-
   beforeEach(() => {
     resetWorkspaceWithTab();
   });
 
   test("slashShow converts the rect by the empirical scale + offset; select/dismiss round-trip", async () => {
-    const shown: SlashShown[] = [];
+    const shown: CanvasSlashRequest[] = [];
     const navs: string[] = [];
     let dismissed = 0;
     setCanvasSlashHandler({
@@ -3001,7 +3046,7 @@ describe("slash/context bridge messages", () => {
         dismissed += 1;
       },
       nav: (key) => navs.push(key),
-      show: (req) => shown.push(req as SlashShown),
+      show: (req) => shown.push(req),
     });
     const canvasEl = await mountReady();
     const iframe = canvasEl.querySelector("iframe")!;
@@ -3074,7 +3119,7 @@ describe("stylebook host capability", () => {
 
   function makeGenerated() {
     return {
-      doc: { attributes: { class: "sb-root" }, children: [], tagName: "div" } as never,
+      doc: { attributes: { class: "sb-root" }, children: [], tagName: "div" },
       pathToTag: new Map([
         [serializeJxPath(CARD_PATH), "p"],
         [serializeJxPath([...CARD_PATH, "children", 0]), "p"],
@@ -3105,19 +3150,19 @@ describe("stylebook host capability", () => {
   test("mountStylebookCanvas posts the pre-generated doc as a stylebook render — no resolveCanvasDocument, no siteStyle, fixed width", async () => {
     const { canvasEl, channel } = await mountStylebookReady(768);
     expect(resolveCalls).toBe(0);
-    const render = channel.posts.find((p) => p.kind === "render")!;
+    const render = channel.posts.find(ofKind("render"))!;
     expect(render).toMatchObject({ gen: 9, kind: "render", mode: "stylebook", siteStyle: null });
-    expect((render.mapperCtx as { canvasMode: string }).canvasMode).toBe("stylebook");
+    expect(render.mapperCtx.canvasMode).toBe("stylebook");
     // Doc and shadowDoc are independent plain clones (fake channels pass by reference).
-    expect(render.doc).toEqual(render.shadowDoc as never);
+    expect(render.doc).toEqual(render.shadowDoc);
     expect(render.doc).not.toBe(render.shadowDoc);
-    const iframe = canvasEl.querySelector("iframe") as HTMLIFrameElement;
+    const iframe = canvasEl.querySelector("iframe")!;
     expect(iframe.style.width).toBe("768px");
   });
 
   test("a null width mounts full-width (the no-$media single panel)", async () => {
     const { canvasEl } = await mountStylebookReady(null);
-    const iframe = canvasEl.querySelector("iframe") as HTMLIFrameElement;
+    const iframe = canvasEl.querySelector("iframe")!;
     expect(iframe.style.width).toBe("100%");
   });
 
@@ -3125,7 +3170,7 @@ describe("stylebook host capability", () => {
     const hits: [string | null, string | null][] = [];
     setStylebookHitHandler((tag, media) => hits.push([tag, media]));
     const { canvasEl, channel } = await mountStylebookReady();
-    canvasPanels.push({ canvas: canvasEl, mediaName: "sm" } as unknown as CanvasPanel);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: "sm" }));
 
     // A hit on an UNMAPPED descendant of the nested <b> trims pairwise up to "p b".
     channel.deliver({
@@ -3137,9 +3182,9 @@ describe("stylebook host capability", () => {
     });
     expect(hits).toEqual([["p b", "sm"]]);
     expect(activeTab.value?.session.selection).toEqual([]);
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("block");
-    expect((sel.querySelector(".overlay-label") as HTMLElement).textContent).toBe("<p b>");
+    expect(partOf(sel, ".overlay-label").textContent).toBe("<p b>");
 
     // Chrome (unmapped all the way up) → null tag, box cleared.
     channel.deliver({
@@ -3157,7 +3202,7 @@ describe("stylebook host capability", () => {
     const { canvasEl, channel } = await mountStylebookReady();
     shell.stylebook.selection = "p";
     await flush();
-    const hover = canvasEl.querySelector(".overlay-hover") as HTMLElement;
+    const hover = partOf(canvasEl, ".overlay-hover");
 
     channel.deliver({
       hit: { path: SPECIMEN_PATH, rect: { height: 8, width: 40, x: 2, y: 3 } },
@@ -3184,15 +3229,14 @@ describe("stylebook host capability", () => {
       kind: "insertZones",
       zones: [
         {
+          edge: "top",
           index: 0,
-          parentPath: [],
-          position: "before",
+          insertParentPath: [],
           rect: { height: 10, width: 10, x: 0, y: 0 },
-          refPath: ["children", 0],
         },
       ],
     });
-    const plus = canvasEl.querySelector(".insertion-helper") as HTMLElement;
+    const plus = partOf(canvasEl, ".insertion-helper");
     expect(plus.style.display).toBe("none");
 
     channel.deliver({ kind: "contextMenu", path: SPECIMEN_PATH, x: 5, y: 7 });
@@ -3207,18 +3251,18 @@ describe("stylebook host capability", () => {
 
     shell.stylebook.selection = "p";
     await flush();
-    const measure = channel.posts.find((p) => p.kind === "measure") as Msg;
+    const measure = channel.posts.find(ofKind("measure"))!;
     expect(measure).toMatchObject({ kind: "measure", paths: [CARD_PATH] });
 
     channel.deliver({
       hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 30 } }],
       kind: "geometry",
-      reqId: measure.reqId as number,
+      reqId: measure.reqId,
     });
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("block");
     expect(sel.style.left).toBe("12px");
-    expect((sel.querySelector(".overlay-label") as HTMLElement).textContent).toBe("<p>");
+    expect(partOf(sel, ".overlay-label").textContent).toBe("<p>");
 
     // A tag with no card in this host's doc clears the box without a round-trip.
     channel.posts.length = 0;
@@ -3240,7 +3284,7 @@ describe("stylebook host capability", () => {
       "& .element-card-preview p": { color: "blue" },
     });
     expect(posted).toBe(1);
-    const update = channel.posts.find((p) => p.kind === "styleUpdate")!;
+    const update = channel.posts.find(ofKind("styleUpdate"))!;
     // Tagged with the host's last RENDERED gen (9), so a stale update is dropped iframe-side.
     expect(update).toMatchObject({ gen: 9, kind: "styleUpdate" });
     expect(channels[0]!.posts.some((p) => p.kind === "styleUpdate")).toBe(false);
@@ -3259,18 +3303,18 @@ describe("stylebook host capability", () => {
     registerPrimaryStage();
 
     const { canvasEl, channel } = await mountStylebookReady();
-    canvasPanels.push({ canvas: canvasEl, mediaName: null } as unknown as CanvasPanel);
+    canvasPanels.push(stagePanel({ canvas: canvasEl, mediaName: null }));
     channel.posts.length = 0;
 
     panToStylebookTag("p");
-    const measure = channel.posts.find((p) => p.kind === "measure") as Msg;
+    const measure = channel.posts.find(ofKind("measure"))!;
     expect(measure).toMatchObject({ kind: "measure", paths: [CARD_PATH] });
 
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     channel.deliver({
       hits: [{ path: CARD_PATH, rect: { height: 40, width: 200, x: 12, y: 500 } }],
       kind: "geometry",
-      reqId: measure.reqId as number,
+      reqId: measure.reqId,
     });
     // The pan branch consumed the reply — the selection box was not (re)drawn from it.
     expect(sel.style.display).toBe("none");
@@ -3286,7 +3330,7 @@ describe("stylebook host capability", () => {
     setStylebookHitHandler((tag) => hits.push(tag));
     const { canvasEl, channel } = await mountStylebookReady();
 
-    await mountIframeCanvas(10, {} as never, canvasEl, null, activeTab.value!.id);
+    await mountIframeCanvas(10, {}, canvasEl, null, activeTab.value!.id);
     channel.deliver({ gen: 10, kind: "renderComplete" });
 
     channel.deliver({
@@ -3302,12 +3346,20 @@ describe("stylebook host capability", () => {
 // ─── External file drops (flow 5) ─────────────────────────────────────────────
 
 describe("external file drop dispatch", () => {
-  const hit = (tagName: string) => ({
+  /** One call the injected file-drop handler received, as much of it as a test records. */
+  interface FileDropCall {
+    tab?: Tab | null;
+    files: File[];
+    dropHit?: FileDropHit | null;
+    dropPreview?: DropPreview | null;
+  }
+
+  const hit = (tagName: string): FileDropHit => ({
     path: ["children", 0],
     rect: { height: 20, width: 100, x: 10, y: 5 },
     tagName,
   });
-  const preview = () => ({
+  const preview = (): DropPreview => ({
     edge: "top",
     instruction: "reorder-above",
     referenceRect: { height: 20, width: 100, x: 0, y: 40 },
@@ -3323,8 +3375,8 @@ describe("external file drop dispatch", () => {
     const canvasEl = await mountReady();
     channels[0]!.deliver({ hit: hit("img"), kind: "fileDragOver", preview: preview() });
 
-    const replace = canvasEl.querySelector(".canvas-replace-target") as HTMLElement;
-    const drop = canvasEl.querySelector(".canvas-drop-indicator") as HTMLElement;
+    const replace = partOf(canvasEl, ".canvas-replace-target");
+    const drop = partOf(canvasEl, ".canvas-drop-indicator");
     expect(replace.style.display).toBe("block");
     // The two answer different questions; showing both at once would be ambiguous.
     expect(drop.style.display).toBe("none");
@@ -3334,12 +3386,8 @@ describe("external file drop dispatch", () => {
     const canvasEl = await mountReady();
     channels[0]!.deliver({ hit: hit("div"), kind: "fileDragOver", preview: preview() });
 
-    expect((canvasEl.querySelector(".canvas-replace-target") as HTMLElement).style.display).toBe(
-      "none",
-    );
-    expect((canvasEl.querySelector(".canvas-drop-indicator") as HTMLElement).style.display).toBe(
-      "block",
-    );
+    expect(partOf(canvasEl, ".canvas-replace-target").style.display).toBe("none");
+    expect(partOf(canvasEl, ".canvas-drop-indicator").style.display).toBe("block");
   });
 
   test("fileDragLeave clears both affordances", async () => {
@@ -3347,16 +3395,12 @@ describe("external file drop dispatch", () => {
     channels[0]!.deliver({ hit: hit("img"), kind: "fileDragOver", preview: preview() });
     channels[0]!.deliver({ kind: "fileDragLeave" });
 
-    expect((canvasEl.querySelector(".canvas-replace-target") as HTMLElement).style.display).toBe(
-      "none",
-    );
-    expect((canvasEl.querySelector(".canvas-drop-indicator") as HTMLElement).style.display).toBe(
-      "none",
-    );
+    expect(partOf(canvasEl, ".canvas-replace-target").style.display).toBe("none");
+    expect(partOf(canvasEl, ".canvas-drop-indicator").style.display).toBe("none");
   });
 
   test("fileDrop routes the files, hit and preview to the injected handler", async () => {
-    const calls: Msg[] = [];
+    const calls: FileDropCall[] = [];
     setFileDropHandler((tab, files, dropHit, dropPreview) => {
       calls.push({ dropHit, dropPreview, files, tab });
     });
@@ -3371,13 +3415,11 @@ describe("external file drop dispatch", () => {
     expect(calls[0]!.files).toEqual([file]);
     expect(calls[0]!.dropHit).toMatchObject({ tagName: "img" });
     // The affordance clears on drop, before the async upload starts.
-    expect((canvasEl.querySelector(".canvas-replace-target") as HTMLElement).style.display).toBe(
-      "none",
-    );
+    expect(partOf(canvasEl, ".canvas-replace-target").style.display).toBe("none");
   });
 
   test("a specimen catalog is never a file-drop target", async () => {
-    const calls: Msg[] = [];
+    const calls: FileDropCall[] = [];
     setFileDropHandler((_tab, files) => {
       calls.push({ files });
     });
@@ -3394,16 +3436,19 @@ describe("external file drop dispatch", () => {
     channel.deliver({ gen: 9, kind: "renderComplete" });
 
     channel.deliver({ hit: hit("img"), kind: "fileDragOver", preview: preview() });
-    channel.deliver({ files: [new File(["x"], "a.png")], hit: null, kind: "fileDrop" });
+    channel.deliver({
+      files: [new File(["x"], "a.png")],
+      hit: null,
+      kind: "fileDrop",
+      preview: null,
+    });
 
     expect(calls).toEqual([]);
-    expect((canvasEl.querySelector(".canvas-replace-target") as HTMLElement).style.display).toBe(
-      "none",
-    );
+    expect(partOf(canvasEl, ".canvas-replace-target").style.display).toBe("none");
   });
 
   test("the canvas gutter accepts a file drop and appends to the root", async () => {
-    const calls: Msg[] = [];
+    const calls: FileDropCall[] = [];
     setFileDropHandler((_tab, files, dropHit, dropPreview) => {
       calls.push({ dropHit, dropPreview, files });
     });
@@ -3496,7 +3541,7 @@ describe("isCaretActive", () => {
 describe("preview renders", () => {
   beforeEach(() => {
     resetWorkspaceWithTab();
-    resolved.mapperCtx = { ...(resolved.mapperCtx as object), canvasMode: "preview" };
+    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "preview" };
   });
 
   /** Mount a ready host whose render mode is preview. */
@@ -3506,11 +3551,11 @@ describe("preview renders", () => {
 
   test("the overlay layer is suppressed, and restored by the next editable render", async () => {
     const canvasEl = await mountPreview();
-    const overlay = canvasEl.querySelector(".jx-canvas-iframe-overlay") as HTMLElement;
+    const overlay = partOf(canvasEl, ".jx-canvas-iframe-overlay");
     expect(overlay.style.display).toBe("none");
 
-    resolved.mapperCtx = { ...(resolved.mapperCtx as object), canvasMode: "design" };
-    await mountIframeCanvas(2, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "design" };
+    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
     expect(overlay.style.display).toBe("");
   });
 
@@ -3521,7 +3566,7 @@ describe("preview renders", () => {
       kind: "hit",
     });
     expect(activeTab.value?.session.selection).toEqual([]);
-    const sel = canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const sel = partOf(canvasEl, ".overlay-selection");
     expect(sel.style.display).toBe("none");
   });
 
@@ -3531,7 +3576,7 @@ describe("preview renders", () => {
       hit: { path: ["children", 1], rect: { height: 8, width: 40, x: 2, y: 3 } },
       kind: "hover",
     });
-    expect((canvasEl.querySelector(".overlay-hover") as HTMLElement).style.display).toBe("none");
+    expect(partOf(canvasEl, ".overlay-hover").style.display).toBe("none");
   });
 
   test("no insertion +", async () => {
@@ -3542,12 +3587,12 @@ describe("preview renders", () => {
         {
           edge: "top",
           index: 0,
-          parentPath: [],
+          insertParentPath: [],
           rect: { height: 0, width: 100, x: 0, y: 0 },
         },
       ],
     });
-    expect((canvasEl.querySelector(".insertion-helper") as HTMLElement).style.display).toBe("none");
+    expect(partOf(canvasEl, ".insertion-helper").style.display).toBe("none");
   });
 
   test("the Jx context menu never opens", async () => {
@@ -3610,8 +3655,8 @@ describe("preview frame sizing is derived, not incremental", () => {
 
     // Switch the SAME host to preview. The iframe posts nothing: its measurement is unchanged, and
     // It only posts on a change. The frame must still become a real viewport.
-    resolved.mapperCtx = { ...(resolved.mapperCtx as object), canvasMode: "preview" };
-    await mountIframeCanvas(2, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "preview" };
+    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
     expect(iframe.style.height).toBe("100%");
     expect(iframe.style.minHeight).toBe("0px");
   });
@@ -3621,12 +3666,12 @@ describe("preview frame sizing is derived, not incremental", () => {
     const iframe = canvasEl.querySelector("iframe")!;
     channels[0]!.deliver({ fragment: false, height: 1234, kind: "contentHeight" });
 
-    resolved.mapperCtx = { ...(resolved.mapperCtx as object), canvasMode: "preview" };
-    await mountIframeCanvas(2, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "preview" };
+    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
     expect(iframe.style.height).toBe("100%");
 
-    resolved.mapperCtx = { ...(resolved.mapperCtx as object), canvasMode: "design" };
-    await mountIframeCanvas(3, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "design" };
+    await mountIframeCanvas(3, {}, canvasEl, null, activeTab.value?.id ?? null);
     expect(iframe.style.height).toBe("1234px");
     expect(iframe.style.minHeight).toBe("480px");
   });
@@ -3643,7 +3688,7 @@ describe("preview frame sizing is derived, not incremental", () => {
     });
     const previewResolved = {
       ...resolved,
-      mapperCtx: { ...(resolved.mapperCtx as object), canvasMode: "preview" },
+      mapperCtx: { ...resolved.mapperCtx, canvasMode: "preview" },
     };
     void mock.module("../src/canvas/canvas-live-render", () => ({
       resolveCanvasDocument: async () => {
@@ -3652,7 +3697,7 @@ describe("preview frame sizing is derived, not incremental", () => {
       },
     }));
 
-    const mounting = mountIframeCanvas(4, {} as never, canvasEl, null, activeTab.value?.id ?? null);
+    const mounting = mountIframeCanvas(4, {}, canvasEl, null, activeTab.value?.id ?? null);
     // Mid-resolve the iframe measures and posts. The host has not adopted the preview flag yet.
     channels[0]!.deliver({ fragment: false, height: 4000, kind: "contentHeight" });
     release!();
@@ -3732,7 +3777,7 @@ describe("releaseCanvasHosts", () => {
     const canvasEl = document.createElement("div");
     stage.append(canvasEl);
 
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels[0]!.deliver({ kind: "ready" });
     const iframe = canvasEl.querySelector("iframe")!;
     expect(iframe.isConnected).toBe(true);
@@ -3758,8 +3803,8 @@ describe("releaseCanvasHosts", () => {
     a.append(canvasA);
     b.append(canvasB);
 
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasA);
-    await mountIframeCanvas(2, { tagName: "div" } as never, canvasB);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasA);
+    await mountIframeCanvas(2, { tagName: "div" }, canvasB);
     expect(channels).toHaveLength(2);
 
     // Unsplitting releases ONE pane's frames. A release that took both would tear down the pane
@@ -3778,7 +3823,7 @@ describe("releaseCanvasHosts", () => {
     document.body.append(stage);
     const canvasEl = document.createElement("div");
     stage.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     // Un-acked: `pendingTabIds` holds gen 1, which `canvasIdleBlockers()` reports.
     expect(canvasIdleBlockers().length).toBeGreaterThan(0);
     releaseCanvasHosts(stage);
@@ -3817,11 +3862,11 @@ describe("selection measures are routed by the host's own tab", () => {
     const elA = document.createElement("div");
     const elB = document.createElement("div");
     document.body.append(elA, elB);
-    await mountIframeCanvas(1, {} as never, elA, null, tabA.id);
+    await mountIframeCanvas(1, {}, elA, null, tabA.id);
     const chA = channels.at(-1)!;
     chA.deliver({ kind: "ready" });
     chA.deliver({ gen: 1, kind: "renderComplete" });
-    await mountIframeCanvas(2, {} as never, elB, null, tabB.id);
+    await mountIframeCanvas(2, {}, elB, null, tabB.id);
     const chB = channels.at(-1)!;
     chB.deliver({ kind: "ready" });
     chB.deliver({ gen: 2, kind: "renderComplete" });
@@ -3831,8 +3876,7 @@ describe("selection measures are routed by the host's own tab", () => {
   }
 
   /** What a host believes it has selected — the bookkeeping the foreign paths used to overwrite. */
-  const selectionOf = (el: HTMLElement) =>
-    (hostForCanvas(el) as unknown as { selectionPaths: unknown[] } | null)?.selectionPaths;
+  const selectionOf = (el: HTMLElement) => hostForCanvas(el)?.selectionPaths;
 
   test("the focused pane's selection is measured in its own frame and in no other", async () => {
     /* `ensureSelectionWatch` read `activeTab` and posted to every entry in `liveHosts` with no
@@ -3889,7 +3933,7 @@ describe("a released host takes its edit session with it", () => {
     document.body.append(stage);
     const canvasEl = document.createElement("div");
     stage.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     const channel = channels.at(-1)!;
     channel.deliver({ kind: "ready" });
     channel.deliver({ kind: "editStart", path: ["children", 0] });
@@ -3912,7 +3956,7 @@ describe("a released host takes its edit session with it", () => {
     document.body.append(stage);
     const canvasEl = document.createElement("div");
     stage.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     const channel = channels.at(-1)!;
     channel.deliver({ kind: "ready" });
     channel.deliver({
@@ -3928,9 +3972,7 @@ describe("a released host takes its edit session with it", () => {
     });
     // A null post arms the grace timer rather than hiding at once.
     channel.deliver({ kind: "insertZones", zones: null });
-    const host = hostForCanvas(canvasEl) as unknown as {
-      insertHideTimer: ReturnType<typeof setTimeout> | null;
-    };
+    const host = hostOf(canvasEl);
     expect(host.insertHideTimer).not.toBeNull();
 
     releaseCanvasHosts(stage);
@@ -3945,7 +3987,7 @@ describe("a released host takes its edit session with it", () => {
 describe("commandTargetClick", () => {
   const opened: { kind: "popover" | "dialog"; tab: string; path: unknown }[] = [];
 
-  async function withRegistry(document: unknown) {
+  async function withRegistry(document: JxMutableNode) {
     const { createCommandRegistry } = await import("../src/commands/registry");
     const { canvasViewCommands } = await import("../src/canvas/canvas-utils");
     const { setActiveRegistry } = await import("../src/commands/active-registry");
@@ -3970,7 +4012,7 @@ describe("commandTargetClick", () => {
     setActiveRegistry(registry);
     await mountReady();
     const tab = activeTab.value!;
-    (tab.doc as { document: unknown }).document = document;
+    tab.doc.document = document;
     return { setActiveRegistry, tab };
   }
 

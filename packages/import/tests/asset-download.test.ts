@@ -7,6 +7,13 @@ import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import type { DiscoveredAsset } from "../src/asset-collect.ts";
 
+/** A `fetch` that answers through `answer`, with the global's own `preconnect` beside it. */
+function fetchDouble(
+  answer: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
+}
+
 describe("downloadAssets", () => {
   test("skips blocked tracking domains", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
@@ -93,7 +100,7 @@ describe("downloadAssets", () => {
   test("downloads successful responses and builds the rewrite map", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("hello")) as unknown as typeof fetch;
+    globalThis.fetch = fetchDouble(async () => new Response("hello"));
     try {
       const url = "https://example.com/images/pic.jpg";
       const result = await downloadAssets([{ url, source: "img-src" }], createLocalIo(tmpDir));
@@ -111,7 +118,7 @@ describe("downloadAssets", () => {
   test("classifies assets into subdirectories by source and extension", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("data")) as unknown as typeof fetch;
+    globalThis.fetch = fetchDouble(async () => new Response("data"));
     try {
       const assets: DiscoveredAsset[] = [
         { url: "https://fonts.example.com/custom.ttf", source: "font-face" },
@@ -143,7 +150,7 @@ describe("downloadAssets", () => {
   test("sanitizes extensionless and overlong filenames", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("data")) as unknown as typeof fetch;
+    globalThis.fetch = fetchDouble(async () => new Response("data"));
     try {
       const longName = "a".repeat(116);
       const assets: DiscoveredAsset[] = [
@@ -170,7 +177,7 @@ describe("downloadAssets", () => {
   test("dedupes colliding filenames within a subdirectory", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("data")) as unknown as typeof fetch;
+    globalThis.fetch = fetchDouble(async () => new Response("data"));
     try {
       const assets: DiscoveredAsset[] = [
         { url: "https://a.example.com/logo.png", source: "img-src" },
@@ -195,11 +202,11 @@ describe("downloadAssets", () => {
   test("sends a Referer header when sourceUrl is provided", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
     const originalFetch = globalThis.fetch;
-    const seenHeaders: Record<string, string>[] = [];
-    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
-      seenHeaders.push({ ...(init?.headers as Record<string, string>) });
+    const seenHeaders: Headers[] = [];
+    globalThis.fetch = fetchDouble(async (_input, init) => {
+      seenHeaders.push(new Headers(init?.headers));
       return new Response("data");
-    }) as unknown as typeof fetch;
+    });
     try {
       const assets: DiscoveredAsset[] = [
         { url: "https://example.com/hero.jpg", source: "img-src" },
@@ -208,8 +215,8 @@ describe("downloadAssets", () => {
       await downloadAssets(assets, createLocalIo(tmpDir), "https://example.com/page");
 
       expect(seenHeaders).toHaveLength(1);
-      expect(seenHeaders[0]!["Referer"]).toBe("https://example.com/page");
-      expect(seenHeaders[0]!["User-Agent"]).toContain("Mozilla/5.0");
+      expect(seenHeaders[0]!.get("Referer")).toBe("https://example.com/page");
+      expect(seenHeaders[0]!.get("User-Agent")).toContain("Mozilla/5.0");
     } finally {
       globalThis.fetch = originalFetch;
       await rm(tmpDir, { recursive: true, force: true });
@@ -219,8 +226,7 @@ describe("downloadAssets", () => {
   test("records non-ok responses as failed", async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), "jx-import-test-"));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response("nope", { status: 404 })) as unknown as typeof fetch;
+    globalThis.fetch = fetchDouble(async () => new Response("nope", { status: 404 }));
     try {
       const url = "https://example.com/gone.jpg";
       const result = await downloadAssets([{ url, source: "img-src" }], createLocalIo(tmpDir));

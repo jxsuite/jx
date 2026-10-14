@@ -26,29 +26,61 @@ export function extractUpstreamErrorMessage(rawBody: string, fallback: string): 
   if (!rawBody) {
     return fallback;
   }
+  let parsed: unknown;
   try {
-    const { error, errors } = JSON.parse(rawBody) as {
-      error?: string | { message?: string };
-      errors?: { code?: number; message?: string }[];
-    };
-    if (typeof error === "string") {
-      return error;
-    }
-    if (error) {
-      const { message } = error;
-      if (message) {
-        return message;
-      }
-    }
-    const [first] = errors ?? [];
-    if (first) {
-      const { message } = first;
-      if (message) {
-        return message;
-      }
-    }
+    parsed = JSON.parse(rawBody);
   } catch {
     /* Not JSON: use the raw body. */
+    return rawBody;
+  }
+  // JSON `null`, a primitive or an array carries neither member, so it is the raw body.
+  if (isMemberBag(parsed)) {
+    if ("error" in parsed) {
+      const { error } = parsed;
+      if (isText(error)) {
+        return error;
+      }
+      if (isMemberBag(error) && "message" in error && Boolean(error.message)) {
+        return String(error.message);
+      }
+    }
+    if ("errors" in parsed && isEntryList(parsed.errors)) {
+      const [first] = parsed.errors;
+      if (isMemberBag(first) && "message" in first && Boolean(first.message)) {
+        return String(first.message);
+      }
+    }
   }
   return rawBody;
+}
+
+/**
+ * True when a parsed body is a string, empty or not: a flat `error` string is the answer as sent.
+ *
+ * @param {unknown} value - A member of the parsed body
+ * @returns {boolean}
+ */
+function isText(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+/**
+ * True when a parsed `errors` member is an array, whose first entry is Cloudflare's sentence.
+ *
+ * @param {unknown} value - The parsed body's `errors` member
+ * @returns {boolean}
+ */
+function isEntryList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+/**
+ * True when a parsed value is a JSON object (or array) whose members may be probed with `in`; false
+ * for `null` and every primitive.
+ *
+ * @param {unknown} value - The parsed body, or one of its members
+ * @returns {boolean}
+ */
+function isMemberBag(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
 }

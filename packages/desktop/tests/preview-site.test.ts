@@ -243,6 +243,7 @@ describe("re-rooting", () => {
     try {
       const session = createProjectSession(root);
       session.setProjectRoot(root);
+      expect(session.projectRoot).toBe(root);
       expect(clearLivePreviewOverlay).not.toHaveBeenCalled();
     } finally {
       rmSync(root, { force: true, recursive: true });
@@ -252,7 +253,9 @@ describe("re-rooting", () => {
   test("a session that never held a project has nothing to let go of", () => {
     const root = project();
     try {
-      createProjectSession(null).setProjectRoot(root);
+      const session = createProjectSession(null);
+      session.setProjectRoot(root);
+      expect(session.projectRoot).toBe(root);
       expect(clearLivePreviewOverlay).not.toHaveBeenCalled();
     } finally {
       rmSync(root, { force: true, recursive: true });

@@ -8,14 +8,21 @@
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
+import { isString } from "@jxsuite/schema/guards";
+
+import type { MockPlatformState } from "./harness";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { AiToolProjection, AiToolReport, CommandRegistry } from "../src/commands/registry";
+import type { NewFileRequest } from "../src/files/files";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 const opened: string[] = [];
-const created: Record<string, unknown>[] = [];
+const created: NewFileRequest[] = [];
 let createResult: string | null = "pages/fr/about.json";
 
 function mockFiles(): void {
   void mock.module("../src/files/files", () => ({
-    createFileIn: (request: Record<string, unknown>) => {
+    createFileIn: (request: NewFileRequest) => {
       created.push(request);
       return Promise.resolve(createResult);
     },
@@ -54,6 +61,33 @@ function command(id: string) {
     throw new Error(`no command ${id}`);
   }
   return record;
+}
+
+/** What i18n.addLocale's report is handed: the contexts around the run and its argument record. */
+type AddLocaleFacts = Parameters<AiToolProjection<CommandArgValues>["report"]>[0];
+
+/** The live i18n.addLocale record's assistant report, read with its real argument type. */
+function addLocaleReport(registry: CommandRegistry, facts: AddLocaleFacts): string | AiToolReport {
+  const tool = registry.get("i18n.addLocale")?.aiTool;
+  if (!tool) {
+    throw new Error("i18n.addLocale projects no aiTool");
+  }
+  /* SAFETY: the registry stores every record as Command<never>, which erases A. i18n.addLocale is
+     declared over CommandArgValues (its report reads `locale` through stringArg), so restoring that
+     parameter type is the record's own signature, not a widening. */
+  const report = tool.report as (facts: AddLocaleFacts) => string | AiToolReport;
+  return report(facts);
+}
+
+/** The project.json the section's own write left on the mock platform. */
+function writtenConfig(state: MockPlatformState): ProjectConfig {
+  const raw = state.files.get("project.json");
+  if (raw === undefined) {
+    throw new Error("project.json was never written");
+  }
+  /* SAFETY: the only writer of project.json in these tests is the project-settings save, which
+     JSON.stringifies projectState.projectConfig, a ProjectConfig. */
+  return JSON.parse(raw) as ProjectConfig;
 }
 
 /** The one message the last run produced, whichever store it landed in. */
@@ -99,12 +133,10 @@ describe("the records", () => {
   test("the locale enum is a getter, so it is not frozen at boot", () => {
     // The records are built here with a project open, then read again after the project changes —
     // A snapshot taken at record-construction time cannot pass both halves.
-    const schema = command("i18n.openTranslation").args as {
-      properties: { locale: { enum: string[] } };
-    };
-    expect(schema.properties.locale.enum).toEqual(["en", "fr"]);
+    const schema = command("i18n.openTranslation").args;
+    expect(schema?.properties?.["locale"]?.enum).toEqual(["en", "fr"]);
     resetStudioState({ projectConfig: { i18n: { locales: ["en", "de", "ja"] } } });
-    expect(schema.properties.locale.enum).toEqual(["en", "de", "ja"]);
+    expect(schema?.properties?.["locale"]?.enum).toEqual(["en", "de", "ja"]);
   });
 });
 
@@ -294,10 +326,7 @@ describe("i18n.addLocale", () => {
     resetStudioState({ projectConfig: { i18n: { defaultLocale: "en", locales: ["en"] } } });
     await liveRegistry().run("i18n.addLocale", { locale: "ja" });
     await flush(2);
-    const written = JSON.parse(state.files.get("project.json")!) as {
-      i18n: { defaultLocale: string; locales: string[] };
-    };
-    expect(written.i18n).toEqual({ defaultLocale: "en", locales: ["en", "ja"] });
+    expect(writtenConfig(state).i18n).toEqual({ defaultLocale: "en", locales: ["en", "ja"] });
   });
 
   test("a malformed tag is refused by THROWING, names the tag, and writes nothing", async () => {
@@ -320,14 +349,14 @@ describe("i18n.addLocale", () => {
     installMockPlatform();
     resetStudioState({ projectConfig: { i18n: { defaultLocale: "en", locales: ["en"] } } });
     const registry = liveRegistry();
-    const facts = {
+    const facts: AddLocaleFacts = {
       after: makeContext(),
-      args: { locale: "pt-br" } as never,
+      args: { locale: "pt-br" },
       before: makeContext(),
     };
     await registry.run("i18n.addLocale", { locale: "pt-br" });
     await flush(2);
-    expect(registry.get("i18n.addLocale")!.aiTool!.report(facts)).toBe(
+    expect(addLocaleReport(registry, facts)).toBe(
       "Declared pt-BR; project locales are now en, pt-BR.",
     );
     // Asking again is a statement, not a change: `addProjectLocale` toasts and returns, and the
@@ -335,7 +364,7 @@ describe("i18n.addLocale", () => {
     // `project.json` entry for a run that never touched it (the `undo: "project"` default would).
     await registry.run("i18n.addLocale", { locale: "pt-BR" });
     await flush(2);
-    expect(registry.get("i18n.addLocale")!.aiTool!.report(facts)).toEqual({
+    expect(addLocaleReport(registry, facts)).toEqual({
       summary:
         "Português (Brasil) was already one of this project's languages; the locales are en, pt-BR.",
       wrote: [],
@@ -352,16 +381,16 @@ describe("i18n.addLocale", () => {
     const registry = liveRegistry();
     await registry.run("i18n.addLocale", { locale: "en" });
     await flush(2);
-    expect((JSON.parse(state.files.get("project.json")!) as { i18n: unknown }).i18n).toEqual({
+    expect(writtenConfig(state).i18n).toEqual({
       defaultLocale: "en",
       locales: ["fr", "en"],
     });
-    const report = registry.get("i18n.addLocale")!.aiTool!.report({
+    const report = addLocaleReport(registry, {
       after: makeContext(),
-      args: { locale: "en" } as never,
+      args: { locale: "en" },
       before: makeContext(),
     });
-    expect(typeof report === "string" ? report : report.summary).toMatch(/^Declared en; /);
+    expect(isString(report) ? report : report.summary).toMatch(/^Declared en; /);
   });
 
   test("is reachable in a project that declares nothing at all", async () => {
@@ -371,7 +400,7 @@ describe("i18n.addLocale", () => {
     expect(registry.isEnabled("i18n.addLocale")).toBe(true);
     await registry.run("i18n.addLocale", { locale: "fr" });
     await flush(2);
-    expect((JSON.parse(state.files.get("project.json")!) as { i18n: unknown }).i18n).toEqual({
+    expect(writtenConfig(state).i18n).toEqual({
       locales: ["fr"],
     });
   });

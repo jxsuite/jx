@@ -16,8 +16,7 @@ describe("envelope roundtrip", () => {
 
   test("doc-sync with empty body and epoch zero", () => {
     const frame = roundtrip({ body: new Uint8Array(0), epoch: 0, path: "a", type: "doc-sync" });
-    expect(frame.type).toBe("doc-sync");
-    expect((frame as { body: Uint8Array }).body).toHaveLength(0);
+    expect(frame).toEqual({ body: new Uint8Array(0), epoch: 0, path: "a", type: "doc-sync" });
   });
 
   test("awareness passes its payload through", () => {
@@ -91,6 +90,9 @@ describe("malformed frames", () => {
   });
 
   test("encoding an unknown frame shape is rejected", () => {
-    expect(() => encodeFrame({ type: "bogus" } as unknown as CollabFrame)).toThrow(EnvelopeError);
+    /* SAFETY: deliberately false. This is the frame a caller outside the type system hands over (a
+       parsed message is the realistic source), and encodeFrame's default branch exists for it. */
+    const bogus = JSON.parse('{"type":"bogus"}') as CollabFrame;
+    expect(() => encodeFrame(bogus)).toThrow(new EnvelopeError("unknown-frame:bogus"));
   });
 });

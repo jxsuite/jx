@@ -1,7 +1,8 @@
 /** Watch.js — File watcher + SSE live reload */
 
-import { watch as chokidarWatch } from "chokidar";
+import { watch } from "chokidar";
 import { relative } from "node:path";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { rebuild } from "./build.ts";
 import { coalesceFsEvents, toFsEvent } from "./refactor/fs-events.ts";
 import { createWatchIgnore } from "./watch-policy.ts";
@@ -109,7 +110,7 @@ export function createWatcher(
   let fsTimer: ReturnType<typeof setTimeout> | null = null;
   let fsBuffer: FsEventPayload[] = [];
   const fsDebounceMs = 40;
-  const watcher = chokidarWatch(root, {
+  const watcher = watch(root, {
     awaitWriteFinish: {
       pollInterval: 10,
       stabilityThreshold: debounceMs,
@@ -152,7 +153,7 @@ export function createWatcher(
         try {
           await preReload(filename);
         } catch (error) {
-          console.error(`[watch] preReload failed: ${(error as Error).message}`);
+          console.error(`[watch] preReload failed: ${errorMessage(error)}`);
         }
       }
       if (builds.length > 0) {
@@ -174,11 +175,12 @@ export function createWatcher(
 
   // Gracefully handle watch errors (e.g. EINVAL on transient Bun test dirs).
   watcher.on("error", (err) => {
-    const error = err as Error;
-    if (error.message?.includes("EINVAL")) {
+    // Chokidar forwards the fs watcher's own errors, which are Error instances carrying a message.
+    const message = err instanceof Error ? err.message : undefined;
+    if (message?.includes("EINVAL")) {
       return;
     }
-    console.error("[watch] chokidar error:", error.message ?? error);
+    console.error("[watch] chokidar error:", message ?? err);
   });
 
   return { broadcast, broadcastEvent, handleSSE, watcher };

@@ -17,8 +17,9 @@
  * @docs framework/site/i18n
  */
 
-/* Type-only, so this module still imports nothing at runtime and a browser host can load it. */
-import type { ProjectConfig } from "../types.ts";
+/* The guards module is pure predicates with no node imports, so a browser host can still load this. */
+import type { JsonValue, ProjectConfig } from "../types.ts";
+import { isNonNullObject, isString } from "./guards";
 
 /**
  * Scripts written right to left (ISO 15924, per UAX #9).
@@ -99,11 +100,11 @@ export const LANGUAGE_TAG_PATTERN = "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$";
  * becomes `en-US`, which matters because a tag is compared as a string in a route table and in a
  * `hreflang` attribute.
  *
- * @param {unknown} tag
+ * @param {JsonValue | undefined} tag - Any configured value; non-strings are not tags
  * @returns {string | null}
  */
-export function canonicalizeLocale(tag: unknown): string | null {
-  if (typeof tag !== "string" || tag.trim() === "") {
+export function canonicalizeLocale(tag: JsonValue | undefined): string | null {
+  if (!isString(tag) || tag.trim() === "") {
     return null;
   }
   try {
@@ -114,7 +115,7 @@ export function canonicalizeLocale(tag: unknown): string | null {
 }
 
 /** True when the tag is a well-formed BCP 47 language tag. */
-export function isWellFormedLocale(tag: unknown): boolean {
+export function isWellFormedLocale(tag: JsonValue | undefined): boolean {
   return canonicalizeLocale(tag) !== null;
 }
 
@@ -125,10 +126,10 @@ export function isWellFormedLocale(tag: unknown): boolean {
  * validation has already happened at config load, and guessing left-to-right is what every browser
  * does with an unusable `lang`.
  *
- * @param {unknown} tag
+ * @param {JsonValue | undefined} tag - Any configured value; non-strings are not tags
  * @returns {TextDirection}
  */
-export function localeDirection(tag: unknown): TextDirection {
+export function localeDirection(tag: JsonValue | undefined): TextDirection {
   const canonical = canonicalizeLocale(tag);
   if (canonical === null) {
     return "ltr";
@@ -160,13 +161,13 @@ export function localeDirection(tag: unknown): TextDirection {
  * `Intl.Locale` here, so neither the constructor nor `of` can reject it, and a guard would be an
  * untestable branch pretending otherwise.
  *
- * @param {unknown} tag
+ * @param {JsonValue | undefined} tag - Any configured value; non-strings are not tags
  * @returns {string}
  */
-export function localeLabel(tag: unknown): string {
+export function localeLabel(tag: JsonValue | undefined): string {
   const canonical = canonicalizeLocale(tag);
   if (canonical === null) {
-    return typeof tag === "string" ? tag : "";
+    return isString(tag) ? tag : "";
   }
   return new Intl.DisplayNames([canonical], { type: "language" }).of(canonical) ?? canonical;
 }
@@ -182,6 +183,12 @@ export interface ResolvedI18n {
   routing: LocaleRouting;
 }
 
+/** What {@link resolveI18n} answers: the resolved block, and every problem found on the way. */
+export interface I18nResolution {
+  i18n: ResolvedI18n | null;
+  errors: string[];
+}
+
 const DEFAULT_ROUTING: LocaleRouting = "prefix-except-default";
 
 /**
@@ -192,15 +199,13 @@ const DEFAULT_ROUTING: LocaleRouting = "prefix-except-default";
  * every page claims a language that does not exist, and nothing downstream can tell.
  *
  * @param {ProjectConfig} projectConfig
- * @returns {{ i18n: ResolvedI18n | null; errors: string[] }}
+ * @returns {I18nResolution}
  */
-export function resolveI18n(projectConfig: ProjectConfig): {
-  i18n: ResolvedI18n | null;
-  errors: string[];
-} {
+export function resolveI18n(projectConfig: ProjectConfig): I18nResolution {
   const raw = projectConfig.i18n;
   const errors: string[] = [];
-  if (!raw || typeof raw !== "object") {
+  // Checked rather than trusted: the block comes straight from project.json.
+  if (!isNonNullObject(raw)) {
     return { errors, i18n: null };
   }
 
@@ -423,7 +428,7 @@ function localeSlot(segments: readonly string[]): number {
 }
 
 /** The primary language subtag of a tag: `en` for `en-GB`, `zh` for `zh-Hant-TW`. */
-export function primaryLanguage(tag: unknown): string | null {
+export function primaryLanguage(tag: JsonValue | undefined): string | null {
   const canonical = canonicalizeLocale(tag);
   return canonical === null ? null : (canonical.split("-")[0] ?? null);
 }

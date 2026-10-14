@@ -19,7 +19,6 @@ import { ancestorDialogPath } from "./dialog-path";
 import { postDialogOpen } from "./iframe-host";
 import { primarySelection } from "../tabs/selection";
 import { updateSession } from "../store";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 
@@ -51,7 +50,7 @@ export function setOpenDialog(tab: Tab, path: JxPath | null): void {
  * @returns Whether anything changed.
  */
 export function openDialogFor(tab: Tab, path: JxPath | null): boolean {
-  const target = ancestorDialogPath(tab.doc.document as JxMutableNode, path);
+  const target = ancestorDialogPath(tab.doc.document, path);
   if (target === null || samePath(tab.session.ui.openDialog, target)) {
     return false;
   }

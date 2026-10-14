@@ -52,8 +52,9 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { API } from "typescript/unstable/async";
-import type { Project, Symbol as TsSymbol, Type } from "typescript/unstable/async";
+import type * as TsApi from "typescript/unstable/async";
 import { SyntaxKind } from "typescript/unstable/ast";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 
 /** A node in the AST as the compiler API hands it back; shapes vary by kind, so this stays loose. */
 type AnyNode = any;
@@ -205,6 +206,20 @@ function namesStudio(file: string): boolean {
   return readFileSync(file, "utf8").includes("studio");
 }
 
+/** The slice of `packages/studio/package.json` this analysis reads: a flat subpath → file map. */
+interface StudioManifest {
+  exports: Record<string, string>;
+}
+
+/** True when a parsed `package.json` carries a flat `exports` map of path strings. */
+function isStudioManifest(value: unknown): value is StudioManifest {
+  return (
+    isJsonObject(value) &&
+    isJsonObject(value["exports"]) &&
+    Object.values(value["exports"]).every((target) => isString(target))
+  );
+}
+
 /** True when a declaration carries the `export` modifier. */
 function isExported(node: AnyNode): boolean {
   const modifiers: AnyNode[] = node.modifiers ?? [];
@@ -212,7 +227,7 @@ function isExported(node: AnyNode): boolean {
 }
 
 /** True when the symbol is an import/export alias and has to be followed to its target. */
-function isAlias(symbol: TsSymbol): boolean {
+function isAlias(symbol: TsApi.Symbol): boolean {
   return symbol.declarations.some((d) => ALIAS_KINDS.has(d.kind));
 }
 
@@ -222,10 +237,10 @@ function isAlias(symbol: TsSymbol): boolean {
  * Returned in the same order, with non-aliases passed through untouched.
  */
 async function followAliases(
-  project: Project,
-  symbols: readonly (TsSymbol | undefined)[],
-): Promise<(TsSymbol | undefined)[]> {
-  const pending = new Map<number, TsSymbol>();
+  project: TsApi.Project,
+  symbols: readonly (TsApi.Symbol | undefined)[],
+): Promise<(TsApi.Symbol | undefined)[]> {
+  const pending = new Map<number, TsApi.Symbol>();
   for (const s of symbols) {
     if (s && isAlias(s)) {
       pending.set(s.id, s);
@@ -235,7 +250,7 @@ async function followAliases(
   const targets = await Promise.all(
     ids.map((id) => project.checker.getAliasedSymbol(pending.get(id)!)),
   );
-  const resolved = new Map<number, TsSymbol>();
+  const resolved = new Map<number, TsApi.Symbol>();
   for (const [i, id] of ids.entries()) {
     resolved.set(id, targets[i]!);
   }
@@ -281,7 +296,7 @@ async function run(api: API): Promise<ReachabilityReport> {
       namesStudio(f),
   );
 
-  const owner = new Map<string, Project>();
+  const owner = new Map<string, TsApi.Project>();
   for (const f of [...studioFiles, ...siblingFiles]) {
     owner.set(f, configured);
   }
@@ -323,13 +338,13 @@ async function run(api: API): Promise<ReachabilityReport> {
     if (!sf) {
       continue;
     }
-    for (const st of sf.statements as AnyNode[]) {
+    for (const st of sf.statements) {
       if (st.kind === SyntaxKind.FunctionDeclaration || st.kind === SyntaxKind.ClassDeclaration) {
         if (st.name?.text) {
           addDecl(sf, st, st.name.text, st.kind === SyntaxKind.FunctionDeclaration, isExported(st));
         }
       } else if (st.kind === SyntaxKind.VariableStatement) {
-        for (const d of st.declarationList.declarations as AnyNode[]) {
+        for (const d of st.declarationList.declarations) {
           if (d.name?.kind !== SyntaxKind.Identifier) {
             continue;
           }
@@ -389,9 +404,9 @@ async function run(api: API): Promise<ReachabilityReport> {
     }
     const out: Ref = { positions: [], owners: [] };
     const init = moduleOwner(sf.path);
-    for (const st of sf.statements as AnyNode[]) {
+    for (const st of sf.statements) {
       if (st.kind === SyntaxKind.VariableStatement) {
-        for (const d of st.declarationList.declarations as AnyNode[]) {
+        for (const d of st.declarationList.declarations) {
           // A `const f = () => …` body runs when f is called; a `const x = compute()` runs NOW,
           // So only the function form owns its subtree.
           const decl = decls.get(`${sf.path}#${d.index}`);
@@ -411,7 +426,7 @@ async function run(api: API): Promise<ReachabilityReport> {
       continue;
     }
     const out: Ref = { positions: [], owners: [] };
-    for (const st of sf.statements as AnyNode[]) {
+    for (const st of sf.statements) {
       collect(sf, st, OUTSIDE, out);
     }
     refs.set(f, out);
@@ -427,7 +442,7 @@ async function run(api: API): Promise<ReachabilityReport> {
     }
     set.add(to);
   };
-  const link = (from: string, symbol: TsSymbol | undefined) => {
+  const link = (from: string, symbol: TsApi.Symbol | undefined) => {
     for (const d of symbol?.declarations ?? []) {
       const id = `${d.path}#${d.index}`;
       if (decls.has(id)) {
@@ -470,8 +485,8 @@ async function run(api: API): Promise<ReachabilityReport> {
   );
   const wanted: {
     from: string;
-    project: Project;
-    type: Type;
+    project: TsApi.Project;
+    type: TsApi.Type;
     name: string;
   }[] = [];
   for (const [i, p] of patterns.entries()) {
@@ -480,7 +495,7 @@ async function run(api: API): Promise<ReachabilityReport> {
       continue;
     }
     const project = owner.get(canonical(p.node.getSourceFile().fileName))!;
-    for (const element of p.node.elements as AnyNode[]) {
+    for (const element of p.node.elements) {
       const name: string | undefined = element.propertyName?.text ?? element.name?.text;
       if (name !== undefined) {
         wanted.push({ from: p.from, project, type, name });
@@ -518,7 +533,7 @@ async function run(api: API): Promise<ReachabilityReport> {
       continue;
     }
     const list: string[] = [];
-    for (const specifier of sf.imports as AnyNode[]) {
+    for (const specifier of sf.imports) {
       const target = resolveSpecifier(f, specifier.text);
       if (target !== undefined) {
         list.push(target);
@@ -527,16 +542,17 @@ async function run(api: API): Promise<ReachabilityReport> {
     importsOf.set(f, list);
   }
 
-  const manifest = JSON.parse(readFileSync(join(STUDIO_DIR, "package.json"), "utf8")) as {
-    exports: Record<string, string>;
-  };
+  const manifest = JSON.parse(readFileSync(join(STUDIO_DIR, "package.json"), "utf8"));
+  if (!isStudioManifest(manifest)) {
+    throw new Error("packages/studio/package.json has no flat `exports` map — the roots moved");
+  }
   /* TypeScript exports only. The map may legitimately name non-source files — `./package.json` is
      the npm convention for letting a consumer resolve the package root — and those are not
      modules this analysis can walk. Filtered by extension rather than by name, so a future asset
      export does not have to be added here. */
-  const published = Object.values(manifest.exports)
-    .filter((p) => p.endsWith(".ts"))
-    .map((p) => tsPath(STUDIO_DIR, p));
+  const published = Object.values(manifest.exports).flatMap((p) =>
+    p.endsWith(".ts") ? [tsPath(STUDIO_DIR, p)] : [],
+  );
   const bundleSource = readFileSync(join(STUDIO_DIR, "scripts", "build-config.ts"), "utf8");
   const bundled = [...bundleSource.matchAll(/"(\.\/src\/[\w./-]+\.ts)"/g)].map((m) =>
     tsPath(STUDIO_DIR, m[1]!),
@@ -591,18 +607,22 @@ async function run(api: API): Promise<ReachabilityReport> {
 
   const functions = [...decls.values()].filter((d) => d.isFunction);
   const key = (d: Decl) => `${srcRelative(d.file)}:${d.name}`;
-  const dead = functions
-    .filter((d) => !live.has(d.id))
-    .map((d) => ({
-      name: d.name,
-      file: srcRelative(d.file),
-      line: d.line,
-      key: key(d),
-    }));
+  const dead = functions.flatMap((d) =>
+    live.has(d.id)
+      ? []
+      : [
+          {
+            name: d.name,
+            file: srcRelative(d.file),
+            line: d.line,
+            key: key(d),
+          },
+        ],
+  );
 
   return {
     dead,
-    deadModules: studioFiles.filter((f) => !liveModules.has(f)).map((f) => srcRelative(f)),
+    deadModules: studioFiles.flatMap((f) => (liveModules.has(f) ? [] : [srcRelative(f)])),
     allFunctions: new Set(functions.map((d) => key(d))),
     functionCount: functions.length,
     moduleCount: studioFiles.length,

@@ -60,6 +60,9 @@ export interface Facts {
   words: number;
 }
 
+/** The members of {@link Facts} that are lists of claims, which `compare()` diffs item by item. */
+type ClaimList = Exclude<keyof Facts, "words">;
+
 const FENCE_BLOCK = /^```([\S ]*)\n([\s\S]*?)^```$/gm;
 const IMAGE = /!\[[^\]]*\]\(([^)\s]+)/g;
 const LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)/g;
@@ -135,19 +138,19 @@ export function compare(file: string, before: string, after: string): FileReport
   const blocking: string[] = [];
   const advisory: string[] = [];
 
-  const band1: [string, keyof Facts][] = [
+  const band1: [string, ClaimList][] = [
     ["fenced code body", "fences"],
     ["link or image target", "targets"],
     ["keystroke", "keys"],
     ["image", "images"],
   ];
   for (const [label, key] of band1) {
-    for (const item of lost(a[key] as string[], b[key] as string[])) {
+    for (const item of lost(a[key], b[key])) {
       blocking.push(`${label} removed: ${JSON.stringify(item.slice(0, 90))}`);
     }
   }
 
-  const band2: [string, keyof Facts][] = [
+  const band2: [string, ClaimList][] = [
     ["fence language", "fenceLangs"],
     ["identifier", "code"],
     ["bold label", "bold"],
@@ -155,15 +158,15 @@ export function compare(file: string, before: string, after: string): FileReport
     ["modality word", "modality"],
   ];
   for (const [label, key] of band2) {
-    for (const item of lost(a[key] as string[], b[key] as string[])) {
+    for (const item of lost(a[key], b[key])) {
       advisory.push(`${label} gone: ${JSON.stringify(item.slice(0, 60))}`);
     }
-    for (const item of lost(b[key] as string[], a[key] as string[])) {
+    for (const item of lost(b[key], a[key])) {
       advisory.push(`${label} new:  ${JSON.stringify(item.slice(0, 60))}`);
     }
   }
   for (const [label, key] of band1) {
-    for (const item of lost(b[key] as string[], a[key] as string[])) {
+    for (const item of lost(b[key], a[key])) {
       advisory.push(`${label} added: ${JSON.stringify(item.slice(0, 90))}`);
     }
   }

@@ -1,5 +1,5 @@
 import { installMockPlatform } from "./harness";
-import { createMockCollabHub, settleCollab } from "./collab-mock";
+import { createMockCollabHub, HELLO_DOC, settleCollab } from "./collab-mock";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { activateTab, closeAllTabs, closeTab, openTab } from "../src/workspace/workspace";
@@ -18,11 +18,6 @@ import { getHistoryDelegate, mutateUpdateProperty, transactDoc } from "../src/ta
 import { seedStructure, yDocToJson } from "@jxsuite/collab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { afterEach, describe, expect, test } from "bun:test";
-
-const DOC: JxMutableNode = {
-  children: [{ tagName: "p", textContent: "Hello" }],
-  tagName: "div",
-};
 
 const PATH = "pages/index.json";
 
@@ -47,14 +42,14 @@ function stubGridSource(): GridSource & { commits: GridEditBatch[] } {
     commits,
     id: "grid://file/data/people.csv",
     label: "people.csv",
-    rows: async () => ({ rows: [{ cells: { name: "Grace" } as never, key: "r1" }], total: 1 }),
+    rows: async () => ({ rows: [{ cells: { name: "Grace" }, key: "r1" }], total: 1 }),
   };
 }
 
 function openCollabTab(hub: ReturnType<typeof createMockCollabHub>, doc?: JxMutableNode) {
   installMockPlatform({ collab: hub.capability });
   return openTab({
-    document: structuredClone(doc ?? DOC),
+    document: structuredClone(doc ?? HELLO_DOC),
     documentPath: PATH,
     id: PATH,
   });
@@ -77,7 +72,7 @@ describe("session attach", () => {
     expect(isCollabActive(tab)).toBe(true);
     expect(state.status).toBe("synced");
     expect(isCollabPath(PATH)).toBe(true);
-    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(DOC);
+    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(HELLO_DOC);
     expect(tab.doc.dirty).toBe(false);
   });
 
@@ -126,7 +121,7 @@ describe("session attach", () => {
 
   test("a platform without the capability is a no-op", async () => {
     installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).active).toBe(false);
   });
@@ -143,7 +138,7 @@ describe("session attach", () => {
     const hub = createMockCollabHub();
     installMockPlatform({ collab: hub.capability });
     const tab = openTab({
-      document: { name: "Site" } as unknown as JxMutableNode,
+      document: { name: "Site" },
       documentPath: "project.json",
       id: "project.json",
     });
@@ -211,7 +206,7 @@ describe("session lifecycle", () => {
     expect(collabState(tab).active).toBe(true);
     expect(hub.connectionCount(PATH)).toBe(1);
     // The fresh room got re-seeded from the tab.
-    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(DOC);
+    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(HELLO_DOC);
   });
 
   test("offline status surfaces on the tab state", async () => {
@@ -230,7 +225,7 @@ describe("file plumbing guards", () => {
   test("reloadCleanTab skips co-edited paths", async () => {
     const hub = createMockCollabHub();
     const { state } = installMockPlatform({ collab: hub.capability });
-    openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
 
     state.calls.length = 0;
@@ -242,7 +237,7 @@ describe("file plumbing guards", () => {
   test("saveFile persists through the provider, not the file API", async () => {
     const hub = createMockCollabHub();
     const { state } = installMockPlatform({ collab: hub.capability });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     activateTab(tab.id);
     await settleCollab();
 
@@ -261,9 +256,9 @@ describe("file plumbing guards", () => {
   test("a read-only client's save writes nothing and reports failure, not success", async () => {
     const hub = createMockCollabHub({ identity: { permission: "read" } });
     // A read-only client never seeds — the room has to exist before it can observe.
-    seedStructure(hub.serverDoc(PATH), structuredClone(DOC));
+    seedStructure(hub.serverDoc(PATH), structuredClone(HELLO_DOC));
     const { state } = installMockPlatform({ collab: hub.capability });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     activateTab(tab.id);
     configureCollabSerializer((t) => Promise.resolve(JSON.stringify(t.doc.document)));
     await settleCollab();
@@ -272,7 +267,7 @@ describe("file plumbing guards", () => {
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Local only"));
     expect(tab.doc.dirty).toBe(true);
     // The edit is in this browser and nowhere else — nothing gated behind `canWrite` ran.
-    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(DOC);
+    expect(yDocToJson(hub.serverDoc(PATH))).toEqual(HELLO_DOC);
 
     state.calls.length = 0;
     expect(await collabSave(tab)).toBe(false);
@@ -298,9 +293,9 @@ describe("file plumbing guards", () => {
   test("a read-only collaborator's GRID save is refused before it can commit", async () => {
     const CSV = "data/people.csv";
     const hub = createMockCollabHub({ identity: { permission: "read" } });
-    seedStructure(hub.serverDoc(CSV), structuredClone(DOC));
+    seedStructure(hub.serverDoc(CSV), structuredClone(HELLO_DOC));
     installMockPlatform({ collab: hub.capability });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: CSV, id: CSV });
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: CSV, id: CSV });
     activateTab(tab.id);
     await settleCollab();
     expect(collabState(tab).readOnly).toBe(true);

@@ -70,8 +70,9 @@ describe("feeds through a real build", () => {
 
   it("takes its timestamps from the coerced frontmatter dates", () => {
     // The parser normalized `2025-06-02` to an instant; the feed did not have to guess.
-    expect(read("dist/feed.xml")).toContain("<updated>2025-06-02T00:00:00Z</updated>");
-    expect(read("dist/feed.xml")).toContain("<published>2025-01-02T00:00:00Z</published>");
+    const xml = read("dist/feed.xml");
+    expect(xml).toContain("<updated>2025-06-02T00:00:00Z</updated>");
+    expect(xml).toContain("<published>2025-01-02T00:00:00Z</published>");
   });
 
   /*

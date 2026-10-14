@@ -11,7 +11,7 @@
  * opens is the kit's, `surfaces/menu.ts`, addressed by `jx-menu-item` rather than by a popover
  * selector of its own.
  */
-import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, resetStudioState, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
 import { readFileSync } from "node:fs";
@@ -74,7 +74,7 @@ function stub(id: string, title: string, level: AnyCommand["level"]): AnyCommand
       ran.push({ args, id });
     },
     title,
-  } as AnyCommand;
+  };
 }
 
 /** Every id the bar can name. Pass a subset to prove what an absent record does. */
@@ -93,7 +93,7 @@ function buildRegistry(ids: readonly string[] = BAR_IDS) {
 
 beforeEach(() => {
   closeAllTabs();
-  setProjectState(null as never);
+  setProjectState(null);
   ran.length = 0;
   ctx = makeContext({ document: { open: true } });
   setActiveRegistry(buildRegistry());
@@ -119,14 +119,28 @@ async function paint(into: HTMLElement = host): Promise<void> {
   await flush(3);
 }
 
+/** Every match of `selector` under `root` that is an HTML element, the only kind with `click()`. */
+function htmlElements(root: ParentNode, selector: string): HTMLElement[] {
+  return [...root.querySelectorAll(selector)].filter((el) => el instanceof HTMLElement);
+}
+
+/** The first HTML element matching `selector`, or a failure naming what the surface did not draw. */
+function htmlElement(root: ParentNode, selector: string): HTMLElement {
+  const el = root.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`no HTML element matches ${selector}`);
+  }
+  return el;
+}
+
 const bar = (into: HTMLElement = host) => into.querySelector('nav[part="bar"]');
 const crumbs = (into: HTMLElement = host) =>
-  [...into.querySelectorAll('[part="crumb"]')].map((e) => e.textContent?.trim());
+  [...into.querySelectorAll('[part="crumb"]')].map((e) => e.textContent.trim());
 const kinds = (into: HTMLElement = host) =>
   [...into.querySelectorAll<HTMLElement>("[data-jump-kind]")].map((e) => e.dataset.jumpKind);
 const menuRows = () =>
   [...document.querySelectorAll("#layer-popover jx-menu-item")].map((e) =>
-    e.querySelector('[part="label"]')?.textContent?.trim(),
+    e.querySelector('[part="label"]')?.textContent.trim(),
   );
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -293,13 +307,15 @@ describe("jumpSegments", () => {
       ["file", "index.json", "palette.openFiles"],
     ]);
     expect(segments.some((segment) => segment.args)).toBe(false);
-    expect(segments.some((segment) => segment.kind === ("subdocument" as never))).toBe(false);
+    // Read as plain strings: "subdocument" is outside JumpSegmentKind, which is the point.
+    const segmentKinds: readonly string[] = segments.map((segment) => segment.kind);
+    expect(segmentKinds.includes("subdocument")).toBe(false);
   });
 
   test("a logic editor is the leaf, and it takes no selection under it", () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
     tab.session.selection = [["children", 0]];
-    tab.session.ui.editingFunction = { defName: "greet", type: "def" } as never;
+    tab.session.ui.editingFunction = { defName: "greet", type: "def" };
     expect(jumpSegments(tab).at(-1)).toEqual({
       choices: [],
       command: null,
@@ -311,10 +327,10 @@ describe("jumpSegments", () => {
 
   test("an event handler and a formula name their key, with their own sigil", () => {
     const tab = resetWorkspaceWithTab();
-    tab.session.ui.editingFunction = { eventKey: "onclick", type: "event" } as never;
+    tab.session.ui.editingFunction = { eventKey: "onclick", type: "event" };
     expect(jumpSegments(tab).at(-1)!.label).toBe("ƒ onclick");
     tab.session.ui.editingFunction = null;
-    tab.session.ui.editingFormula = { defName: "total", type: "def" } as never;
+    tab.session.ui.editingFormula = { defName: "total", type: "def" };
     expect(jumpSegments(tab).at(-1)!.label).toBe("fx total");
   });
 
@@ -414,7 +430,7 @@ describe("the rendered bar", () => {
     });
     tab.session.selection = [["children", 0, "children", 0]];
     await paint();
-    const buttons = [...host.querySelectorAll('button[part="crumb"]')] as HTMLElement[];
+    const buttons = htmlElements(host, 'button[part="crumb"]');
     buttons[0]!.click();
     buttons[1]!.click();
     expect(ran).toEqual([
@@ -468,7 +484,7 @@ describe("the rendered bar", () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
     await paint();
-    const button = host.querySelector('button[part="crumb"]') as HTMLButtonElement;
+    const button = htmlElement(host, 'button[part="crumb"]');
     expect(button.hasAttribute("disabled")).toBe(true);
     expect(button.title).toContain("requires an open project");
   });
@@ -477,7 +493,7 @@ describe("the rendered bar", () => {
     const tab = resetWorkspaceWithTab({ children: [{ tagName: "p" }], tagName: "div" });
     tab.session.selection = [["children", 0]];
     await paint();
-    expect(host.querySelector('[part="crumb"][aria-current]')?.textContent?.trim()).toBe("p");
+    expect(host.querySelector('[part="crumb"][aria-current]')?.textContent.trim()).toBe("p");
   });
 });
 
@@ -497,7 +513,7 @@ describe("a segment's alternatives", () => {
     });
     tab.session.selection = [["children", 0, "children", 0]];
     await paint();
-    (host.querySelector('[part="alternatives"]') as HTMLElement).click();
+    htmlElement(host, '[part="alternatives"]').click();
     await flush(3);
     return tab;
   }
@@ -517,7 +533,7 @@ describe("a segment's alternatives", () => {
 
   test("choosing a sibling is `selection.set` with THAT sibling's path", async () => {
     await openFirstMenu();
-    const rows = [...document.querySelectorAll("#layer-popover jx-menu-item")] as HTMLElement[];
+    const rows = htmlElements(document, "#layer-popover jx-menu-item");
     rows[1]!.click();
     await flush();
     expect(ran).toEqual([{ args: { path: ["children", 0, "children", 1] }, id: "selection.set" }]);
@@ -529,15 +545,15 @@ describe("a segment's alternatives", () => {
     await openFirstMenu();
     expect(document.querySelector("#layer-popover jx-menu")).not.toBeNull();
     const anchor = document.createElement("button");
-    anchor.getBoundingClientRect = () => ({ left: 120.4, top: 976 }) as DOMRect;
-    expect(aboveOpener(anchor, { height: 200 } as DOMRect)).toEqual({ x: 120, y: 776 });
+    stubRect(anchor, { left: 120.4, top: 976 });
+    expect(aboveOpener(anchor, new DOMRect(0, 0, 0, 200))).toEqual({ x: 120, y: 776 });
     // A menu taller than the room above it is pinned to the top edge rather than cut off there.
-    expect(aboveOpener(anchor, { height: 2000 } as DOMRect)).toEqual({ x: 120, y: 0 });
+    expect(aboveOpener(anchor, new DOMRect(0, 0, 0, 2000))).toEqual({ x: 120, y: 0 });
   });
 
   test("opening a second menu closes the first", async () => {
     await openFirstMenu();
-    (host.querySelector('[part="alternatives"]') as HTMLElement).click();
+    htmlElement(host, '[part="alternatives"]').click();
     await flush(3);
     expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
   });
@@ -548,7 +564,7 @@ describe("a segment's alternatives", () => {
     await flush();
     expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
     // Forgotten, not merely hidden: re-opening must not leave the first slot in the layer.
-    (host.querySelector('[part="alternatives"]') as HTMLElement).click();
+    htmlElement(host, '[part="alternatives"]').click();
     await flush(3);
     expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
   });
@@ -586,7 +602,7 @@ describe("mountJumpBar", () => {
   test("repaints when a takeover editor opens", async () => {
     const tab = resetWorkspaceWithTab();
     await paint();
-    tab.session.ui.editingFormula = { defName: "total", type: "def" } as never;
+    tab.session.ui.editingFormula = { defName: "total", type: "def" };
     await flush(3);
     expect(crumbs()).toContain("fx total");
   });
@@ -700,12 +716,13 @@ describe("the bar is wired to the app, not to a stub", () => {
     // The trail is the status bar's DOCUMENT field, so the status bar owns its lifecycle: the
     // Bootstrap mounts the status bar, and the status bar mounts and unmounts the trail.
     expect(src("studio.ts")).toContain("mountStatusbar();");
-    expect(src("surfaces", "statusbar.ts")).toContain("mountJumpBar();");
-    expect(src("surfaces", "statusbar.ts")).toContain("unmountJumpBar();");
+    const statusbarFlow = src("surfaces", "statusbar.ts");
+    expect(statusbarFlow).toContain("mountJumpBar();");
+    expect(statusbarFlow).toContain("unmountJumpBar();");
     // The status bar's document draws the empty slot, and its flow hands that slot over.
     expect(src("surfaces", "statusbar.json")).toContain('"part": "trail"');
     expect(src("surfaces", "statusbar.ts")).toContain(
-      "attachJumpBarHost(statusbarEl.querySelector<HTMLElement>('[part=\"trail\"]'))",
+      "attachJumpBarHost(host.querySelector<HTMLElement>('[part=\"trail\"]'))",
     );
     /* And no pane draws a bar of its own any more: the pane grid's cells have no jump box, and
        the frame has no `#jump-bar` row. */

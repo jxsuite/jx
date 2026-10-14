@@ -11,7 +11,7 @@
  * only when the module under test is mocked at the boundary anyway.
  */
 import * as real from "../src/services/notify";
-import type { NotifyOptions, Severity } from "../src/services/notify";
+import type { Notification, NotifyOptions, Severity } from "../src/services/notify";
 
 /** What a recorder is handed for each reported outcome. */
 export interface NotifyCall {
@@ -30,14 +30,14 @@ export interface NotifyCall {
 export function notifyModule(record: (call: NotifyCall) => void): typeof real {
   const emit =
     (severity: Severity) =>
-    (message: string, options: NotifyOptions = {}) => {
+    (message: string, options: NotifyOptions = {}): Notification => {
       record({ message, options, severity });
-      return { at: 0, id: "mock", message, severity, tier: "toast" as const };
+      return { at: 0, id: "mock", message, severity, tier: "toast" };
     };
   const notify = Object.assign(
     (severity: Severity, message: string, options: NotifyOptions = {}) =>
       emit(severity)(message, options),
     { error: emit("error"), info: emit("info"), success: emit("success"), warn: emit("warn") },
   );
-  return { ...real, notify } as unknown as typeof real;
+  return { ...real, notify };
 }

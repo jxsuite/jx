@@ -1,7 +1,7 @@
 {
   "name": "round-cap-tail",
   "description": "The agent loop's round-cap message when something was applied: an assistant turn begun right after a tool reply (no user message), finished with \"length\". It is plain assistant text on the wire.",
-  "shapes": ["round-cap-tail", "single-tool-call"],
+  "scenarios": ["round-cap-tail", "single-tool-call"],
   "script": [
     ["sendMessage", "Fix every heading"],
     ["appendToolCallStart", "call_1", "set_property"],

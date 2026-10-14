@@ -23,14 +23,29 @@ import {
   composeProjectSchemas,
   emitProjectSchema,
 } from "../src/project-schemas";
+import type { ReadonlyJsonValue, SchemaJsonLoader } from "../src/project-schemas";
+import { isJsonObject, isString } from "../src/guards";
 import {
   generateDocumentPathsSchema,
   generateExtensionManifestSchema,
   generateProjectCoreSchema,
   generateProjectFieldsSchema,
 } from "../src/schema";
+import { FRAG_ID } from "./schema-fixtures";
+import type { JsonObject, JsonValue } from "../types";
 
-const FRAG_ID = "https://test.invalid/parser/project.fragment.schema.json";
+/** Walk schema JSON by keys, reading `undefined` past any step that is not an object. */
+function pick(
+  value: ReadonlyJsonValue | undefined,
+  ...keys: string[]
+): ReadonlyJsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
+}
+
 const EXTRAS_ID = "https://test.invalid/connector/extras.json";
 
 /** A parser-like project fragment: contributes `content`; fields ref the well-known union. */
@@ -76,17 +91,19 @@ const entrySchema = {
   $id: "https://test.invalid/proj/project.schema.json",
 };
 
-function validProject(): Record<string, unknown> {
+function validProject() {
+  // Open, because each test below adds the field schema it is about.
+  const properties: JsonObject = {
+    date: { format: "date", type: "string" },
+    title: { type: "string" },
+  };
   return {
     $schema: "./project.schema.json",
     content: {
       posts: {
         format: "Markdown",
         schema: {
-          properties: {
-            date: { format: "date", type: "string" },
-            title: { type: "string" },
-          },
+          properties,
           required: ["title"],
         },
         source: "./content/posts/",
@@ -95,11 +112,6 @@ function validProject(): Record<string, unknown> {
     extensions: ["@jxsuite/parser"],
     name: "Test Site",
   };
-}
-
-function postsSchema(doc: Record<string, unknown>): Record<string, Record<string, unknown>> {
-  const content = doc.content as Record<string, Record<string, unknown>>;
-  return content.posts!.schema as Record<string, Record<string, unknown>>;
 }
 
 describe("emitProjectSchema + ajv-2020 composition", () => {
@@ -117,19 +129,19 @@ describe("emitProjectSchema + ajv-2020 composition", () => {
 
   test("relationship refs are valid field schemas through the union", () => {
     const doc = validProject();
-    postsSchema(doc).properties!.author = { $ref: "#/content/authors" };
+    doc.content.posts.schema.properties.author = { $ref: "#/content/authors" };
     expect(validate(doc)).toBe(true);
   });
 
   test("to-many relationship refs (array items) are valid through recursion", () => {
     const doc = validProject();
-    postsSchema(doc).properties!.tags = { items: { $ref: "#/content/tags" }, type: "array" };
+    doc.content.posts.schema.properties.tags = { items: { $ref: "#/content/tags" }, type: "array" };
     expect(validate(doc)).toBe(true);
   });
 
   test("nested object fields recurse through the union at depth", () => {
     const doc = validProject();
-    postsSchema(doc).properties!.meta = {
+    doc.content.posts.schema.properties.meta = {
       properties: { editor: { $ref: "#/content/authors" } },
       type: "object",
     };
@@ -138,7 +150,7 @@ describe("emitProjectSchema + ajv-2020 composition", () => {
 
   test("garbage field schemas fail every union branch", () => {
     const doc = validProject();
-    postsSchema(doc).properties!.broken = { neither: "type nor $ref" };
+    doc.content.posts.schema.properties.broken = { neither: "type nor $ref" };
     expect(validate(doc)).toBe(false);
   });
 
@@ -161,7 +173,7 @@ describe("emitProjectSchema + ajv-2020 composition", () => {
     const validateExtras = composed.compile(withExtras);
 
     const doc = validProject();
-    postsSchema(doc).properties!.sku = { column: "sku" };
+    doc.content.posts.schema.properties.sku = { column: "sku" };
     expect(validateExtras(doc)).toBe(true);
 
     // Standalone (fragment + shipped default union): the extras shape is NOT in the union.
@@ -205,13 +217,16 @@ describe("emitDocumentSchema", () => {
       pathsValueRefs: [`${FRAG_ID}#/$defs/ContentPathsSource`],
     });
     expect(doc.allOf).toEqual([{ $ref: "./node_modules/@jxsuite/schema/schema.json" }]);
-    const defs = doc.$defs as Record<string, Record<string, unknown>>;
-    expect(defs.PathsValue!.$id).toBe("https://jxsuite.com/schema/document/paths/v2");
+    expect(pick(doc, "$defs", "PathsValue", "$id")).toBe(
+      "https://jxsuite.com/schema/document/paths/v2",
+    );
     /* The union is ADDITIVE: it shadows the shipped default by $id, so it has to carry the core
-       source shapes itself or they would stop validating the moment an extension contributes one. */
-    const members = defs.PathsValue!.anyOf as Record<string, unknown>[];
-    expect(members.at(-1)).toEqual({ $ref: `${FRAG_ID}#/$defs/ContentPathsSource` });
-    expect(members).toEqual([...documentPathsCoreMembers, members.at(-1)!]);
+       source shapes itself or they would stop validating the moment an extension contributes one.
+       The contributed shape comes last. */
+    expect(pick(doc, "$defs", "PathsValue", "anyOf")).toEqual([
+      ...documentPathsCoreMembers,
+      { $ref: `${FRAG_ID}#/$defs/ContentPathsSource` },
+    ]);
   });
 
   test("references the core via allOf, never a root $ref beside $defs", () => {
@@ -224,8 +239,7 @@ describe("emitDocumentSchema", () => {
 
   test("carries the core source shapes with no contributed paths shapes", () => {
     const doc = emitDocumentSchema({ corePath: "./core.json", pathsValueRefs: [] });
-    const defs = doc.$defs as Record<string, Record<string, unknown>>;
-    expect(defs.PathsValue).toEqual({
+    expect(pick(doc, "$defs", "PathsValue")).toEqual({
       $id: "https://jxsuite.com/schema/document/paths/v2",
       anyOf: [...documentPathsCoreMembers],
     });
@@ -239,8 +253,9 @@ describe("emitDocumentSchema", () => {
       corePath: "./core.json",
       pathsValueRefs: [`${FRAG_ID}#/$defs/ContentPathsSource`],
     });
-    const defs = doc.$defs as Record<string, Record<string, unknown>>;
-    expect(defs.PathsValue!.anyOf).not.toContainEqual(documentPathsUnknownSourceMember);
+    expect(pick(doc, "$defs", "PathsValue", "anyOf")).not.toContainEqual(
+      documentPathsUnknownSourceMember,
+    );
     expect(generateDocumentPathsSchema().anyOf).toContainEqual(documentPathsUnknownSourceMember);
   });
 });
@@ -318,18 +333,18 @@ describe("composeProjectSchemas (host-agnostic composition)", () => {
   };
 
   /** Bare-specifier loader: exactly what a Worker has — a table, no filesystem. */
-  const FILES: Record<string, object> = {
-    "@jxsuite/connector/schemas/fields.fragment.schema.json": EXT_FIELDS,
-    "@jxsuite/parser/schemas/document.fragment.schema.json": EXT_DOCUMENT,
-    "@jxsuite/parser/schemas/project.fragment.schema.json": EXT_PROJECT,
-    "@jxsuite/schema/schema.json": CORE_DOCUMENT,
-    "@jxsuite/schema/schemas/project.core.schema.json": CORE_PROJECT,
-  };
-  const loadJson = (path: string): Promise<Record<string, unknown>> => {
+  const FILES = new Map<string, JsonObject>([
+    ["@jxsuite/connector/schemas/fields.fragment.schema.json", EXT_FIELDS],
+    ["@jxsuite/parser/schemas/document.fragment.schema.json", EXT_DOCUMENT],
+    ["@jxsuite/parser/schemas/project.fragment.schema.json", EXT_PROJECT],
+    ["@jxsuite/schema/schema.json", CORE_DOCUMENT],
+    ["@jxsuite/schema/schemas/project.core.schema.json", CORE_PROJECT],
+  ]);
+  const loadJson: SchemaJsonLoader = (path) => {
     // Refs resolve against baseDir "", so the bundler hands over a leading slash.
-    const file = FILES[path.replace(/^\//, "")];
+    const file = FILES.get(path.replace(/^\//, ""));
     return file
-      ? Promise.resolve(structuredClone(file) as Record<string, unknown>)
+      ? Promise.resolve(structuredClone(file))
       : Promise.reject(new Error(`No such file: ${path}`));
   };
   const compose = (extensions: Parameters<typeof composeProjectSchemas>[0]["extensions"]) =>
@@ -352,11 +367,11 @@ describe("composeProjectSchemas (host-agnostic composition)", () => {
     // Self-containment is the contract (§5.4): every ref a root-relative JSON pointer.
     for (const entry of [project, document]) {
       const refs: string[] = [];
-      JSON.stringify(entry, (key, value) => {
-        if (key === "$ref" && typeof value === "string") {
+      JSON.stringify(entry, (key: string, value: JsonValue) => {
+        if (key === "$ref" && isString(value)) {
           refs.push(value);
         }
-        return value as unknown;
+        return value;
       });
       expect(refs.length).toBeGreaterThan(0);
       expect(refs.every((ref) => ref.startsWith("#/"))).toBe(true);
@@ -421,10 +436,9 @@ describe("composeProjectSchemas (host-agnostic composition)", () => {
   });
 
   test("a fragment without $id or $defs contributes no union members", async () => {
-    FILES["@jxsuite/bare/fields.json"] = { type: "object" };
+    FILES.set("@jxsuite/bare/fields.json", { type: "object" });
     const { project } = await compose([{ fields: "@jxsuite/bare/fields.json" }]);
-    const fields = (project.$defs as Record<string, { anyOf?: unknown[] }>).Fields;
     // Core JxFieldSchema + RelationshipRef only.
-    expect(fields?.anyOf).toHaveLength(2);
+    expect(pick(project, "$defs", "Fields", "anyOf")).toHaveLength(2);
   });
 });

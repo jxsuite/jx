@@ -29,7 +29,14 @@ import {
 import { REGION_ATTR, paneRegion } from "../src/ui/regions";
 import { STAGE_PART } from "../src/surfaces/pane-grid";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import type { DirEntry, ProjectState, RenameResult, StudioPlatform } from "../src/types";
+import type {
+  DirEntry,
+  GitStatusResult,
+  ProjectState,
+  RenameResult,
+  StudioPlatform,
+} from "../src/types";
+import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
 // ─── Lit rendering ────────────────────────────────────────────────────────────
 
@@ -64,8 +71,12 @@ export async function flush(turns = 2): Promise<void> {
  * seeded ignore rules for `.` would otherwise hand them to the next test in the file, and a tree
  * that hides rows for a reason the test never stated is the hardest kind of failure to read.
  */
-export function resetStudioState(overrides: Record<string, unknown> = {}): void {
+export function resetStudioState(overrides: Partial<ProjectState> = {}): void {
   resetIgnoreCache();
+  /* SAFETY: a deliberately partial project. The default carries only the members a panel
+     dereferences unconditionally (`dirs`, `expanded`, `projectConfig`); a suite that reads `name`,
+     `projectRoot`, `isSiteProject`, `selectedPath` or `searchQuery` passes it in `overrides`, and
+     every suite written against this default expects the rest to read as `undefined`. */
   setProjectState({
     /* `dirs` is not optional on `ProjectState`, and the default was missing it — which was
        invisible while the Files tree was a lit template the suites mocked, and is a thrown
@@ -74,7 +85,7 @@ export function resetStudioState(overrides: Record<string, unknown> = {}): void 
     expanded: new Set(),
     projectConfig: null,
     ...overrides,
-  } as unknown as ProjectState);
+  } as ProjectState);
 }
 
 /**
@@ -89,12 +100,12 @@ export function resetStudioState(overrides: Record<string, unknown> = {}): void 
  * instead of silently seeding nothing.
  */
 export function seedSettings(values: Record<string, string>): void {
-  const entries = Object.entries(values).map(([settingKey, value]) => {
+  const entries = Object.entries(values).map(([settingKey, value]): [SettingDefinition, string] => {
     const definition = ALL_SETTINGS.find((candidate) => candidate.key === settingKey);
     if (!definition) {
       throw new Error(`seedSettings: no setting is declared with the key "${settingKey}"`);
     }
-    return [definition, value] as [SettingDefinition, string];
+    return [definition, value];
   });
   setSettings(entries);
 }
@@ -122,6 +133,21 @@ export function resetWorkspaceWithTab(
 }
 
 // ─── Platform mock ────────────────────────────────────────────────────────────
+
+/** The session API root the cloud adapter addresses for the octocat/my-site@main fixture project. */
+export const CLOUD_SESSION_BASE = "/api/v1/p/octocat/my-site/main/studio";
+
+/** A stubbed iframe channel: what the parent posted to the frame, and a way to answer from it. */
+export interface FakeIframeChannel {
+  posts: ParentToIframe[];
+  deliver: (m: IframeToParent) => void;
+}
+
+/** One request a stubbed `fetch` recorded: the URL it was addressed to, and the init it carried. */
+export interface RecordedFetch {
+  url: string;
+  init?: RequestInit | undefined;
+}
 
 export interface MockPlatformState {
   /** In-memory filesystem: absolute path → file contents. */
@@ -153,6 +179,12 @@ function dirEntriesFor(files: Map<string, string>, dir: string): DirEntry[] {
   return [...seen.values()];
 }
 
+/** A registered mock platform and the in-memory state behind it. */
+export interface InstalledMockPlatform {
+  platform: StudioPlatform;
+  state: MockPlatformState;
+}
+
 /**
  * Build and register an in-memory StudioPlatform. Every method is overridable; unset git/ai methods
  * resolve with inert defaults. Returns the platform plus its backing state for direct manipulation
@@ -161,7 +193,7 @@ function dirEntriesFor(files: Map<string, string>, dir: string): DirEntry[] {
 export function installMockPlatform(
   overrides: Partial<StudioPlatform> = {},
   seedFiles: Record<string, string> = {},
-): { platform: StudioPlatform; state: MockPlatformState } {
+): InstalledMockPlatform {
   const state: MockPlatformState = {
     calls: [],
     files: new Map(Object.entries(seedFiles)),
@@ -175,7 +207,7 @@ export function installMockPlatform(
 
   const platform: StudioPlatform = {
     activate: log("activate", async () => {}),
-    addPackage: log("addPackage", async () => ({})),
+    addPackage: log("addPackage", async () => {}),
     aiChatUrl: log("aiChatUrl", () => "/__mock/ai/chat"),
     codeService: log("codeService", async () => null),
     createDestination: "path",
@@ -193,7 +225,7 @@ export function installMockPlatform(
     discoverComponents: log("discoverComponents", async () => []),
     fetchPluginSchema: log("fetchPluginSchema", async () => null),
     gitAddRemote: log("gitAddRemote", async () => {}),
-    gitBranches: log("gitBranches", async () => ({ branches: [], current: "main" }) as never),
+    gitBranches: log("gitBranches", async () => ({ branches: [], current: "main" })),
     gitCheckout: log("gitCheckout", async () => {}),
     gitCommit: log("gitCommit", async () => {}),
     gitCreateBranch: log("gitCreateBranch", async () => {}),
@@ -206,7 +238,13 @@ export function installMockPlatform(
     gitPush: log("gitPush", async () => {}),
     gitShow: log("gitShow", async () => ""),
     gitStage: log("gitStage", async () => {}),
-    gitStatus: log("gitStatus", async () => ({ files: [] }) as never),
+    gitStatus: log("gitStatus", async () => {
+      const status: Partial<GitStatusResult> = { files: [] };
+      /* SAFETY: an inert default, deliberately partial. With no `isRepo` the project reads as not
+         a repository, the Git panel paints no branch and no remotes, and pull-package-sync sees an
+         undefined `behind`, which is never `> 0`; a suite that needs a real status overrides this. */
+      return status as GitStatusResult;
+    }),
     gitUnstage: log("gitUnstage", async () => {}),
     id: "mock",
     listDirectory: log("listDirectory", async (dir) => dirEntriesFor(state.files, dir)),
@@ -238,9 +276,9 @@ export function installMockPlatform(
       if (content === undefined) {
         throw new Error(`mock platform: no such file: ${path}`);
       }
-      return new TextEncoder().encode(content).buffer as ArrayBuffer;
+      return new TextEncoder().encode(content).buffer;
     }),
-    removePackage: log("removePackage", async () => ({})),
+    removePackage: log("removePackage", async () => {}),
     renameFile: log("renameFile", async (from, to): Promise<RenameResult> => {
       const content = state.files.get(from);
       if (content !== undefined) {
@@ -251,9 +289,11 @@ export function installMockPlatform(
     }),
     resolveSiteContext: log("resolveSiteContext", async () => ({ sitePath: null })),
     searchFiles: log("searchFiles", async (query) =>
-      [...state.files.keys()]
-        .filter((path) => path.includes(query))
-        .map((path) => ({ name: path.split("/").pop()!, path, type: "file" }) satisfies DirEntry),
+      [...state.files.keys()].flatMap((path) =>
+        path.includes(query)
+          ? [{ name: path.split("/").pop()!, path, type: "file" } satisfies DirEntry]
+          : [],
+      ),
     ),
     uploadFile: log("uploadFile", async (path: string) => ({ path })),
     writeFile: log("writeFile", async (path, content) => {
@@ -275,6 +315,19 @@ export function pointer(el: Element, type: string, opts: MouseEventInit = {}): v
   );
 }
 
+/** The `DataTransfer` stand-in {@link dragEvent} attaches: the three members the drop handlers read. */
+export interface StubDataTransfer {
+  dropEffect: string;
+  files: File[];
+  types: string[];
+}
+
+/** A dispatched drag event and the transfer it carried, for asserting what the handler did. */
+export interface DispatchedDrag {
+  event: Event;
+  dataTransfer: StubDataTransfer;
+}
+
 /**
  * Dispatch a drag event carrying `files`, and report what the handler did with it.
  *
@@ -287,8 +340,8 @@ export function dragEvent(
   type: string,
   files: File[] = [],
   init: MouseEventInit & { relatedTarget?: EventTarget | null } = {},
-): { event: Event; dataTransfer: { dropEffect: string; files: File[]; types: string[] } } {
-  const dataTransfer = {
+): DispatchedDrag {
+  const dataTransfer: StubDataTransfer = {
     dropEffect: "none",
     files,
     types: files.length > 0 ? ["Files"] : [],
@@ -408,8 +461,8 @@ export function setValue(el: HTMLInputElement | HTMLTextAreaElement, value: stri
  * reads like a substrate still in play, which is the one thing a test harness must not imply.
  */
 export function topDialog(): HTMLElement | null {
-  const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
-  return (dialogs.at(-1) as HTMLElement | undefined) ?? null;
+  const dialogs = [...document.querySelectorAll<HTMLElement>("#layer-dialog jx-dialog")];
+  return dialogs.at(-1) ?? null;
 }
 
 /** The prompt's field control — the native input the kit's field draws inside itself. */
@@ -475,9 +528,10 @@ export function promptFormatOptions(): [string, string][] {
      element and the `<select>` inside it carries `part="control"`. Rows the element stands in for a
      value no list holds are excluded — they are the element saying it holds something unlisted,
      never an offer. */
-  return [...(dialog?.querySelectorAll<HTMLOptionElement>('[part="choice"] option') ?? [])]
-    .filter((el) => el.getAttribute("part") !== "unlisted")
-    .map((el) => [el.value, el.textContent?.trim() ?? ""]);
+  return [...(dialog?.querySelectorAll<HTMLOptionElement>('[part="choice"] option') ?? [])].flatMap(
+    (el): [string, string][] =>
+      el.getAttribute("part") === "unlisted" ? [] : [[el.value, el.textContent.trim()]],
+  );
 }
 
 // ─── New Project wizard field accessors ──────────────────────────────────────
@@ -489,9 +543,13 @@ export function promptFormatOptions(): [string, string][] {
 
 /** A New Project second-step control by the `part` of the kit field around it. */
 function npField(part: string): HTMLInputElement {
-  return document.querySelector(
+  const field = document.querySelector<HTMLInputElement>(
     `#layer-dialog [part="${part}"] [part="input"], #layer-dialog [part="${part}"] [part="control"]`,
-  ) as HTMLInputElement;
+  );
+  if (!field) {
+    throw new Error(`New Project wizard: no "${part}" field is on screen`);
+  }
+  return field;
 }
 
 /** The Project Name textfield. */
@@ -508,7 +566,7 @@ export function npPreview(): string {
   return (
     document
       .querySelector('#layer-dialog [part="destination-preview"]')
-      ?.textContent?.trim()
+      ?.textContent.trim()
       .replaceAll(/\s+/g, " ") ?? ""
   );
 }
@@ -529,12 +587,12 @@ export function npFillLocation(parent = "/home/dev/Sites"): void {
 
 /** One node of the wizard's document, addressed by `part`. */
 export function npPart<T extends Element = HTMLElement>(part: string): T | null {
-  return document.querySelector(`#layer-dialog [part="${part}"]`) as T | null;
+  return document.querySelector<T>(`#layer-dialog [part="${part}"]`);
 }
 
 /** Every node of the wizard's document carrying a `part`. */
 export function npParts<T extends Element = HTMLElement>(part: string): T[] {
-  return [...document.querySelectorAll(`#layer-dialog [part="${part}"]`)] as T[];
+  return [...document.querySelectorAll<T>(`#layer-dialog [part="${part}"]`)];
 }
 
 /** The wizard's dialog element, or null when it is not up. */
@@ -544,7 +602,7 @@ export function npDialog(): HTMLElement | null {
 
 /** The dialog's headline, which is also its accessible name. */
 export function npHeadline(): string {
-  return npPart("headline")?.textContent?.trim() ?? "";
+  return npPart("headline")?.textContent.trim() ?? "";
 }
 
 /**
@@ -552,9 +610,10 @@ export function npHeadline(): string {
  * labels are absent buttons — `jx-dialog` draws a button only for a label it was given.
  */
 export function npFooter(): string[] {
-  return ["secondary-label", "cancel-label", "confirm-label"]
-    .map((part) => npPart(part)?.textContent?.trim() ?? "")
-    .filter((label) => label !== "");
+  return ["secondary-label", "cancel-label", "confirm-label"].flatMap((part) => {
+    const label = npPart(part)?.textContent.trim() ?? "";
+    return label === "" ? [] : [label];
+  });
 }
 
 /** Press one of the footer's answers, from the native control the kit's button draws. */
@@ -676,7 +735,7 @@ export function tearDownPaneGrids(): void {
  * element for code that branches on geometry.
  */
 export function stubRect(el: Element, rect: Partial<DOMRect>): void {
-  const full = {
+  const full: DOMRect = {
     bottom: (rect.top ?? 0) + (rect.height ?? 0),
     height: 0,
     left: 0,
@@ -687,8 +746,8 @@ export function stubRect(el: Element, rect: Partial<DOMRect>): void {
     x: rect.left ?? 0,
     y: rect.top ?? 0,
     ...rect,
-  } as DOMRect;
-  (el as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () => full;
+  };
+  el.getBoundingClientRect = () => full;
 }
 
 /** A `ResizeObserver` a test delivers by hand — see {@link installResizeObserver}. */
@@ -709,29 +768,39 @@ export interface FakeResizeObservers {
  */
 export function installResizeObserver(): FakeResizeObservers {
   const original = globalThis.ResizeObserver;
-  const observers: { cb: () => void; targets: Element[] }[] = [];
-  function FakeResizeObserver(this: Record<string, unknown>, cb: () => void) {
-    const record = { cb, targets: [] as Element[] };
-    observers.push(record);
-    this.observe = (target: Element) => {
-      if (!record.targets.includes(target)) {
-        record.targets.push(target);
+  const observers: { fire: () => void; targets: Element[] }[] = [];
+  class FakeResizeObserver implements ResizeObserver {
+    readonly #record: { fire: () => void; targets: Element[] };
+    constructor(callback: ResizeObserverCallback) {
+      /* A delivery carries no entries: happy-dom has no box to describe, and no observer in `src`
+         reads its entries. */
+      this.#record = {
+        fire: () => {
+          callback([], this);
+        },
+        targets: [],
+      };
+      observers.push(this.#record);
+    }
+    observe(target: Element): void {
+      if (!this.#record.targets.includes(target)) {
+        this.#record.targets.push(target);
       }
-    };
-    this.unobserve = (target: Element) => {
-      record.targets = record.targets.filter((el) => el !== target);
-    };
-    this.disconnect = () => {
-      record.targets = [];
-    };
+    }
+    unobserve(target: Element): void {
+      this.#record.targets = this.#record.targets.filter((el) => el !== target);
+    }
+    disconnect(): void {
+      this.#record.targets = [];
+    }
   }
-  globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+  globalThis.ResizeObserver = FakeResizeObserver;
   return {
     observes: (target) => observers.some((o) => o.targets.includes(target)),
     resize(target) {
       for (const o of observers) {
         if (o.targets.includes(target)) {
-          o.cb();
+          o.fire();
         }
       }
     },
@@ -750,12 +819,12 @@ export function installResizeObserver(): FakeResizeObservers {
  * `src/shell/tree.ts`'s; only the mounting is a test convenience, which is why it lives here rather
  * than shipping in the bundle.
  */
-export function mountOverlayLayers(host: ParentNode = document.body): void {
+export function mountOverlayLayers(host: HTMLElement = document.body): void {
   /* Same clear-and-eject as src/shell/tree.ts's mountInto, for the same two reasons: a fixture that
      empties the body leaves lit's part marker pointing at comment nodes that are gone, and ejecting
      without clearing makes a second mount paint a second copy beside the first. */
-  (host as HTMLElement).textContent = "";
+  host.textContent = "";
   // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
-  delete (host as HTMLElement)["_$litPart$"];
-  litRender(overlayLayers(), host as HTMLElement);
+  delete host["_$litPart$"];
+  litRender(overlayLayers(), host);
 }

@@ -20,10 +20,10 @@ import { reactive } from "../reactivity";
 import { openPopoverSurface } from "../ui/popover-surface";
 import { registerSurface } from "../ui/surface";
 import gridViewsDoc from "./grid-views.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { PopoverSurfaceHandle } from "../ui/popover-surface";
+import type { OpenPopoverSurfaceOptions, PopoverSurfaceHandle } from "../ui/popover-surface";
+import type { SurfaceOption } from "../ui/surface";
 
-registerSurface("grid-views", gridViewsDoc as unknown as JxDocument);
+registerSurface("grid-views", gridViewsDoc);
 
 /** The slot id, and so the panel's region: `overlay.popover:grid/views`. */
 const SLOT = "grid/views";
@@ -39,12 +39,6 @@ export interface GridSavedViewRow {
   current: string;
   /** The delete button's accessible name, which says which view it forgets. */
   deleteLabel: string;
-}
-
-/** A closed list of choices, in the shape the kit's select reads. */
-export interface GridSelectOption {
-  value: string;
-  label: string;
 }
 
 /** One column's visibility. */
@@ -65,9 +59,9 @@ export interface GridViewsView {
   saveLabel: string;
   columns: GridColumnToggle[];
   /** Every column, plus the "Source order" row that clears the sort. */
-  fieldOptions: GridSelectOption[];
-  dirOptions: GridSelectOption[];
-  groupOptions: GridSelectOption[];
+  fieldOptions: SurfaceOption[];
+  dirOptions: SurfaceOption[];
+  groupOptions: SurfaceOption[];
   sortField: string;
   sortDir: string;
   /** There is no sort to redirect, so the direction control is off rather than lying. */
@@ -93,7 +87,7 @@ export interface GridViewsSurfaceHandle extends PopoverSurfaceHandle {
   update: (view: GridViewsView) => void;
 }
 
-interface GridViewsScope extends Record<string, unknown>, GridViewsView, GridViewsActions {}
+interface GridViewsScope extends GridViewsView, GridViewsActions {}
 
 /** Write a projection into the scope. */
 function project(scope: GridViewsScope, view: GridViewsView): void {
@@ -125,7 +119,7 @@ export function openGridViewsSurface(
   actions: GridViewsActions,
   anchor: HTMLElement | null,
 ): GridViewsSurfaceHandle {
-  const scope = reactive<GridViewsScope>({
+  const scope: GridViewsScope = reactive<GridViewsScope>({
     applyView: actions.applyView,
     columns: [],
     deleteView: actions.deleteView,
@@ -147,16 +141,19 @@ export function openGridViewsSurface(
     viewsState: "empty",
     x: 0,
     y: 0,
-  }) as GridViewsScope;
+  });
   project(scope, view);
 
-  const handle = openPopoverSurface({
+  const popover: OpenPopoverSurfaceOptions<GridViewsScope> = {
     anchor,
     name: "grid-views",
     scope,
     slot: SLOT,
-    ...(actions.dismissed ? { onDismissed: actions.dismissed } : {}),
-  });
+  };
+  if (actions.dismissed) {
+    popover.onDismissed = actions.dismissed;
+  }
+  const handle = openPopoverSurface(popover);
 
   return {
     close: handle.close,

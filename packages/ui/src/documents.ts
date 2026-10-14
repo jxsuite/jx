@@ -4,7 +4,7 @@
  * bytes the shell runs.
  */
 import { overlayScopeFor } from "@jxsuite/schema/overlays";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JsonPrimitive, JxDocument } from "@jxsuite/schema/types";
 import jxAccordion from "../components/jx-accordion.json";
 import jxAccordionItem from "../components/jx-accordion-item.json";
 import jxActionButton from "../components/jx-action-button.json";
@@ -44,48 +44,74 @@ import jxTreeItem from "../components/jx-tree-item.json";
 import jxToastHost from "../components/jx-toast-host.json";
 import jxToolbar from "../components/jx-toolbar.json";
 
+/**
+ * A value as TypeScript types a JSON module import. Under the root config's
+ * `exactOptionalPropertyTypes` that is always a `JsonValue`, but `packages/desktop` compiles this
+ * file without the flag, and there an array of differently shaped objects is normalised by giving
+ * each object the others' keys as `?: undefined`, which `JsonValue` refuses.
+ */
+type ImportedJson =
+  | JsonPrimitive
+  | undefined
+  | readonly ImportedJson[]
+  | { readonly [key: string]: ImportedJson };
+
+/**
+ * A bundled component file as the document the runtime defines it from.
+ *
+ * @param {Readonly<Record<string, ImportedJson>>} json - One of the `components/*.json` imports
+ *   above
+ * @returns {JxDocument} The same object, typed as the document it is
+ */
+function kitDocument(json: Readonly<Record<string, ImportedJson>>): JxDocument {
+  /* SAFETY: every argument is a `components/*.json` file of this package, and `conformance.test.ts`
+     validates each entry of `documents` against the Jx document schema (ui.md §3.2), so the JSON
+     is a JxDocument; TypeScript only sees the literal shape the JSON import infers. */
+  return json as JxDocument;
+}
+
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
-export const documents: Readonly<Record<string, JxDocument>> = {
-  "jx-icon": jxIcon as unknown as JxDocument,
-  "jx-spinner": jxSpinner as unknown as JxDocument,
+export const documents = {
+  "jx-icon": kitDocument(jxIcon),
+  "jx-spinner": kitDocument(jxSpinner),
   // Before the buttons: each renders a `jx-tooltip` for its `hint`.
-  "jx-tooltip": jxTooltip as unknown as JxDocument,
-  "jx-button": jxButton as unknown as JxDocument,
-  "jx-action-button": jxActionButton as unknown as JxDocument,
-  "jx-menu-item": jxMenuItem as unknown as JxDocument,
-  "jx-menu": jxMenu as unknown as JxDocument,
-  "jx-popover": jxPopover as unknown as JxDocument,
-  "jx-textfield": jxTextfield as unknown as JxDocument,
-  "jx-checkbox": jxCheckbox as unknown as JxDocument,
-  "jx-switch": jxSwitch as unknown as JxDocument,
-  "jx-number-field": jxNumberField as unknown as JxDocument,
-  "jx-select": jxSelect as unknown as JxDocument,
-  "jx-option": jxOption as unknown as JxDocument,
-  "jx-listbox": jxListbox as unknown as JxDocument,
-  "jx-combobox": jxCombobox as unknown as JxDocument,
-  "jx-action-group": jxActionGroup as unknown as JxDocument,
-  "jx-toolbar": jxToolbar as unknown as JxDocument,
-  "jx-tab": jxTab as unknown as JxDocument,
-  "jx-tab-panel": jxTabPanel as unknown as JxDocument,
-  "jx-tabs": jxTabs as unknown as JxDocument,
-  "jx-tree-item": jxTreeItem as unknown as JxDocument,
-  "jx-tree": jxTree as unknown as JxDocument,
-  "jx-accordion-item": jxAccordionItem as unknown as JxDocument,
-  "jx-accordion": jxAccordion as unknown as JxDocument,
-  "jx-divider": jxDivider as unknown as JxDocument,
-  "jx-split": jxSplit as unknown as JxDocument,
-  "jx-kbd": jxKbd as unknown as JxDocument,
-  "jx-dot": jxDot as unknown as JxDocument,
-  "jx-field": jxField as unknown as JxDocument,
-  "jx-dialog": jxDialog as unknown as JxDocument,
-  "jx-toast": jxToast as unknown as JxDocument,
-  "jx-toast-host": jxToastHost as unknown as JxDocument,
-  "jx-color-area": jxColorArea as unknown as JxDocument,
-  "jx-color-slider": jxColorSlider as unknown as JxDocument,
-  "jx-swatch": jxSwatch as unknown as JxDocument,
-  "jx-swatch-group": jxSwatchGroup as unknown as JxDocument,
-  "jx-color-field": jxColorField as unknown as JxDocument,
-};
+  "jx-tooltip": kitDocument(jxTooltip),
+  "jx-button": kitDocument(jxButton),
+  "jx-action-button": kitDocument(jxActionButton),
+  "jx-menu-item": kitDocument(jxMenuItem),
+  "jx-menu": kitDocument(jxMenu),
+  "jx-popover": kitDocument(jxPopover),
+  "jx-textfield": kitDocument(jxTextfield),
+  "jx-checkbox": kitDocument(jxCheckbox),
+  "jx-switch": kitDocument(jxSwitch),
+  "jx-number-field": kitDocument(jxNumberField),
+  "jx-select": kitDocument(jxSelect),
+  "jx-option": kitDocument(jxOption),
+  "jx-listbox": kitDocument(jxListbox),
+  "jx-combobox": kitDocument(jxCombobox),
+  "jx-action-group": kitDocument(jxActionGroup),
+  "jx-toolbar": kitDocument(jxToolbar),
+  "jx-tab": kitDocument(jxTab),
+  "jx-tab-panel": kitDocument(jxTabPanel),
+  "jx-tabs": kitDocument(jxTabs),
+  "jx-tree-item": kitDocument(jxTreeItem),
+  "jx-tree": kitDocument(jxTree),
+  "jx-accordion-item": kitDocument(jxAccordionItem),
+  "jx-accordion": kitDocument(jxAccordion),
+  "jx-divider": kitDocument(jxDivider),
+  "jx-split": kitDocument(jxSplit),
+  "jx-kbd": kitDocument(jxKbd),
+  "jx-dot": kitDocument(jxDot),
+  "jx-field": kitDocument(jxField),
+  "jx-dialog": kitDocument(jxDialog),
+  "jx-toast": kitDocument(jxToast),
+  "jx-toast-host": kitDocument(jxToastHost),
+  "jx-color-area": kitDocument(jxColorArea),
+  "jx-color-slider": kitDocument(jxColorSlider),
+  "jx-swatch": kitDocument(jxSwatch),
+  "jx-swatch-group": kitDocument(jxSwatchGroup),
+  "jx-color-field": kitDocument(jxColorField),
+} as const satisfies Readonly<Record<string, JxDocument>>;
 
 /** Every tag the kit defines. */
 export const KIT_TAGS: readonly string[] = Object.keys(documents);
@@ -104,7 +130,7 @@ export const KIT_TAGS: readonly string[] = Object.keys(documents);
  * asks the same question of a project's `*.class.json` definitions, and two derivations of "what
  * makes a tag a popover" is two chances to disagree about one project.
  */
-const KIT_SCOPE = overlayScopeFor(Object.values(documents) as JxElement[]);
+const KIT_SCOPE = overlayScopeFor(Object.values(documents));
 
 /** Tags whose definition declares `popover`. */
 export const POPOVER_TAGS: ReadonlySet<string> = KIT_SCOPE.popoverTags ?? new Set();

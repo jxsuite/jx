@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 /** Capture console.warn/error for one call, restoring both afterwards. */
 async function captured<T>(
@@ -29,7 +30,7 @@ async function captured<T>(
 }
 
 /** A minimal buildable site rooted at `dir`, with one static page. */
-function scaffold(dir: string, project: Record<string, unknown>): void {
+function scaffold(dir: string, project: JsonObject): void {
   rmSync(dir, { force: true, recursive: true });
   mkdirSync(resolve(dir, "pages"), { recursive: true });
   writeFileSync(resolve(dir, "project.json"), JSON.stringify(project, null, 2), "utf8");

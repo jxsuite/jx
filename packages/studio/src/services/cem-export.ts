@@ -1,21 +1,91 @@
 /// <reference lib="dom" />
-import type { CemParameter, JxMutableNode, JxStateObject } from "@jxsuite/schema/types";
+import type {
+  CemParameter,
+  JxElementTagName,
+  JxMutableNode,
+  JxStateDefinition,
+  JxStateObject,
+  JsonValue,
+} from "@jxsuite/schema/types";
 import {
   displayTagName,
   isFunctionDef,
   isJsonObject,
   isPrivateStateKey,
+  isString,
 } from "@jxsuite/schema/guards";
+
+/** A CEM `{ text }` type reference. */
+interface CemTypeText {
+  text: string;
+}
+
+/** A CEM class member: a `method` (function entry) or a `field` (signal / type def). */
+interface CemMember {
+  kind: "method" | "field";
+  name: string;
+  type?: CemTypeText;
+  default?: string;
+  description?: string;
+  parameters?: CemParameter[];
+  attribute?: string;
+  reflects?: true;
+  deprecated?: string | true;
+}
+
+/** A CEM attribute linked to a field. */
+interface CemAttribute {
+  name: string;
+  type?: CemTypeText;
+  fieldName: string;
+}
+
+/** A CEM event a method dispatches. */
+interface CemManifestEvent {
+  name: string;
+  type?: JsonValue;
+  description?: string;
+}
+
+/** A CEM slot; the default slot has an empty name. */
+interface CemSlot {
+  name: string;
+  description?: string;
+}
+
+/** A CEM CSS custom property. */
+interface CemCssProperty {
+  default: string;
+  name: string;
+}
+
+/** A CEM CSS part. */
+interface CemCssPart {
+  name: string;
+}
+
+/** The single custom-element class declaration the manifest exports. */
+interface CemClassDeclaration {
+  kind: "class";
+  members: CemMember[];
+  name: JxElementTagName;
+  tagName: JxElementTagName;
+  attributes?: CemAttribute[];
+  events?: CemManifestEvent[];
+  slots?: CemSlot[];
+  cssProperties?: CemCssProperty[];
+  cssParts?: CemCssPart[];
+}
 
 /** Collect slot elements from the document tree. Whitespace-only names count as unnamed. */
 export function collectSlots(node?: JxMutableNode | null, slots: string[] = []) {
   if (node?.tagName === "slot") {
     const name = node.attributes?.name;
-    slots.push(typeof name === "string" ? name.trim() : "");
+    slots.push(isString(name) ? name.trim() : "");
   }
   if (Array.isArray(node?.children)) {
     for (const c of node.children) {
-      collectSlots(typeof c === "string" ? undefined : c, slots);
+      collectSlots(isString(c) ? undefined : c, slots);
     }
   }
   return slots;
@@ -47,7 +117,7 @@ export function validateComponentSlots(doc: JxMutableNode): string | null {
  *
  * @param {{ document: JxMutableNode }} S - Studio state
  * @param {{
- *   defCategory: (d: unknown) => string;
+ *   defCategory: (d: JxStateDefinition) => string;
  *   normParam: (p: string | CemParameter) => CemParameter;
  *   collectCssParts: (node: JxMutableNode) => { name: string }[];
  * }} helpers
@@ -55,7 +125,7 @@ export function validateComponentSlots(doc: JxMutableNode): string | null {
 export function exportCemManifest(
   S: { document: JxMutableNode },
   helpers: {
-    defCategory: (d: unknown) => string;
+    defCategory: (d: JxStateDefinition) => string;
     normParam: (p: string | CemParameter) => CemParameter;
     collectCssParts: (node: JxMutableNode) => { name: string }[];
   },
@@ -68,9 +138,9 @@ export function exportCemManifest(
   }
 
   const state = doc.state || {};
-  const members: Record<string, unknown>[] = [];
-  const attributes: Record<string, unknown>[] = [];
-  const events: Record<string, unknown>[] = [];
+  const members: CemMember[] = [];
+  const attributes: CemAttribute[] = [];
+  const events: CemManifestEvent[] = [];
   const seenEvents = new Set<string>();
 
   for (const [key, d] of Object.entries(state)) {
@@ -82,56 +152,72 @@ export function exportCemManifest(
 
     if (cat === "function") {
       if (isFunctionDef(d)) {
-        members.push({
-          kind: "method",
-          name: key,
-          ...(d.description ? { description: d.description } : {}),
-          ...(d.parameters ? { parameters: d.parameters.map(normParam) } : {}),
-          ...(d.deprecated
-            ? { deprecated: typeof d.deprecated === "string" ? d.deprecated : true }
-            : {}),
-        });
+        const method: CemMember = { kind: "method", name: key };
+        if (d.description) {
+          method.description = d.description;
+        }
+        if (d.parameters) {
+          method.parameters = d.parameters.map(normParam);
+        }
+        if (d.deprecated) {
+          method.deprecated = isString(d.deprecated) ? d.deprecated : true;
+        }
+        members.push(method);
         // Collect emits
         for (const ev of d.emits ?? []) {
           if (ev.name && !seenEvents.has(ev.name)) {
             seenEvents.add(ev.name);
-            events.push({
-              name: ev.name,
-              ...(ev.type !== undefined ? { type: ev.type } : {}),
-              ...(ev.description ? { description: ev.description } : {}),
-            });
+            const event: CemManifestEvent = { name: ev.name };
+            if (ev.type !== undefined) {
+              event.type = ev.type;
+            }
+            if (ev.description) {
+              event.description = ev.description;
+            }
+            events.push(event);
           }
         }
       } else if (isJsonObject(d)) {
         // Legacy $handler entry — emit a bare method member
         const { description } = d;
-        members.push({
-          kind: "method",
-          name: key,
-          ...(typeof description === "string" ? { description } : {}),
-        });
+        const method: CemMember = { kind: "method", name: key };
+        if (isString(description)) {
+          method.description = description;
+        }
+        members.push(method);
       }
     } else if (cat === "state") {
       // Naked primitive values carry no metadata; object defs are signals/type defs.
+      /* SAFETY: defCategory classified this entry as "state", which it only does when the entry
+         Carries no $expression, $prototype, $handler or $compute, so an object entry here is an
+         Expanded signal or schema type def: the JxStateObject shape. */
       const def: JxStateObject | null = isJsonObject(d) ? (d as JxStateObject) : null;
-      members.push({
-        kind: "field",
-        name: key,
-        ...(def?.type ? { type: { text: def.type } } : {}),
-        ...(def && def.default !== undefined ? { default: String(def.default) } : {}),
-        ...(def?.description ? { description: def.description } : {}),
-        ...(def?.attribute ? { attribute: def.attribute } : {}),
-        ...(def?.reflects ? { reflects: true } : {}),
-        ...(def?.deprecated
-          ? { deprecated: typeof def.deprecated === "string" ? def.deprecated : true }
-          : {}),
-      });
+      const field: CemMember = { kind: "field", name: key };
+      if (def?.type) {
+        field.type = { text: def.type };
+      }
+      if (def && def.default !== undefined) {
+        field.default = String(def.default);
+      }
+      if (def?.description) {
+        field.description = def.description;
+      }
       if (def?.attribute) {
-        attributes.push({
-          name: def.attribute,
-          ...(def.type ? { type: { text: def.type } } : {}),
-          fieldName: key,
-        });
+        field.attribute = def.attribute;
+      }
+      if (def?.reflects) {
+        field.reflects = true;
+      }
+      if (def?.deprecated) {
+        field.deprecated = isString(def.deprecated) ? def.deprecated : true;
+      }
+      members.push(field);
+      if (def?.attribute) {
+        attributes.push(
+          def.type
+            ? { name: def.attribute, type: { text: def.type }, fieldName: key }
+            : { name: def.attribute, fieldName: key },
+        );
       }
     }
   }
@@ -139,7 +225,7 @@ export function exportCemManifest(
   // Slots
   const slotNames = collectSlots(doc);
   const slots = slotNames.map((name: string) => {
-    const slot: { name: string; description?: string } = { name: name || "" };
+    const slot: CemSlot = { name: name || "" };
     if (!name) {
       slot.description = "Default slot";
     }
@@ -155,22 +241,27 @@ export function exportCemManifest(
   // CSS parts
   const cssParts = collectCssParts(doc).map((p) => ({ name: p.name }));
 
+  const declaration: CemClassDeclaration = { kind: "class", members, name: tagName, tagName };
+  if (attributes.length > 0) {
+    declaration.attributes = attributes;
+  }
+  if (events.length > 0) {
+    declaration.events = events;
+  }
+  if (slots.length > 0) {
+    declaration.slots = slots;
+  }
+  if (cssProperties.length > 0) {
+    declaration.cssProperties = cssProperties;
+  }
+  if (cssParts.length > 0) {
+    declaration.cssParts = cssParts;
+  }
+
   const manifest = {
     modules: [
       {
-        declarations: [
-          {
-            kind: "class",
-            members,
-            name: tagName,
-            tagName,
-            ...(attributes.length > 0 ? { attributes } : {}),
-            ...(events.length > 0 ? { events } : {}),
-            ...(slots.length > 0 ? { slots } : {}),
-            ...(cssProperties.length > 0 ? { cssProperties } : {}),
-            ...(cssParts.length > 0 ? { cssParts } : {}),
-          },
-        ],
+        declarations: [declaration],
         kind: "javascript-module",
         path: "",
       },

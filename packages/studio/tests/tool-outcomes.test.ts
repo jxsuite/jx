@@ -5,26 +5,66 @@
  */
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
-import type { ToolCallRecord } from "@jxsuite/ai/chat-state";
-import { SEAL_CUT_OFF } from "@jxsuite/ai/messages";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { LiveToolCall } from "@jxsuite/ai/messages";
+import { SEAL_CUT_OFF, SEAL_RELOADED } from "@jxsuite/ai/messages";
 import type { ToolResult } from "@jxsuite/ai/tools";
 import type { PersistedMessage } from "../src/services/ai-session-store";
 import { UNANSWERED_TOOL_RESULT } from "../src/services/context-manager";
 import { backfillToolResults, stripToolResults } from "../src/services/tool-outcomes";
 import { projectChip } from "../src/panels/ai-chat/chat-view";
 
-/** The outcome of an ordinary call nothing answered: after a restore, it never completed. */
-const NEVER_COMPLETED = JSON.parse(UNANSWERED_TOOL_RESULT) as ToolResult;
+/**
+ * The outcome of an ordinary call nothing answered: after a restore, it never completed. The same
+ * failure `UNANSWERED_TOOL_RESULT` serializes, which the sealed-call test below asserts directly.
+ */
+const NEVER_COMPLETED: ToolResult = { error: SEAL_RELOADED, success: false };
 
 const ok = (summary: string) => JSON.stringify({ success: true, summary });
 const failed = (error: string) => JSON.stringify({ success: false, error });
 
-function call(id: string, name = "add_child", extra: Record<string, unknown> = {}) {
+function call(id: string, name = "add_child", extra: Partial<LiveToolCall> = {}): LiveToolCall {
   return { arguments: "{}", id, name, ...extra };
 }
 
+/** Whether a persisted `toolCalls` entry carries the three members every record here is built with. */
+function isToolCallRecord(entry: unknown): entry is LiveToolCall {
+  return (
+    isNonNullObject(entry) &&
+    "id" in entry &&
+    isString(entry.id) &&
+    "name" in entry &&
+    isString(entry.name) &&
+    "arguments" in entry &&
+    isString(entry.arguments)
+  );
+}
+
+/**
+ * Every tool-call record across `messages`. Each one in these tests is built by `call()`, so an
+ * entry that is not a record means the code under test mangled it, and the test fails here.
+ */
 const recordsOf = (messages: PersistedMessage[]) =>
-  messages.flatMap((m) => (m.toolCalls ?? []) as ToolCallRecord[]);
+  messages.flatMap((m) =>
+    (m.toolCalls ?? []).map((entry) => {
+      if (!isToolCallRecord(entry)) {
+        throw new TypeError(`not a tool-call record: ${JSON.stringify(entry)}`);
+      }
+      return entry;
+    }),
+  );
+
+/**
+ * A `tool` message as storage can hand one back: `content` is whatever JSON the payload held, not
+ * necessarily the string the type declares.
+ */
+function storedToolMessage(content: JsonValue, toolCallId: string): PersistedMessage {
+  /* SAFETY: Only `content` can break the declared shape, and the one consumer under test,
+     `backfillToolResults`, re-checks it with `isString` (in `parseToolResult`) before any string
+     operation, so a non-string `content` reads as "no outcome" instead of reaching a string API. */
+  return { content, role: "tool", toolCallId } as PersistedMessage;
+}
 
 describe("stripToolResults", () => {
   test("drops every record's result and copies rather than mutating", () => {
@@ -43,9 +83,9 @@ describe("stripToolResults", () => {
   });
 
   test("leaves a record that is not an object alone", () => {
-    const messages = [
+    const messages: PersistedMessage[] = [
       { content: "", role: "assistant", toolCalls: [null, "x"] },
-    ] as PersistedMessage[];
+    ];
     expect(stripToolResults(messages)[0]!.toolCalls).toEqual([null, "x"]);
   });
 });
@@ -96,7 +136,7 @@ describe("backfillToolResults", () => {
     ]);
     const nonString = backfillToolResults([
       { content: "", role: "assistant", toolCalls: [call("c4")] },
-      { content: 42 as unknown as string, role: "tool", toolCallId: "c4" },
+      storedToolMessage(42, "c4"),
     ]);
     expect(recordsOf(nonString)[0]!.result).toEqual(NEVER_COMPLETED);
     expect(recordsOf(restored).map((r) => r.result)).toEqual([
@@ -187,7 +227,7 @@ describe("backfillToolResults", () => {
     const user = { content: "hi", role: "user" };
     const bare = { content: "text", role: "assistant" };
     const oddRecord = { content: "", role: "assistant", toolCalls: [null, { name: "x" }] };
-    const restored = backfillToolResults([user, bare, oddRecord] as PersistedMessage[]);
+    const restored = backfillToolResults([user, bare, oddRecord]);
     expect(restored[0]).toBe(user);
     expect(restored[1]).toBe(bare);
     expect(restored[2]!.toolCalls).toEqual([null, { name: "x", result: NEVER_COMPLETED }]);

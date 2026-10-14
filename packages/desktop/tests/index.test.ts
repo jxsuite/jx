@@ -1,5 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 
+import type { ImportApiOptions } from "@jxsuite/server/import-api";
+
 // Index.ts is now a thin app-level bootstrap: it wires shared services (AI server, updater, menu)
 // And opens the initial window via the window-manager. Per-window RPC + window controls live in
 // Window-manager.ts (see window-manager.test.ts).
@@ -19,7 +21,7 @@ void mock.module("electrobun/main", () => ({
 
 // ─── Mock local modules ──────────────────────────────────────────────────────
 
-const openProjectWindow = mock((_root: string | null) => ({}) as unknown);
+const openProjectWindow = mock((_root: string | null) => ({}));
 const setAiChatUrl = mock((_url: string) => {});
 const setImportServiceUrl = mock((_url: string) => {});
 const broadcastSettingsChanged = mock((_settings: Record<string, string>) => {});
@@ -39,7 +41,7 @@ void mock.module("../src/window-manager", () => ({
 const installApplicationMenu = mock(() => {});
 void mock.module("../src/menu", () => ({ installApplicationMenu }));
 
-const setFileDialog = mock((_fn: unknown) => {});
+const setFileDialog = mock((_fn: () => Promise<string | null>) => {});
 void mock.module("../src/project-session", () => ({
   setDirectoryDialog: mock(() => {}),
   setFileDialog,
@@ -70,7 +72,7 @@ const handleAiApi = mock(async (_req: Request, url: URL) => {
 void mock.module("@jxsuite/server/ai-api", () => ({ handleAiApi }));
 
 const handleImportApi = mock(
-  async (_req: Request, _url: URL, _opts: unknown): Promise<Response | null> =>
+  async (_req: Request, _url: URL, _opts: ImportApiOptions): Promise<Response | null> =>
     new Response("import-ok", { status: 200 }),
 );
 void mock.module("@jxsuite/server/import-api", () => ({ handleImportApi }));
@@ -94,6 +96,15 @@ Bun.serve = realServe;
 
 const expectedBoot = process.argv[2] || process.env.JSONSX_PROJECT_ROOT || null;
 
+/** The url a boot-time publisher (`setAiChatUrl`, `setImportServiceUrl`) was first handed. */
+function firstPublishedUrl(calls: [url: string][]): string {
+  const url = calls.at(0)?.[0];
+  if (url === undefined) {
+    throw new Error("boot never published the url");
+  }
+  return url;
+}
+
 // ─── Boot sequence ────────────────────────────────────────────────────────────
 
 describe("boot sequence", () => {
@@ -105,7 +116,7 @@ describe("boot sequence", () => {
   test("starts the AI server on an ephemeral port and publishes its url", () => {
     expect(serveOpts).not.toBeNull();
     expect(serveOpts!.port).toBe(0);
-    expect(typeof serveOpts!.fetch).toBe("function");
+    expect(serveOpts!.fetch).toBeInstanceOf(Function);
     expect(setAiChatUrl.mock.calls[0]?.[0]).toStartWith(
       "http://127.0.0.1:43210/__studio/ai/chat?token=",
     );
@@ -113,6 +124,7 @@ describe("boot sequence", () => {
 
   test("installs the application menu", () => {
     expect(installApplicationMenu).toHaveBeenCalledTimes(1);
+    expect(installApplicationMenu).toHaveBeenCalledWith();
   });
 
   test("starts background update checks and broadcasts updates to all windows", () => {
@@ -124,14 +136,14 @@ describe("boot sequence", () => {
 
   test("opens the initial window from argv/env (null → welcome)", () => {
     expect(openProjectWindow).toHaveBeenCalledTimes(1);
-    expect(openProjectWindow.mock.calls[0]?.[0]).toBe(expectedBoot as never);
+    expect(openProjectWindow.mock.calls[0]?.[0]).toBe(expectedBoot);
   });
 });
 
 // ─── AI HTTP server fetch handler (token-gated) ─────────────────────────────
 
 describe("AI server fetch handler", () => {
-  const chatUrl = () => new URL(setAiChatUrl.mock.calls[0]?.[0] as string);
+  const chatUrl = () => new URL(firstPublishedUrl(setAiChatUrl.mock.calls));
   const tokened = (path: string) => {
     const url = new URL(path, chatUrl());
     url.search = chatUrl().search;
@@ -143,7 +155,7 @@ describe("AI server fetch handler", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("ai-ok");
     const [, url] = handleAiApi.mock.calls.at(-1)!;
-    expect((url as URL).pathname).toBe("/__studio/ai/hit");
+    expect(url.pathname).toBe("/__studio/ai/hit");
   });
 
   /* The route forwards to a provider on the user's own key; without the token any local process
@@ -175,7 +187,7 @@ describe("AI server fetch handler", () => {
   });
 
   test("the AI and import routes share one per-process token", () => {
-    const importToken = new URL(setImportServiceUrl.mock.calls[0]?.[0] as string).searchParams.get(
+    const importToken = new URL(firstPublishedUrl(setImportServiceUrl.mock.calls)).searchParams.get(
       "token",
     );
     expect(chatUrl().searchParams.get("token")).toBe(importToken);
@@ -197,7 +209,7 @@ describe("AI server fetch handler", () => {
 // ─── Import route (token-gated) ─────────────────────────────────────────────
 
 describe("import-site route", () => {
-  const publishedUrl = () => setImportServiceUrl.mock.calls[0]?.[0] as string;
+  const publishedUrl = () => firstPublishedUrl(setImportServiceUrl.mock.calls);
 
   test("publishes the tokened endpoint on the shared server", () => {
     expect(publishedUrl()).toStartWith("http://127.0.0.1:43210/__studio/import-site?token=");
@@ -215,9 +227,7 @@ describe("import-site route", () => {
     const res = await serveOpts!.fetch(new Request(publishedUrl(), { method: "POST" }));
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("import-ok");
-    const opts = handleImportApi.mock.calls.at(-1)?.[2] as {
-      resolveDest: (dir: string) => string;
-    };
+    const [_request, _url, opts] = handleImportApi.mock.calls.at(-1)!;
     expect(opts.resolveDest("/abs/dir")).toBe("/abs/dir");
     expect(() => opts.resolveDest("relative/dir")).toThrow("absolute");
   });

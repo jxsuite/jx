@@ -1,6 +1,6 @@
 import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import type { JxElement } from "@jxsuite/schema/types";
+import { getNestedStyle } from "@jxsuite/schema/guards";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -12,7 +12,12 @@ const tick = () =>
     setTimeout(r, 0);
   });
 
-type JxDialog = HTMLElement & { open: boolean; headline: string; destructive: boolean };
+type JxDialog = HTMLElement & {
+  open: boolean;
+  headline: string;
+  destructive: boolean;
+  confirmDisabled: boolean;
+};
 
 beforeAll(async () => {
   await registerUi();
@@ -25,6 +30,8 @@ async function dialog(
   attrs: Record<string, string> = {},
   body = "Are you sure?",
 ): Promise<JxDialog> {
+  /* SAFETY: registerUi() in beforeAll defined jx-dialog, so createElement returns the upgraded
+     element, which carries every reactive property `JxDialog` lists from its component document. */
   const el = document.createElement("jx-dialog") as JxDialog;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -50,8 +57,8 @@ describe("jx-dialog", () => {
     expect(inner(el).getAttribute("aria-label")).toBe("Delete page?");
     expect(part(el, "headline")?.textContent).toBe("Delete page?");
     expect(part(el, "body")?.textContent).toContain("Are you sure?");
-    expect(buttonIn(el, "confirm")?.textContent?.trim()).toBe("Delete");
-    expect(buttonIn(el, "cancel")?.textContent?.trim()).toBe("Keep");
+    expect(buttonIn(el, "confirm")?.textContent.trim()).toBe("Delete");
+    expect(buttonIn(el, "cancel")?.textContent.trim()).toBe("Keep");
     expect(part(el, "secondary")).toBeNull();
     // Closed at rest, and not dismissible by a stray click unless asked.
     expect(inner(el).open).toBe(false);
@@ -59,9 +66,11 @@ describe("jx-dialog", () => {
   });
 
   test("announces jx-ready once it has rendered its native dialog", async () => {
-    const el = document.createElement("jx-dialog") as JxDialog;
+    const el = document.createElement("jx-dialog");
     const ready = new Promise<boolean>((resolve) => {
-      el.addEventListener("jx-ready", () => resolve(inner(el) !== null), { once: true });
+      el.addEventListener("jx-ready", () => resolve(el.querySelector('[part="dialog"]') !== null), {
+        once: true,
+      });
     });
     document.body.append(el);
     expect(await ready).toBe(true);
@@ -112,12 +121,12 @@ describe("jx-dialog", () => {
     const heard: string[] = [];
     el.addEventListener("confirm", () => heard.push("confirm"));
     const control = buttonIn(el, "confirm")!;
-    expect(control.textContent?.trim()).toBe("Open");
+    expect(control.textContent.trim()).toBe("Open");
     expect(control.disabled).toBe(true);
     control.click();
     expect(heard).toEqual([]);
     // A host that has its answer flips the property, and the same button answers.
-    (el as JxDialog & { confirmDisabled: boolean }).confirmDisabled = false;
+    el.confirmDisabled = false;
     await tick();
     expect(buttonIn(el, "confirm")!.disabled).toBe(false);
     buttonIn(el, "confirm")!.click();
@@ -128,23 +137,24 @@ describe("jx-dialog", () => {
     /* The layout itself is the engine's to measure; what this pins is the rule set that produces
        it, because a dialog that scrolled as one drew a second scrollbar beside any list its body
        scrolled for itself. Keyed on [open] so the UA's display: none still hides a closed one. */
-    const style = documents["jx-dialog"]!.style as Record<string, Record<string, unknown>>;
-    expect(style['& > [part="dialog"][open]']).toMatchObject({
+    const { style } = documents["jx-dialog"]!;
+    const block = (selector: string) => getNestedStyle(style, selector);
+    expect(block('& > [part="dialog"][open]')).toMatchObject({
       display: "flex",
       flexDirection: "column",
       overflow: "hidden",
     });
-    expect(style['& > [part="dialog"]']!["display"]).toBeUndefined();
-    expect(style['& > [part="dialog"] > [part="body"]']).toMatchObject({
+    expect(block('& > [part="dialog"]')!["display"]).toBeUndefined();
+    expect(block('& > [part="dialog"] > [part="body"]')).toMatchObject({
       flex: "1 1 auto",
       minHeight: "0",
       overflowY: "auto",
     });
     expect(
-      style['& > [part="dialog"] > [part="header"], & > [part="dialog"] > [part="footer"]'],
+      block('& > [part="dialog"] > [part="header"], & > [part="dialog"] > [part="footer"]'),
     ).toEqual({ flex: "none" });
     // The widest step, for two panes side by side.
-    expect(style['&[data-size="xl"] > [part="dialog"]']).toEqual({ width: "min(92vw, 60rem)" });
+    expect(block('&[data-size="xl"] > [part="dialog"]')).toEqual({ width: "min(92vw, 60rem)" });
   });
 
   test("the platform's cancel (Escape, a light dismissal) is dispatched as cancel", async () => {
@@ -271,11 +281,10 @@ describe("jx-dialog", () => {
        at all. Measured in Chrome 152: the host computes `contents`, and the inner dialog computes
        `none` at 0x0 closed and `block` at 384x143 open. */
     const doc = documents["jx-dialog"]!;
-    const style = doc.style as Record<string, unknown>;
-    expect(style["display"]).toBe("contents");
-    expect((style["&[hidden]"] as Record<string, unknown>)["display"]).toBe("none");
-    const root = (doc.children as JxElement[])[0]!;
-    expect(root.tagName).toBe("dialog");
+    const { style } = doc;
+    expect(style?.["display"]).toBe("contents");
+    expect(getNestedStyle(style, "&[hidden]")!["display"]).toBe("none");
+    expect(Array.isArray(doc.children) && doc.children[0]).toMatchObject({ tagName: "dialog" });
     expect(JSON.stringify(style)).not.toContain("revert");
     const el = await dialog({ headline: "Rename" });
     expect(inner(el).localName).toBe("dialog");
@@ -309,8 +318,12 @@ describe("jx-dialog", () => {
        `typeof ToggleEvent` check; the test DOM has none, so it is stubbed to prove the early
        return, not the dispatch that runs on every other test here. */
     const el = await dialog({ headline: "Native" });
-    const original = (globalThis as { ToggleEvent?: unknown }).ToggleEvent;
-    (globalThis as { ToggleEvent?: unknown }).ToggleEvent = class extends Event {};
+    const original = Object.getOwnPropertyDescriptor(globalThis, "ToggleEvent");
+    Object.defineProperty(globalThis, "ToggleEvent", {
+      configurable: true,
+      value: class extends Event {},
+      writable: true,
+    });
     try {
       const seen: string[] = [];
       inner(el).addEventListener("toggle", () => seen.push("toggle"));
@@ -322,9 +335,9 @@ describe("jx-dialog", () => {
       expect(seen).toEqual([]);
     } finally {
       if (original === undefined) {
-        delete (globalThis as { ToggleEvent?: unknown }).ToggleEvent;
+        Reflect.deleteProperty(globalThis, "ToggleEvent");
       } else {
-        (globalThis as { ToggleEvent?: unknown }).ToggleEvent = original;
+        Object.defineProperty(globalThis, "ToggleEvent", original);
       }
     }
   });

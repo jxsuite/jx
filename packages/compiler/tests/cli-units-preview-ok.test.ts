@@ -23,7 +23,8 @@ describe("jx cli — preview", () => {
     const result = await runEntry("cli", ["preview", TMP]);
     expect(result.exited).toBe(false);
     expect(previewCalls).toEqual([{ distDir: join(TMP, "dist"), port: 4173 }]);
-    expect(result.logs.join("\n")).toContain("Previewing");
-    expect(result.logs.join("\n")).toContain(":4173");
+    const logText = result.logs.join("\n");
+    expect(logText).toContain("Previewing");
+    expect(logText).toContain(":4173");
   });
 });

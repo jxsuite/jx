@@ -22,13 +22,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import githubPublishDoc from "./github-publish.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { DialogLayerHandle, SurfaceHandle } from "../ui/surface";
 
-registerSurface("github-publish", githubPublishDoc as unknown as JxDocument);
+registerSurface("github-publish", githubPublishDoc);
 
 /**
  * What the dialog collects.
@@ -55,15 +54,7 @@ export interface GithubPublishSurfaceOptions {
   onClosed: () => void;
 }
 
-export interface GithubPublishSurfaceHandle {
-  host: HTMLElement;
-  /** Resolves with the `jx-dialog` element once it has rendered and been opened. */
-  ready: Promise<HTMLElement>;
-  /** Close the dialog (the platform restores focus) and dispose the document. Idempotent. */
-  close: () => void;
-}
-
-interface GithubPublishScope extends Record<string, unknown> {
+interface GithubPublishScope {
   name: string;
   description: string;
   isPrivate: boolean;
@@ -76,9 +67,7 @@ interface GithubPublishScope extends Record<string, unknown> {
 }
 
 /** Open the dialog. The handle's `ready` resolves once it is showing. */
-export function openGithubPublishSurface(
-  options: GithubPublishSurfaceOptions,
-): GithubPublishSurfaceHandle {
+export function openGithubPublishSurface(options: GithubPublishSurfaceOptions): DialogLayerHandle {
   const slot = document.createElement("div");
   /* The layer is `pointer-events: none` so a click passes through it when nothing is up, and every
      slot in it turns them back on for its own content. */
@@ -100,8 +89,12 @@ export function openGithubPublishSurface(
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive<GithubPublishScope>({
+  const scope: GithubPublishScope = reactive<GithubPublishScope>({
     cancel: () => {
       options.onCancel();
     },
@@ -125,13 +118,15 @@ export function openGithubPublishSurface(
     setPrivate: (value) => {
       scope.isPrivate = value;
     },
-  }) as GithubPublishScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("github-publish", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `github-publish.json`'s root definition is a `jx-dialog` element, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
@@ -140,14 +135,14 @@ export function openGithubPublishSurface(
        `<dialog>` to open — the body is all there, correctly styled, and never shows. Shared with
        `openDialogSurface` and `openAboutSurface` rather than reimplemented. */
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
     return element;
   });
 
-  const handle: GithubPublishSurfaceHandle = {
+  const handle: DialogLayerHandle = {
     close() {
       if (closed) {
         return;
@@ -155,7 +150,7 @@ export function openGithubPublishSurface(
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       mounted?.dispose();
       mounted = null;

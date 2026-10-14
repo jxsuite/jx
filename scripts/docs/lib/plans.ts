@@ -12,7 +12,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import type { ValidationIssue } from "@jxsuite/connector/validate";
+import { isString } from "@jxsuite/schema/guards";
+
 import { splitFrontmatter } from "./frontmatter.ts";
+import { FENCE } from "./spec-status.ts";
 import { compareIds, GAP_SLUG } from "./standards.ts";
 
 export const PLANS_DIR = "plans";
@@ -68,7 +72,6 @@ export const PLAN_CITATION = /\bplan:([a-z0-9_-]+\/[a-z0-9-]+)(?:#([A-Z][A-Z0-9]
 /** A `*-PLAN.md` file: the form plans took before `plans/` existed. */
 export const LEGACY_PLAN_DOC = /(?:^|\/)[A-Z0-9-]+-PLAN\.md$/;
 
-const FENCE = /^\s*(```|~~~)/;
 const H1 = /^#\s+(.+?)\s*$/;
 const H2 = /^##\s+(.+?)\s*$/;
 const OPEN_DECISION = /^\s*(?:[-*]|\d+\.)\s+\*\*Open:\*\*/;
@@ -98,6 +101,7 @@ export function classifyPlanPath(rel: string): PathKind {
         "plans live at plans/<spec-stem>/<slug>.md, plans/<spec-stem>/README.md or plans/_shared/<slug>.md",
     };
   }
+  // SAFETY: `parts.length === 3` was checked just above, so all three slots hold strings.
   const [, home, file] = parts as [string, string, string];
   if (!file.endsWith(".md")) {
     return { kind: "stray", reason: "only Markdown lives under plans/" };
@@ -135,11 +139,6 @@ export function parseClaim(raw: string): Claim | null {
   return m[2] === undefined ? { raw, file: m[1]! } : { raw, file: m[1]!, anchor: m[2] };
 }
 
-export interface FieldProblem {
-  field: string;
-  message: string;
-}
-
 export interface Citation {
   /** The cited plan ID. */
   target: string;
@@ -165,7 +164,11 @@ export interface PlanDoc {
   prs: string[];
   unknownFields: string[];
   missingFields: string[];
-  fieldProblems: FieldProblem[];
+  /**
+   * Frontmatter fields whose value has the wrong type: the same field-plus-message record the data
+   * mount's row validator reports, so it is that type rather than a copy of it.
+   */
+  fieldProblems: ValidationIssue[];
   /** The text of every H1 outside fenced code: a plan has exactly one. */
   titles: string[];
   /** Every `## ` heading, in order. */
@@ -236,7 +239,7 @@ export function parsePlanSource(source: string, path: string, id: string): PlanD
   if (split.kind === "parsed") {
     const { data } = split;
     for (const key of Object.keys(data)) {
-      if (!(PLAN_FIELDS as readonly string[]).includes(key)) {
+      if (!PLAN_FIELDS.some((field) => field === key)) {
         doc.unknownFields.push(key);
       }
     }
@@ -250,7 +253,7 @@ export function parsePlanSource(source: string, path: string, id: string): PlanD
       if (value === undefined) {
         continue;
       }
-      if (typeof value === "string") {
+      if (isString(value)) {
         doc[key] = value;
       } else {
         doc.fieldProblems.push({ field: key, message: `${key} must be a string` });
@@ -261,7 +264,7 @@ export function parsePlanSource(source: string, path: string, id: string): PlanD
       if (value === undefined || value === null) {
         continue;
       }
-      if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
+      if (Array.isArray(value) && value.every((v) => isString(v))) {
         doc[key] = value;
       } else {
         doc.fieldProblems.push({ field: key, message: `${key} must be a list of strings` });
@@ -413,19 +416,25 @@ export function findCycle(plans: readonly PlanDoc[]): string[] | null {
   return null;
 }
 
+export interface PlanWaves {
+  /** Wave n holds the plans whose surviving prerequisites all sit in earlier waves. */
+  waves: string[][];
+  /** Plans on a requires cycle, which never become free. */
+  blocked: string[];
+}
+
 /**
  * Plans grouped into waves: wave 0 requires nothing that still exists, wave n requires only plans
  * in earlier waves. Plans on a cycle never become free and are returned in `blocked`.
  */
-export function topoWaves(plans: readonly PlanDoc[]): { waves: string[][]; blocked: string[] } {
+export function topoWaves(plans: readonly PlanDoc[]): PlanWaves {
   const ids = new Set(plans.map((p) => p.id));
   const pending = new Map(plans.map((p) => [p.id, p.requires.filter((r) => ids.has(r))]));
   const done = new Set<string>();
   const waves: string[][] = [];
   while (pending.size > 0) {
     const wave = [...pending]
-      .filter(([, requires]) => requires.every((r) => done.has(r)))
-      .map(([id]) => id)
+      .flatMap(([id, requires]) => (requires.every((r) => done.has(r)) ? [id] : []))
       .toSorted(compareIds);
     if (wave.length === 0) {
       break;

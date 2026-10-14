@@ -8,16 +8,17 @@
  */
 import "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { JxStyle } from "@jxsuite/schema/types";
 
 const siteCalls: number[] = [];
-const stylebookCalls: Record<string, unknown>[] = [];
+const stylebookCalls: JxStyle[] = [];
 
 void mock.module("../src/canvas/iframe-host", () => ({
   postSiteStyleToLiveHosts: () => {
     siteCalls.push(stylebookCalls.length);
   },
   postRedefineElementToLiveHosts: () => 0,
-  postStyleUpdateToStylebookHosts: (style: Record<string, unknown>) => {
+  postStyleUpdateToStylebookHosts: (style: JxStyle) => {
     stylebookCalls.push(style);
     return 0;
   },
@@ -38,7 +39,7 @@ afterEach(() => {
 
 describe("pushProjectStylesToCanvas", () => {
   test("both host kinds are told, in one call", () => {
-    resetStudioState({ projectConfig: { style: { "--color-primary": "#007acc" } } as unknown });
+    resetStudioState({ projectConfig: { style: { "--color-primary": "#007acc" } } });
     pushProjectStylesToCanvas();
     expect(siteCalls).toHaveLength(1);
     expect(stylebookCalls).toHaveLength(1);
@@ -47,7 +48,7 @@ describe("pushProjectStylesToCanvas", () => {
   });
 
   test("with no tab open the project's own style is what the specimen canvas gets", () => {
-    resetStudioState({ projectConfig: { style: { "& h1": { color: "red" } } } as unknown });
+    resetStudioState({ projectConfig: { style: { "& h1": { color: "red" } } } });
     pushProjectStylesToCanvas();
     expect(Object.keys(stylebookCalls[0]!).some((k) => k.includes("h1"))).toBe(true);
   });
@@ -55,12 +56,12 @@ describe("pushProjectStylesToCanvas", () => {
   test("the open document's own element defaults are not dropped on the way through", () => {
     /* The stylebook canvas renders the EFFECTIVE style. Posting the site style alone would blank a
        component's own `& <tag>` defaults out of the specimen until the next full render. */
-    resetStudioState({ projectConfig: { style: { "--color-primary": "#007acc" } } as unknown });
+    resetStudioState({ projectConfig: { style: { "--color-primary": "#007acc" } } });
     resetWorkspaceWithTab({
       children: [],
       style: { "& h2": { color: "rebeccapurple" } },
       tagName: "div",
-    } as never);
+    });
     pushProjectStylesToCanvas();
     const posted = JSON.stringify(stylebookCalls.at(-1));
     expect(posted).toContain("rebeccapurple");

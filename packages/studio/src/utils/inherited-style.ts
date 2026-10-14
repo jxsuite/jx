@@ -13,6 +13,7 @@
  * that drops it, for callers that only want the value.
  */
 
+import { getNestedStyle, isNumber, isString } from "@jxsuite/schema/guards";
 import type { JxStyle } from "@jxsuite/schema/types";
 
 /** One inherited property: the value that shows through, and the breakpoint it was set on. */
@@ -42,30 +43,29 @@ export function computeInheritedSources(
     return {};
   }
 
-  const inherited: Record<string, InheritedSource> = {};
+  // A Map re-set keeps the key's first position, exactly as reassigning an object property does.
+  const inherited = new Map<string, InheritedSource>();
 
   /** Layer one block over the accumulator, recording `donor` for everything it contributes. */
-  const layer = (block: JxStyle, donor: string | null) => {
-    for (const [p, v] of Object.entries(block)) {
-      if (typeof v !== "object") {
-        inherited[p] = { donor, value: (v as string | number) ?? "" };
+  const layer = (block: JxStyle | undefined, donor: string | null) => {
+    for (const [p, v] of Object.entries(block ?? {})) {
+      // Declarations only: nested blocks, block lists and `$ref` objects are not inherited values.
+      if (v === undefined || isString(v) || isNumber(v)) {
+        inherited.set(p, { donor, value: v ?? "" });
       }
     }
   };
 
   if (activeSelector) {
     // Selector inheritance: base selector → each media's selector block, in cascade order.
-    layer((style[activeSelector] || {}) as JxStyle, null);
+    layer(getNestedStyle(style, activeSelector), null);
     for (const name of mediaNames) {
       if (name === activeTab) {
         break;
       }
-      layer(
-        (((style[`@${name}`] || {}) as Record<string, unknown>)[activeSelector] || {}) as JxStyle,
-        name,
-      );
+      layer(getNestedStyle(getNestedStyle(style, `@${name}`), activeSelector), name);
     }
-    return inherited;
+    return Object.fromEntries(inherited);
   }
 
   // Base flat props first, then each media block in order until the current tab.
@@ -74,9 +74,9 @@ export function computeInheritedSources(
     if (name === activeTab) {
       break;
     }
-    layer((style[`@${name}`] || {}) as JxStyle, name);
+    layer(getNestedStyle(style, `@${name}`), name);
   }
-  return inherited;
+  return Object.fromEntries(inherited);
 }
 
 /**
@@ -95,11 +95,9 @@ export function computeInheritedStyle(
   activeTab: string | null,
   activeSelector: string | null = null,
 ): Record<string, string | number> {
-  const values: Record<string, string | number> = {};
-  for (const [prop, source] of Object.entries(
-    computeInheritedSources(style, mediaNames, activeTab, activeSelector),
-  )) {
-    values[prop] = source.value;
-  }
-  return values;
+  return Object.fromEntries(
+    Object.entries(computeInheritedSources(style, mediaNames, activeTab, activeSelector)).map(
+      ([prop, source]) => [prop, source.value],
+    ),
+  );
 }

@@ -21,16 +21,24 @@
 // `navigatorPanelSet()` is what populates it. The rail is therefore OBSERVED — a ninth panel fails
 // This check in the commit that registers it, with nothing to remember to update.
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { checkChromeBudget, CHROME_BUDGET, dockTabs } from "../packages/studio/src/commands/budget";
 import { railDeclarations } from "../packages/studio/src/panels/panel-registry";
 import { navigatorPanelSet } from "../packages/studio/src/panels/navigator-panels";
 import type { BudgetableRecord, DockDeclaration } from "../packages/studio/src/commands/budget";
-
-const DEFAULT_SOURCE = "../packages/studio/src/commands/app-commands.ts";
+import { DEFAULT_SOURCE } from "./check-command-levels";
 
 interface CommandSource {
-  defaultCommandSet?: () => BudgetableRecord[];
+  defaultCommandSet: () => BudgetableRecord[];
   dockTabs?: readonly DockDeclaration[];
+}
+
+/**
+ * A `--source` module that exports a callable `defaultCommandSet`. Its records and the optional
+ * `dockTabs` override are the module's own typed exports, so only the required export is checked.
+ */
+function isCommandSource(mod: unknown): mod is CommandSource {
+  return isNonNullObject(mod) && "defaultCommandSet" in mod && isFunction(mod.defaultCommandSet);
 }
 
 const args = process.argv.slice(2);
@@ -42,8 +50,8 @@ if (sourceIndex !== -1 && !args[sourceIndex + 1]) {
 const sourcePath =
   sourceIndex === -1 ? DEFAULT_SOURCE : Bun.pathToFileURL(args[sourceIndex + 1]!).href;
 
-const source = (await import(sourcePath)) as CommandSource;
-if (typeof source.defaultCommandSet !== "function") {
+const source = await import(sourcePath);
+if (!isCommandSource(source)) {
   console.error(`${sourcePath} does not export defaultCommandSet()`);
   process.exit(2);
 }

@@ -55,7 +55,8 @@
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import { activeRegistry } from "./active-registry";
-import type { CommandArgs, CommandRegistry } from "./registry";
+import type { CommandArgValues } from "./command-args";
+import type { CommandRegistry } from "./registry";
 
 /**
  * Whether an error is one of the two REFUSAL shapes, whose message is written to be read whole.
@@ -64,10 +65,10 @@ import type { CommandArgs, CommandRegistry } from "./registry";
  * `handleKeyEvent`, and a value import back would close a cycle for one class whose constructor
  * sets exactly this name. `RangeError` is the shape `coerceArgs` and a `run` body refuse with.
  */
-function isRefusal(error: unknown): boolean {
+function isRefusal(cause: unknown): boolean {
   return (
-    error instanceof RangeError ||
-    (error instanceof Error && error.name === "CommandUnavailableError")
+    cause instanceof RangeError ||
+    (cause instanceof Error && cause.name === "CommandUnavailableError")
   );
 }
 
@@ -86,15 +87,15 @@ function isRefusal(error: unknown): boolean {
 export function runReported(
   registry: CommandRegistry,
   id: string,
-  args?: CommandArgs,
+  args?: CommandArgValues,
   source: string = id,
 ): Promise<void> {
-  const report = (error: unknown) => {
-    if (!isRefusal(error)) {
+  const report = (cause: unknown) => {
+    if (!isRefusal(cause)) {
       // A crash, not a refusal: the row below carries the sentence, the console keeps the stack.
-      console.error(`${source}: command "${id}" failed`, error);
+      console.error(`${source}: command "${id}" failed`, cause);
     }
-    notify.error(errorMessage(error), { key: `command.run:${id}`, source });
+    notify.error(errorMessage(cause), { key: `command.run:${id}`, source });
   };
   let result: void | Promise<void>;
   try {
@@ -114,7 +115,11 @@ export function runReported(
  * registry to refuse it, so there is no refusal to file. The resolved promise keeps the caller's
  * `void` honest either way.
  */
-export function runActiveReported(id: string, args?: CommandArgs, source?: string): Promise<void> {
+export function runActiveReported(
+  id: string,
+  args?: CommandArgValues,
+  source?: string,
+): Promise<void> {
   const registry = activeRegistry();
   return registry ? runReported(registry, id, args, source) : Promise.resolve();
 }

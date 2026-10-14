@@ -25,12 +25,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { listCatalog } from "@jxsuite/catalog";
-import { buildExtensionRegistry } from "@jxsuite/schema/extension-registry";
+import { buildExtensionRegistry, EXTENSION_MANIFEST } from "@jxsuite/schema/extension-registry";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { createNodeFormatIO, probeExtension } from "@jxsuite/compiler/format-host";
 import type { ExtensionCatalogEntry, ExtensionSectionInfo } from "@jxsuite/protocol";
-
-/** The well-known manifest filename, mirroring `@jxsuite/schema`'s `EXTENSION_MANIFEST`. */
-const MANIFEST = "jx-extension.json";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -45,6 +44,9 @@ function readPackageJson(projectRoot: string): PackageJson | null {
     return null;
   }
   try {
+    /* SAFETY: package.json is the npm manifest the project's installer reads, so its
+       `dependencies`/`devDependencies` are objects keyed by package name (only their keys are read
+       here); text that is not JSON throws into the catch below. */
     return JSON.parse(readFileSync(path, "utf8")) as PackageJson;
   } catch {
     // A project mid-edit should cost the catalogue its discovered half, not the whole response.
@@ -58,6 +60,14 @@ function declaredDependencies(projectRoot: string): string[] {
   return pkg === null
     ? []
     : [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})];
+}
+
+/** What the registry reports for one extension that loaded. */
+interface LoadedEntry {
+  description?: string;
+  formats: string[];
+  sections: ExtensionSectionInfo[];
+  title?: string;
 }
 
 /**
@@ -75,10 +85,7 @@ function declaredDependencies(projectRoot: string): string[] {
 async function loadEntry(
   projectRoot: string,
   name: string,
-): Promise<
-  | { description?: string; formats: string[]; sections: ExtensionSectionInfo[]; title?: string }
-  | { problem: string }
-> {
+): Promise<LoadedEntry | { problem: string }> {
   try {
     const registry = await buildExtensionRegistry(
       [name],
@@ -94,20 +101,25 @@ async function loadEntry(
     for (const cls of info.classes) {
       if (cls.project) {
         const { key, title } = cls.project;
-        sections.push({ key, ...(typeof title === "string" ? { title } : {}) });
+        const section: ExtensionSectionInfo = { key };
+        // The descriptor is the package's own JSON, so its declared string type is not trusted
+        if (isString(title)) {
+          section.title = title;
+        }
+        sections.push(section);
       }
       for (const ext of cls.extensions) {
         formats.add(ext);
       }
     }
-    return {
-      formats: [...formats].toSorted(),
-      sections,
-      ...(info.manifest.title === undefined ? {} : { title: info.manifest.title }),
-      ...(info.manifest.description === undefined
-        ? {}
-        : { description: info.manifest.description }),
-    };
+    const loaded: LoadedEntry = { formats: [...formats].toSorted(), sections };
+    if (info.manifest.title !== undefined) {
+      loaded.title = info.manifest.title;
+    }
+    if (info.manifest.description !== undefined) {
+      loaded.description = info.manifest.description;
+    }
+    return loaded;
   } catch (error) {
     return { problem: error instanceof Error ? error.message : String(error) };
   }
@@ -131,7 +143,9 @@ function declaresJxField(projectRoot: string, name: string): boolean {
     return false;
   }
   try {
-    return typeof (JSON.parse(readFileSync(path, "utf8")) as PackageJson).jx === "string";
+    // SAFETY: JSON.parse without a reviver only yields JSON values; its `any` says nothing more.
+    const manifest = JSON.parse(readFileSync(path, "utf8")) as JsonValue;
+    return isJsonObject(manifest) && isString(manifest.jx);
   } catch {
     return false;
   }
@@ -155,7 +169,7 @@ export async function buildExtensionCatalog(projectRoot: string): Promise<Extens
   for (const meta of listCatalog()) {
     seen.add(meta.name);
     const found = probeExtension(projectRoot, meta.name);
-    entries.push({
+    const entry: ExtensionCatalogEntry = {
       description: meta.description,
       docs: meta.docs,
       installed: found.project,
@@ -163,12 +177,19 @@ export async function buildExtensionCatalog(projectRoot: string): Promise<Extens
       sections: meta.sections,
       source: "first-party",
       title: meta.title,
-      ...(meta.formats ? { formats: meta.formats } : {}),
-      ...(meta.requires ? { requires: meta.requires } : {}),
-      // Bundled means "resolves without a project install": the host answers for it, and the
-      // Project does not have to.
-      ...(found.host && !found.project ? { bundled: true } : {}),
-    });
+    };
+    if (meta.formats) {
+      entry.formats = meta.formats;
+    }
+    if (meta.requires) {
+      entry.requires = meta.requires;
+    }
+    // Bundled means "resolves without a project install": the host answers for it, and the
+    // Project does not have to.
+    if (found.host && !found.project) {
+      entry.bundled = true;
+    }
+    entries.push(entry);
   }
 
   for (const name of declaredDependencies(projectRoot)) {
@@ -183,7 +204,7 @@ export async function buildExtensionCatalog(projectRoot: string): Promise<Extens
           installed: true,
           name,
           problem:
-            `declares "jx" but does not export "./${MANIFEST}", so no host can resolve its ` +
+            `declares "jx" but does not export "./${EXTENSION_MANIFEST}", so no host can resolve its ` +
             `manifest — add that entry to its exports map`,
           sections: [],
           source: "project",
@@ -202,16 +223,25 @@ export async function buildExtensionCatalog(projectRoot: string): Promise<Extens
       });
       continue;
     }
-    entries.push({
+    const entry: ExtensionCatalogEntry = {
       installed: true,
       name,
       sections: loaded.sections,
       source: "project",
-      ...(loaded.title === undefined ? {} : { title: loaded.title }),
-      ...(loaded.description === undefined ? {} : { description: loaded.description }),
-      ...(loaded.formats.length > 0 ? { formats: loaded.formats } : {}),
-      ...(found.host ? { bundled: true } : {}),
-    });
+    };
+    if (loaded.title !== undefined) {
+      entry.title = loaded.title;
+    }
+    if (loaded.description !== undefined) {
+      entry.description = loaded.description;
+    }
+    if (loaded.formats.length > 0) {
+      entry.formats = loaded.formats;
+    }
+    if (found.host) {
+      entry.bundled = true;
+    }
+    entries.push(entry);
   }
 
   return entries;

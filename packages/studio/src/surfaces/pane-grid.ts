@@ -23,14 +23,15 @@
  * @docs studio/interface
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import paneGridDoc from "./pane-grid.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("pane-grid", paneGridDoc as unknown as JxDocument);
+registerSurface("pane-grid", paneGridDoc);
 
 /**
  * The `part` a pane's CELL carries.
@@ -80,7 +81,7 @@ const CELL_PARTS: ReadonlyMap<string, PaneCellPart> = new Map([
  * Every field is a finished value. The document asks no question about a pane — not which index it
  * is at, not how many there are — so a projection cannot disagree with what is drawn.
  */
-export interface PaneGridRow extends Record<string, unknown> {
+export interface PaneGridRow {
   /** The pane id. The repeater's key, and what every action is addressed with. */
   id: string;
   /** `"shown"` for every row but the first. The `$switch` the leading splitter hangs off. */
@@ -165,7 +166,7 @@ export interface PaneGridSurface {
 }
 
 /** The scope `pane-grid.json` reads. */
-interface PaneGridScope extends Record<string, unknown>, PaneGridDragState {
+interface PaneGridScope extends PaneGridDragState {
   rows: PaneGridRow[];
   /** `jx-split`'s `value`. */
   paneSplit: number;
@@ -180,8 +181,8 @@ interface PaneGridScope extends Record<string, unknown>, PaneGridDragState {
 
 /** The `part` a node's definition carries, or `""` for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -192,8 +193,10 @@ function partOf(def: JxElement | string): string {
  * object the projection put in `rows`.
  */
 function paneOf(state: JxScope | undefined): string {
-  const row = (state?.["$map"] as { item?: { id?: unknown } } | undefined)?.item;
-  return typeof row?.id === "string" ? row.id : "";
+  const map = state?.["$map"];
+  const row = isJsonObject(map) ? map["item"] : undefined;
+  const id = isJsonObject(row) ? row["id"] : undefined;
+  return isString(id) ? id : "";
 }
 
 /**
@@ -215,7 +218,7 @@ export function mountPaneGridSurface(
   actions: PaneGridActions,
 ): PaneGridSurface {
   host.replaceChildren();
-  const scope = reactive<PaneGridScope>({
+  const scope: PaneGridScope = reactive<PaneGridScope>({
     armed: false,
     edgePane: "",
     move: actions.move,
@@ -226,7 +229,7 @@ export function mountPaneGridSurface(
     splitGap: split.gap,
     splitMax: split.max,
     splitMin: split.min,
-  }) as PaneGridScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
@@ -239,6 +242,8 @@ export function mountPaneGridSurface(
     onNodeCreated: (element, _path, def, state) => {
       const cellPart = CELL_PARTS.get(partOf(def));
       if (cellPart) {
+        /* SAFETY: `pane-grid.json` declares no text children and no SVG, so every node carrying
+           one of the five cell parts is an HTML element the runtime created from a tagName. */
         actions.cellPart(paneOf(state), cellPart, element as HTMLElement);
       }
     },

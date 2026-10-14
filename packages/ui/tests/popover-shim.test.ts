@@ -31,7 +31,12 @@ describe("the popover shim's surface", () => {
   test("showing an already-open popover is a no-op, not a second toggle", () => {
     const el = panel("auto");
     const seen: string[] = [];
-    el.addEventListener("beforetoggle", (e) => seen.push((e as ToggleEvent).newState));
+    el.addEventListener("beforetoggle", (e) => {
+      /* SAFETY: the shim's toggleEvent() dispatches every beforetoggle as a plain Event with an own
+         string `newState` assigned onto it, the one ToggleEvent member read here; it is not a
+         ToggleEvent instance, so `instanceof` cannot narrow it. */
+      seen.push((e as ToggleEvent).newState);
+    });
     el.showPopover();
     el.showPopover();
     expect(seen).toEqual(["open"]);
@@ -44,8 +49,10 @@ describe("the popover shim's surface", () => {
     expect(isOpen(el)).toBe(true);
     expect(el.togglePopover()).toBe(false);
     expect(isOpen(el)).toBe(false);
-    expect(el.togglePopover(true)).toBe(true);
-    expect(el.togglePopover(true)).toBe(true);
+    const forced = el.togglePopover(true);
+    const forcedAgain = el.togglePopover(true);
+    expect(forced).toBe(true);
+    expect(forcedAgain).toBe(true);
     expect(isOpen(el)).toBe(true);
     expect(el.togglePopover(false)).toBe(false);
     expect(isOpen(el)).toBe(false);

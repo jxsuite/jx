@@ -12,7 +12,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
-import type { FormatHostIO } from "@jxsuite/schema/format-registry";
+import type {
+  FormatCapability,
+  FormatHostIO,
+  ImplementationModule,
+} from "@jxsuite/schema/format-registry";
+import { isNonNullObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxAttributeValue, JxElement } from "@jxsuite/schema/types";
 import { Content, loadContentSection } from "../src/content-loader.ts";
 import type { ContentSection } from "../src/content-loader.ts";
 import type { ContentLoaderEntry } from "../src/types.ts";
@@ -89,8 +95,9 @@ function captureWarnings(): string[] {
 
 // ─── A fake third-party format class (does not understand `exclude`) ─────────
 
+/** One call the format host made on the fake: the capability it dispatched, and what it passed. */
 interface FakeCall {
-  method: string;
+  method: FormatCapability;
   args: unknown[];
 }
 
@@ -118,19 +125,17 @@ function fakeFormat(options: { remote?: boolean; discover?: string[]; fail?: boo
     loadJson: () => Promise.reject(new Error("not used")),
     resolvePath: (_base, ref) => ref,
   };
-  const methods: Record<string, { role: string; identifier: string }> = {
-    load: { identifier: "load", role: "load" },
-  };
-  if (options.discover) {
-    methods.discover = { identifier: "discover", role: "discover" };
-  }
+  const load = { identifier: "load", role: "load" };
+  const methods = options.discover
+    ? { discover: { identifier: "discover", role: "discover" }, load }
+    : { load };
   const entry = new FormatEntry(
     "Fake",
     "/virtual/fake.class.json",
     {
       $defs: { methods },
       $implementation: "./fake.js",
-      format: { extensions: [".fake"], ...(options.remote ? { remote: true } : {}) },
+      format: options.remote ? { extensions: [".fake"], remote: true } : { extensions: [".fake"] },
       title: "Fake",
     },
     io,
@@ -138,11 +143,11 @@ function fakeFormat(options: { remote?: boolean; discover?: string[]; fail?: boo
   return { calls, registry: new FormatRegistry([entry]) };
 }
 
-const load = async (
-  section: Record<string, unknown>,
-  registry = new FormatRegistry([]),
-  projectConfig = {},
-) => await loadContentSection(section as unknown as ContentSection, TMP, registry, projectConfig);
+/* SAFETY: the section is project.json data, unvalidated. `loadContentSection` checks every option
+   it reads (`idField`, `exclude`, `links`, `where`, `route`, …) and throws naming the content type,
+   and the option-validation cases below hand it malformed values on purpose to pin exactly that. */
+const load = async (section: JsonObject, registry = new FormatRegistry([]), projectConfig = {}) =>
+  await loadContentSection(section as ContentSection, TMP, registry, projectConfig);
 
 describe("native JSON sources", () => {
   it("a JSON file that does not parse is reported by its path", async () => {
@@ -360,18 +365,15 @@ async function realRegistry() {
   return await buildExtensionRegistry(
     ["./"],
     {
-      importModule: async (path: string) => {
+      importModule: async (path: string): Promise<ImplementationModule> => {
         try {
-          return (await import(pathToFileURL(path).href)) as Record<string, unknown>;
+          return await import(pathToFileURL(path).href);
         } catch {
-          return (await import(pathToFileURL(`${path.slice(0, -3)}.ts`).href)) as Record<
-            string,
-            unknown
-          >;
+          return await import(pathToFileURL(`${path.slice(0, -3)}.ts`).href);
         }
       },
       loadJson: (path: string) =>
-        Promise.resolve(JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>),
+        Promise.resolve<JsonValue>(JSON.parse(readFileSync(path, "utf8"))),
       resolvePath: (base: string, ref: string) =>
         isAbsolute(ref) ? ref : resolve(dirname(base), ref),
     },
@@ -386,7 +388,7 @@ describe("a folder with both a README and an index", () => {
       { both: { exclude: [], format: "Markdown", route: "/b/{slug}", source: "./both" } },
       { projectConfig: {}, registry: await realRegistry(), root: TMP },
     );
-    const entries = data.get("both") as ContentLoaderEntry[];
+    const entries = data.get("both") ?? [];
     const page = entries.find((e) => e.data.slug === "page")!;
     const hrefs = JSON.stringify(page.$children);
     expect(hrefs).toContain('"href":"/b/index-page/"');
@@ -412,30 +414,30 @@ describe("a localized collection with a route", () => {
       },
       registry: await realRegistry(),
       root: TMP,
-    } as never);
-    const entries = data.get("notes") as ContentLoaderEntry[];
+    });
+    const entries = data.get("notes") ?? [];
     const urls = entries.map((e) => [e._meta?.locale, e._meta?.route, e._meta?.url]);
     expect(urls).toContainEqual(["en", "/guides/intro", "/guides/intro/"]);
     expect(urls).toContainEqual(["fr", "/guides/intro", "/fr/guides/intro/"]);
 
     const anchors = (entry: ContentLoaderEntry) => {
-      const out: string[] = [];
-      const walk = (nodes: unknown[]) => {
+      const out: JxAttributeValue[] = [];
+      const walk = (nodes: JxElement["children"]) => {
+        if (!Array.isArray(nodes)) {
+          return;
+        }
         for (const node of nodes) {
-          const el = node as {
-            tagName?: string;
-            attributes?: { href?: string };
-            children?: unknown[];
-          };
-          if (el?.tagName === "a" && el.attributes?.href) {
-            out.push(el.attributes.href);
+          if (!isNonNullObject(node)) {
+            continue;
           }
-          if (Array.isArray(el?.children)) {
-            walk(el.children);
+          const href = node.attributes?.href;
+          if (node.tagName === "a" && href) {
+            out.push(href);
           }
+          walk(node.children);
         }
       };
-      walk(entry.$children ?? []);
+      walk(entry.$children);
       return out;
     };
     const fr = entries.find((e) => e._meta?.locale === "fr" && e.data.slug === "intro")!;
@@ -455,7 +457,7 @@ describe("a localized collection with a route", () => {
       projectConfig,
       registry: await realRegistry(),
       root: TMP,
-    } as never);
+    });
     const fr = await Content.resolvePaths(
       { contentType: "notes" },
       {
@@ -468,7 +470,7 @@ describe("a localized collection with a route", () => {
       },
     );
     expect(fr.map((row) => row.slug).toSorted()).toEqual(["intro", "next"]);
-    expect(fr.every((row) => (row._meta as { locale?: string }).locale === "fr")).toBe(true);
+    expect(fr.every((row) => row._meta?.locale === "fr")).toBe(true);
   });
 });
 

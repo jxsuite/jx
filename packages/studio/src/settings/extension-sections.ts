@@ -8,13 +8,14 @@
  * path.
  */
 
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { getFormats, loadExtensions, loadFormats } from "../format/format-host";
 import { registerSettingsSection, unregisterSettingsSection } from "./section-registry";
 import { renderContributedSection } from "./contributed-section";
 import { dataSectionActions } from "../panels/data-grid";
 import type { ExtensionContributionInfo } from "../types";
 import type { JsonSchema } from "../ui/schema-form";
-import type { SettingsContribution } from "./contributed-section";
+import type { ContributedSectionOptions, SettingsContribution } from "./contributed-section";
 
 /** The `$studio.settings` block shape consumed here (nav metadata + the renderer inputs). */
 interface StudioSettingsBlock {
@@ -49,31 +50,39 @@ const DEFAULT_SECTION_ORDER = 100;
 export function deriveSettingsSection(
   info: ExtensionContributionInfo,
 ): DerivedSettingsSection | null {
-  const studio = info.studio as { settings?: StudioSettingsBlock } | null | undefined;
-  const settings = studio?.settings;
+  /* SAFETY: `$studio.settings` is the extensions.md §9.1 vocabulary, served verbatim from the
+     class descriptor; every member read below is optional and falls back through `??`, so an
+     omitted member degrades to the section defaults rather than reaching the renderer. */
+  const settings = info.studio?.settings as StudioSettingsBlock | null | undefined;
   if (!settings) {
     return null;
   }
   const { key } = info.project;
   const layout = settings.layout ?? "form";
+  /* SAFETY: the backend fills `entrySchema` with `properties[<key>]` of the extension's shipped
+     project fragment (compiler `site/format-host.ts`), which is a JSON Schema by construction. */
   const sectionSchema = (info.entrySchema ?? {}) as JsonSchema & {
     additionalProperties?: JsonSchema | boolean;
   };
   const entrySchema =
     layout === "map"
-      ? typeof sectionSchema.additionalProperties === "object"
+      ? isNonNullObject(sectionSchema.additionalProperties)
         ? sectionSchema.additionalProperties
         : {}
-      : (sectionSchema as JsonSchema);
+      : sectionSchema;
   const label = settings.label ?? info.project.title ?? key;
+  const sectionSettings: SettingsContribution["settings"] = {};
+  if (settings.entry !== undefined) {
+    sectionSettings.entry = settings.entry;
+  }
+  if (settings.layout !== undefined) {
+    sectionSettings.layout = settings.layout;
+  }
   return {
     contribution: {
       entrySchema,
       key,
-      settings: {
-        ...(settings.entry === undefined ? {} : { entry: settings.entry }),
-        ...(settings.layout === undefined ? {} : { layout: settings.layout }),
-      },
+      settings: sectionSettings,
       title: label,
     },
     icon: settings.icon,
@@ -143,10 +152,11 @@ async function runSync(): Promise<void> {
           // Data-domain sections get the Test/Push/Data-grid actions slot when the platform
           // Implements the protocol's data routes; every other section renders actions-free.
           const actions = dataSectionActions(derived.key);
-          renderContributedSection(container, contribution, {
-            formats: getFormats(),
-            ...(actions === null ? {} : { actions }),
-          });
+          const opts: ContributedSectionOptions = { formats: getFormats() };
+          if (actions !== null) {
+            opts.actions = actions;
+          }
+          renderContributedSection(container, contribution, opts);
         },
       });
       next.add(derived.key);

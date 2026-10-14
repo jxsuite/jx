@@ -1,7 +1,7 @@
 {
   "name": "ask-user-round",
   "description": "Two ask_user rounds, answered and skipped. The answer travels as the tool reply (never as a user message), in the exact JSON Studio's ask_user tool returns, and the turn carries on after it.",
-  "shapes": ["ask-user-round", "content-null-with-tool-calls"],
+  "scenarios": ["ask-user-round", "content-null-with-tool-calls"],
   "script": [
     ["sendMessage", "Import my old site"],
     ["appendToolCallStart", "call_ask", "ask_user"],

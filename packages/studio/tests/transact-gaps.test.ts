@@ -15,6 +15,8 @@ import { describe, expect, test } from "bun:test";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { createTab, disposeTab } from "../src/tabs/tab";
+import { childList } from "../src/state";
+import { isString } from "@jxsuite/schema/guards";
 import {
   beginBatch,
   endBatch,
@@ -55,13 +57,34 @@ function makeTab(doc?: JxMutableNode): Tab {
 
 /** The document, raw — every assertion below is about what would be serialised. */
 function raw(tab: Tab): JxMutableNode {
-  return jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+  return jsonClone(toRaw(tab.doc.document));
+}
+
+/**
+ * `node`'s element children. Every fixture in this file is built from element children only, so a
+ * text child means a mutator invented one, and the test fails on it here.
+ */
+function elements(node: JxMutableNode | null): JxMutableNode[] {
+  return childList(node).map((kid) => {
+    if (isString(kid)) {
+      throw new Error(`unexpected text child ${JSON.stringify(kid)}`);
+    }
+    return kid;
+  });
+}
+
+/** `node`'s first element child; a node with no children fails the test here. */
+function firstElement(node: JxMutableNode | null): JxMutableNode {
+  const [first] = elements(node);
+  if (first === undefined) {
+    throw new Error("expected at least one child");
+  }
+  return first;
 }
 
 /** The first child, raw. */
-function child(tab: Tab): Record<string, unknown> {
-  const kids = raw(tab).children as JxMutableNode[];
-  return kids[0] as unknown as Record<string, unknown>;
+function child(tab: Tab): JxMutableNode {
+  return firstElement(raw(tab));
 }
 
 function docJson(tab: Tab): string {
@@ -156,8 +179,8 @@ describe("coalescing a run that began on a checkpoint", () => {
 
     expect(tab.history.snapshots).toHaveLength(21);
     const folded = tab.history.snapshots.at(-1)!;
-    const stored = jsonClone(toRaw(folded.document)) as JxMutableNode;
-    expect((stored.children as JxMutableNode[])[0]!.textContent).toBe("second");
+    const stored = jsonClone(toRaw(folded.document));
+    expect(firstElement(stored).textContent).toBe("second");
 
     // And the run is still ONE undoable step, back to the state before it began.
     undo(tab);
@@ -208,8 +231,8 @@ describe("endBatch at the history limit", () => {
     expect(tab.history.index).toBe(99);
     // The entry that survived is the batch's, and it is a full snapshot.
     const last = tab.history.snapshots.at(-1)!;
-    const stored = jsonClone(toRaw(last.document)) as JxMutableNode;
-    expect((stored.children as JxMutableNode[])[0]!.id).toBe("batched");
+    const stored = jsonClone(toRaw(last.document));
+    expect(firstElement(stored).id).toBe("batched");
     disposeTab(tab);
   });
 });
@@ -281,6 +304,23 @@ describe("a stale path changes nothing", () => {
   });
 });
 
+describe("a stale path under a mutator that needs its node", () => {
+  /* The writers with no early return dereference the node they were handed. A path gone stale
+     throws a TypeError that names it, inside the transaction, which rolls back and rethrows. */
+  test("mutateUpdateStyle throws a TypeError naming the path, and the document is untouched", () => {
+    const tab = makeTab();
+    const before = docJson(tab);
+
+    expect(() => {
+      transactDoc(tab, (t) => mutateUpdateStyle(t, ["children", 9], "color", "red"));
+    }).toThrow(new TypeError("No node at path [children, 9]"));
+
+    expect(docJson(tab)).toBe(before);
+    expect(tab.history.index).toBe(0);
+    disposeTab(tab);
+  });
+});
+
 // ─── Duplicating a multi-selection inside a nested container ─────────────────
 
 describe("mutateDuplicateNodes on nested siblings", () => {
@@ -311,14 +351,8 @@ describe("mutateDuplicateNodes on nested siblings", () => {
       ]),
     );
 
-    const section = (raw(tab).children as JxMutableNode[])[0]!;
-    expect((section.children as JxMutableNode[]).map((n) => n.textContent)).toEqual([
-      "a",
-      "a",
-      "b",
-      "c",
-      "c",
-    ]);
+    const section = firstElement(raw(tab));
+    expect(elements(section).map((n) => n.textContent)).toEqual(["a", "a", "b", "c", "c"]);
     // Index 1 is the clone of "a"; index 4 is the clone of "c" AFTER "a"'s insertion pushed it up.
     expect(tab.session.selection).toEqual([
       ["children", 0, "children", 1],
@@ -354,8 +388,8 @@ describe("mutateMoveNode reordering within one nested parent", () => {
 
     transactDoc(tab, (t) => mutateMoveNode(t, ["children", 0, "children", 0], ["children", 0], 2));
 
-    const section = (raw(tab).children as JxMutableNode[])[0]!;
-    const text = (section.children as JxMutableNode[]).map((n) => n.textContent);
+    const section = firstElement(raw(tab));
+    const text = elements(section).map((n) => n.textContent);
     expect(text).toEqual(["b", "a", "c"]);
     // Index 1, not the 2 that was asked for — "a" left the array before it was re-inserted.
     expect(tab.session.selection).toEqual([["children", 0, "children", 1]]);
@@ -380,12 +414,8 @@ describe("mutateMoveNode reordering within one nested parent", () => {
 
     transactDoc(tab, (t) => mutateMoveNode(t, ["children", 0, "children", 2], ["children", 0], 0));
 
-    const section = (raw(tab).children as JxMutableNode[])[0]!;
-    expect((section.children as JxMutableNode[]).map((n) => n.textContent)).toEqual([
-      "c",
-      "a",
-      "b",
-    ]);
+    const section = firstElement(raw(tab));
+    expect(elements(section).map((n) => n.textContent)).toEqual(["c", "a", "b"]);
     expect(tab.session.selection).toEqual([["children", 0, "children", 0]]);
     disposeTab(tab);
   });
@@ -399,9 +429,7 @@ describe("mutateUpdateProperty writing the style key", () => {
   test("writes the object and survives a round trip", () => {
     const tab = makeTab();
 
-    transactDoc(tab, (t) =>
-      mutateUpdateProperty(t, ["children", 0], "style", { color: "red" } as never),
-    );
+    transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "style", { color: "red" }));
     expect(child(tab).style).toEqual({ color: "red" });
 
     undo(tab);

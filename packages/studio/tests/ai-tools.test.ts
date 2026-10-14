@@ -8,12 +8,13 @@ import { registerAiTools } from "../src/services/ai-tools";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
 import { recordingContext } from "./harness/recording-context";
-import type { ToolContext } from "@jxsuite/ai/tools";
+import type { ToolArguments, ToolContext } from "@jxsuite/ai/tools";
+import { isString } from "@jxsuite/schema/guards";
 
 type AiToolsOptions = Parameters<typeof registerAiTools>[1];
 
 /** Build a tab + registry with a no-op validator so tests assert mutation, not schema. */
-function harness(doc: Record<string, unknown>, opts: Partial<AiToolsOptions> = {}) {
+function harness(doc: JxMutableNode, opts: Partial<AiToolsOptions> = {}) {
   const tab = createTab({ document: doc, id: "test" });
   const registry = createToolRegistry();
   registerAiTools(registry, { getTab: () => tab, validate: async () => [], ...opts });
@@ -24,11 +25,28 @@ function harness(doc: Record<string, unknown>, opts: Partial<AiToolsOptions> = {
 async function execErr(
   registry: ReturnType<typeof createToolRegistry>,
   name: string,
-  args: Record<string, unknown>,
+  args: ToolArguments,
   ctx?: ToolContext,
 ) {
   const result = await registry.execute(name, args, ctx);
   return result.error;
+}
+
+/** A node's static children list; a repeater or an absent list fails the test by name. */
+function childList(node: JxMutableNode): (JxMutableNode | string)[] {
+  if (!Array.isArray(node.children)) {
+    throw new TypeError("expected a static children array");
+  }
+  return node.children;
+}
+
+/** The element child at `index`; a text child or an empty slot fails the test by name. */
+function childAt(node: JxMutableNode, index: number): JxMutableNode {
+  const child = childList(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new TypeError(`expected an element child at ${index}`);
+  }
+  return child;
 }
 
 describe("ai-tools — state tools (regression)", () => {
@@ -133,12 +151,12 @@ describe("ai-tools — edits are recorded as ops", () => {
 
     await registry.execute("set_text", { path: ["children", 0], value: "new" });
 
-    const node = (tab.doc.document.children as JxMutableNode[])[0]!;
+    const node = childAt(tab.doc.document, 0);
     expect(node.textContent).toBeUndefined();
     expect(node.children).toEqual(["new"]);
     expect(lastEntry(tab).forwardOps?.length).toBe(2);
     undo(tab);
-    expect((tab.doc.document.children as JxMutableNode[])[0]).toEqual({
+    expect(childAt(tab.doc.document, 0)).toEqual({
       tagName: "p",
       textContent: "old",
     });
@@ -202,9 +220,8 @@ describe("ai-tools — style & structure", () => {
     });
 
     expect(res.success).toBe(true);
-    const moveChildren = tab.doc.document.children as JxMutableNode[];
-    expect(moveChildren[0]!.children).toHaveLength(0);
-    expect((moveChildren[1]!.children as JxMutableNode[])[0]!.tagName).toBe("p");
+    expect(childAt(tab.doc.document, 0).children).toHaveLength(0);
+    expect(childAt(childAt(tab.doc.document, 1), 0).tagName).toBe("p");
     disposeTab(tab);
   });
 
@@ -235,7 +252,7 @@ describe("ai-tools — style & structure", () => {
 
     expect(res.success).toBe(true);
     expect(tab.doc.document.children).toHaveLength(2);
-    expect((tab.doc.document.children as JxMutableNode[])[1]!.textContent).toBe("two");
+    expect(childAt(tab.doc.document, 1).textContent).toBe("two");
     disposeTab(tab);
   });
 
@@ -257,10 +274,10 @@ describe("ai-tools — style & structure", () => {
     expect(res.success).toBe(false);
     expect(res.error).toContain("children array");
     // The bogus insert must NOT have happened: the real children array is untouched...
-    const ulNode = (tab.doc.document.children as JxMutableNode[])[0]!;
+    const ulNode = childAt(tab.doc.document, 0);
     expect(ulNode.children).toHaveLength(1);
     // ...and no `.children` property was tacked onto the array object.
-    expect((ulNode.children as unknown as Record<string, unknown>).children).toBeUndefined();
+    expect("children" in childList(ulNode)).toBe(false);
     disposeTab(tab);
   });
 });
@@ -283,7 +300,7 @@ describe("ai-tools — batching across a tab switch", () => {
       document: { tagName: "div", children: [{ tagName: "h1", textContent: "B" }] },
       id: "pages/about.json",
     });
-    const tabs: Record<string, Tab> = { "pages/index.json": tabA, "pages/about.json": tabB };
+    const tabs = { "pages/about.json": tabB, "pages/index.json": tabA };
     let active = tabA;
 
     const registry = createToolRegistry();
@@ -299,7 +316,7 @@ describe("ai-tools — batching across a tab switch", () => {
     await registry.execute("set_text", { path: ["children", 0], value: "A edited" });
     // Switch to tab B mid-loop, as the loop's `reanchorBatch` does after any tool moved the
     // Active tab: flush A's batch and open one on B.
-    active = tabs["pages/about.json"]!;
+    active = tabs["pages/about.json"];
     endBatch();
     beginBatch(active);
     // Edit tab B.
@@ -309,10 +326,8 @@ describe("ai-tools — batching across a tab switch", () => {
     endBatch();
 
     // Both documents reflect the edits.
-    const tabAChild = (tabA.doc.document.children as JxMutableNode[])[0]!;
-    const tabBChild = (tabB.doc.document.children as JxMutableNode[])[0]!;
-    expect((tabAChild.children as string[])[0]).toBe("A edited");
-    expect((tabBChild.children as string[])[0]).toBe("B edited");
+    expect(childList(childAt(tabA.doc.document, 0))[0]).toBe("A edited");
+    expect(childList(childAt(tabB.doc.document, 0))[0]).toBe("B edited");
 
     // Both documents have an undoable snapshot (index advanced past the base).
     expect(tabA.history.index).toBe(1);
@@ -320,9 +335,9 @@ describe("ai-tools — batching across a tab switch", () => {
 
     // Undo rolls back each document's edit independently (set_text restores textContent).
     undo(tabB);
-    expect((tabB.doc.document.children as JxMutableNode[])[0]!.textContent).toBe("B");
+    expect(childAt(tabB.doc.document, 0).textContent).toBe("B");
     undo(tabA);
-    expect((tabA.doc.document.children as JxMutableNode[])[0]!.textContent).toBe("A");
+    expect(childAt(tabA.doc.document, 0).textContent).toBe("A");
 
     disposeTab(tabA);
     disposeTab(tabB);
@@ -337,10 +352,10 @@ describe("ai-tools — read & inspect", () => {
     });
     const whole = await registry.execute("read_document", {});
     expect(whole.success).toBe(true);
-    expect((whole.data as JxMutableNode).tagName).toBe("div");
+    expect(whole.data).toMatchObject({ tagName: "div" });
 
     const sub = await registry.execute("read_document", { path: ["children", 0] });
-    expect((sub.data as JxMutableNode).tagName).toBe("p");
+    expect(sub.data).toMatchObject({ tagName: "p" });
 
     const bad = await registry.execute("read_document", { path: ["children", 9] });
     expect(bad.success).toBe(false);
@@ -392,8 +407,7 @@ describe("ai-tools — set_property / set_text", () => {
     });
     const res = await registry.execute("set_text", { path: ["children", 0], value: "fresh" });
     expect(res.success).toBe(true);
-    const p = (tab.doc.document.children as JxMutableNode[])[0]!;
-    expect((p.children as string[])[0]).toBe("fresh");
+    expect(childList(childAt(tab.doc.document, 0))[0]).toBe("fresh");
     disposeTab(tab);
   });
 

@@ -9,9 +9,12 @@
  * `"onsubmit": { "$ref": "auth.signInEmail" }` on a form with email/password fields.
  */
 
+import { isFunction, isString } from "@jxsuite/schema/guards";
 import { getAuthClient } from "./client.ts";
 import { clearSession, fetchSession } from "./session.ts";
-import type { AuthClientResult } from "./client.ts";
+import type { ActionScope } from "@jxsuite/connector/table-actions";
+import type { AuthClientResult, SocialSignInInput } from "./client.ts";
+import type { AuthSection } from "./config.ts";
 
 /** Redirect paths applied after auth state changes. */
 export interface AuthRedirects {
@@ -26,34 +29,48 @@ export interface AuthActionsConfig {
   provider?: string;
   baseUrl?: string;
   /** Injected by hosts (compiler/dev server): the project sections, including `auth`. */
-  _project?: { auth?: { redirects?: AuthRedirects }; [key: string]: unknown };
-  [key: string]: unknown;
+  _project?: { auth?: AuthSection };
 }
 
-type Scope = Record<string, unknown>;
-
 /** A `(scope, event)`-callable auth handler resolving true when the call succeeded. */
-export type AuthActionHandler = (scope: Scope, event?: Event) => Promise<boolean>;
+export type AuthActionHandler = (scope: ActionScope, event?: Event) => Promise<boolean>;
+
+/** The handler map `AuthActions.resolve()` returns, one entry per `$ref`-able action. */
+export interface AuthActionHandlers {
+  signInEmail: AuthActionHandler;
+  signInSocial: AuthActionHandler;
+  signOut: AuthActionHandler;
+  signUpEmail: AuthActionHandler;
+}
+
+/** String field values of a submitted form, keyed by field name. */
+type FormFields = Record<string, string>;
 
 /** The submitting form: the event target itself, or the target control's owner form. */
 function formOf(event?: Event): HTMLFormElement | null {
-  const target = event?.target as (HTMLElement & { form?: HTMLFormElement | null }) | null;
+  const target = event?.target;
   if (!target) {
     return null;
   }
-  return target.tagName === "FORM" ? (target as HTMLFormElement) : (target.form ?? null);
+  if (target instanceof HTMLFormElement) {
+    return target;
+  }
+  // Form-associated controls (input, button, select, …) expose their owner form as `.form`.
+  if (target instanceof Element && "form" in target && target.form instanceof HTMLFormElement) {
+    return target.form;
+  }
+  return null;
 }
 
 /** String field values of the submitting form (files are ignored). */
-function formValues(event?: Event): Record<string, string> {
+function formValues(event?: Event) {
+  const out: FormFields = {};
   const form = formOf(event);
-  if (!form) {
-    return {};
-  }
-  const out: Record<string, string> = {};
-  for (const [key, value] of new FormData(form)) {
-    if (typeof value === "string") {
-      out[key] = value;
+  if (form) {
+    for (const [key, value] of new FormData(form)) {
+      if (isString(value)) {
+        out[key] = value;
+      }
     }
   }
   return out;
@@ -67,8 +84,8 @@ function navigate(path: string | undefined): void {
 }
 
 /** Bump the read-after-write version so owner-scoped queries re-run under the new session. */
-function bumpVersion(scope: Scope): void {
-  scope._v = ((scope._v as number) || 0) + 1;
+function bumpVersion(scope: ActionScope): void {
+  scope._v = (scope._v || 0) + 1;
 }
 
 export class AuthActions {
@@ -84,7 +101,7 @@ export class AuthActions {
   }
 
   /** The handler map, wired via $ref (e.g. `onsubmit: { "$ref": "auth.signInEmail" }`). */
-  resolve(): Record<string, AuthActionHandler> {
+  resolve(): AuthActionHandlers {
     return {
       signInEmail: this.#authCall((values, client) =>
         client.signIn.email({ email: values.email ?? "", password: values.password ?? "" }),
@@ -93,16 +110,19 @@ export class AuthActions {
         (values, client) => {
           const provider = values.provider ?? this.config.provider ?? "";
           const callbackURL = this.redirects().afterSignIn;
-          return client.signIn.social({
-            provider,
-            ...(callbackURL === undefined ? {} : { callbackURL }),
-          });
+          const input: SocialSignInInput = { provider };
+          if (callbackURL !== undefined) {
+            input.callbackURL = callbackURL;
+          }
+          return client.signIn.social(input);
           // Social sign-in redirects the whole page itself — no local navigation.
         },
         { redirect: false },
       ),
-      signOut: async (scope: Scope, event?: Event): Promise<boolean> => {
-        event?.preventDefault?.();
+      signOut: async (scope: ActionScope, event?: Event): Promise<boolean> => {
+        if (event && isFunction(event.preventDefault)) {
+          event.preventDefault();
+        }
         const { error } = await getAuthClient(this.config.baseUrl).signOut();
         if (error) {
           return false;
@@ -126,13 +146,15 @@ export class AuthActions {
   /** Build a form-reading handler around one auth client call. */
   #authCall(
     call: (
-      values: Record<string, string>,
+      values: FormFields,
       client: ReturnType<typeof getAuthClient>,
     ) => Promise<AuthClientResult>,
     options: { redirect?: boolean } = {},
   ): AuthActionHandler {
-    return async (scope: Scope, event?: Event): Promise<boolean> => {
-      event?.preventDefault?.();
+    return async (scope: ActionScope, event?: Event): Promise<boolean> => {
+      if (event && isFunction(event.preventDefault)) {
+        event.preventDefault();
+      }
       const client = getAuthClient(this.config.baseUrl);
       const { error } = await call(formValues(event), client);
       if (error) {

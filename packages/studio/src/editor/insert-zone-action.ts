@@ -22,7 +22,7 @@ export function runInsertZoneAction(btn: HTMLElement, zone: InsertZone): void {
   showSlashMenu(btn, "", {
     onSelect: (cmd) => {
       const def = defaultDef(cmd.tag);
-      const insertPath = zone.insertParentPath as JxPath;
+      const insertPath: JxPath = zone.insertParentPath;
       const idx = zone.index;
       const newPath = [...insertPath, "children", idx];
       transactDoc(activeTab.value, (t) => {

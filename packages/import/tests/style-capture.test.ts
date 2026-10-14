@@ -6,15 +6,16 @@
 
 import { describe, expect, it } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { Page } from "puppeteer-core";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
+import { recordingPage } from "./memory-io.ts";
+import type { RecordingPage } from "./memory-io.ts";
 
 GlobalRegistrator.register({ url: "https://example.com/" });
 
 // Browsers give CSSStyleDeclaration a Symbol.iterator but happy-dom does not, and the
 // `for (const name of rule.style)` loop in collectCustomProps needs it — patch it in.
-const styleDeclarationProto = Object.getPrototypeOf(
-  document.createElement("div").style,
-) as CSSStyleDeclaration;
+const styleDeclarationProto = CSSStyleDeclaration.prototype;
 if (!(Symbol.iterator in styleDeclarationProto)) {
   Object.defineProperty(styleDeclarationProto, Symbol.iterator, {
     *value(this: CSSStyleDeclaration) {
@@ -30,17 +31,9 @@ if (!(Symbol.iterator in styleDeclarationProto)) {
 const { captureStyles, captureStylesAtWidth, STYLE_ALLOWLIST } =
   await import("../src/style-capture.ts");
 
-function makeFakePage(): { page: Page; viewports: { width: number; height: number }[] } {
-  const viewports: { width: number; height: number }[] = [];
-  const page = {
-    evaluate: (fn: (...fnArgs: unknown[]) => unknown, ...args: unknown[]) =>
-      Promise.resolve(fn(...args)),
-    setViewport(vp: { width: number; height: number }) {
-      viewports.push(vp);
-      return Promise.resolve();
-    },
-  } as unknown as Page;
-  return { page, viewports };
+/** Runs every evaluate() callback in-process, against the happy-dom globals registered above. */
+function makeFakePage(): RecordingPage {
+  return recordingPage("style capture");
 }
 
 function setDom(headHtml: string, bodyHtml: string): void {
@@ -209,10 +202,16 @@ describe("stripped tags and the path contract with to-jx", () => {
     /* Element-only indexing, exactly as `apply-styles.ts` walks it: a text child never consumes
        an index on either side. */
     function at(path: number[]): string {
-      let node = tree;
+      let node: JxElement = tree;
       for (const index of path) {
-        const kids = (node.children as unknown[]).filter((c) => typeof c !== "string");
-        node = kids[index] as typeof tree;
+        const kids = Array.isArray(node.children)
+          ? node.children.flatMap((c) => (isString(c) ? [] : [c]))
+          : [];
+        const next = kids[index];
+        if (next === undefined) {
+          throw new Error(`convertToJx's tree has no element at [${path.join(", ")}]`);
+        }
+        node = next;
       }
       return String(node.tagName);
     }

@@ -13,8 +13,8 @@
  */
 import { flush, installMockPlatform, resetStudioState, mountOverlayLayers } from "./harness";
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { DeployConfig } from "@jxsuite/schema/types";
-import type { CfConnectOutcome } from "../src/types";
+import type { DeployConfig, JsonValue } from "@jxsuite/schema/types";
+import type { CfConnectOutcome, StudioPlatform } from "../src/types";
 
 /**
  * The account picker is doubled: `hostedConnect` reaches it through a lazy `import()`, so the
@@ -49,11 +49,11 @@ function panel(): HTMLElement | null {
 }
 
 function part<T extends Element = HTMLElement>(name: string): T | null {
-  return (panel()?.querySelector(`[part="${name}"]`) ?? null) as T | null;
+  return panel()?.querySelector<T>(`[part="${name}"]`) ?? null;
 }
 
 function bodyText(): string {
-  return panel()?.textContent?.replaceAll(/\s+/g, " ") ?? "";
+  return panel()?.textContent.replaceAll(/\s+/g, " ") ?? "";
 }
 
 /** `jx-button` draws the native control, and `disabled` is what that control carries. */
@@ -100,11 +100,14 @@ function isErrorRoute(value: unknown): value is ErrorRoute {
   return typeof value === "object" && value !== null && "__error" in value;
 }
 
+/** The platform's Cloudflare passthrough, as the panel calls it. */
+type CfApi = NonNullable<StudioPlatform["cfApi"]>;
+
 /** CfApi answering from a path-keyed table; ErrorRoute values are rejected. */
-function cfApiMock(routes: Record<string, unknown>) {
+function cfApiMock(routes: Record<string, JsonValue>) {
   // Longest needle wins: "/deployments" paths also contain "/accounts".
   const entries = Object.entries(routes).toSorted((a, b) => b[0].length - a[0].length);
-  return mock(async (path: string) => {
+  return mock<CfApi>(async (path) => {
     for (const [needle, response] of entries) {
       if (path.includes(needle)) {
         if (isErrorRoute(response)) {
@@ -244,11 +247,12 @@ describe("openPublishPanel — an expired connection", () => {
     const cfApi = installLapsed();
     openPublishPanel();
     await flush();
-    expect(bodyText()).toContain("connection has expired");
-    expect(bodyText()).not.toContain("Connect your Cloudflare account");
+    const text = bodyText();
+    expect(text).toContain("connection has expired");
+    expect(text).not.toContain("Connect your Cloudflare account");
     // The 401 that produced the raw error string is not even attempted.
     expect(cfApi).not.toHaveBeenCalled();
-    expect(bodyText()).not.toContain("Cloudflare API:");
+    expect(text).not.toContain("Cloudflare API:");
     expect(part("reconnect")?.textContent).toContain("Reconnect Cloudflare");
   });
 
@@ -305,7 +309,7 @@ describe("openPublishPanel — an expired connection", () => {
 });
 
 describe("openPublishPanel — connect form", () => {
-  function installConnected(routes: Record<string, unknown> = {}) {
+  function installConnected(routes: Record<string, JsonValue> = {}) {
     installMockPlatform({
       cfApi: cfApiMock({
         "/accounts": [{ id: DEPLOY.accountId, name: "Acme" }],
@@ -374,12 +378,10 @@ describe("openPublishPanel — connect form", () => {
     pickAccount("a".repeat(32));
     click("submit");
     await flush();
-    const calls = cfApi.mock.calls as unknown as [string, { method?: string; body?: unknown }?][];
-    const created = calls.find(
+    const created = cfApi.mock.calls.find(
       ([path, init]) => path.endsWith("/pages/projects") && init?.method === "POST",
     );
-    const body = created?.[1]?.body as { build_config: Record<string, string> } | undefined;
-    expect(body?.build_config["root_dir"]).toBe("sites/blog");
+    expect(created?.[1]?.body).toMatchObject({ build_config: { root_dir: "sites/blog" } });
   });
 
   test("every row is a named field, so a control is reachable by what it collects", async () => {
@@ -475,9 +477,7 @@ describe("openPublishPanel — the token is not in the DOM", () => {
     const attributes = [...(host?.querySelectorAll("*") ?? [])].flatMap((el) =>
       [...el.attributes].map((attr) => attr.value),
     );
-    const values = [...(host?.querySelectorAll("input") ?? [])].map(
-      (el) => (el as HTMLInputElement).value ?? "",
-    );
+    const values = [...(host?.querySelectorAll("input") ?? [])].map((el) => el.value);
     return [host?.innerHTML ?? "", ...attributes, ...values].join("\n");
   }
 
@@ -599,8 +599,9 @@ describe("openPublishPanel — connected status view", () => {
     click("disconnect");
     await flush();
     const writes = state.calls.filter((c) => c[0] === "writeFile" && c[1] === "project.json");
-    const config = JSON.parse(String(writes.at(-1)?.[2])) as { build: Record<string, unknown> };
-    expect(config.build["deploy"]).toBeUndefined();
+    const config: JsonValue = JSON.parse(String(writes.at(-1)?.[2]));
+    expect(config).toHaveProperty("build");
+    expect(config).not.toHaveProperty("build.deploy");
   });
 
   test("a connected project with nothing shipped says so, and the buttons refuse while busy", async () => {

@@ -3,6 +3,8 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createProjectServer } from "../src/project-server.ts";
 import type { ProjectServerHandle, ProjectServerSession } from "../src/project-server.ts";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -148,11 +150,7 @@ function openWs(query: string): Promise<WebSocket> {
  * ceiling resolves with a sentinel so the suite never hangs (the existing chromium-rpc test does
  * the same).
  */
-function rpcRaw(
-  ws: WebSocket,
-  method: string,
-  params?: unknown,
-): Promise<{ error?: string; result?: unknown; timedOut?: boolean }> {
+function rpcRaw(ws: WebSocket, method: string, params?: JsonValue): Promise<JsonObject> {
   return new Promise((resolve) => {
     const id = Math.floor(Math.random() * 1_000_000);
     const timer = setTimeout(() => {
@@ -160,11 +158,7 @@ function rpcRaw(
       resolve({ timedOut: true });
     }, 4000);
     const handler = (event: MessageEvent) => {
-      const msg = JSON.parse(event.data as string) as {
-        id: number;
-        error?: string;
-        result?: unknown;
-      };
+      const msg = parseFrame(event);
       if (msg.id !== id) {
         return;
       }
@@ -175,6 +169,18 @@ function rpcRaw(
     ws.addEventListener("message", handler);
     ws.send(JSON.stringify({ id, method, params }));
   });
+}
+
+/** Decodes one server frame, failing the test on anything but a JSON object sent as text. */
+function parseFrame(event: MessageEvent): JsonObject {
+  if (!isString(event.data)) {
+    throw new Error("Expected a text frame from the project server");
+  }
+  const value: unknown = JSON.parse(event.data);
+  if (!isJsonObject(value)) {
+    throw new Error(`Expected a JSON object frame, got ${event.data}`);
+  }
+  return value;
 }
 
 /** Fetch a URL and return only its status code (avoids member access on an await expression). */
@@ -190,7 +196,7 @@ describe("binding", () => {
     expect(base.startsWith("http://127.0.0.1:")).toBe(true);
     expect(handle.wsUrl.startsWith("ws://127.0.0.1:")).toBe(true);
     expect(handle.canvasUrl).toBe(`${base}/__studio__/canvas.html`);
-    expect(typeof token).toBe("string");
+    expect(token).toBeTypeOf("string");
     expect(token.length).toBeGreaterThan(0);
   });
 });
@@ -510,9 +516,9 @@ describe("ws dispatch", () => {
   test("invalid JSON gets an error response with id 0", async () => {
     const ws = await openWs(`?token=${token}&win=one`);
     try {
-      const msg = await new Promise<{ id: number; error?: string }>((resolve) => {
+      const msg = await new Promise<JsonObject>((resolve) => {
         const handler = (event: MessageEvent) => {
-          const m = JSON.parse(event.data as string) as { id: number; error?: string };
+          const m = parseFrame(event);
           if (m.id !== 0) {
             return;
           }
@@ -577,24 +583,20 @@ describe("ws dispatch", () => {
  */
 describe("push", () => {
   /** Collect the next frame carrying `method`, or resolve null on timeout. */
-  function nextPush(
-    ws: WebSocket,
-    method: string,
-    timeoutMs = 2000,
-  ): Promise<Record<string, unknown> | null> {
+  function nextPush(ws: WebSocket, method: string, timeoutMs = 2000): Promise<JsonObject | null> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         ws.removeEventListener("message", handler);
         resolve(null);
       }, timeoutMs);
       const handler = (event: MessageEvent) => {
-        const msg = JSON.parse(event.data as string) as { method?: string };
+        const msg = parseFrame(event);
         if (msg.method !== method) {
           return;
         }
         clearTimeout(timer);
         ws.removeEventListener("message", handler);
-        resolve(msg as Record<string, unknown>);
+        resolve(msg);
       };
       ws.addEventListener("message", handler);
     });

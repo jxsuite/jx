@@ -9,9 +9,10 @@
 
 // ─── Re-exports from state.js ────────────────────────────────────────────────
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { INPUT_DEBOUNCE } from "./ui/timing";
 import type { JxPath } from "./state";
-import type { Tab } from "./tabs/tab";
+import type { Tab, TabUi } from "./tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 export {
@@ -36,18 +37,38 @@ export {
    each of which meant "the pane I am acting on" and got "the pane that happens to be focused". A
    stage belongs to a pane (`canvas/canvas-surface.ts`), a pane's cell is built by
    `panels/pane-grid.ts`, and every one of those readers now takes its surface. */
-export let activityBar = null as unknown as HTMLElement;
-export let leftPanel = null as unknown as HTMLElement;
-export let rightPanel = null as unknown as HTMLElement;
-export let toolbarEl = null as unknown as HTMLElement;
-export let statusbarEl = null as unknown as HTMLElement;
+
+/* Null until `initShellRefs()`, which `studio.ts` calls at boot right after mounting the shell
+   document; a render asked for before that (a test, or a command run ahead of the shell) reads null. */
+export let activityBar: HTMLElement | null = null;
+export let leftPanel: HTMLElement | null = null;
+export let rightPanel: HTMLElement | null = null;
+export let toolbarEl: HTMLElement | null = null;
+export let statusbarEl: HTMLElement | null = null;
+
+/** The shell region whose `id` is given, or null when the mounted shell has none. */
+function shellRef(id: string): HTMLElement | null {
+  const element = document.querySelector(`#${id}`);
+  return element instanceof HTMLElement ? element : null;
+}
 
 export function initShellRefs() {
-  activityBar = document.querySelector("#activity-bar") as HTMLElement;
-  leftPanel = document.querySelector("#left-panel") as HTMLElement;
-  rightPanel = document.querySelector("#right-panel") as HTMLElement;
-  toolbarEl = document.querySelector("#toolbar") as HTMLElement;
-  statusbarEl = document.querySelector("#statusbar") as HTMLElement;
+  activityBar = shellRef("activity-bar");
+  leftPanel = shellRef("left-panel");
+  rightPanel = shellRef("right-panel");
+  toolbarEl = shellRef("toolbar");
+  statusbarEl = shellRef("statusbar");
+}
+
+/**
+ * A shell region for a caller that cannot work without it. Reading one before `initShellRefs()` has
+ * found it is a boot-order bug, so it throws a TypeError that names the region.
+ */
+export function requireShellRef(ref: HTMLElement | null, id: string): HTMLElement {
+  if (!ref) {
+    throw new TypeError(`#${id} is not in the shell yet; initShellRefs() has not found it`);
+  }
+  return ref;
 }
 
 // ─── Shared constants ────────────────────────────────────────────────────────
@@ -130,6 +151,11 @@ export { stripEventHandlers } from "./utils/strip-events";
 
 const _renderers = new Map<string, () => void>();
 
+/** Whether a renderer's return value is a thenable — an `async` renderer that is still painting. */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (isNonNullObject(value) || isFunction(value)) && "then" in value && isFunction(value.then);
+}
+
 /**
  * How many registered renderers are mid-paint right now.
  *
@@ -154,9 +180,9 @@ function runRenderer(name: string, fn: () => void) {
   };
   let pending: PromiseLike<unknown> | null = null;
   try {
-    const result = fn() as unknown;
-    if (typeof (result as PromiseLike<unknown> | null)?.then === "function") {
-      pending = result as PromiseLike<unknown>;
+    const result = fn();
+    if (isThenable(result)) {
+      pending = result;
     }
   } catch (error) {
     console.error(`Renderer "${name}" failed:`, error);
@@ -165,7 +191,7 @@ function runRenderer(name: string, fn: () => void) {
     done();
     return;
   }
-  pending.then(done, (error: unknown) => {
+  pending.then(done, (error) => {
     console.error(`Renderer "${name}" failed:`, error);
     done();
   });
@@ -232,8 +258,8 @@ export function updateSession(
     selection?: JxPath[];
     hover?: JxPath | null;
     clipboard?: JxMutableNode | null;
-    ui?: Record<string, unknown>;
-    canvas?: Record<string, unknown>;
+    ui?: Partial<TabUi>;
+    canvas?: Partial<Tab["session"]["canvas"]>;
   },
 ) {
   if (tab) {
@@ -241,20 +267,16 @@ export function updateSession(
       tab.session.selection = patch.selection;
     }
     if (patch.hover !== undefined) {
-      tab.session.hover = patch.hover as JxPath | null;
+      tab.session.hover = patch.hover;
     }
     if (patch.clipboard !== undefined) {
-      tab.session.clipboard = patch.clipboard!;
+      tab.session.clipboard = patch.clipboard;
     }
     if (patch.ui) {
-      for (const [k, v] of Object.entries(patch.ui)) {
-        (tab.session.ui as unknown as Record<string, unknown>)[k] = v;
-      }
+      Object.assign(tab.session.ui, patch.ui);
     }
     if (patch.canvas) {
-      for (const [k, v] of Object.entries(patch.canvas)) {
-        (tab.session.canvas as unknown as Record<string, unknown>)[k] = v;
-      }
+      Object.assign(tab.session.canvas, patch.canvas);
     }
   }
 }
@@ -263,12 +285,12 @@ export function updateSession(
  * Update a single UI field on `tab`.
  *
  * @param {Tab | null} tab — the tab this field belongs to. `null` is a no-op.
- * @param {string} field
- * @param {unknown} value
+ * @param {K} field
+ * @param {TabUi[K]} value
  */
-export function updateUi(tab: Tab | null, field: string, value: unknown) {
+export function updateUi<K extends keyof TabUi>(tab: Tab | null, field: K, value: TabUi[K]) {
   if (tab) {
-    (tab.session.ui as unknown as Record<string, unknown>)[field] = value;
+    tab.session.ui[field] = value;
   }
 }
 
@@ -276,12 +298,10 @@ export function updateUi(tab: Tab | null, field: string, value: unknown) {
  * Update `tab`'s canvas async state (status, scope, error).
  *
  * @param {Tab | null} tab — the tab whose stage produced this state. `null` is a no-op.
- * @param {object} patch
+ * @param {Partial<Tab["session"]["canvas"]>} patch
  */
-export function updateCanvas(tab: Tab | null, patch: Record<string, unknown>) {
+export function updateCanvas(tab: Tab | null, patch: Partial<Tab["session"]["canvas"]>) {
   if (tab) {
-    for (const [k, v] of Object.entries(patch)) {
-      (tab.session.canvas as Record<string, unknown>)[k] = v;
-    }
+    Object.assign(tab.session.canvas, patch);
   }
 }

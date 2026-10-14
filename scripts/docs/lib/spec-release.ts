@@ -22,24 +22,38 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { endsInHardBreak } from "../../lib/unwrap-prose.ts";
-import { parseSpecSource, splitVersion, versionFloor } from "./spec-status.ts";
+import { CHANGELOG_HEADING, parseSpecSource, splitVersion, versionFloor } from "./spec-status.ts";
 import type { ParsedVersion } from "./spec-status.ts";
 
 export const LEVELS = ["major", "minor", "patch", "stable"] as const;
 export type Level = (typeof LEVELS)[number];
 
 export function isLevel(word: string): word is Level {
-  return (LEVELS as readonly string[]).includes(word);
+  return LEVELS.some((level) => level === word);
 }
 
 /** Where a pull request's release fragments live, relative to the repository root. */
 export const FRAGMENTS_DIR = "specs/changes";
 
-const CHANGELOG_HEADING = /^##\s+Changelog\s*$/;
 const FOOTER_VERSION_LINE = /Specification v[0-9][A-Za-z0-9.-]*/;
 const STATUS_LINE = /^\*\*Status:\*\*/;
 
 // ─── Versions ────────────────────────────────────────────────────────────────
+
+/** A version's `MAJOR.MINOR.PATCH`, which SemVer calls the version core. */
+interface VersionCore {
+  major: number;
+  minor: number;
+  patch: number;
+}
+
+/** The version a release mints, and the floor it counted up from. */
+export interface NextSpecVersion {
+  version: string;
+  floor: ParsedVersion;
+  /** Whether the base's version was ahead of the working file's and became the floor. */
+  raised: boolean;
+}
 
 /**
  * The version after `level`, from `current` or from `base` when the base is ahead.
@@ -54,10 +68,10 @@ export function nextSpecVersion(
   base: ParsedVersion | null,
   level: Level,
   draft: boolean,
-): { version: string; floor: ParsedVersion; raised: boolean } {
+): NextSpecVersion {
   const { version: floor, raised } = versionFloor(current, base);
   const preMajor = floor.major === 0;
-  let next: { major: number; minor: number; patch: number };
+  let next: VersionCore;
   if (level === "stable") {
     if (!preMajor) {
       throw new Error(`is already stable at ${floor.raw}`);
@@ -157,6 +171,15 @@ export function applySpecRelease(source: string, file: string, edit: ReleaseEdit
   return lines.join("\n");
 }
 
+/** One spec's released source, and the versions that release moved between. */
+export interface SpecRelease {
+  source: string;
+  version: string;
+  from: string;
+  floor: string;
+  raised: boolean;
+}
+
 /**
  * One release of one spec's source: the next version from its header (and the base's, when that is
  * ahead), then the three edits. What both `spec:bump` and `spec:release` do per release.
@@ -168,7 +191,7 @@ export function releaseSpecSource(
   summary: string,
   baseSource: string | null,
   today: string,
-): { source: string; version: string; from: string; floor: string; raised: boolean } {
+): SpecRelease {
   const parsed = parseSpecSource(source, file);
   if (!parsed.headerVersion) {
     throw new Error(`specs/${file} has no **Version:** line`);
@@ -182,7 +205,7 @@ export function releaseSpecSource(
   const baseHeader = baseSource ? parseSpecSource(baseSource, file).headerVersion : undefined;
   const base = baseHeader ? splitVersion(baseHeader) : null;
   const draft = parsed.headerStatus !== "Implemented";
-  let next: ReturnType<typeof nextSpecVersion>;
+  let next: NextSpecVersion;
   try {
     next = nextSpecVersion(current, base, level, draft);
   } catch (error) {

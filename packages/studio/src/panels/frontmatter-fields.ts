@@ -20,6 +20,7 @@
  * the two hosts. The Page panel was the last one, and the renderer went with it.
  */
 
+import { isBoolean, isString } from "@jxsuite/schema/guards";
 import { previewAssetSrc } from "../canvas/asset-refs";
 import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { referenceEntryState } from "../ui/form-controls";
@@ -29,12 +30,14 @@ import { referenceTarget } from "../ui/schema-form";
 import type { JsonValue } from "../types";
 import type { Tab } from "../tabs/tab";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { SurfaceOption } from "../ui/surface";
 
 export interface FmSchemaEntry {
   type?: string;
   enum?: string[];
   format?: string;
-  properties?: Record<string, unknown>;
+  /** A nested object field's own field schemas. */
+  properties?: Record<string, FmSchemaEntry>;
   /** `#/content/<type>` — a relationship to another collection (site-architecture.md §6.1). */
   $ref?: string;
 }
@@ -42,7 +45,8 @@ export interface FmSchemaEntry {
 export interface FmField {
   field: string;
   entry: FmSchemaEntry;
-  value: JsonValue;
+  /** What the document holds under the key; `undefined` for a schema field it does not set. */
+  value: JsonValue | undefined;
 }
 
 export interface FmFieldSet {
@@ -70,8 +74,15 @@ export function collectFmFields(
   projectConfig: ProjectConfig | null | undefined,
   reserved: Set<string>,
 ): FmFieldSet {
-  const fm = tab.doc.content?.frontmatter || {};
+  /* SAFETY: `FormatFrontmatter` holds `JxDocumentValue`, which is the JSON value space seen through
+     the typed interfaces a document's declared keys use (JxRef, JxStatement, CemEvent, ...). Every
+     frontmatter value is parsed from the file by a format class's split or JSON-cloned from one, so
+     each is plain JSON data, and viewing it as JsonValue reads the same data without those views. */
+  const fm = tab.doc.content.frontmatter as Record<string, JsonValue | undefined>;
   const collection = findContentTypeSchema(tab.documentPath, projectConfig);
+  /* SAFETY: a collection schema is JSON Schema, and the only keywords an FmSchemaEntry reads —
+     `type`, `format`, `$ref` (strings) and `enum` (a list of choices) — carry those shapes there;
+     `required` is already typed `string[]` on ContentTypeSchema. */
   const schema = collection?.schema as
     | { properties?: Record<string, FmSchemaEntry>; required?: string[] }
     | undefined;
@@ -84,16 +95,16 @@ export function collectFmFields(
       if (reserved.has(field)) {
         continue;
       }
-      fields.push({ entry: fieldSchema, field, value: fm[field] as JsonValue });
+      fields.push({ entry: fieldSchema, field, value: fm[field] });
     }
     for (const [field, value] of Object.entries(fm)) {
       if (schemaProps[field] || field.startsWith("$") || reserved.has(field)) {
         continue;
       }
       fields.push({
-        entry: { type: typeof value === "boolean" ? "boolean" : "string" },
+        entry: { type: isBoolean(value) ? "boolean" : "string" },
         field,
-        value: value as JsonValue,
+        value,
       });
     }
   } else {
@@ -102,20 +113,14 @@ export function collectFmFields(
         continue;
       }
       fields.push({
-        entry: { type: typeof value === "boolean" ? "boolean" : "string" },
+        entry: { type: isBoolean(value) ? "boolean" : "string" },
         field,
-        value: value as JsonValue,
+        value,
       });
     }
   }
 
   return { collection, fields, hasSchema: Boolean(schemaProps), requiredFields };
-}
-
-/** One choice in a row's picker — the shape `jx-select` reads. */
-export interface FmChoice {
-  value: string;
-  label: string;
 }
 
 /**
@@ -140,7 +145,7 @@ export interface FmRowView {
   /** A text row's placeholder. Empty draws none. */
   placeholder: string;
   /** A picker's rows, in the order they are offered. Empty on every other kind. */
-  options: FmChoice[];
+  options: SurfaceOption[];
   /** A sentence under the control — an empty collection, or a listing that failed. */
   note: string;
   /** Whether {@link FmRowView.note} has anything in it; `$switch` is a document's conditional. */
@@ -162,8 +167,8 @@ export interface FmRowProjection {
 }
 
 /** A frontmatter value as the text a field shows. An object is not a string and never pretends. */
-function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
+function text(value: JsonValue | undefined): string {
+  return isString(value) ? value : "";
 }
 
 /** A blank row, so every kind carries every field a surface's bindings read. */
@@ -188,7 +193,7 @@ function blankRow(label: string): FmRowView {
  *
  * @param {string} field The frontmatter key.
  * @param {FmSchemaEntry} entry Its schema, or the type inferred from the value it already holds.
- * @param {unknown} value What the document says today.
+ * @param {JsonValue | undefined} value What the document says today.
  * @param {Set<string>} requiredFields The collection's required keys, for the label's marker.
  * @param {{ rerender: () => void }} opts How a surface is repainted when a referenced collection's
  *   entry ids land — the one asynchronous read a row can start.
@@ -197,7 +202,7 @@ function blankRow(label: string): FmRowView {
 export function projectFmField(
   field: string,
   entry: FmSchemaEntry,
-  value: unknown,
+  value: JsonValue | undefined,
   requiredFields: Set<string>,
   opts: { rerender: () => void },
 ): FmRowProjection {

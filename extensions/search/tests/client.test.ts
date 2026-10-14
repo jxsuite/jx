@@ -19,7 +19,7 @@ import {
   runSearch,
   searchInit,
 } from "../src/client";
-import type { SearchResult, SearchResultGroup, SearchToken } from "../src/client";
+import type { SearchComponentState, SearchToken } from "../src/client";
 import type { SearchIndexEnvelope } from "../src/search-index";
 
 /** Render tokens back to a string, wrapping matched runs, for readable assertions. */
@@ -89,8 +89,16 @@ const ENVELOPE: SearchIndexEnvelope = {
   version: 1,
 };
 
+/** The globals these tests replace: `fetch` with a stub, and `document` with a page that has a lang. */
+interface GlobalSlots {
+  fetch: (input: string) => Promise<Response> | Response;
+  document?: object | undefined;
+}
+
+const globals: GlobalSlots = globalThis;
+
 function mockFetch(handler: () => Promise<Response> | Response) {
-  (globalThis as { fetch: unknown }).fetch = handler;
+  globals.fetch = handler;
 }
 
 /** Let queued microtasks/timers settle (async completions inside the client). */
@@ -205,7 +213,7 @@ describe("preload failure handling (runs before the success path)", () => {
 
   test("searchInit swallows a failed load with a warning instead of rejecting", async () => {
     mockFetch(() => Promise.reject(new Error("still offline")));
-    const state: Record<string, unknown> = {};
+    const state: SearchComponentState = {};
     expect(searchInit(state)).toBe(true);
     await settle();
     expect(state.searchReady).toBeUndefined();
@@ -227,7 +235,7 @@ describe("preload success + queries", () => {
   });
 
   test("grouped query nests section hits under their page, best score first", () => {
-    const groups = query("search index") as SearchResultGroup[];
+    const groups = query("search index");
     expect(groups.length).toBeGreaterThan(0);
     const top = groups[0]!;
     expect(top.slug).toBe("framework/site");
@@ -238,7 +246,7 @@ describe("preload success + queries", () => {
   });
 
   test("title boost ranks title matches above body mentions", () => {
-    const groups = query("install") as SearchResultGroup[];
+    const groups = query("install");
     expect(groups[0]!.slug).toBe("start/install");
   });
 
@@ -247,7 +255,7 @@ describe("preload success + queries", () => {
   });
 
   test("group:false returns flat rows with breadcrumbs and highlight tokens", () => {
-    const rows = query("search index", { group: false }) as SearchResult[];
+    const rows = query("search index", { group: false });
     expect(rows.length).toBeGreaterThan(1);
     const section = rows.find((row) => row.heading === "Search index")!;
     expect(section.url).toBe("/docs/framework/site/#search-index");
@@ -263,9 +271,9 @@ describe("preload success + queries", () => {
   });
 
   test("group:false caps how many rows one page contributes", () => {
-    const uncapped = query("search index", { group: false }) as SearchResult[];
+    const uncapped = query("search index", { group: false });
     expect(uncapped.filter((row) => row.slug === "framework/site").length).toBeGreaterThan(1);
-    const capped = query("search index", { group: false, pageCap: 1 }) as SearchResult[];
+    const capped = query("search index", { group: false, pageCap: 1 });
     expect(capped.filter((row) => row.slug === "framework/site")).toHaveLength(1);
   });
 
@@ -281,15 +289,15 @@ describe("preload success + queries", () => {
 
 describe("$src state conventions", () => {
   test("searchInit flips searchReady and re-runs a pending query", async () => {
-    const state: Record<string, unknown> = { searchQuery: "install" };
+    const state: SearchComponentState = { searchQuery: "install" };
     expect(searchInit(state)).toBe(true);
     await settle();
     expect(state.searchReady).toBe(true);
-    expect((state.searchResults as SearchResult[])[0]!.slug).toBe("start/install");
+    expect(state.searchResults?.[0]?.slug).toBe("start/install");
   });
 
   test("runSearch reads the input event, stores flat rows, and resets the active row", () => {
-    const state: Record<string, unknown> = { searchActive: 3 };
+    const state: SearchComponentState = { searchActive: 3 };
     const results = runSearch(state, { target: { value: "search index" } });
     expect(state.searchQuery).toBe("search index");
     expect(state.searchResults).toBe(results);
@@ -300,7 +308,7 @@ describe("$src state conventions", () => {
   });
 
   test("runSearch without an event falls back to state.searchQuery", () => {
-    const state: Record<string, unknown> = { searchQuery: "install" };
+    const state: SearchComponentState = { searchQuery: "install" };
     expect(runSearch(state)[0]!.slug).toBe("start/install");
   });
 });
@@ -314,11 +322,11 @@ describe("$src state conventions", () => {
  */
 describe("locale scoping", () => {
   test("a search in one language returns that language's copy, and its URL", () => {
-    const french = query("salutations", { locale: "fr-CA" }) as SearchResultGroup[];
+    const french = query("salutations", { locale: "fr-CA" });
     expect(french.map((g) => g.url)).toEqual(["/fr-ca/docs/greet/"]);
     expect(french[0]!.title).toBe("Salutation");
 
-    const english = query("salutations", { locale: "en" }) as SearchResultGroup[];
+    const english = query("salutations", { locale: "en" });
     expect(english.map((g) => g.url)).toEqual(["/docs/greet/"]);
   });
 
@@ -333,7 +341,7 @@ describe("locale scoping", () => {
    * collapse into one group titled whichever was indexed first.
    */
   test("searching every language keeps the two copies apart", () => {
-    const all = query("salutations", { locale: null }) as SearchResultGroup[];
+    const all = query("salutations", { locale: null });
     expect(all).toHaveLength(2);
     expect(all.map((g) => g.url).toSorted()).toEqual(["/docs/greet/", "/fr-ca/docs/greet/"]);
   });
@@ -348,14 +356,12 @@ describe("locale scoping", () => {
    * from the route's locale, so it is the same answer the index was built against.
    */
   test("with no locale option, the page's own language decides", () => {
-    const real = (globalThis as { document?: unknown }).document;
-    (globalThis as { document?: unknown }).document = { documentElement: { lang: "fr-CA" } };
+    const real = globals.document;
+    globals.document = { documentElement: { lang: "fr-CA" } };
     try {
-      expect((query("salutations") as SearchResultGroup[]).map((g) => g.url)).toEqual([
-        "/fr-ca/docs/greet/",
-      ]);
+      expect(query("salutations").map((g) => g.url)).toEqual(["/fr-ca/docs/greet/"]);
     } finally {
-      (globalThis as { document?: unknown }).document = real;
+      globals.document = real;
     }
   });
 

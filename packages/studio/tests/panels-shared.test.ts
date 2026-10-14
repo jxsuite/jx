@@ -21,10 +21,10 @@ describe("mediaDisplayName", () => {
     expect(mediaDisplayName("mobile")).toBe("Mobile");
   });
 
-  test("falls back to raw name when stripped form is empty", () => {
-    // "---" → strips "--" then "-" becomes " " → trims to truthy? "-".replaceAll("-"," ") = " "
-    // " " is truthy, so just assert it returns a string without throwing.
-    expect(typeof mediaDisplayName("---")).toBe("string");
+  test("a name of only dashes keeps the space its inner dash becomes", () => {
+    // "---" strips the leading "--", and the remaining "-" becomes " ". That is truthy, so the raw
+    // Name fallback (which only an empty stripped form reaches) does not apply.
+    expect(mediaDisplayName("---")).toBe(" ");
   });
 });
 
@@ -134,13 +134,16 @@ describe("defaultDef", () => {
   });
 
   test("table gets thead/tbody scaffold", () => {
-    const def = defaultDef("table");
-    expect(def.children).toHaveLength(2);
-    const [thead, tbody] = def.children as any[];
-    expect(thead.tagName).toBe("thead");
-    expect(thead.children[0].children[0]).toEqual({ tagName: "th", textContent: "Header" });
-    expect(tbody.tagName).toBe("tbody");
-    expect(tbody.children[0].children[0]).toEqual({ tagName: "td", textContent: "Cell" });
+    expect(defaultDef("table").children).toEqual([
+      {
+        children: [{ children: [{ tagName: "th", textContent: "Header" }], tagName: "tr" }],
+        tagName: "thead",
+      },
+      {
+        children: [{ children: [{ tagName: "td", textContent: "Cell" }], tagName: "tr" }],
+        tagName: "tbody",
+      },
+    ]);
   });
 
   test("details gets summary and detail paragraph", () => {

@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
 import { effectScope, reactive } from "../reactivity";
 import { formatByName, formatForPath } from "../format/format-host";
+import type { FormatFrontmatter } from "../format/format-host";
 import { normalizeArrayChildren } from "../state";
 import type { JxPath } from "../state";
 import type { FormulaEditDef, FunctionEditDef, InlineEditDef, JsonValue } from "../types";
 import { editorKindForMode } from "../commands/context";
 import type { EditorKind } from "../commands/context";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
@@ -125,7 +126,7 @@ export interface StoredLivePreview {
 
 interface HistorySnapshot {
   /** Full document at this state (checkpoint), or null when the ops describe the transition. */
-  document: Record<string, unknown> | null;
+  document: JxMutableNode | null;
   /** Selection after this state's transaction — the whole set, so a batch undoes back to it. */
   selection: (string | number)[][];
   /** Selection before this state's transaction (restored on surgical undo). */
@@ -177,11 +178,10 @@ export interface Tab {
   scope: {
     stop: () => void;
     run: <T>(fn: () => T) => T | undefined;
-    [k: string]: unknown;
   };
   doc: {
     document: JxMutableNode;
-    content: { frontmatter: Record<string, unknown> };
+    content: { frontmatter: FormatFrontmatter };
     mode: string;
     sourceFormat: string | null;
     handlersSource: string | null;
@@ -230,7 +230,7 @@ export interface Tab {
       // A serializable snapshot of the iframe's resolved `$defs` (data-source values), posted over
       // The bridge as a `dataScope` message and read by the data-explorer panel. Plain data now —
       // The old live `EffectScope` (with `.stop()`) moved into the iframe realm with buildScope.
-      scope: Record<string, unknown> | null;
+      scope: JsonObject | null;
       // Latest live (iframe-evaluated) expression previews keyed by editing-target id, stored
       // Beside `scope` the same way (services/live-preview.ts owns reads/writes).
       livePreviews: Record<string, StoredLivePreview> | null;
@@ -249,7 +249,7 @@ export interface Tab {
  * @param {boolean} preview — initial preview-toggle state
  * @returns {TabUi}
  */
-function createDefaultUi(canvasMode: string, preview = false) {
+function createDefaultUi(canvasMode: string, preview = false): TabUi {
   return {
     activeMedia: null,
     activeSelector: null,
@@ -264,7 +264,7 @@ function createDefaultUi(canvasMode: string, preview = false) {
     pendingInlineEdit: null,
     preview,
     previewColorScheme: "auto" as const,
-    previewLocale: null as string | null,
+    previewLocale: null,
     previewParams: {},
     previewProps: null,
     rightTab: "properties",
@@ -295,8 +295,8 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff
  *   id: string;
  *   documentPath?: string | null;
  *   fileHandle?: FileSystemFileHandle | null;
- *   document: Record<string, unknown>;
- *   frontmatter?: Record<string, unknown>;
+ *   document: JxMutableNode;
+ *   frontmatter?: FormatFrontmatter;
  *   sourceFormat?: string | null;
  *   capabilities?: { modes?: string[] };
  *   openedFrom?: TabOrigin | null;
@@ -320,8 +320,8 @@ export function createTab({
   id: string;
   documentPath?: string | null;
   fileHandle?: FileSystemFileHandle | null;
-  document: Record<string, unknown>;
-  frontmatter?: Record<string, unknown>;
+  document: JxMutableNode;
+  frontmatter?: FormatFrontmatter;
   sourceFormat?: string | null;
   capabilities?: { modes?: string[] };
   openedFrom?: TabOrigin | null;
@@ -342,45 +342,56 @@ export function createTab({
   const initialCanvasMode = resolvedModes.find((m) => m !== "preview") ?? "edit";
   const initialPreview = resolvedModes[0] === "preview";
 
+  const doc: Tab["doc"] = {
+    content: { frontmatter: frontmatter || {} },
+    dirty: false,
+    document,
+    handlersSource: null,
+    layout,
+    mode: inferDocumentMode(documentPath, sourceFormat),
+    sourceFormat,
+  };
+  const history: Tab["history"] = {
+    index: 0,
+    snapshots: [{ document: structuredClone(document), selection: [] }],
+  };
+  const session: Tab["session"] = {
+    canvas: {
+      refreshing: false,
+      error: null,
+      livePreviews: null,
+      pendingInlineEdit: null,
+      scope: null,
+      status: "idle",
+    },
+    clipboard: null,
+    hover: null,
+    openedFrom,
+    selection: [],
+    ui: createDefaultUi(initialCanvasMode, initialPreview),
+  };
+
+  /* SAFETY: `reactive()` returns a deep proxy carrying its target's own members, and none of these
+     Three trees holds a ref for `UnwrapNestedRefs` to unwrap, so each proxy IS the shape it is cast
+     To. The type argument is pinned to `object` because `UnwrapNestedRefs<JxMutableNode>` recurses
+     Deeply enough for tsc to give up (TS2589); the proxies are deep either way. */
   const tab = scope.run(() => ({
     capabilities: { modes: resolvedModes },
-    doc: reactive({
-      content: { frontmatter: frontmatter || {} },
-      dirty: false,
-      document,
-      handlersSource: null,
-      layout,
-      mode: inferDocumentMode(documentPath, sourceFormat),
-      sourceFormat,
-    }),
+    doc: reactive<object>(doc) as Tab["doc"],
     documentPath,
     fileHandle,
-    history: reactive({
-      index: 0,
-      snapshots: [{ document: structuredClone(document), selection: [] }],
-    }),
+    history: reactive<object>(history) as Tab["history"],
     id,
     pinned: false,
     preview: previewTab,
     scope,
-    session: reactive({
-      canvas: {
-        refreshing: false,
-        error: null,
-        livePreviews: null,
-        pendingInlineEdit: null,
-        scope: null,
-        status: "idle",
-      },
-      clipboard: null,
-      hover: null,
-      openedFrom,
-      selection: [],
-      ui: createDefaultUi(initialCanvasMode, initialPreview),
-    }),
-  })) as unknown as Tab;
+    session: reactive<object>(session) as Tab["session"],
+  }));
 
-  return tab;
+  /* SAFETY: `scope` was created at the top of this function and nothing has stopped it, and an
+     Active scope's `run` always returns its callback's value; `undefined` is only what an inactive
+     Scope answers. */
+  return tab as Tab;
 }
 
 /**

@@ -29,14 +29,15 @@
  * @docs studio/logic/formula-workspace
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import logicWorkspaceDoc from "./logic-workspace.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("logic-workspace", logicWorkspaceDoc as unknown as JxDocument);
+registerSurface("logic-workspace", logicWorkspaceDoc);
 
 /** One chip of the pipeline, as the document draws it. */
 export interface LogicChipView {
@@ -112,8 +113,7 @@ export interface LogicWorkspaceIslands {
   treeSlot: (key: string, host: HTMLElement) => void;
 }
 
-interface LogicWorkspaceScope
-  extends Record<string, unknown>, LogicWorkspaceView, LogicWorkspaceActions {}
+interface LogicWorkspaceScope extends LogicWorkspaceView, LogicWorkspaceActions {}
 
 export interface LogicWorkspaceSurface {
   /** Re-project. The document's bindings skip every value that did not move. */
@@ -151,23 +151,21 @@ export function emptyLogicWorkspaceView(): LogicWorkspaceView {
 
 /** Assign the projection field by field: the runtime writes only the bindings that moved. */
 function project(scope: LogicWorkspaceScope, view: LogicWorkspaceView): void {
-  for (const [key, value] of Object.entries(view)) {
-    (scope as Record<string, unknown>)[key] = value;
-  }
+  Object.assign(scope, view);
 }
 
 /** The `part` a node was rendered with, or "". */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `key` of the `$map` item a node was rendered inside, or "". */
 function itemKey(state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: unknown } | undefined)?.item;
-  const key =
-    item !== null && typeof item === "object" ? (item as Record<string, unknown>).key : "";
-  return typeof key === "string" ? key : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const key = isJsonObject(item) ? item["key"] : "";
+  return isString(key) ? key : "";
 }
 
 /**
@@ -187,10 +185,10 @@ export function mountLogicWorkspace(
   actions: LogicWorkspaceActions,
   islands: LogicWorkspaceIslands,
 ): LogicWorkspaceSurface {
-  const scope = reactive<LogicWorkspaceScope>({
+  const scope: LogicWorkspaceScope = reactive<LogicWorkspaceScope>({
     ...emptyLogicWorkspaceView(),
     ...actions,
-  } as LogicWorkspaceScope) as LogicWorkspaceScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;

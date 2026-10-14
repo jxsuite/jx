@@ -10,7 +10,22 @@ import {
   noteComponentSaved,
 } from "../src/files/components";
 import { installMockPlatform } from "./harness";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** An instance's element children, failing the test when the slot is a repeater or holds text. */
+function elementChildren(instance: JxMutableNode): JxMutableNode[] {
+  const { children } = instance;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected the instance to carry a children array");
+  }
+  return children.map((child) => {
+    if (isString(child)) {
+      throw new TypeError(`expected an element child, got text "${child}"`);
+    }
+    return child;
+  });
+}
 
 // ─── buildComponentInstance ─────────────────────────────────────────────────
 
@@ -54,7 +69,7 @@ describe("buildComponentInstance", () => {
       slots: [{ fallback: [{ tagName: "h2", textContent: "Title" }], name: "header" }],
       tagName: "my-card",
     });
-    const child = (instance.children as JxMutableNode[])[0]!;
+    const child = elementChildren(instance)[0]!;
     expect(child.attributes).toEqual({ slot: "header" });
     expect(child.tagName).toBe("h2");
   });
@@ -69,7 +84,7 @@ describe("buildComponentInstance", () => {
       ],
       tagName: "my-card",
     });
-    const child = (instance.children as JxMutableNode[])[0]!;
+    const child = elementChildren(instance)[0]!;
     expect(child.attributes).toEqual({ slot: "forwarded" });
   });
 
@@ -78,7 +93,7 @@ describe("buildComponentInstance", () => {
       slots: [{ fallback: ["Plain text"], name: "header" }],
       tagName: "my-card",
     });
-    const child = (instance.children as JxMutableNode[])[0]!;
+    const child = elementChildren(instance)[0]!;
     expect(child).toEqual({
       attributes: { slot: "header" },
       children: ["Plain text"],
@@ -92,7 +107,7 @@ describe("buildComponentInstance", () => {
     const a = buildComponentInstance(comp);
     const b = buildComponentInstance(comp);
     expect(a.children).not.toBe(b.children);
-    expect((a.children as JxMutableNode[])[0]).not.toBe(fallback[0]);
+    expect(elementChildren(a)[0]).not.toBe(fallback[0]);
   });
 
   test("multiple slots combine fallback children in order", () => {
@@ -103,7 +118,7 @@ describe("buildComponentInstance", () => {
       ],
       tagName: "my-card",
     });
-    const children = instance.children as JxMutableNode[];
+    const children = elementChildren(instance);
     expect(children).toHaveLength(2);
     expect(children[0]!.attributes).toEqual({ slot: "header" });
     expect(children[1]!.attributes).toBeUndefined();

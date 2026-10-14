@@ -25,10 +25,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import problemsDoc from "./panel-problems.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-problems", problemsDoc as unknown as JxDocument);
+registerSurface("panel-problems", problemsDoc);
 
 /** One problem, as the document draws it. Every field is a value: no records, no closures. */
 export interface ProblemRowView {
@@ -87,7 +86,7 @@ export interface ProblemsSurfaceHandle {
 }
 
 /** The scope the document reads: the projection, and the four things a row can ask for. */
-interface ProblemsScope extends Record<string, unknown> {
+interface ProblemsScope {
   hasProblems: boolean;
   clearLabel: string;
   groups: ProblemGroupView[];
@@ -117,7 +116,7 @@ export function mountProblemsSurface(
   values: ProblemsValues,
   actions: ProblemsActions,
 ): ProblemsSurfaceHandle {
-  const scope = reactive<ProblemsScope>({
+  const scope: ProblemsScope = reactive<ProblemsScope>({
     clearAll: actions.clearAll,
     clearLabel: "",
     dismissRow: actions.dismissRow,
@@ -125,7 +124,7 @@ export function mountProblemsSurface(
     hasProblems: false,
     openPath: actions.openPath,
     runAction: actions.runAction,
-  }) as ProblemsScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -143,8 +142,7 @@ export function mountProblemsSurface(
        answer is simply whether this handle is still wanted. Once mounted, the question is whether
        the root is still where it was put: a dock that repainted with another tab selected, or one
        that collapsed, had the panel body emptied out from under it. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

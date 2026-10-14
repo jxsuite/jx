@@ -97,16 +97,17 @@ export function parseRegionId(id: string): ParsedRegionId | null {
       }
     }
   }
-  if (!(REGION_SURFACES as readonly string[]).includes(surface)) {
+  const known = REGION_SURFACES.find((candidate) => candidate === surface);
+  if (known === undefined) {
     return null;
   }
   return instance === undefined
     ? part === undefined
-      ? { surface: surface as RegionSurface }
-      : { part, surface: surface as RegionSurface }
+      ? { surface: known }
+      : { part, surface: known }
     : part === undefined
-      ? { instance, surface: surface as RegionSurface }
-      : { instance, part, surface: surface as RegionSurface };
+      ? { instance, surface: known }
+      : { instance, part, surface: known };
 }
 
 /** Whether a string is a well-formed region id. */
@@ -267,7 +268,7 @@ export const REGION_FOR_FOCUS: Readonly<Record<FocusRegion, string>> = {
   status: "statusbar",
 };
 
-const FOCUS_FOR_SURFACE: Readonly<Record<string, FocusRegion>> = {
+const FOCUS_FOR_SURFACE: Readonly<Partial<Record<RegionSurface, FocusRegion>>> = {
   "dock.bottom": "dock",
   inspector: "inspector",
   navigator: "navigator",

@@ -56,7 +56,7 @@ export function generateImplementationStatus(): string {
       file: spec.file,
       where: item.anchor ? `§${item.anchor}` : "whole spec",
       title: item.anchor ? item.title : "the preamble marker",
-      status: item.status as string,
+      status: item.status,
       note: item.leading
         ? ""
         : ` _(${item.form === "cell" ? "a status cell" : "a later marker"}, line ${item.line})_`,
@@ -64,15 +64,19 @@ export function generateImplementationStatus(): string {
   );
   const settled = specs.flatMap((spec) =>
     spec.sections.flatMap((s) =>
-      (["Future", "Removed"] as const)
-        .filter((status) => s.markers.some((m) => m.status === status))
-        .map((status) => ({
-          file: spec.file,
-          where: `§${s.anchor}`,
-          title: s.title,
-          status: status as string,
-          note: s.status === status ? "" : " _(in part)_",
-        })),
+      (["Future", "Removed"] as const).flatMap((status) =>
+        s.markers.some((m) => m.status === status)
+          ? [
+              {
+                file: spec.file,
+                where: `§${s.anchor}`,
+                title: s.title,
+                status,
+                note: s.status === status ? "" : " _(in part)_",
+              },
+            ]
+          : [],
+      ),
     ),
   );
   const notDone = [...open, ...settled];

@@ -1,5 +1,5 @@
 import { installMockPlatform } from "./harness";
-import { createMockCollabHub, settleCollab } from "./collab-mock";
+import { childNode, createMockCollabHub, settleCollab } from "./collab-mock";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
@@ -37,7 +37,7 @@ async function openAttached(hub: ReturnType<typeof createMockCollabHub>) {
 }
 
 function tabJson(tab: Tab): JxMutableNode {
-  return jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+  return jsonClone(toRaw(tab.doc.document));
 }
 
 afterEach(() => {
@@ -64,10 +64,10 @@ describe("outbound publishing", () => {
     const tab = await openAttached(hub);
 
     transact(tab, (doc) => {
-      (doc as { tagName?: string }).tagName = "main";
+      doc.tagName = "main";
     });
 
-    expect((yDocToJson(hub.serverDoc(PATH)) as { tagName?: string }).tagName).toBe("main");
+    expect(yDocToJson(hub.serverDoc(PATH)).tagName).toBe("main");
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
   });
 
@@ -115,8 +115,7 @@ describe("inbound application", () => {
     );
     await settleCollab();
 
-    const doc = tabJson(tab) as { children: { textContent?: string }[] };
-    expect(doc.children[1]!.textContent).toBe("From peer");
+    expect(childNode(tabJson(tab), 1).textContent).toBe("From peer");
     // Remote edits never create local history entries.
     expect(tab.history.snapshots).toHaveLength(1);
     // A peer's edit means the shared doc now differs from disk: the room is dirty for this tab too.
@@ -138,7 +137,7 @@ describe("inbound application", () => {
     await settleCollab();
 
     expect(tabJson(tab)).toEqual(yDocToJson(hub.serverDoc(PATH)));
-    expect((tabJson(tab) as { children: unknown[] }).children).toHaveLength(4);
+    expect(tabJson(tab).children).toHaveLength(4);
     peer.destroy();
   });
 });
@@ -189,8 +188,8 @@ describe("batching", () => {
 
     undo(tab);
     await settleCollab();
-    const doc = tabJson(tab) as { children: { textContent?: string }[] };
-    expect(doc.children[0]!.textContent).toBe("Title");
+    const doc = tabJson(tab);
+    expect(childNode(doc, 0).textContent).toBe("Title");
     expect(doc.children).toHaveLength(2);
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
   });

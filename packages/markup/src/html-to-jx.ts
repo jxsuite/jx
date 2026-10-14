@@ -1,8 +1,9 @@
 import { fromHtml } from "hast-util-from-html";
 import { whitespace } from "hast-util-whitespace";
-import { find, html as htmlInfo } from "property-information";
+import { find, html } from "property-information";
+import { isString } from "@jxsuite/schema/guards";
 
-import type { Nodes as HastNode } from "hast";
+import type { Properties, RootContent } from "hast";
 import type { JxElement } from "@jxsuite/schema/types";
 
 /**
@@ -13,14 +14,14 @@ import type { JxElement } from "@jxsuite/schema/types";
  */
 export function htmlToJx(htmlString: string) {
   const hast = fromHtml(htmlString, { fragment: true });
-  return convertHastChildren(hast.children as HastNode[]);
+  return convertHastChildren(hast.children);
 }
 
 /**
- * @param {HastNode[]} children
+ * @param {RootContent[]} children
  * @returns {(JxElement | string)[]}
  */
-function convertHastChildren(children: HastNode[]) {
+function convertHastChildren(children: RootContent[]) {
   const result: (JxElement | string)[] = [];
   for (const child of children) {
     const converted = convertHastNode(child);
@@ -32,21 +33,21 @@ function convertHastChildren(children: HastNode[]) {
 }
 
 /**
- * @param {HastNode} node
+ * @param {RootContent} node
  * @returns {JxElement | string | null}
  */
-function convertHastNode(node: HastNode) {
+function convertHastNode(node: RootContent) {
   if (node.type === "text") {
-    if (whitespace(node as Parameters<typeof whitespace>[0])) {
+    if (whitespace(node)) {
       return null;
     }
-    return node.value ?? null;
+    return node.value;
   }
 
   if (node.type === "element") {
     const el: JxElement = { tagName: node.tagName };
 
-    if (node.properties && Object.keys(node.properties).length > 0) {
+    if (Object.keys(node.properties).length > 0) {
       const { style, attrs } = hastPropsToJx(node.properties);
       if (Object.keys(attrs).length > 0) {
         el.attributes = attrs;
@@ -56,12 +57,12 @@ function convertHastNode(node: HastNode) {
       }
     }
 
-    const kids = node.children ? convertHastChildren(node.children) : [];
+    const kids = convertHastChildren(node.children);
 
-    if (kids.length === 1 && typeof kids[0] === "string") {
+    if (kids.length === 1 && isString(kids[0])) {
       [el.textContent] = kids;
     } else if (kids.length > 0) {
-      el.children = kids as JxElement[];
+      el.children = kids;
     }
 
     return el;
@@ -71,10 +72,10 @@ function convertHastNode(node: HastNode) {
 }
 
 /**
- * @param {Record<string, unknown>} properties
+ * @param {Properties} properties
  * @returns {{ style: Record<string, string>; attrs: Record<string, string> }}
  */
-function hastPropsToJx(properties: Record<string, unknown>) {
+function hastPropsToJx(properties: Properties) {
   const attrs: Record<string, string> = {};
   const style: Record<string, string> = {};
 
@@ -83,10 +84,10 @@ function hastPropsToJx(properties: Record<string, unknown>) {
       continue;
     }
 
-    const info = find(htmlInfo, key);
+    const info = find(html, key);
     const name = info.attribute;
 
-    if (name === "style" && typeof value === "string") {
+    if (name === "style" && isString(value)) {
       parseInlineStyle(value, style);
       continue;
     }

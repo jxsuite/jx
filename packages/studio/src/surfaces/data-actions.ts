@@ -18,10 +18,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import dataActionsDoc from "./data-actions.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("data-actions", dataActionsDoc as unknown as JxDocument);
+registerSurface("data-actions", dataActionsDoc);
 
 /** Everything the row draws. */
 export interface DataActionsView {
@@ -52,7 +51,7 @@ export interface DataActionsSurfaceHandle {
   dispose: () => void;
 }
 
-interface DataActionsScope extends Record<string, unknown>, DataActionsView, DataActionsCallbacks {}
+interface DataActionsScope extends DataActionsView, DataActionsCallbacks {}
 
 /** Write a projection into the scope. */
 function project(scope: DataActionsScope, view: DataActionsView): void {
@@ -78,7 +77,7 @@ export function mountDataActionsSurface(
   view: DataActionsView,
   actions: DataActionsCallbacks,
 ): DataActionsSurfaceHandle {
-  const scope = reactive<DataActionsScope>({
+  const scope: DataActionsScope = reactive<DataActionsScope>({
     openGrid: actions.openGrid,
     push: actions.push,
     resultOk: "false",
@@ -89,18 +88,21 @@ export function mountDataActionsSurface(
     testDisabled: false,
     testLabel: "Test Connection",
     testState: "hidden",
-  }) as DataActionsScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("data-actions", scope, host).then((surface) => {
+    /* SAFETY: `data-actions.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

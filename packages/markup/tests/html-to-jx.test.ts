@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { htmlToJx } from "../src/html-to-jx";
-import type { JxElement } from "@jxsuite/schema/types";
 
 describe("htmlToJx", () => {
   test("simple element with attributes", () => {
@@ -81,7 +80,7 @@ describe("htmlToJx", () => {
 
   test("className maps to class", () => {
     const result = htmlToJx('<div class="a b c"></div>');
-    expect((result[0] as JxElement).attributes?.class).toBe("a b c");
+    expect(result).toEqual([{ attributes: { class: "a b c" }, tagName: "div" }]);
   });
 
   test("skips whitespace-only text nodes", () => {
@@ -118,7 +117,6 @@ describe("htmlToJx", () => {
 
   test("style-only element has no attributes key", () => {
     const result = htmlToJx('<div style="color:red"></div>');
-    expect((result[0] as JxElement).attributes).toBeUndefined();
-    expect((result[0] as JxElement).style).toEqual({ color: "red" });
+    expect(result).toStrictEqual([{ style: { color: "red" }, tagName: "div" }]);
   });
 });

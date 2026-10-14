@@ -10,11 +10,15 @@ import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
-import type { StudioPlatform } from "../src/types";
+import type { ProjectState, StudioPlatform } from "../src/types";
+import type { createGithubRepository } from "../src/github/github-publish";
+
+/** What the panel hands `createGithubRepository`. */
+type CreateRepoOptions = Parameters<typeof createGithubRepository>[0];
 
 let mockPlatform: Partial<StudioPlatform>;
 let authToken: string | null = "ghp_token";
-const repoCalls: unknown[] = [];
+const repoCalls: CreateRepoOptions[] = [];
 
 void mock.module("../src/platform.js", () => ({
   getPlatform: () => mockPlatform,
@@ -51,7 +55,7 @@ void mock.module("../src/github/github-auth.js", () => ({
 }));
 
 void mock.module("../src/github/github-publish.js", () => ({
-  createGithubRepository: async (opts: unknown) => {
+  createGithubRepository: async (opts: CreateRepoOptions) => {
     repoCalls.push(opts);
     return true;
   },
@@ -62,7 +66,7 @@ void mock.module("../src/services/notify.js", () =>
   notifyModule((call) => notifications.push(call)),
 );
 
-const { setProjectState } = (await import("../src/state.js")) as any;
+const { setProjectState } = await import("../src/state.js");
 const { emptyContext, makeContext } = await import("../src/commands/context.js");
 const { registerSourceControlCommands, sourceControlCommands } =
   await import("../src/panels/git-panel.js");
@@ -72,11 +76,32 @@ function command(id: string) {
   return sourceControlCommands().find((candidate) => candidate.id === id)!;
 }
 
+/** Run a Source Control record the way the palette does: an empty context and no arguments. */
+function runCommand(id: string): void | Promise<void> {
+  /* SAFETY: a stored record is `AnyCommand`, whose args are erased to `never`. None of the four
+     Source Control records declares `args`, so the registry hands each `run` undefined as well. */
+  return command(id).run(emptyContext(), undefined as never);
+}
+
+/** An open, empty project named `name`. */
+function project(name: string): ProjectState {
+  return {
+    dirs: new Map(),
+    expanded: new Set(),
+    isSiteProject: false,
+    name,
+    projectConfig: null,
+    projectRoot: "",
+    searchQuery: "",
+    selectedPath: null,
+  };
+}
+
 beforeEach(() => {
   notifications.length = 0;
   repoCalls.length = 0;
   authToken = "ghp_token";
-  setProjectState({ name: "proj" });
+  setProjectState(project("proj"));
   mockPlatform = {
     gitBranches: async () => ({ branches: ["main"], current: "main" }),
     gitInit: async () => {},
@@ -153,14 +178,14 @@ describe("running them", () => {
     mockPlatform.gitInit = async () => {
       inits += 1;
     };
-    await command("git.init").run(emptyContext(), undefined as never);
+    await runCommand("git.init");
     expect(inits).toBe(1);
     expect(notifications.map((call) => call.message)).toContain("Repository initialized.");
   });
 
   test("an init that fails is a Problem naming itself as the Retry", async () => {
     mockPlatform.gitInit = () => Promise.reject(new Error("permission denied"));
-    await command("git.init").run(emptyContext(), undefined as never);
+    await runCommand("git.init");
     const failure = notifications.find((call) => call.severity === "error")!;
     expect(failure.message).toBe("Could not initialize the repository.");
     expect(failure.options.detail).toContain("permission denied");
@@ -168,13 +193,14 @@ describe("running them", () => {
   });
 
   test("Create GitHub Repository passes the project's own name", async () => {
-    await command("git.createGithubRepository").run(emptyContext(), undefined as never);
+    await runCommand("git.createGithubRepository");
     expect(repoCalls).toEqual([{ projectName: "proj" }]);
   });
 
   test("with no project name it still has a name to offer", async () => {
-    setProjectState({});
-    await command("git.createGithubRepository").run(emptyContext(), undefined as never);
+    // An empty name is no name: the panel falls back the same way it does for a missing one.
+    setProjectState(project(""));
+    await runCommand("git.createGithubRepository");
     expect(repoCalls).toEqual([{ projectName: "my-project" }]);
   });
 
@@ -183,19 +209,19 @@ describe("running them", () => {
     mockPlatform.gitPush = async () => {
       pushes += 1;
     };
-    await command("git.push").run(emptyContext(), undefined as never);
+    await runCommand("git.push");
     expect(pushes).toBe(1);
   });
 
   test("Sign In confirms a success, and stays silent when the module already reported", async () => {
-    await command("git.signInToGithub").run(emptyContext(), undefined as never);
+    await runCommand("git.signInToGithub");
     expect(notifications.map((call) => call.message)).toEqual(["Signed in to GitHub."]);
 
     // A null token means `github-auth.ts` has ALREADY reported why; a second sentence here would
     // Be the double-reporting the tier system exists to prevent.
     notifications.length = 0;
     authToken = null;
-    await command("git.signInToGithub").run(emptyContext(), undefined as never);
+    await runCommand("git.signInToGithub");
     expect(notifications).toHaveLength(0);
   });
 });

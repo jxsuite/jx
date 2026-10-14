@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, it, expect } from "bun:test";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { handleAiApi } from "../src/ai-api.js";
 
 /*
@@ -29,10 +30,10 @@ beforeEach(() => {
  * Read all SSE events from a Response stream.
  *
  * @param {Response} response
- * @returns {Promise<object[]>}
+ * @returns {Promise<JsonObject[]>}
  */
-async function readSSEEvents(response: Response): Promise<Record<string, unknown>[]> {
-  const events: Record<string, unknown>[] = [];
+async function readSSEEvents(response: Response): Promise<JsonObject[]> {
+  const events: JsonObject[] = [];
   const reader = response.body?.getReader();
   if (!reader) {
     return events;
@@ -42,12 +43,8 @@ async function readSSEEvents(response: Response): Promise<Record<string, unknown
   let buffer = "";
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+      buffer += decoder.decode(chunk.value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
 
@@ -97,6 +94,16 @@ function mockReq(
   return new Request(url, init);
 }
 
+/** How a test answers the proxy's upstream request. */
+type FetchAnswer = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const { preconnect } = globalThis.fetch;
+
+/** A whole `fetch` that answers through `answer`; keeping Bun's `preconnect` completes the type. */
+function stubFetch(answer: FetchAnswer): typeof fetch {
+  return Object.assign(answer, { preconnect });
+}
+
 // ─── /__studio/ai/models ─────────────────────────────────────────────────────
 
 describe("GET /__studio/ai/models", () => {
@@ -114,7 +121,7 @@ describe("GET /__studio/ai/models", () => {
     expect(data.models[0]).toHaveProperty("id");
     expect(data.models[0]).toHaveProperty("name");
     expect(data.models[0]).toHaveProperty("contextWindow");
-    expect(typeof data.configured).toBe("boolean");
+    expect(data.configured).toBeBoolean();
   });
 
   it("includes all expected model variants", async () => {
@@ -222,10 +229,11 @@ describe("POST /__studio/ai/chat — SSE streaming", () => {
     process.env.OPENAI_API_KEY = "test-key";
     const realFetch = globalThis.fetch;
     // A non-SSE 200 body: the proxy reads the (data-less) stream to completion and emits `done`.
-    globalThis.fetch = (() =>
+    globalThis.fetch = stubFetch(() =>
       Promise.resolve(
         new Response("200 OK", { status: 200, headers: { "Content-Type": "text/plain" } }),
-      )) as unknown as typeof fetch;
+      ),
+    );
 
     try {
       const req = mockReq("/__studio/ai/chat", {
@@ -325,13 +333,14 @@ describe("POST /__studio/ai/chat — SSE event shape", () => {
      */
     process.env.OPENAI_API_KEY = "test-key";
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (() =>
+    globalThis.fetch = stubFetch(() =>
       Promise.resolve(
         Response.json(
           { error: { message: "Incorrect API key provided.", type: "invalid_request_error" } },
           { status: 401 },
         ),
-      )) as unknown as typeof fetch;
+      ),
+    );
 
     try {
       const req = mockReq("/__studio/ai/chat", {
@@ -353,9 +362,9 @@ describe("POST /__studio/ai/chat — SSE event shape", () => {
       // An error event, carrying a non-empty message — the contract the assistant panel reads.
       const errorEvent = events.find((e) => e.type === "error");
       expect(errorEvent).toBeDefined();
-      const message = errorEvent!.message as string;
-      expect(typeof message).toBe("string");
-      expect(message.length).toBeGreaterThan(0);
+      const message = errorEvent?.message;
+      expect(message).toBeString();
+      expect(message).not.toBe("");
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -371,12 +380,13 @@ describe("POST /__studio/ai/chat — SSE event shape", () => {
     const req = mockReq("/__studio/ai/models");
     const url = new URL("http://localhost/__studio/ai/models");
     const res = await handleAiApi(req, url);
-    const data = (await res!.json()) as { configured: boolean; models: { id: string }[] };
-
-    expect(data.configured).toBe(false);
-    const ids = data.models.map((m) => m.id);
-    expect(ids).toContain("gpt-4o");
-    expect(ids).toContain("gpt-4.1");
+    expect(await res!.json()).toMatchObject({
+      configured: false,
+      models: expect.arrayContaining([
+        expect.objectContaining({ id: "gpt-4o" }),
+        expect.objectContaining({ id: "gpt-4.1" }),
+      ]),
+    });
   });
 
   it("an unreachable upstream degrades to defaults rather than failing the request", async () => {
@@ -387,8 +397,7 @@ describe("POST /__studio/ai/chat — SSE event shape", () => {
      */
     process.env.OPENAI_API_KEY = "test-key";
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (() =>
-      Promise.reject(new Error("getaddrinfo ENOTFOUND"))) as unknown as typeof fetch;
+    globalThis.fetch = stubFetch(() => Promise.reject(new Error("getaddrinfo ENOTFOUND")));
 
     try {
       const res = await handleAiApi(
@@ -396,14 +405,11 @@ describe("POST /__studio/ai/chat — SSE event shape", () => {
         new URL("http://localhost/__studio/ai/models"),
       );
       expect(res!.status).toBe(200);
-      const data = (await res!.json()) as {
-        configured: boolean;
-        models: { id: string }[];
-        upstreamError?: string;
-      };
-      expect(data.configured).toBe(true);
-      expect(data.upstreamError).toBe("network");
-      expect(data.models.map((m) => m.id)).toContain("gpt-4o");
+      expect(await res!.json()).toMatchObject({
+        configured: true,
+        models: expect.arrayContaining([expect.objectContaining({ id: "gpt-4o" })]),
+        upstreamError: "network",
+      });
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -454,7 +460,7 @@ describe("handleAiApi — route dispatch", () => {
 // ─── /__studio/ai/chat — upstream SSE parsing (mocked upstream) ───────────────
 
 /** Build a mocked upstream Response whose body is an OpenAI-style SSE stream. */
-function sseUpstream(dataObjects: (object | "[DONE]")[], status = 200): Response {
+function sseUpstream(dataObjects: (JsonObject | "[DONE]")[], status = 200): Response {
   const body = dataObjects
     .map((o) => `data: ${o === "[DONE]" ? "[DONE]" : JSON.stringify(o)}\n\n`)
     .join("");
@@ -465,11 +471,11 @@ function sseUpstream(dataObjects: (object | "[DONE]")[], status = 200): Response
 }
 
 /** Run `fn` with `globalThis.fetch` and OPENAI_API_KEY stubbed, restoring both afterward. */
-async function withUpstream(fetchImpl: typeof fetch, fn: () => Promise<void>): Promise<void> {
+async function withUpstream(answer: FetchAnswer, fn: () => Promise<void>): Promise<void> {
   const realFetch = globalThis.fetch;
   const prevKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
-  globalThis.fetch = fetchImpl;
+  globalThis.fetch = stubFetch(answer);
   try {
     await fn();
   } finally {
@@ -493,14 +499,14 @@ function chatReq() {
 describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
   it("normalizes content deltas and a stop finish_reason", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             { choices: [{ delta: { content: "Hello" } }] },
             { choices: [{ delta: { content: " world" } }] },
             { choices: [{ delta: {}, finish_reason: "stop" }] },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -516,7 +522,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
     /* Dropping these makes the NEXT round a 400 the client cannot repair: DeepSeek's thinking mode
        requires every prior turn's reasoning back on any request carrying `tools`. */
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             { choices: [{ delta: { reasoning_content: "Weighing it up" } }] },
@@ -524,7 +530,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
             { choices: [{ delta: { content: "Hello", reasoning_content: "" } }] },
             { choices: [{ delta: {}, finish_reason: "stop" }] },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -539,7 +545,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("normalizes a streamed tool call across fragments", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             {
@@ -562,7 +568,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
             },
             { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -581,7 +587,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("ends a tool call cleanly on an explicit [DONE]", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             {
@@ -595,7 +601,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
             },
             "[DONE]",
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -609,7 +615,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
      so the client never received a real token count. It must precede `done`: readers stop there. */
   it("forwards the usage count after the finish chunk, immediately before done", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             { choices: [{ delta: { content: "Hi" } }] },
@@ -625,7 +631,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
             },
             "[DONE]",
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -645,7 +651,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("forwards a count beside the finish, and sends none when the upstream reports none", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             {
@@ -653,7 +659,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
               usage: { prompt_tokens: 4 },
             },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -664,14 +670,14 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
       },
     );
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             { choices: [{ delta: {}, finish_reason: "content_filter" }] },
             { choices: [{ finish_reason: "stop" }], usage: null },
             { choices: [], usage: { completion_tokens: 2 } },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -683,10 +689,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("surfaces an upstream error body as an error event", async () => {
     await withUpstream(
-      (() =>
-        Promise.resolve(
-          Response.json({ error: { message: "rate limited" } }, { status: 429 }),
-        )) as unknown as typeof fetch,
+      () => Promise.resolve(Response.json({ error: { message: "rate limited" } }, { status: 429 })),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -699,10 +702,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("surfaces a string-form upstream error body", async () => {
     await withUpstream(
-      (() =>
-        Promise.resolve(
-          Response.json({ error: "bad request" }, { status: 400 }),
-        )) as unknown as typeof fetch,
+      () => Promise.resolve(Response.json({ error: "bad request" }, { status: 400 })),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -713,7 +713,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("surfaces Cloudflare's array-shaped error envelope, not the raw JSON", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           Response.json(
             {
@@ -724,7 +724,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
             },
             { status: 404 },
           ),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -737,7 +737,7 @@ describe("POST /__studio/ai/chat — upstream SSE parsing", () => {
 
   it("reports a network failure when the upstream fetch throws", async () => {
     await withUpstream(
-      (() => Promise.reject(new Error("boom"))) as unknown as typeof fetch,
+      () => Promise.reject(new Error("boom")),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -756,39 +756,36 @@ describe("GET /__studio/ai/models — upstream proxy", () => {
 
   it("maps the upstream model list when a key is configured", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           Response.json({
             data: [{ context_window: 4096, id: "m-1", owned_by: "acme" }],
           }),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
-        const data = (await res!.json()) as {
-          configured: boolean;
-          models: { contextWindow: number; id: string }[];
-        };
-        expect(data.configured).toBe(true);
-        expect(data.models[0]!.id).toBe("m-1");
-        expect(data.models[0]!.contextWindow).toBe(4096);
+        // One upstream model maps to exactly one entry.
+        expect(await res!.json()).toMatchObject({
+          configured: true,
+          models: [{ contextWindow: 4096, id: "m-1" }],
+        });
       },
     );
   });
 
   it("falls back to defaults when the upstream /models call is not ok", async () => {
     await withUpstream(
-      (() => Promise.resolve(new Response("nope", { status: 500 }))) as unknown as typeof fetch,
+      () => Promise.resolve(new Response("nope", { status: 500 })),
       async () => {
         const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
-        const data = (await res!.json()) as { upstreamError: number };
-        expect(data.upstreamError).toBe(500);
+        expect(await res!.json()).toMatchObject({ upstreamError: 500 });
       },
     );
   });
 
   it("reports the real reason when the upstream has no /models route (Cloudflare's shape)", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           Response.json(
             {
@@ -799,23 +796,23 @@ describe("GET /__studio/ai/models — upstream proxy", () => {
             },
             { status: 404 },
           ),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
-        const data = (await res!.json()) as { upstreamError: number; upstreamMessage: string };
-        expect(data.upstreamError).toBe(404);
-        expect(data.upstreamMessage).toBe("No route for that URI");
+        expect(await res!.json()).toMatchObject({
+          upstreamError: 404,
+          upstreamMessage: "No route for that URI",
+        });
       },
     );
   });
 
   it("falls back to defaults when the upstream /models call throws", async () => {
     await withUpstream(
-      (() => Promise.reject(new Error("offline"))) as unknown as typeof fetch,
+      () => Promise.reject(new Error("offline")),
       async () => {
         const res = await handleAiApi(modelsReq(), new URL("http://localhost/__studio/ai/models"));
-        const data = (await res!.json()) as { upstreamError: string };
-        expect(data.upstreamError).toBe("network");
+        expect(await res!.json()).toMatchObject({ upstreamError: "network" });
       },
     );
   });
@@ -829,10 +826,10 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
     let seenUrl = "";
     const prevKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY; // Force reliance on the Bearer token
-    globalThis.fetch = ((url: string) => {
-      seenUrl = url;
+    globalThis.fetch = stubFetch((url) => {
+      seenUrl = String(url);
       return Promise.resolve(sseUpstream([{ choices: [{ delta: {}, finish_reason: "stop" }] }]));
-    }) as unknown as typeof fetch;
+    });
     try {
       const req = mockReq("/__studio/ai/chat", {
         body: {
@@ -859,7 +856,7 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
 
   it("errors when the upstream returns no response body", async () => {
     await withUpstream(
-      (() => Promise.resolve(new Response(null, { status: 200 }))) as unknown as typeof fetch,
+      () => Promise.resolve(new Response(null, { status: 200 })),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -870,10 +867,8 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
 
   it("skips unparseable data lines and still completes", async () => {
     await withUpstream(
-      (() =>
-        Promise.resolve(
-          new Response("data: {not valid json\n\ndata: [DONE]\n\n", { status: 200 }),
-        )) as unknown as typeof fetch,
+      () =>
+        Promise.resolve(new Response("data: {not valid json\n\ndata: [DONE]\n\n", { status: 200 })),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -884,7 +879,7 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
 
   it("closes a pending tool call when the finish reason is a plain stop", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             {
@@ -894,7 +889,7 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
             },
             { choices: [{ delta: {}, finish_reason: "stop" }] },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -906,7 +901,7 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
 
   it("closes a pending tool call when the stream ends without a finish reason", async () => {
     await withUpstream(
-      (() =>
+      () =>
         Promise.resolve(
           sseUpstream([
             {
@@ -915,7 +910,7 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
               ],
             },
           ]),
-        )) as unknown as typeof fetch,
+        ),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -927,10 +922,7 @@ describe("POST /__studio/ai/chat — auth, config & stream edge cases", () => {
 
   it("emits a cancelled done when the upstream fetch is aborted", async () => {
     await withUpstream(
-      (() =>
-        Promise.reject(
-          Object.assign(new Error("aborted"), { name: "AbortError" }),
-        )) as unknown as typeof fetch,
+      () => Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -961,10 +953,10 @@ describe("AI proxy key-provenance + SSRF hardening", () => {
     await withEnvKey(async () => {
       let fetched = false;
       const realFetch = globalThis.fetch;
-      globalThis.fetch = (() => {
+      globalThis.fetch = stubFetch(() => {
         fetched = true;
         return Promise.resolve(new Response("", { status: 200 }));
-      }) as unknown as typeof fetch;
+      });
       try {
         const req = mockReq("/__studio/ai/chat", {
           method: "POST",
@@ -1019,9 +1011,10 @@ describe("AI proxy key-provenance + SSRF hardening", () => {
 
 describe("POST /__studio/ai/chat — mid-stream pump failures", () => {
   /**
-   * An upstream whose body delivers one chunk, then rejects the next read. A Response-shaped plain
-   * object keeps the JS ReadableStream as-is (a real Response would eagerly pump it natively and
-   * surface the rejection at construction instead of at the proxy's reader).
+   * An upstream whose body delivers one chunk, then rejects the next read. The reader is installed
+   * as the Response's own `body` rather than wrapped in a ReadableStream (a real stream body would
+   * be eagerly pumped natively and surface the rejection at construction instead of at the proxy's
+   * reader); the proxy reads only `ok`, `status` and `body.getReader()` from it.
    */
   const failingUpstream = (error: Error) => {
     let reads = 0;
@@ -1038,13 +1031,14 @@ describe("POST /__studio/ai/chat — mid-stream pump failures", () => {
         return Promise.reject(error);
       },
     };
-    return { body: { getReader: () => reader }, ok: true, status: 200 } as unknown as Response;
+    const response = new Response(null, { status: 200 });
+    Object.defineProperty(response, "body", { value: { getReader: () => reader } });
+    return response;
   };
 
   it("reports a mid-stream read failure as an error event", async () => {
     await withUpstream(
-      (() =>
-        Promise.resolve(failingUpstream(new Error("connection reset")))) as unknown as typeof fetch,
+      () => Promise.resolve(failingUpstream(new Error("connection reset"))),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -1058,7 +1052,7 @@ describe("POST /__studio/ai/chat — mid-stream pump failures", () => {
   it("emits a cancelled done when the read aborts mid-stream", async () => {
     const abort = Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
     await withUpstream(
-      (() => Promise.resolve(failingUpstream(abort))) as unknown as typeof fetch,
+      () => Promise.resolve(failingUpstream(abort)),
       async () => {
         const res = await handleAiApi(chatReq(), new URL("http://localhost/__studio/ai/chat"));
         const events = await readSSEEvents(res!);
@@ -1075,10 +1069,10 @@ describe("POST /__studio/ai/chat — the session header becomes a hashed affinit
   async function upstreamRequestFor(headers: Record<string, string>) {
     const calls: { url: string; init: RequestInit }[] = [];
     const realFetch = globalThis.fetch;
-    globalThis.fetch = ((url: string, init: RequestInit) => {
-      calls.push({ init, url });
+    globalThis.fetch = stubFetch((url, init) => {
+      calls.push({ init: init ?? {}, url: String(url) });
       return Promise.resolve(new Response("data: [DONE]\n\n"));
-    }) as unknown as typeof fetch;
+    });
     try {
       const req = mockReq("/__studio/ai/chat", {
         body: { messages: [{ content: "hi", role: "user" }] },
@@ -1091,10 +1085,16 @@ describe("POST /__studio/ai/chat — the session header becomes a hashed affinit
       globalThis.fetch = realFetch;
     }
     const [call] = calls;
+    const { headers: sentHeaders } = call!.init;
+    // The proxy sends its headers as a plain record, whose spelling the assertions below compare.
+    if (sentHeaders instanceof Headers || Array.isArray(sentHeaders)) {
+      throw new TypeError("Expected the upstream request headers as a plain record");
+    }
+    const body: JsonObject = JSON.parse(String(call!.init.body));
     return {
-      body: JSON.parse(String(call!.init.body)) as Record<string, unknown>,
-      headers: call!.init.headers as Record<string, string>,
-      raw: `${String(call!.init.body)}${JSON.stringify(call!.init.headers)}`,
+      body,
+      headers: sentHeaders ?? {},
+      raw: `${String(call!.init.body)}${JSON.stringify(sentHeaders)}`,
     };
   }
 

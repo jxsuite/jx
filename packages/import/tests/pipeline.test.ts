@@ -16,15 +16,21 @@ import { Window } from "happy-dom";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { runImportPipeline } from "../src/pipeline.ts";
+import { parseJxDocument, parseProjectConfig } from "@jxsuite/schema/parse";
+import type { AiComponentizeOptions } from "../src/ai-componentize.ts";
 import type { ImportBrowser } from "../src/capture.ts";
+import type { ComponentizeResult } from "../src/componentize.ts";
 import { memoryIo } from "./memory-io.ts";
 
-/** A browser that is only `newPage`, and pages that are only the five calls the phases make. */
-function fakeBrowser(pages: Record<string, { title: string; html: string }>): {
+/** The fake browser, plus counters for the page closes and screenshots it has served. */
+interface FakeBrowser {
   browser: ImportBrowser;
   closed: () => number;
   shots: () => number;
-} {
+}
+
+/** A browser that is only `newPage`, and pages that are only the five calls the phases make. */
+function fakeBrowser(pages: Record<string, { title: string; html: string }>): FakeBrowser {
   let closed = 0;
   let shots = 0;
   const browser: ImportBrowser = {
@@ -32,7 +38,7 @@ function fakeBrowser(pages: Record<string, { title: string; html: string }>): {
       let win: Window | undefined;
       return Promise.resolve({
         setViewport: () => Promise.resolve(),
-        goto: (url: string) => {
+        goto: (url) => {
           const entry = pages[url] ?? { title: "Missing", html: "<p>not found</p>" };
           win = new Window({ url });
           win.document.title = entry.title;
@@ -44,8 +50,7 @@ function fakeBrowser(pages: Record<string, { title: string; html: string }>): {
           });
           return Promise.resolve();
         },
-        evaluate: (fn: (...args: never[]) => unknown, ...args: never[]) =>
-          Promise.resolve(fn(...args)),
+        evaluate: (fn, ...args) => Promise.resolve(fn(...args)),
         screenshot: () => {
           shots += 1;
           return Promise.resolve(new Uint8Array([137, 80, 78, 71]));
@@ -56,7 +61,7 @@ function fakeBrowser(pages: Record<string, { title: string; html: string }>): {
         },
       });
     },
-  } as unknown as ImportBrowser;
+  };
   return { browser, closed: () => closed, shots: () => shots };
 }
 
@@ -64,7 +69,7 @@ const HOME = "https://fake.example/";
 
 describe("runImportPipeline — no filesystem, no puppeteer", () => {
   test("a single-page run emits a whole project through the sink", async () => {
-    const { io, files, dirs } = memoryIo();
+    const { io, files, dirs, text } = memoryIo();
     const { browser, closed } = fakeBrowser({
       [HOME]: { title: "Fake Home", html: "<main><h1>Fake Home</h1><p>Body copy</p></main>" },
     });
@@ -97,14 +102,12 @@ describe("runImportPipeline — no filesystem, no puppeteer", () => {
     // The project shape is seeded even where nothing lands in it, so a host can open it early.
     expect(dirs).toEqual(["pages", "layouts", "components", "public"]);
 
-    const page = JSON.parse(files.get("pages/index.json") as string) as {
-      children: { tagName: string }[];
-    };
-    expect(page.children[0]?.tagName).toBe("main");
+    const page = parseJxDocument(text("pages/index.json"), "pages/index.json");
+    expect(Array.isArray(page.children) && page.children[0]).toMatchObject({ tagName: "main" });
 
     /* The configuration comes back with the result. A caller committing to git cannot read it off
        a disk it does not have, and re-deriving it would be a second writer on the same bytes. */
-    const project = JSON.parse(result.projectJson) as { name: string; $media: object };
+    const project = parseProjectConfig(result.projectJson, "project.json");
     expect(project.name).toBe("Fake Home");
     expect(project.$media).toEqual({ "--": "1440px" });
     expect(files.get("project.json")).toBe(result.projectJson);
@@ -186,13 +189,13 @@ describe("runImportPipeline — no filesystem, no puppeteer", () => {
     expect(page).toContain('"popover": "auto"');
     expect(page).toContain('"popovertarget": "submenu"');
     // The closed state must not survive in the base rule, where it beats the UA sheet.
-    const panel = JSON.parse(page) as unknown;
+    const panel = parseJxDocument(page, "pages/index.json");
     expect(JSON.stringify(panel)).toContain(":popover-open");
     expect(phases).toContain("convert");
   });
 
   test("a crawl walks same-origin links and emits a page per route", async () => {
-    const { io, files } = memoryIo();
+    const { io, files, text } = memoryIo();
     const { browser } = fakeBrowser({
       [HOME]: {
         title: "Home",
@@ -220,8 +223,9 @@ describe("runImportPipeline — no filesystem, no puppeteer", () => {
     expect(result.pages.map((p) => p.route)).toEqual(["pages/index.json", "pages/about.json"]);
     expect(files.has("pages/about.json")).toBe(true);
     // Two pages sharing a header and footer are what layout detection is for.
-    const layout = JSON.parse(files.get("layouts/base.json") as string) as { children: unknown[] };
-    expect(layout.children.length).toBeGreaterThan(1);
+    const layout = parseJxDocument(text("layouts/base.json"), "layouts/base.json");
+    const childCount = Array.isArray(layout.children) ? layout.children.length : 0;
+    expect(childCount).toBeGreaterThan(1);
   });
 
   test("a read-more control becomes a disclosure, freeing the copy behind it", async () => {
@@ -358,9 +362,9 @@ describe("runImportPipeline — no filesystem, no puppeteer", () => {
         html: "<main><div><h2>A</h2></div><div><h2>B</h2></div></main>",
       },
     });
-    const seen: Record<string, unknown>[] = [];
+    const seen: AiComponentizeOptions[] = [];
     void mock.module("../src/ai-componentize.ts", () => ({
-      aiComponentize: (heuristic: unknown, opts: Record<string, unknown>) => {
+      aiComponentize: (heuristic: ComponentizeResult, opts: AiComponentizeOptions) => {
         seen.push(opts);
         return Promise.resolve(heuristic);
       },

@@ -11,6 +11,8 @@
  * backends answer a base64 string for the same reason they accept one, and the caller wants bytes.
  */
 
+import { isString } from "@jxsuite/schema/guards";
+
 /** Bytes per `String.fromCodePoint` call — spreading a whole large file blows the call stack. */
 const CHUNK = 32_768;
 
@@ -28,7 +30,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
  * have always received base64 strings, so existing callers keep working.
  */
 export async function toBase64(data: string | File | Blob | ArrayBuffer): Promise<string> {
-  if (typeof data === "string") {
+  if (isString(data)) {
     return data;
   }
   const buffer = data instanceof ArrayBuffer ? data : await data.arrayBuffer();

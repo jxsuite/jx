@@ -32,9 +32,8 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import packagesDoc from "./settings-packages.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("settings-packages", packagesDoc as unknown as JxDocument);
+registerSurface("settings-packages", packagesDoc);
 
 /** One dependency, as the table draws it. Every field is already a string the row can print. */
 export interface PackageRow {
@@ -79,7 +78,7 @@ export interface PackagesActions {
 }
 
 /** One row plus the flag its buttons switch on. */
-interface RowScope extends Record<string, unknown>, PackageRow {
+interface RowScope extends PackageRow {
   /** Whether to draw the update button — `upgrade` said as something a `$switch` can read. */
   canUpdate: boolean;
 }
@@ -96,10 +95,12 @@ interface PackagesFlags {
   hasUpdates: boolean;
 }
 
-interface PackagesScope
-  extends Record<string, unknown>, Omit<PackagesView, "rows">, PackagesActions, PackagesFlags {
+/** Everything {@link derive} computes from a view: the scope minus the reader's actions. */
+interface PackagesDerived extends Omit<PackagesView, "rows">, PackagesFlags {
   rows: RowScope[];
 }
+
+interface PackagesScope extends PackagesDerived, PackagesActions {}
 
 interface Mounted {
   scope: PackagesScope;
@@ -110,7 +111,7 @@ interface Mounted {
 const mounts = new WeakMap<HTMLElement, Mounted>();
 
 /** The view plus the flags the document switches on. */
-function derive(view: PackagesView): Omit<PackagesScope, keyof PackagesActions> {
+function derive(view: PackagesView): PackagesDerived {
   const rows = view.rows.map((row): RowScope => ({ ...row, canUpdate: row.upgrade !== "" }));
   return {
     addName: view.addName,
@@ -145,7 +146,7 @@ export function renderPackagesSurface(
   }
   existing?.handle?.dispose();
   host.textContent = "";
-  const scope = reactive({ ...derive(view), ...actions }) as PackagesScope;
+  const scope: PackagesScope = reactive<PackagesScope>({ ...derive(view), ...actions });
   const record: Mounted = { handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a redraw arriving while this is in flight takes the branch above — a

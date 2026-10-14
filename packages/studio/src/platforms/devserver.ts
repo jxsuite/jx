@@ -13,9 +13,9 @@ import { canPickDirectory, pickDirectoryPath } from "../services/directory-picke
 import { negotiateCollab } from "@jxsuite/collab/negotiate";
 import type { CollabNegotiation } from "@jxsuite/collab/negotiate";
 import type { WsCollabConnection } from "@jxsuite/collab/client";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type {
-  CreateProjectDestination,
   DataConnectionsResponse,
   DataConnectionTestResult,
   DataPushResult,
@@ -35,20 +35,22 @@ import type {
   ProjectSchemasResponse,
   ReferencesResult,
   RenameResult,
-  SecretsSetRequest,
+  KeyValuePatch,
   SecretsSetResponse,
   SiteBuildResult,
   SitePreviewResult,
   StarterInfo,
+  StudioPlatform,
 } from "../types";
 import { problemDetail, problemMessage } from "@jxsuite/protocol";
+import type { CfProxyEnvelope } from "./cloud";
 import type { UploadResult } from "@jxsuite/protocol";
-
-/** A directory entry from the server, tolerating extra wire fields. */
-type WireDirEntry = DirEntry & Record<string, unknown>;
 
 /** Parse a fetch Response body as JSON, asserting the expected shape at the boundary. */
 async function readJson<T>(res: Response): Promise<T> {
+  /* SAFETY: every route read here is a `/__studio/*` route of @jxsuite/server (specs/server.md §4),
+     whose replies have the shapes ../types and the wire interfaces in this file describe, and each
+     caller names the type of the route it called. */
   return (await res.json()) as T;
 }
 
@@ -56,9 +58,44 @@ interface ErrorBody {
   error?: string;
 }
 
+/** One entry of the `/__studio/sites` glob: a site's folder and its parsed project.json. */
 interface SiteEntry {
-  config: unknown;
+  config: ProjectConfig | null;
   path: string;
+}
+
+/**
+ * `GET /__studio/project-info`: what the server knows about a folder. The route sends more than
+ * Studio reads (`projectRoot` among them), and those members ride along untouched.
+ */
+interface ProjectInfoReply {
+  isSiteProject: boolean;
+  projectConfig?: ProjectConfig | null;
+  directories?: string[];
+  [member: string]: JsonValue | ProjectConfig | undefined;
+}
+
+/** The body of an `fs` event on the `/__reload` stream (the server's watcher batches them). */
+interface FsEventBatch {
+  events?: FsEvent[];
+}
+
+/** `showDirectoryPicker()` (WICG File System Access), which only Chromium-based browsers expose. */
+type ShowDirectoryPicker = (options: { mode: string }) => Promise<FileSystemDirectoryHandle>;
+
+/** True when the window implements the File System Access directory picker. */
+function hasDirectoryPicker(
+  host: Window,
+): host is Window & { showDirectoryPicker: ShowDirectoryPicker } {
+  return "showDirectoryPicker" in host && isFunction(host.showDirectoryPicker);
+}
+
+/** The options object {@link StudioPlatform.createProject} takes. */
+type CreateProjectOptions = Parameters<StudioPlatform["createProject"]>[0];
+
+/** What a row insert or update answers: the row as stored. */
+interface DataRowWrite {
+  row: JsonObject;
 }
 
 /**
@@ -117,7 +154,7 @@ export function createDevServerPlatform() {
       method: "POST",
     });
     if (!res.ok) {
-      const body = (await readJson<ErrorBody>(res).catch(() => ({}))) as ErrorBody;
+      const body = await readJson<ErrorBody>(res).catch((): ErrorBody => ({}));
       throw new Error(
         `Could not open ${root}: ${problemDetail(body) ?? `activation failed (${res.status})`}`,
       );
@@ -134,7 +171,7 @@ export function createDevServerPlatform() {
     if (!_projectRoot) {
       return;
     }
-    _activation = postActivate(_projectRoot).catch((error: unknown) => {
+    _activation = postActivate(_projectRoot).catch((error) => {
       console.error("Project re-activation failed:", error);
     });
   }
@@ -171,6 +208,36 @@ export function createDevServerPlatform() {
     return p.startsWith(`${_projectRoot}/`) ? p.slice(_projectRoot.length + 1) : p;
   }
 
+  /**
+   * Native folder chooser for the New Project modal's Browse… button. Present only when the browser
+   * implements `showDirectoryPicker` (Chromium-based); elsewhere the member stays undefined and the
+   * modal falls back to a typed Location field.
+   *
+   * The picked handle carries no filesystem path, so it is resolved by the id the picker tags the
+   * folder with (see `@jxsuite/studio/directory-picker`). Resolves `null` only when the user
+   * dismisses the chooser; every other failure rejects with a sentence the modal shows under
+   * Location. So `locate` keeps the helper's contract: `null` is "no folder holds this id" (the
+   * route's 200 `{ path: null }`), and a non-ok answer throws the problem the server sent rather
+   * than posing as a miss. A network failure (`TypeError: Failed to fetch`, e.g. a page that is not
+   * being served by the dev server at all) propagates as is, and the picker names it.
+   */
+  const directoryPicking: Pick<StudioPlatform, "pickDirectory"> = {};
+  if (canPickDirectory()) {
+    directoryPicking.pickDirectory = async (): Promise<string | null> =>
+      pickDirectoryPath(async ({ id, name }) => {
+        const res = await fetch(
+          `/__studio/locate-directory?name=${encodeURIComponent(name)}&id=${encodeURIComponent(id)}`,
+        );
+        if (!res.ok) {
+          // A proxy, or a `views://` host with no dev server behind it, may answer in HTML.
+          const body = await readJson<JsonValue>(res).catch(() => null);
+          throw new Error(problemMessage(body, res.status));
+        }
+        const found = await readJson<{ path?: string | null }>(res);
+        return found.path ?? null;
+      });
+  }
+
   return {
     id: "devserver",
 
@@ -189,7 +256,7 @@ export function createDevServerPlatform() {
         // Fire-and-forget: callers that need the binding in place before reading await activate()
         // Themselves. The rejection is reported rather than dropped — an unactivated root leaves
         // Every rootless endpoint (git especially) operating on the server's OWN root.
-        _activation = this.activate(_projectRoot).catch((error: unknown) => {
+        _activation = this.activate(_projectRoot).catch((error) => {
           console.error("Project activation failed:", error);
         });
       }
@@ -213,17 +280,14 @@ export function createDevServerPlatform() {
 
     async openProject() {
       // Use Chrome's showDirectoryPicker API
-      if (!("showDirectoryPicker" in window)) {
+      const host = window;
+      if (!hasDirectoryPicker(host)) {
         throw new Error("showDirectoryPicker not available — use a Chromium-based browser");
       }
 
       let dirHandle;
       try {
-        dirHandle = await (
-          window as unknown as {
-            showDirectoryPicker: (opts: { mode: string }) => Promise<FileSystemDirectoryHandle>;
-          }
-        ).showDirectoryPicker({ mode: "readwrite" });
+        dirHandle = await host.showDirectoryPicker({ mode: "readwrite" });
       } catch (error) {
         // User cancelled the picker
         if (error instanceof Error && error.name === "AbortError") {
@@ -241,6 +305,9 @@ export function createDevServerPlatform() {
       }
 
       const file = await siteHandle.getFile();
+      /* SAFETY: the user picked this folder as a project, and project.json is that project's own
+         config file; it is matched below against the server's parse of the same file, and every
+         adapter hands project.json to Studio as the ProjectConfig the session edits. */
       const config = JSON.parse(await file.text()) as ProjectConfig;
 
       // Resolve server-relative path by matching against known sites
@@ -297,12 +364,7 @@ export function createDevServerPlatform() {
           ? await readJson<{ name: string; root: string }>(projectRes)
           : { name: "project", root: "." };
         const info = infoRes.ok
-          ? await readJson<{
-              isSiteProject: boolean;
-              projectConfig?: ProjectConfig | null;
-              directories?: string[];
-              [key: string]: unknown;
-            }>(infoRes)
+          ? await readJson<ProjectInfoReply>(infoRes)
           : { isSiteProject: false };
         return { info, meta };
       } catch {
@@ -315,27 +377,8 @@ export function createDevServerPlatform() {
     /**
      * Scaffold a project at `destination.parent/directory`. The dev server refuses the request
      * outright when no destination is supplied — it will not fall back to its own root.
-     *
-     * @param {{
-     *   name: string;
-     *   description?: string;
-     *   url?: string;
-     *   adapter?: string;
-     *   directory: string;
-     *   destination: CreateProjectDestination;
-     * }} opts
      */
-    async createProject(opts: {
-      name: string;
-      description?: string;
-      url?: string;
-      adapter?: string;
-      directory: string;
-      destination: CreateProjectDestination;
-      starter?: string;
-      template?: string;
-      design?: Record<string, unknown>;
-    }) {
+    async createProject(opts: CreateProjectOptions) {
       const res = await fetch("/__studio/create-project", {
         body: JSON.stringify(opts),
         headers: { "Content-Type": "application/json" },
@@ -348,37 +391,7 @@ export function createDevServerPlatform() {
       return await res.json();
     },
 
-    /**
-     * Native folder chooser for the New Project modal's Browse… button. Present only when the
-     * browser implements `showDirectoryPicker` (Chromium-based); elsewhere the member stays
-     * undefined and the modal falls back to a typed Location field.
-     *
-     * The picked handle carries no filesystem path, so it is resolved by the id the picker tags the
-     * folder with (see `@jxsuite/studio/directory-picker`). Resolves `null` only when the user
-     * dismisses the chooser; every other failure rejects with a sentence the modal shows under
-     * Location. So `locate` keeps the helper's contract: `null` is "no folder holds this id" (the
-     * route's 200 `{ path: null }`), and a non-ok answer throws the problem the server sent rather
-     * than posing as a miss. A network failure (`TypeError: Failed to fetch`, e.g. a page that is
-     * not being served by the dev server at all) propagates as is, and the picker names it.
-     */
-    ...(canPickDirectory()
-      ? {
-          async pickDirectory(): Promise<string | null> {
-            return pickDirectoryPath(async ({ id, name }) => {
-              const res = await fetch(
-                `/__studio/locate-directory?name=${encodeURIComponent(name)}&id=${encodeURIComponent(id)}`,
-              );
-              if (!res.ok) {
-                // A proxy, or a `views://` host with no dev server behind it, may answer in HTML.
-                const body: unknown = await res.json().catch(() => null);
-                throw new Error(problemMessage(body, res.status));
-              }
-              const found = await readJson<{ path?: string | null }>(res);
-              return found.path ?? null;
-            });
-          },
-        }
-      : {}),
+    ...directoryPicking,
 
     /** List starter templates from the dev server. */
     async listStarters(): Promise<StarterInfo[]> {
@@ -407,7 +420,7 @@ export function createDevServerPlatform() {
       if (!res.ok) {
         throw new Error(`Failed to list directory: ${dir}`);
       }
-      const entries = await readJson<WireDirEntry[]>(res);
+      const entries = await readJson<DirEntry[]>(res);
       for (const e of entries) {
         e.path = stripRoot(e.path);
       }
@@ -465,10 +478,14 @@ export function createDevServerPlatform() {
       if (!res.ok) {
         throw new Error(`Upload failed: ${path}`);
       }
-      const body = (await res.json()) as Partial<UploadResult>;
+      const body = await readJson<Partial<UploadResult>>(res);
       // The dev server echoes the path today; falling back to the request keeps a backend that says
       // Nothing working rather than writing `undefined` into a document.
-      return { path: body.path ?? path, ...(body.size === undefined ? {} : { size: body.size }) };
+      const uploaded: UploadResult = { path: body.path ?? path };
+      if (body.size !== undefined) {
+        uploaded.size = body.size;
+      }
+      return uploaded;
     },
 
     /** @param {string} path */
@@ -552,10 +569,12 @@ export function createDevServerPlatform() {
           options?.onResync?.("reconnect");
         }
       });
-      es.addEventListener("fs", (ev: MessageEvent) => {
-        let payload: { events?: FsEvent[] };
+      es.addEventListener("fs", (ev: MessageEvent<string>) => {
+        let payload: FsEventBatch;
         try {
-          payload = JSON.parse(ev.data as string) as { events?: FsEvent[] };
+          /* SAFETY: `fs` events on /__reload are sent only by @jxsuite/server's watcher, as
+             broadcastEvent("fs", { events }) over its batched FsEvent buffer (server watch.ts). */
+          payload = JSON.parse(ev.data) as FsEventBatch;
         } catch {
           return;
         }
@@ -597,7 +616,7 @@ export function createDevServerPlatform() {
       }
       if (_collabProbe === null) {
         _collabProbe = fetch("/__studio/collab")
-          .then(async (res) => (res.ok ? negotiateCollab(await res.json()) : null))
+          .then(async (res) => (res.ok ? negotiateCollab(await readJson<JsonValue>(res)) : null))
           .catch(() => null);
       }
       const negotiation = await _collabProbe;
@@ -694,7 +713,7 @@ export function createDevServerPlatform() {
       if (!res.ok) {
         return false;
       }
-      const data = (await res.json()) as { needsInstall?: boolean };
+      const data = await readJson<{ needsInstall?: boolean }>(res);
       return Boolean(data.needsInstall);
     },
 
@@ -721,11 +740,8 @@ export function createDevServerPlatform() {
 
     // ─── Code services (optional) ─────────────────────────────────────────
 
-    /**
-     * @param {string} action
-     * @param {unknown} payload
-     */
-    async codeService(action: string, payload: unknown) {
+    /** Run one code-service action on the server; null when the route fails or is absent. */
+    async codeService(action: string, payload: Parameters<StudioPlatform["codeService"]>[1]) {
       try {
         const res = await fetch(`/__studio/code/${action}`, {
           body: JSON.stringify(payload),
@@ -788,7 +804,7 @@ export function createDevServerPlatform() {
       if (!res.ok) {
         return [];
       }
-      const entries = await readJson<WireDirEntry[]>(res);
+      const entries = await readJson<DirEntry[]>(res);
       for (const e of entries) {
         e.path = stripRoot(e.path);
       }
@@ -911,26 +927,26 @@ export function createDevServerPlatform() {
       return data;
     },
 
-    async dataInsertRow(req: DataRowInsert): Promise<{ row: Record<string, unknown> }> {
+    async dataInsertRow(req: DataRowInsert): Promise<DataRowWrite> {
       const res = await fetch(`/__studio/data/rows?dir=${encodeURIComponent(serverPath("."))}`, {
         body: JSON.stringify(req),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const data = await readJson<{ row: Record<string, unknown> } & ErrorBody>(res);
+      const data = await readJson<DataRowWrite & ErrorBody>(res);
       if (!res.ok) {
         throw new Error(problemDetail(data) ?? "Insert failed");
       }
       return data;
     },
 
-    async dataUpdateRow(req: DataRowUpdate): Promise<{ row: Record<string, unknown> }> {
+    async dataUpdateRow(req: DataRowUpdate): Promise<DataRowWrite> {
       const res = await fetch(`/__studio/data/rows?dir=${encodeURIComponent(serverPath("."))}`, {
         body: JSON.stringify(req),
         headers: { "Content-Type": "application/json" },
         method: "PUT",
       });
-      const data = await readJson<{ row: Record<string, unknown> } & ErrorBody>(res);
+      const data = await readJson<DataRowWrite & ErrorBody>(res);
       if (!res.ok) {
         throw new Error(problemDetail(data) ?? "Update failed");
       }
@@ -966,7 +982,7 @@ export function createDevServerPlatform() {
     },
 
     /** Write/remove secrets in the dev server's .dev.vars; names-only response. */
-    async setSecrets(req: SecretsSetRequest): Promise<SecretsSetResponse> {
+    async setSecrets(req: KeyValuePatch): Promise<SecretsSetResponse> {
       const res = await fetch(`/__studio/secrets?dir=${encodeURIComponent(serverPath("."))}`, {
         body: JSON.stringify(req),
         headers: { "Content-Type": "application/json" },
@@ -982,15 +998,17 @@ export function createDevServerPlatform() {
     /**
      * Invoke a format capability (parse/serialize) server-side.
      *
-     * @param {Record<string, unknown>} payload — { format, action, source?, doc?, options? }
+     * @param payload — { format, action, source?, doc?, options? }
      */
-    async formatAction(payload: Record<string, unknown>) {
+    async formatAction(payload: Parameters<NonNullable<StudioPlatform["formatAction"]>>[0]) {
       const res = await fetch("/__studio/format", {
         body: JSON.stringify({ ...payload, dir: serverPath(".") }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const data = await readJson<{ error?: string; result?: unknown }>(res);
+      /* The format route answers `{ result }` on success (the document a format class's `parse`
+         built, or the text its `serialize` wrote) and a problem document otherwise. */
+      const data = await readJson<JsonObject & { result: JxMutableNode | string }>(res);
       if (!res.ok) {
         throw new Error(problemDetail(data) ?? "Format action failed");
       }
@@ -1016,14 +1034,13 @@ export function createDevServerPlatform() {
       if (!res.ok) {
         return null;
       }
-      const { schema } = await readJson<{ schema: unknown }>(res);
+      const { schema } = await readJson<{ schema: JsonValue }>(res);
       return schema;
     },
 
     // ─── Class resolution (dev-proxy) ─────────────────────────────────────
 
-    /** @param {Record<string, unknown>} body */
-    async resolveClass(body: Record<string, unknown>) {
+    async resolveClass(body: Parameters<NonNullable<StudioPlatform["resolveClass"]>>[0]) {
       const res = await fetch("/__jx_resolve__", {
         body: JSON.stringify(body),
         headers: { "content-type": "application/json" },
@@ -1032,7 +1049,7 @@ export function createDevServerPlatform() {
       if (!res.ok) {
         throw new Error(`Class resolution failed: ${res.status}`);
       }
-      return await readJson<unknown>(res);
+      return await readJson<JsonValue>(res);
     },
 
     // ─── Git operations ──────────────────────────────────────────────────
@@ -1229,7 +1246,7 @@ export function createDevServerPlatform() {
         const body = await readJson<ErrorBody>(res);
         throw new Error(problemDetail(body) ?? "The site could not be built.");
       }
-      return (await res.json()) as SiteBuildResult;
+      return await readJson<SiteBuildResult>(res);
     },
 
     /**
@@ -1248,7 +1265,7 @@ export function createDevServerPlatform() {
         const body = await readJson<ErrorBody>(res);
         throw new Error(problemDetail(body) ?? "The site could not be previewed.");
       }
-      return (await res.json()) as SitePreviewResult;
+      return await readJson<SitePreviewResult>(res);
     },
 
     async setPreviewOverlay(path: string, contents: string) {
@@ -1300,12 +1317,7 @@ export function createDevServerPlatform() {
         headers: { "Content-Type": "application/json", "X-CF-Token": token },
         body: JSON.stringify({ path: apiPath, method: init?.method ?? "GET", body: init?.body }),
       });
-      const envelope = (await res.json()) as {
-        success?: boolean;
-        result?: unknown;
-        errors?: { message: string }[];
-        error?: string;
-      };
+      const envelope = await readJson<CfProxyEnvelope>(res);
       if (!res.ok || envelope.success === false) {
         const message =
           envelope.errors?.map((e) => e.message).join("; ") ?? envelope.error ?? res.statusText;
@@ -1322,10 +1334,13 @@ export function createDevServerPlatform() {
         return null;
       }
       try {
-        const accounts = (await this.cfApi?.("/accounts")) as { id: string; name: string }[];
-        if (!accounts?.length) {
+        const result = await this.cfApi("/accounts");
+        if (!Array.isArray(result) || result.length === 0) {
           return { connected: false };
         }
+        /* SAFETY: cfApi resolved the v4 envelope's `result`, and Cloudflare documents GET /accounts
+           as answering an array of account objects, each with a string `id` and `name`. */
+        const accounts = result as { id: string; name: string }[];
         const chosen = accounts.find((a) => a.id === getCfAccountId()) ?? accounts[0]!;
         setCfAccountId(chosen.id);
         return { connected: true, accountId: chosen.id, accountName: chosen.name };
@@ -1343,14 +1358,11 @@ export function createDevServerPlatform() {
         return [];
       }
       const sites = await readJson<SiteEntry[]>(res);
-      return sites.map((site) => {
-        const config = site.config as { name?: string } | null;
-        return {
-          name: config?.name || site.path.split("/").at(-1) || site.path,
-          root: site.path,
-          description: site.path,
-        };
-      });
+      return sites.map((site) => ({
+        name: site.config?.name || site.path.split("/").at(-1) || site.path,
+        root: site.path,
+        description: site.path,
+      }));
     },
 
     // ─── AI Assistant (Stack B: OpenAI-compatible SSE proxy) ───────────────────

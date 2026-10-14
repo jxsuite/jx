@@ -10,6 +10,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import {
   clearLivePreviewOverlay,
   livePreviewClients,
@@ -24,14 +26,10 @@ import {
 const TMP = resolve(import.meta.dir, "__test-live-preview__");
 const OTHER = resolve(import.meta.dir, "__test-live-preview-other__");
 
-function write(root: string, relPath: string, content: string | object) {
+function write(root: string, relPath: string, content: string | JsonObject) {
   const abs = resolve(root, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 const LAYOUT = {
@@ -122,7 +120,10 @@ async function settledClients(): Promise<number> {
 /** Open the reload stream and return a reader plus a one-frame helper. */
 async function openStream(origin: string, route = "/") {
   const response = await fetch(`${origin}/__jx_live__/reload?route=${encodeURIComponent(route)}`);
-  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  if (!response.body) {
+    throw new Error("The reload stream answered without a body");
+  }
+  const reader = response.body.getReader();
   const frame = async () => {
     const chunk = await reader.read();
     return new TextDecoder().decode(chunk.value);

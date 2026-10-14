@@ -9,9 +9,25 @@ interface DbusFileChooserPortal {
   ) => Promise<[string, ...unknown[]]>;
 }
 
-interface DbusRequest {
-  on: (event: "Response", handler: (response: number, results: unknown) => void) => void;
+/**
+ * The interfaces this module asks the session bus for, keyed by D-Bus interface name. dbus-ts types
+ * `getInterface()` from this map, so the portal proxy needs no assertion. The Request interface is
+ * deliberately absent: dbus-ts does not type signals, so its proxy stays a plain `DBusInterface`
+ * and the Response handler declares its own parameters.
+ */
+interface PortalInterfaces {
+  "org.freedesktop.portal.FileChooser": DbusFileChooserPortal;
 }
+
+/**
+ * One `a{sv}` entry of a portal Response as dbus-ts unmarshals it: `[key, [signature, value]]`.
+ * Both inner slots are optional because the bus delivers whatever the portal wrote, and a short
+ * entry reads as "no uris" rather than throwing inside the signal handler.
+ */
+type PortalResultEntry = [string, [string, string[]?]?];
+
+/** A FileChooser Response's `results`: the raw `a{sv}` entry list, or a decoded `{ uris }` map. */
+type PortalResponseResults = PortalResultEntry[] | { uris?: string[] };
 
 /**
  * Open the freedesktop FileChooser portal and resolve to the first selected path (or null on
@@ -31,14 +47,14 @@ async function chooseViaPortal(
   },
   timeoutMs = 60_000,
 ): Promise<string | null> {
-  const bus = await sessionBus();
+  const bus = await sessionBus<PortalInterfaces>();
 
   try {
-    const portal = (await bus.getInterface(
+    const portal = await bus.getInterface(
       "org.freedesktop.portal.Desktop",
       "/org/freedesktop/portal/desktop",
       "org.freedesktop.portal.FileChooser",
-    )) as unknown as DbusFileChooserPortal;
+    );
 
     const handleToken = `bun_${Math.random().toString(36).slice(2, 11)}`;
 
@@ -58,16 +74,17 @@ async function chooseViaPortal(
 
       void bus
         .getInterface("org.freedesktop.portal.Desktop", handle, "org.freedesktop.portal.Request")
-        .then((request: unknown) => {
-          (request as DbusRequest).on("Response", (response: number, results: unknown) => {
+        .then((request) => {
+          void request.on("Response", (response: number, results: PortalResponseResults) => {
             clearTimeout(timeout);
             if (response !== 0) {
               resolve(null);
               return;
             }
             // D-Bus portal response: nested array format [key, [type, value[]]] or {uris: string[]}
-            const r = results as Record<string, unknown> & [string, [string, string[]]][];
-            const uris: string[] = r[0]?.[1]?.[1] ?? (r.uris as string[] | undefined) ?? [];
+            const uris = Array.isArray(results)
+              ? (results.at(0)?.[1]?.[1] ?? [])
+              : (results.uris ?? []);
             if (uris.length === 0) {
               resolve(null);
               return;

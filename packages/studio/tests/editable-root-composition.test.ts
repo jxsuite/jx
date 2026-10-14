@@ -8,17 +8,21 @@
  * before.
  */
 import "./with-dom.js";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { startEditableRoot } from "../src/canvas/iframe-editable-root";
 import type { EditableRootHandle } from "../src/canvas/iframe-editable-root";
 
 let container: HTMLElement;
 let handle: EditableRootHandle | null = null;
-const onCommitTick = mock(() => {});
+/** The block text each idle commit read, in order: a half-composed run would show up here. */
+let commits: string[] = [];
+const onCommitTick = () => {
+  commits.push(container.textContent);
+};
 
 /** Put the caret inside the block so the host has an active element (commits require one). */
 function placeCaretInBlock() {
-  const block = container.querySelector("p") as HTMLElement;
+  const block = container.querySelector("p")!;
   const text = block.firstChild!;
   const range = document.createRange();
   range.setStart(text, 2);
@@ -34,9 +38,11 @@ const wait = (ms: number) =>
   });
 
 beforeEach(() => {
-  onCommitTick.mockClear();
-  document.body.innerHTML = `<div id="root"><p data-jx-path='["children",0]'>hello</p></div>`;
-  container = document.querySelector("#root") as HTMLElement;
+  commits = [];
+  container = document.createElement("div");
+  container.id = "root";
+  container.innerHTML = `<p data-jx-path='["children",0]'>hello</p>`;
+  document.body.replaceChildren(container);
   container.contentEditable = "true";
   handle = startEditableRoot(container, {
     commitDelayMs: 10,
@@ -62,7 +68,7 @@ describe("composition suspends the idle commit", () => {
     container.dispatchEvent(new Event("input", { bubbles: true }));
     await wait(40);
     expect(handle!.isComposing()).toBe(true);
-    expect(onCommitTick).not.toHaveBeenCalled();
+    expect(commits).toEqual([]);
   });
 
   test("a tick already armed before the composition does not fire inside it", async () => {
@@ -71,7 +77,7 @@ describe("composition suspends the idle commit", () => {
     // Composition opens before the 10 ms tick would have fired.
     container.dispatchEvent(new Event("compositionstart", { bubbles: true }));
     await wait(40);
-    expect(onCommitTick).not.toHaveBeenCalled();
+    expect(commits).toEqual([]);
   });
 
   test("exactly one commit runs for the whole composed run", async () => {
@@ -83,14 +89,14 @@ describe("composition suspends the idle commit", () => {
     container.dispatchEvent(new Event("compositionend", { bubbles: true }));
     expect(handle!.isComposing()).toBe(false);
     await wait(40);
-    expect(onCommitTick).toHaveBeenCalledTimes(1);
+    expect(commits).toEqual(["hello"]);
   });
 
   test("ordinary typing is unaffected — the tick still fires", async () => {
     placeCaretInBlock();
     container.dispatchEvent(new Event("input", { bubbles: true }));
     await wait(40);
-    expect(onCommitTick).toHaveBeenCalledTimes(1);
+    expect(commits).toEqual(["hello"]);
   });
 });
 
@@ -100,18 +106,18 @@ describe("flush", () => {
     container.dispatchEvent(new Event("input", { bubbles: true }));
     container.dispatchEvent(new Event("compositionstart", { bubbles: true }));
     handle!.flush();
-    expect(onCommitTick).not.toHaveBeenCalled();
+    expect(commits).toEqual([]);
     // And the composition's own end still commits it, so nothing is lost.
     container.dispatchEvent(new Event("compositionend", { bubbles: true }));
     await wait(40);
-    expect(onCommitTick).toHaveBeenCalledTimes(1);
+    expect(commits).toEqual(["hello"]);
   });
 
   test("commits a pending tick when no composition is open", () => {
     placeCaretInBlock();
     container.dispatchEvent(new Event("input", { bubbles: true }));
     handle!.flush();
-    expect(onCommitTick).toHaveBeenCalledTimes(1);
+    expect(commits).toEqual(["hello"]);
   });
 });
 

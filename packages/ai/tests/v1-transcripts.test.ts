@@ -2,8 +2,8 @@
  * The v1 transcript corpus: every conversation shape `toMessagesArray` serializes, frozen before
  * the harness refactor.
  *
- * Each file under `fixtures/v1/transcripts/` is one transcript and claims the shapes it exhibits by
- * name. Two kinds exist:
+ * Each file under `fixtures/v1/transcripts/` is one transcript and claims the scenarios it exhibits
+ * by name. Two kinds exist:
  *
  * - **Scripted** fixtures carry a `script`: the chat-state API calls that produce the transcript, in
  *   the order Studio's agent loop makes them. The test replays the script through a fresh
@@ -15,7 +15,8 @@
  *
  * Either way the messages are then pushed into ANOTHER fresh chat state, exactly as Studio's
  * session restore does, and `toMessagesArray()` is held to `wire`. The last test asserts that the
- * corpus names every shape in {@link REQUIRED_SHAPES}, and that each claim is actually exhibited.
+ * corpus names every scenario in {@link REQUIRED_SCENARIOS}, and that each claim is actually
+ * exhibited.
  *
  * Nothing here is nondeterministic: the clock is frozen per script step, and chat-state's
  * `msg_<time>_<n>` ids (whose counter is module-global) are rewritten to `msg_T_<k>` by order of
@@ -23,7 +24,7 @@
  *
  * Regenerate (from packages/ai): `JX_UPDATE_GOLDENS=1 bun test --isolate
  * tests/v1-transcripts.test.ts`, then review the diff. Only `messages` of a scripted fixture,
- * `usage` and `wire` are rewritten; `script`, `shapes`, `description` and an authored fixture's
+ * `usage` and `wire` are rewritten; `script`, `scenarios`, `description` and an authored fixture's
  * `messages` are inputs.
  */
 
@@ -31,14 +32,17 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createChatState } from "../src/chat-state.ts";
+import type { ChatUsage } from "../src/chat-state.ts";
+import type { JsonObject, JsonValue } from "../src/core-types.ts";
+import type { LiveMessage, OpenAIMessage } from "../src/messages/types.ts";
 
 const DIR = join(import.meta.dir, "fixtures", "v1", "transcripts");
 const UPDATE = process.env.JX_UPDATE_GOLDENS === "1";
 const REGENERATE = "JX_UPDATE_GOLDENS=1 bun test --isolate tests/v1-transcripts.test.ts";
 
-/** 2026-01-01T00:00:00Z. Script step `i` runs at `BASE_TIME + (i + 1) * STEP_MS`. */
+/** 2026-01-01T00:00:00Z. Script step `i` runs at `BASE_TIME + (i + 1) * SCRIPT_STEP_MS`. */
 const BASE_TIME = Date.UTC(2026, 0, 1);
-const STEP_MS = 1000;
+const SCRIPT_STEP_MS = 1000;
 
 /** The text `pruneOrphanToolMessages` (Studio, services/context-manager.ts) seals a call with. */
 const UNANSWERED_TOOL_RESULT = JSON.stringify({
@@ -48,7 +52,7 @@ const UNANSWERED_TOOL_RESULT = JSON.stringify({
 });
 
 /** The chat-state methods a script may call. Anything else is a typo, and fails loudly. */
-const SCRIPT_METHODS = new Set([
+const SCRIPT_METHOD_NAMES = [
   "sendMessage",
   "beginAssistantTurn",
   "appendDelta",
@@ -64,19 +68,31 @@ const SCRIPT_METHODS = new Set([
   "retryLast",
   "recordUsage",
   "clearUsage",
-]);
+] as const;
 
-type JsonObject = Record<string, unknown>;
-type ScriptStep = [string, ...unknown[]];
+type ScriptMethod = (typeof SCRIPT_METHOD_NAMES)[number];
 
-interface TranscriptFixture {
+const SCRIPT_METHODS: ReadonlySet<string> = new Set(SCRIPT_METHOD_NAMES);
+
+function isScriptMethod(method: string): method is ScriptMethod {
+  return SCRIPT_METHODS.has(method);
+}
+
+type ScriptStep = [string, ...JsonValue[]];
+
+/**
+ * A fixture file as parsed. It extends `JsonObject` because it IS one: the golden plumbing compares
+ * and lays it out as plain JSON. The members the corpus test checks for are optional, so its checks
+ * stay meaningful against a fixture that lacks them.
+ */
+interface TranscriptFixture extends JsonObject {
   name: string;
-  description: string;
-  shapes: string[];
+  description?: string;
+  scenarios?: string[];
   script?: ScriptStep[];
-  messages?: JsonObject[];
-  usage?: JsonObject;
-  wire?: JsonObject[];
+  messages?: MessageEntry[];
+  usage?: UsageEntry;
+  wire?: WireEntry[];
 }
 
 interface LoadedFixture {
@@ -87,18 +103,22 @@ interface LoadedFixture {
 
 // ─── Golden plumbing ─────────────────────────────────────────────────────────
 
-function isObject(value: unknown): value is JsonObject {
+function isObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** A JSON value's text, clipped so a failure message stays one screen. */
-function show(value: unknown): string {
+function show(value: JsonValue | undefined): string {
   const text = value === undefined ? "undefined" : JSON.stringify(value);
   return text.length > 160 ? `${text.slice(0, 157)}...` : text;
 }
 
 /** The first path at which `actual` departs from `expected`, or null when they are equal. */
-function firstDifference(expected: unknown, actual: unknown, path = "$"): string | null {
+function firstDifference(
+  expected: JsonValue | undefined,
+  actual: JsonValue | undefined,
+  path = "$",
+): string | null {
   if (Object.is(expected, actual)) {
     return null;
   }
@@ -137,8 +157,12 @@ function firstDifference(expected: unknown, actual: unknown, path = "$"): string
 }
 
 /** Throw a readable failure naming the first differing path; a match returns quietly. */
-function assertGolden(fixture: LoadedFixture, field: string, actual: unknown) {
-  const expected = (fixture.data as unknown as Record<string, unknown>)[field];
+function assertGolden(
+  fixture: LoadedFixture,
+  field: "messages" | "usage" | "wire",
+  actual: JsonValue | undefined,
+) {
+  const expected = fixture.data[field];
   const difference = firstDifference(expected, actual, `$.${field}`);
   if (difference) {
     throw new Error(
@@ -149,10 +173,25 @@ function assertGolden(fixture: LoadedFixture, field: string, actual: unknown) {
   }
 }
 
-const WIDTH = 100;
+/**
+ * The line width a transcript golden is laid out at: oxfmt's, so a regenerated golden is already
+ * formatted.
+ */
+const TRANSCRIPT_PRINT_WIDTH = 100;
 
-function isPrimitive(value: unknown): boolean {
+function isPrimitive(value: JsonValue): value is null | boolean | number | string {
   return value === null || typeof value !== "object";
+}
+
+function isText(value: JsonValue): value is string {
+  return typeof value === "string";
+}
+
+/** Parse JSON text. */
+function parseJson(text: string): JsonValue {
+  /* SAFETY: JSON.parse only ever produces null, booleans, numbers, strings, arrays and plain
+     objects, which is exactly the JsonValue union. */
+  return JSON.parse(text) as JsonValue;
 }
 
 /**
@@ -160,7 +199,7 @@ function isPrimitive(value: unknown): boolean {
  * regenerated golden is already formatted: an array of two or more multi-key objects always
  * breaks.
  */
-function inlineForm(value: unknown): string | null {
+function inlineForm(value: JsonValue): string | null {
   if (isPrimitive(value)) {
     return JSON.stringify(value);
   }
@@ -168,7 +207,7 @@ function inlineForm(value: unknown): string | null {
     if (value.length === 0) {
       return "[]";
     }
-    const multiKey = (v: unknown) =>
+    const multiKey = (v: JsonValue) =>
       (Array.isArray(v) && v.length > 1) || (isObject(v) && Object.keys(v).length > 1);
     if (value.length > 1 && value.every((v) => multiKey(v))) {
       return null;
@@ -176,7 +215,7 @@ function inlineForm(value: unknown): string | null {
     const parts = value.map((v) => inlineForm(v));
     return parts.every((p) => p !== null) ? `[${parts.join(", ")}]` : null;
   }
-  const entries = Object.entries(value as JsonObject);
+  const entries = Object.entries(value);
   if (entries.length === 0) {
     return "{}";
   }
@@ -187,9 +226,9 @@ function inlineForm(value: unknown): string | null {
   return parts.every((p) => p !== null) ? `{ ${parts.join(", ")} }` : null;
 }
 
-function layout(value: unknown, level: number, prefix: number, suffix: number): string {
+function layout(value: JsonValue, level: number, prefix: number, suffix: number): string {
   const inline = inlineForm(value);
-  if (inline !== null && level * 2 + prefix + inline.length + suffix <= WIDTH) {
+  if (inline !== null && level * 2 + prefix + inline.length + suffix <= TRANSCRIPT_PRINT_WIDTH) {
     return inline;
   }
   if (isPrimitive(value)) {
@@ -201,7 +240,7 @@ function layout(value: unknown, level: number, prefix: number, suffix: number): 
     const items = value.map((v, i) => pad + layout(v, level + 1, 0, i < value.length - 1 ? 1 : 0));
     return `[\n${items.join(",\n")}\n${close}]`;
   }
-  const entries = Object.entries(value as JsonObject);
+  const entries = Object.entries(value);
   const items = entries.map(([k, v], i) => {
     const key = `${JSON.stringify(k)}: `;
     return pad + key + layout(v, level + 1, key.length, i < entries.length - 1 ? 1 : 0);
@@ -211,7 +250,7 @@ function layout(value: unknown, level: number, prefix: number, suffix: number): 
 
 /** Rewrite the fixture file, only when its content actually changed. */
 function writeFixture(fixture: LoadedFixture) {
-  const onDisk = JSON.parse(readFileSync(fixture.path, "utf8")) as unknown;
+  const onDisk = parseJson(readFileSync(fixture.path, "utf8"));
   if (firstDifference(onDisk, fixture.data) === null) {
     return;
   }
@@ -220,17 +259,22 @@ function writeFixture(fixture: LoadedFixture) {
 
 // ─── Normalization ───────────────────────────────────────────────────────────
 
+/** What the tests serialize: a transcript, its wire, or a transcript with its usage. */
+type Serializable =
+  | readonly LiveMessage[]
+  | readonly OpenAIMessage[]
+  | { messages: readonly LiveMessage[]; usage: ChatUsage | undefined };
+
 /** A JSON-only copy: reactive proxies unwrapped, `undefined` members dropped as the wire drops them. */
-function plain(value: unknown): unknown {
-  // oxlint-disable-next-line unicorn/prefer-structured-clone -- JSON normalization is the point
-  return JSON.parse(JSON.stringify(value)) as unknown;
+function plain(value: Serializable): JsonValue {
+  return parseJson(JSON.stringify(value));
 }
 
 /** Rewrite every `msg_<time>_<n>` id to `msg_T_<k>`, numbered by order of first appearance. */
-function normalizeIds(value: unknown): unknown {
+function normalizeIds(value: JsonValue): JsonValue {
   const seen = new Map<string, string>();
-  const visit = (v: unknown): unknown => {
-    if (typeof v === "string") {
+  const visit = (v: JsonValue): JsonValue => {
+    if (isText(v)) {
       if (!/^msg_\d+_\d+$/.test(v)) {
         return v;
       }
@@ -257,14 +301,16 @@ type ChatStateApi = ReturnType<typeof createChatState>;
 /** Replay a script through a fresh chat state, one frozen clock tick per step. */
 function replay(fixture: LoadedFixture): ChatStateApi {
   const chat = createChatState({ model: "gpt-4o" });
-  const api = chat as unknown as Record<string, unknown>;
   for (const [i, [method, ...args]] of (fixture.data.script ?? []).entries()) {
-    const fn = api[method];
-    if (!SCRIPT_METHODS.has(method) || typeof fn !== "function") {
+    if (!isScriptMethod(method)) {
       throw new Error(`${fixture.file}: script step ${i} calls unknown method "${method}"`);
     }
-    setSystemTime(new Date(BASE_TIME + (i + 1) * STEP_MS));
-    (fn as (...a: unknown[]) => void)(...args);
+    setSystemTime(new Date(BASE_TIME + (i + 1) * SCRIPT_STEP_MS));
+    /* SAFETY: every script method takes only JSON-shaped arguments (strings, a ToolResult, a
+       StreamUsageEvent, an options object), so a JSON script step can supply them. A step whose
+       arguments do not match its method's signature records a different transcript, which the
+       golden comparison then reports. */
+    (chat[method] as (...a: JsonValue[]) => void)(...args);
   }
   return chat;
 }
@@ -273,36 +319,59 @@ function replay(fixture: LoadedFixture): ChatStateApi {
 function load(fixture: LoadedFixture): ChatStateApi {
   const chat = createChatState({ model: "gpt-4o" });
   for (const msg of structuredClone(fixture.data.messages ?? [])) {
-    chat.messages.push(msg as unknown as ChatStateApi["messages"][number]);
+    /* SAFETY: Studio's session restore pushes stored messages without validating them, and this
+       replays exactly that. A scripted fixture's messages were recorded from chat-state LiveMessages,
+       and an authored fixture's are written in the same shape (plus, deliberately, fields the
+       current build never writes). */
+    chat.messages.push(msg as LiveMessage);
   }
   if (fixture.data.usage) {
-    chat.usage = structuredClone(fixture.data.usage) as unknown as ChatStateApi["usage"];
+    chat.usage = structuredClone(fixture.data.usage);
   }
   return chat;
 }
 
 // ─── Shapes ──────────────────────────────────────────────────────────────────
 
-interface WireEntry {
+/**
+ * One entry of a fixture's `wire`: an OpenAI chat-completions message. The members a scenario claim
+ * tests the KIND of stay `JsonValue`, because the fixture is parsed JSON and a claim must reject a
+ * `null` or a non-string where the wire format requires a string.
+ */
+interface WireEntry extends JsonObject {
   role?: string;
-  content?: string | null;
-  reasoning_content?: string;
-  tool_call_id?: string;
+  content?: JsonValue;
+  reasoning_content?: JsonValue;
+  tool_call_id?: JsonValue;
   tool_calls?: { id: string; function: { name: string; arguments: string } }[];
 }
-interface MessageEntry {
+/** One of a fixture's `messages`: a chat-state LiveMessage, as stored. */
+interface MessageEntry extends JsonObject {
   id?: string;
   role?: string;
   content?: string;
   reasoningContent?: string;
   toolCallId?: string;
-  toolCalls?: { id: string; name: string; arguments: string; result?: unknown }[];
+  toolCalls?: { id: string; name: string; arguments: string; result?: JsonValue }[];
+  timestamp?: number;
 }
 
-const wireOf = (fx: TranscriptFixture) => (fx.wire ?? []) as WireEntry[];
-const messagesOf = (fx: TranscriptFixture) => (fx.messages ?? []) as MessageEntry[];
+/** A fixture's `usage`: the ChatUsage chat-state recorded. */
+interface UsageEntry extends JsonObject {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  messageCount: number;
+  lastMessageId: string;
+  contextTokens: number;
+  systemTokens?: number;
+}
+
+const wireOf = (fx: TranscriptFixture) => fx.wire ?? [];
+const messagesOf = (fx: TranscriptFixture) => fx.messages ?? [];
 const calls = (fx: TranscriptFixture) => messagesOf(fx).flatMap((m) => m.toolCalls ?? []);
-const stepIndex = (fx: TranscriptFixture, method: string, arg?: unknown) =>
+const stepIndex = (fx: TranscriptFixture, method: string, arg?: JsonValue) =>
   (fx.script ?? []).findIndex(([m, a]) => m === method && (arg === undefined || a === arg));
 const parses = (text: string) => {
   try {
@@ -314,15 +383,16 @@ const parses = (text: string) => {
 };
 
 /**
- * Every shape the corpus must exhibit, with the check that a claim is real. A fixture that claims a
- * shape its content does not show fails, so a label cannot outlive the transcript it described.
+ * Every scenario the corpus must exhibit, with the check that a claim is real. A fixture that
+ * claims a scenario its content does not show fails, so a label cannot outlive the transcript it
+ * described.
  */
 /** The chat-state methods a scripted fixture calls, in order. */
 function scriptCalls(fx: TranscriptFixture): string[] {
   return (fx.script ?? []).map(([method]) => method);
 }
 
-const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
+const REQUIRED_SCENARIOS = {
   /**
    * A stream error recorded in the order the loop made the calls (finishStream, then setError)
    * before the turn became accountable (specs/ai.md §3.2): the partial assistant turn is NOT
@@ -349,7 +419,8 @@ const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
     messagesOf(fx).some(
       (m) => m.role === "assistant" && !m.content && (m.toolCalls?.length ?? 0) === 0,
     ),
-  "reasoning-replayed": (fx) => wireOf(fx).some((e) => typeof e.reasoning_content === "string"),
+  "reasoning-replayed": (fx) =>
+    wireOf(fx).some((e) => e.reasoning_content !== undefined && isText(e.reasoning_content)),
   /** A turn that only thought: dropped, reasoning and all. */
   "reasoning-only-dropped": (fx) =>
     messagesOf(fx).some(
@@ -362,7 +433,9 @@ const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
   "single-tool-call": (fx) => wireOf(fx).some((e) => e.tool_calls?.length === 1),
   "parallel-tool-calls": (fx) => wireOf(fx).some((e) => (e.tool_calls?.length ?? 0) > 1),
   "tool-result-message": (fx) =>
-    wireOf(fx).some((e) => e.role === "tool" && typeof e.tool_call_id === "string"),
+    wireOf(fx).some(
+      (e) => e.role === "tool" && e.tool_call_id !== undefined && isText(e.tool_call_id),
+    ),
   /**
    * A record with no result: a call a Stop left unrun. Until the turn became accountable
    * (specs/ai.md §3.2), Studio's loop left EVERY record like this (its `appendToolResult` looked
@@ -378,7 +451,10 @@ const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
   "text-and-tool-calls": (fx) =>
     wireOf(fx).some(
       (e) =>
-        typeof e.content === "string" && e.content.length > 0 && (e.tool_calls?.length ?? 0) > 0,
+        e.content !== undefined &&
+        isText(e.content) &&
+        e.content.length > 0 &&
+        (e.tool_calls?.length ?? 0) > 0,
     ),
   /** `ask_user` requested, answered by a tool reply, and the turn carried on after it. */
   "ask-user-round": (fx) => {
@@ -436,7 +512,13 @@ const REQUIRED_SHAPES: Record<string, (fx: TranscriptFixture) => boolean> = {
     ]);
     return messagesOf(fx).some((m) => Object.keys(m).some((k) => !known.has(k)));
   },
-};
+} satisfies Record<string, (fx: TranscriptFixture) => boolean>;
+
+type Scenario = keyof typeof REQUIRED_SCENARIOS;
+
+function isScenario(name: string): name is Scenario {
+  return Object.hasOwn(REQUIRED_SCENARIOS, name);
+}
 
 // ─── The corpus ──────────────────────────────────────────────────────────────
 
@@ -446,7 +528,13 @@ function loadCorpus(): LoadedFixture[] {
     .toSorted()
     .map((file) => {
       const path = join(DIR, file);
-      return { file, path, data: JSON.parse(readFileSync(path, "utf8")) as TranscriptFixture };
+      /* SAFETY: every corpus file is a JSON object in TranscriptFixture's shape. Its `messages`,
+         `usage` and `wire` were recorded from chat-state by the regeneration run (or, for an
+         authored fixture's messages, written in the LiveMessage shape), and the tests below hold each
+         one to what chat-state produces now. The members a malformed file might lack are optional,
+         and the corpus test reports a missing name, description or scenarios. */
+      const data = parseJson(readFileSync(path, "utf8")) as TranscriptFixture;
+      return { file, path, data };
     });
 }
 
@@ -462,9 +550,12 @@ describe("v1 transcript corpus", () => {
       if (fixture.data.script) {
         test("the script records the frozen messages through chat-state's own API", () => {
           const chat = replay(fixture);
+          /* SAFETY: plain() of `{ messages, usage }` is an object holding the messages as an array
+             of objects and the usage as an object (JSON drops it when undefined), and normalizeIds
+             rewrites only string leaves, so every container survives. */
           const recorded = normalizeIds(
             plain({ messages: chat.messages, usage: chat.usage ?? undefined }),
-          ) as { messages: JsonObject[]; usage?: JsonObject };
+          ) as { messages: MessageEntry[]; usage?: UsageEntry };
           // The replayed state serializes exactly as the reloaded one must.
           const wire = plain(chat.toMessagesArray());
           if (UPDATE) {
@@ -488,7 +579,9 @@ describe("v1 transcript corpus", () => {
         const chat = load(fixture);
         const wire = plain(chat.toMessagesArray());
         if (UPDATE) {
-          fixture.data.wire = wire as JsonObject[];
+          /* SAFETY: toMessagesArray() returns OpenAI wire messages, and plain() keeps an array of
+             them an array of the same objects, minus undefined members. */
+          fixture.data.wire = wire as WireEntry[];
           writeFixture(fixture);
         }
         assertGolden(fixture, "wire", wire);
@@ -498,7 +591,7 @@ describe("v1 transcript corpus", () => {
     });
   }
 
-  test("names every required shape, and every claim is exhibited by its fixture", () => {
+  test("names every required scenario, and every claim is exhibited by its fixture", () => {
     const claimed = new Map<string, string[]>();
     const problems: string[] = [];
     for (const { file, data } of corpus) {
@@ -508,24 +601,23 @@ describe("v1 transcript corpus", () => {
       if (!data.description?.trim()) {
         problems.push(`${file}: no description`);
       }
-      if (!Array.isArray(data.shapes) || data.shapes.length === 0) {
-        problems.push(`${file}: claims no shapes`);
+      if (!Array.isArray(data.scenarios) || data.scenarios.length === 0) {
+        problems.push(`${file}: claims no scenarios`);
       }
-      for (const shape of data.shapes ?? []) {
-        const check = REQUIRED_SHAPES[shape];
-        if (!check) {
-          problems.push(`${file}: claims "${shape}", which is not a required shape`);
+      for (const scenario of data.scenarios ?? []) {
+        if (!isScenario(scenario)) {
+          problems.push(`${file}: claims "${scenario}", which is not a required scenario`);
           continue;
         }
-        if (!check(data)) {
-          problems.push(`${file}: claims "${shape}" but does not exhibit it`);
+        if (!REQUIRED_SCENARIOS[scenario](data)) {
+          problems.push(`${file}: claims "${scenario}" but does not exhibit it`);
         }
-        claimed.set(shape, [...(claimed.get(shape) ?? []), file]);
+        claimed.set(scenario, [...(claimed.get(scenario) ?? []), file]);
       }
     }
-    for (const shape of Object.keys(REQUIRED_SHAPES)) {
-      if (!claimed.has(shape)) {
-        problems.push(`no fixture claims "${shape}"`);
+    for (const scenario of Object.keys(REQUIRED_SCENARIOS)) {
+      if (!claimed.has(scenario)) {
+        problems.push(`no fixture claims "${scenario}"`);
       }
     }
     expect(problems).toEqual([]);

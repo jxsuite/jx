@@ -21,6 +21,7 @@ import {
   registerRenderer,
   render,
   requireProjectState,
+  requireShellRef,
   setProjectState,
   toolbarEl,
   updateSession,
@@ -117,13 +118,11 @@ import {
 import {
   loadProject as _loadProject,
   openProject as _openProject,
-  renderFilesTemplate,
   findHomePage,
   loadDirectory,
   openFileInPane,
   openFileInTab,
   openLastSessionOrHome,
-  registerFileTreeDnD,
   reloadCleanTab,
   reloadTabsIfChanged,
 } from "./files/files";
@@ -136,9 +135,7 @@ import {
   configureCollabParser,
   configureCollabSerializer,
 } from "./collab/collab-session";
-import { renderImportsTemplate } from "./panels/imports-panel";
-import { invalidateLayoutPickerCache, renderHeadTemplate } from "./panels/head-panel";
-import { exportCemManifest as _exportCemManifest } from "./services/cem-export";
+import { invalidateLayoutPickerCache } from "./panels/head-panel";
 import { installAutomationHook } from "./services/automation";
 import { invalidateLibrary } from "./browse/library-pane";
 import { invalidateMediaCache } from "./ui/media-picker";
@@ -175,7 +172,6 @@ import {
   cloneRepository,
   loadDiffForLens,
   registerSourceControlCommands,
-  renderGitPanel,
   noteFileSaved,
 } from "./panels/git-panel";
 
@@ -191,7 +187,7 @@ import { chordsInScopes } from "./commands/keymap";
 import { FRAME_KEY_SCOPES } from "./canvas/iframe-keys";
 import { createLiveContext } from "./commands/live-context";
 import { hasAiCredentials } from "./services/ai-models";
-import { mount as mountActivityBar } from "./surfaces/rail";
+import { mount } from "./surfaces/rail";
 import * as toolbarPanel from "./surfaces/commandbar";
 import * as overlaysPanel from "./panels/overlays";
 import * as frontmatterPanelMod from "./panels/frontmatter-panel";
@@ -268,7 +264,7 @@ import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
-import type { JxDocument, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountBootFailureTree, mountShellTree } from "./shell/tree";
 
@@ -499,7 +495,7 @@ initShellRefs();
 mountShell();
 
 // Mount extracted panel modules
-toolbarPanel.mount(toolbarEl, {
+toolbarPanel.mount(requireShellRef(toolbarEl, "toolbar"), {
   closeFunctionEditor: () => closeFunctionEditor(),
   getCanvasMode,
   openProject: () => openProject(),
@@ -641,9 +637,8 @@ window.addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
   // Author may cancel the close, and the record is the same either way.
   flushSession();
   if (hasUnsavedTabs()) {
+    // The HTML standard's trigger for the leave-page prompt; the legacy `returnValue` is deprecated.
     e.preventDefault();
-    // Legacy browsers require a truthy returnValue to trigger the native confirm prompt.
-    e.returnValue = "";
   }
 });
 
@@ -743,11 +738,8 @@ function installPaneRenderEffects(paneId: string): void {
   installDerivationEffects(paneId, derivationDeps);
   effect(() => {
     const tab = tabOfPane(paneId);
-    if (tab) {
-      const doc = tab.doc.document;
-      if (doc && consumePatchedDocument(doc, paneId)) {
-        return;
-      }
+    if (tab && consumePatchedDocument(tab.doc.document, paneId)) {
+      return;
     }
     scheduleCanvasRender(paneId);
   });
@@ -871,7 +863,6 @@ leftPanelMod.mount({
   navigateToComponent,
   registerComponentsDnD,
   registerElementsDnD,
-  registerFileTreeDnD,
   registerLayersDnD,
   renderCanvas: () => renderCanvas(),
   // The Data panel's Refresh: a canvas re-render that ALSO lets automatic `Request` state entries
@@ -894,10 +885,6 @@ leftPanelMod.mount({
     }
     renderCanvas(paneId);
   },
-  renderFilesTemplate,
-  renderGitPanel,
-  renderHeadTemplate,
-  renderImportsTemplate,
   mountSignalsPanel,
   setCanvasMode,
   setGitDiffState: (state: GitDiffState | null) => {
@@ -919,7 +906,7 @@ renderStatusbar();
 // The status bar mounts the jump bar too: the focused pane's breadcrumb trail is its DOCUMENT
 // Field, and the only breadcrumb in the shell.
 mountStatusbar();
-mountActivityBar();
+mount();
 
 /* The background-click deselect moved into `editor/shortcuts.ts`'s `installStageGestures`, beside
    the wheel and the middle-drag, because it is a STAGE gesture: it compared against the app's one
@@ -983,10 +970,10 @@ if (!_projectParam) {
   const _bootPlatform = getPlatform();
   // oxlint-disable-next-line unicorn/prefer-top-level-await -- fire-and-forget: must not block the initial render
   void _bootPlatform
-    .activate?.()
+    .activate()
     // No project is bound yet, so this call only warms the canvasUrl; a backend that refuses it
     // Still gets the render below rather than an unhandled rejection.
-    ?.catch((error: unknown) => {
+    .catch((error) => {
       // A refusal that offers an action is the action flow's to explain; it is not a fault.
       if (!isActionRequired(error)) {
         console.error("Boot activation failed:", error);
@@ -1018,18 +1005,14 @@ if (_projectParam) {
       // Report a bare `Error: <message>` because the only identifying fact was still block-scoped.
       let fileRelPath = _urlParams.get("file") || _projectParam;
       try {
-        const siteCtx = platform.resolveSiteContext
-          ? await platform.resolveSiteContext(_projectParam)
-          : { sitePath: null };
+        const siteCtx = await platform.resolveSiteContext(_projectParam);
 
         if (siteCtx.sitePath) {
           // Set PAL project root to absolute path so file ops work
           if (siteCtx.sitePath) {
             platform.projectRoot = siteCtx.sitePath;
             // Await activation so the server resolves project-relative static files
-            if (platform.activate) {
-              await platform.activate();
-            }
+            await platform.activate();
           }
 
           resetIgnoreCache();
@@ -1144,7 +1127,7 @@ if (_projectParam) {
           openTab({
             id: fileRelPath,
             documentPath: fileRelPath,
-            document: parsedDoc as JxMutableNode,
+            document: parsedDoc,
             ...(frontmatter != null && { frontmatter }),
             layout,
             sourceFormat: fileFormat?.name ?? null,
@@ -1365,6 +1348,9 @@ async function openRecentProject(root: string) {
     void loadFormats();
     refreshExtensionUi(platform);
     const content = await platform.readFile("project.json");
+    /* SAFETY: This is `project.json` at the root the user chose to open, the project's own config
+       file whose schema is ProjectConfig; Studio edits it in that shape and does not re-validate it
+       on open, as the folder-picker path in `platforms/devserver.ts` does not either. */
     const config = JSON.parse(content) as ProjectConfig;
 
     closeAllTabs();
@@ -1561,7 +1547,9 @@ const liveChrome = createLiveSurfaceSaver({
    registry reactively. */
 setDocumentSavedListener((path, doc) => {
   void noteFileSaved(path);
-  void liveChrome(path, doc as unknown as JxDocument);
+  /* SAFETY: The listener fires for a tab's saved ROOT document, and a root document is a
+     JxDocument held in the editor's mutable node form; `liveChrome` only acts on surface paths. */
+  void liveChrome(path, doc as JxDocument);
   if (noteComponentSaved(path, doc)) {
     renderPropertiesPanel();
     renderLeftPanel();

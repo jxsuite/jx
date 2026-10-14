@@ -20,6 +20,9 @@ import { closeAllTabs, openTab, tabCommands, workspace } from "../src/workspace/
 import type { AnyCommand } from "../src/commands/registry";
 import type { CommandContext } from "../src/commands/context";
 
+/** What a stored record's `report` receives: its `args` erased to `never`, as `AnyCommand` is. */
+type ReportFacts = Parameters<NonNullable<AnyCommand["aiTool"]>["report"]>[0];
+
 /** The record under test, with an `openFile` the test controls. */
 function build(openFile: (path: string) => void | Promise<void>) {
   const commands = tabCommands({ openFile, openFileInPane: () => {} });
@@ -102,8 +105,13 @@ describe("the record", () => {
 });
 
 describe("the report", () => {
-  const facts = (after: CommandContext, path: string) =>
-    ({ after, args: { path }, before: makeContext() }) as never;
+  const facts = (after: CommandContext, path: string) => {
+    const supplied = { after, args: { path }, before: makeContext() };
+    /* SAFETY: `tabCommands` erases every record to `AnyCommand`, whose `report` takes `args:
+       never`; the `document.open` record under test declares `{ path: string }` as its argument
+       record, which is exactly what `supplied.args` holds. */
+    return supplied as ReportFacts;
+  };
 
   test("names the active document and that the tree tools reach it on the canvas", () => {
     const { record } = build(() => {});
@@ -117,7 +125,7 @@ describe("the report", () => {
   test("names the editor a non-tree document opened in, with the same words the shell uses", () => {
     const { record } = build(() => {});
     land("data/rows.csv");
-    const grid = makeContext({ ...ctx, editor: { kind: "grid" } } as CommandContext);
+    const grid = makeContext({ ...ctx, editor: { kind: "grid" } });
     expect(record.aiTool!.report(facts(grid, "data/rows.csv"))).toBe(
       '"data/rows.csv" is the active document, in the Grid editor, which is not an element tree ' +
         "the document tools can edit.",
@@ -143,7 +151,7 @@ describe("through the bridge", () => {
       land(path);
     });
     const registry = createCommandRegistry({ getContext: () => ctx });
-    registry.registerAll(commands as AnyCommand[]);
+    registry.registerAll(commands);
     setActiveRegistry(registry);
     const tools = createCommandToolRegistry({ getTab: () => null, validate: async () => [] });
 
@@ -167,7 +175,7 @@ describe("through the bridge", () => {
   test("the refusal for a file that did not open reaches the model verbatim", async () => {
     const { commands } = build(() => {});
     const registry = createCommandRegistry({ getContext: () => ctx });
-    registry.registerAll(commands as AnyCommand[]);
+    registry.registerAll(commands);
     setActiveRegistry(registry);
     const tools = createCommandToolRegistry({ getTab: () => null, validate: async () => [] });
     const result = await tools.execute("open_document", { path: "pages/missing.json" });

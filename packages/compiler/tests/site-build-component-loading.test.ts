@@ -14,9 +14,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSite } from "../src/site/site-build";
+import type { JsonValue } from "@jxsuite/schema/types";
 
-/** @param {string} root @param {string} path @param {unknown} obj */
-function writeJSON(root: string, path: string, obj: unknown) {
+/** @param {string} root @param {string} path @param {JsonValue} obj */
+function writeJSON(root: string, path: string, obj: JsonValue) {
   const full = resolve(root, path);
   mkdirSync(resolve(full, ".."), { recursive: true });
   writeFileSync(full, JSON.stringify(obj, null, 2), "utf8");
@@ -60,9 +61,12 @@ describe("buildSite — component modules are named after their tagName", () => 
   it("emits a loader script whose target actually exists", () => {
     const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
     const match = html.match(/<script type="module" src="\/components\/([^"]+)"><\/script>/);
-    expect(match).not.toBeNull();
+    const src = match?.[1];
+    if (src === undefined) {
+      throw new Error("the page has no component loader <script>");
+    }
     // The whole point: the injected src resolved to a file on disk.
-    expect(existsSync(resolve(TMP, "dist/components", match![1] as string))).toBe(true);
+    expect(existsSync(resolve(TMP, "dist/components", src))).toBe(true);
   });
 
   it("keeps the JS and CSS sidecars on the same name", () => {
@@ -105,7 +109,8 @@ describe("buildSite — component modules are named after their tagName", () => 
     expect(head).not.toContain('href="/assets/lit-html/"');
     // Every hint names a module the page actually loads.
     const hints = [...head.matchAll(/rel="modulepreload" href="([^"]+)"/g)];
-    const hrefs = hints.map((match) => match[1] as string);
+    // Group 1 always participates in a match, so nothing is dropped and the length check stays exact.
+    const hrefs = hints.flatMap((match) => match[1] ?? []);
     expect(hrefs).toHaveLength(3);
     for (const href of hrefs) {
       const onDisk = resolve(TMP, "dist", href.slice(1));
@@ -257,9 +262,9 @@ describe("buildSite — a build-time-empty repeater is not collapsed", () => {
    * changed.
    *
    * @param {string} dir
-   * @param {unknown} children
+   * @param {JsonValue} children
    */
-  async function build(dir: string, children: unknown) {
+  async function build(dir: string, children: JsonValue) {
     const root = resolve(TMP, dir);
     rmSync(root, { force: true, recursive: true });
     writeJSON(root, "project.json", { build: { outDir: "./dist" }, name: "Empty Repeater" });

@@ -18,18 +18,21 @@ import {
   versionIndex,
   wantedRange,
 } from "./check-template-versions.ts";
+import { RELEASE_PLEASE_CONFIG } from "./check-release-integrity.ts";
 import { readWorkspaces } from "./lib/workspaces.ts";
-
-const CONFIG = "release-please-config.json";
 
 const workspaces = await readWorkspaces();
 const versions = versionIndex(workspaces);
 
+/** The members of a starter's package.json that the checker reads. */
+interface StarterManifest {
+  name: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
 /** A throwaway repo with both surfaces, so the fixtures do not move when the real tree does. */
-async function scratch(
-  starter: Record<string, unknown>,
-  map: Record<string, string>,
-): Promise<string> {
+async function scratch(starter: StarterManifest, map: Record<string, string>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "jx-templates-"));
   await Bun.write(
     join(root, "packages/starters/sites/demo/package.json"),
@@ -207,7 +210,10 @@ describe("against the committed tree", () => {
   test("release-please rewrites every range the surfaces declare", async () => {
     // The checker and the config must agree, or a release corrects some ranges and leaves others —
     // Which is worse than leaving all of them, because it looks like it worked.
-    const config = (await Bun.file(CONFIG).json()) as {
+    /* SAFETY: release-please-config.json is the committed file release-please validates against
+     * its own config schema on every release run: `packages` maps a path to a package config whose
+     * optional `extra-files` entries each name a `path`, with a `jsonpath` on the JSON ones. */
+    const config = (await Bun.file(RELEASE_PLEASE_CONFIG).json()) as {
       packages: Record<string, { "extra-files"?: { path: string; jsonpath?: string }[] }>;
     };
     const declared = new Set<string>();

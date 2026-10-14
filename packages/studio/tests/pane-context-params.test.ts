@@ -54,13 +54,13 @@ type Ctx = Parameters<typeof paneContext.mount>[1];
 function makeCtx(): Ctx {
   return {
     exportFile: mock(() => {}),
-    parseMediaEntries: mock(() => ({
+    parseMediaEntries: mock((): ReturnType<Ctx["parseMediaEntries"]> => ({
       baseWidth: 1200,
-      featureQueries: [] as { name: string; query: string }[],
-      sizeBreakpoints: [] as { name: string; query: string; width: number; type: string }[],
+      featureQueries: [],
+      sizeBreakpoints: [],
     })),
     setCanvasMode: mock((_tab: Tab | null, _mode: string) => {}),
-  } as Ctx;
+  };
 }
 
 let primaryHost: HTMLElement;
@@ -76,7 +76,7 @@ let sideHost: HTMLElement;
  */
 function pickers(host: HTMLElement): { label: string; items: string[] }[] {
   return [...host.querySelectorAll<HTMLElement>('[part="param"]')].map((picker) => ({
-    items: [...picker.querySelectorAll("option")].map((o) => o.textContent?.trim() ?? ""),
+    items: [...picker.querySelectorAll("option")].map((o) => o.textContent.trim()),
     label: picker.dataset.param ?? "",
   }));
 }
@@ -180,8 +180,8 @@ describe("two panes on dynamic routes", () => {
     expect(primary.session.ui.previewParams).toEqual({ sku: "alpha" });
     expect(side.session.ui.previewParams).toEqual({ id: "1" });
     // Neither tab carries a param the other document declares — the specific wrong state.
-    expect(primary.session.ui.previewParams?.id).toBeUndefined();
-    expect(side.session.ui.previewParams?.sku).toBeUndefined();
+    expect(primary.session.ui.previewParams.id).toBeUndefined();
+    expect(side.session.ui.previewParams.sku).toBeUndefined();
   });
 
   test("one pane is unchanged: a single dynamic page still loads exactly once", async () => {

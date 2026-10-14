@@ -32,6 +32,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { handleAiApi } from "../src/ai-api.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "ai-upstream");
@@ -45,10 +46,11 @@ const NAMES = readdirSync(FIXTURES)
 
 // ─── Fixture loading (mirrored in packages/ai/tests/upstream-divergence.test.ts) ─────────────────
 
-interface Fault {
-  name: string;
-  message: string;
-}
+/**
+ * The `X-Fixture-Error` directive: the name and message of the Error the body's last read rejects
+ * with.
+ */
+type Fault = Pick<Error, "message" | "name">;
 
 interface UpstreamFixture {
   status: number;
@@ -107,7 +109,7 @@ function parseFixture(raw: string): UpstreamFixture {
 }
 
 /** Where the body's chunk boundaries fall. The frames must not depend on it. */
-const CHUNKINGS: Record<string, (bytes: Uint8Array) => Uint8Array[]> = {
+const CHUNKINGS = {
   bytes: (bytes) => Array.from(bytes, (_, index) => bytes.subarray(index, index + 1)),
   lines: (bytes) => {
     const chunks: Uint8Array[] = [];
@@ -124,7 +126,10 @@ const CHUNKINGS: Record<string, (bytes: Uint8Array) => Uint8Array[]> = {
     return chunks;
   },
   whole: (bytes) => (bytes.length > 0 ? [bytes] : []),
-};
+} satisfies Record<string, (bytes: Uint8Array) => Uint8Array[]>;
+
+/** One way of splitting a body into reads. */
+type Chunking = keyof typeof CHUNKINGS;
 
 /**
  * The upstream Response a fixture describes, its body delivered in `chunks`.
@@ -157,7 +162,8 @@ function upstreamResponse(fixture: UpstreamFixture, chunks: Uint8Array[]): Respo
   if (fault) {
     const inner = stream.getReader();
     const reader = {
-      cancel: (reason?: unknown) => inner.cancel(reason),
+      // The normalizer cancels with no reason, so none is forwarded.
+      cancel: () => inner.cancel(),
       read: async () => {
         const result = await inner.read();
         if (result.done) {
@@ -174,18 +180,24 @@ function upstreamResponse(fixture: UpstreamFixture, chunks: Uint8Array[]): Respo
 
 // ─── Golden comparison (mirrored in packages/ai/tests/upstream-divergence.test.ts) ───────────────
 
-function member(path: string, key: string | number): string {
-  if (typeof key === "number") {
-    return `${path}[${key}]`;
-  }
+/** The path of an array element. */
+function element(path: string, index: number): string {
+  return `${path}[${index}]`;
+}
+
+/** The path of an object member: dotted when the key is an identifier, bracketed otherwise. */
+function member(path: string, key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
 }
 
-function show(value: unknown): string {
+/** A compared position: a JSON value, or `undefined` where one side has no such member. */
+type Compared = JsonValue | undefined;
+
+function show(value: Compared): string {
   return value === undefined ? "(absent)" : JSON.stringify(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: Compared): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -193,14 +205,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * The first place `actual` departs from `expected`, as `<JSON path>: expected …, received …`, or
  * null when they are identical. Member order counts: the proxy's frames are wire bytes.
  */
-function firstDifference(actual: unknown, expected: unknown, path = "$"): string | null {
+function firstDifference(actual: Compared, expected: Compared, path = "$"): string | null {
   if (Object.is(actual, expected)) {
     return null;
   }
   if (Array.isArray(actual) && Array.isArray(expected)) {
     const length = Math.max(actual.length, expected.length);
     for (let index = 0; index < length; index += 1) {
-      const difference = firstDifference(actual[index], expected[index], member(path, index));
+      const difference = firstDifference(actual[index], expected[index], element(path, index));
       if (difference !== null) {
         return difference;
       }
@@ -225,7 +237,7 @@ function firstDifference(actual: unknown, expected: unknown, path = "$"): string
 }
 
 /** Compare with `<file>`, or (with JX_UPDATE_GOLDENS=1) rewrite it. */
-function checkGolden(file: string, actual: unknown): void {
+function checkGolden(file: string, actual: ServerResult): void {
   const text = `${JSON.stringify(actual, null, 2)}\n`;
   if (UPDATE) {
     if (!existsSync(file) || readFileSync(file, "utf8") !== text) {
@@ -236,7 +248,8 @@ function checkGolden(file: string, actual: unknown): void {
   if (!existsSync(file)) {
     throw new Error(`${basename(file)} is missing. Record it with: ${RERECORD}`);
   }
-  const difference = firstDifference(actual, JSON.parse(readFileSync(file, "utf8")));
+  const golden: JsonValue = JSON.parse(readFileSync(file, "utf8"));
+  const difference = firstDifference(actual, golden);
   expect(
     difference === null
       ? null
@@ -246,10 +259,11 @@ function checkGolden(file: string, actual: unknown): void {
 
 // ─── The proxy ───────────────────────────────────────────────────────────────
 
-interface ServerResult {
+/** What one proxy run produced; a JSON object so it can be compared and recorded as a golden. */
+interface ServerResult extends JsonObject {
   status: number;
   headers: Record<string, string>;
-  frames: unknown[];
+  frames: JsonValue[];
 }
 
 /**
@@ -257,7 +271,7 @@ interface ServerResult {
  * `data: <JSON.stringify(frame)>\n\n` per frame. That makes comparing frames (in member order)
  * equivalent to comparing bytes.
  */
-function framesOf(wire: string): unknown[] {
+function framesOf(wire: string): JsonValue[] {
   if (wire === "") {
     return [];
   }
@@ -272,7 +286,7 @@ function framesOf(wire: string): unknown[] {
       if (!block.startsWith("data: ") || block.includes("\n")) {
         throw new Error(`Not a single data line: ${JSON.stringify(block)}`);
       }
-      const frame: unknown = JSON.parse(json);
+      const frame: JsonValue = JSON.parse(json);
       if (JSON.stringify(frame) !== json) {
         throw new Error(`A frame is not in JSON.stringify form: ${json}`);
       }
@@ -302,16 +316,15 @@ afterEach(() => {
   }
 });
 
-async function runProxy(fixture: UpstreamFixture, chunking: string): Promise<ServerResult> {
+async function runProxy(fixture: UpstreamFixture, chunking: Chunking): Promise<ServerResult> {
   const split = CHUNKINGS[chunking];
-  if (!split) {
-    throw new Error(`Unknown chunking ${chunking}`);
-  }
   const calls: string[] = [];
-  globalThis.fetch = ((url: string) => {
+  const answer = (url: string | URL | Request) => {
     calls.push(String(url));
     return Promise.resolve(upstreamResponse(fixture, split(fixture.body)));
-  }) as unknown as typeof fetch;
+  };
+  // Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+  globalThis.fetch = Object.assign(answer, { preconnect: realFetch.preconnect });
 
   const request = new Request("http://localhost/__studio/ai/chat", {
     body: JSON.stringify({
@@ -375,7 +388,8 @@ describe("upstream SSE fixtures through handleAiApi", () => {
     it(name, async () => {
       const fixture = parseFixture(readFixture(name));
       const whole = await runProxy(fixture, "whole");
-      for (const chunking of ["lines", "bytes"]) {
+      const chunkings: Chunking[] = ["lines", "bytes"];
+      for (const chunking of chunkings) {
         const result = await runProxy(fixture, chunking);
         const difference = firstDifference(result, whole);
         expect(

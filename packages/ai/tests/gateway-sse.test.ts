@@ -71,12 +71,8 @@ describe("encodeSse", () => {
     const reader = encodeSse(events()).getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toBe('data: {"type":"delta","content":"a"}\n\n');
-    const failure = await reader.read().then(
-      () => null,
-      (error: unknown) => error,
-    );
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe("frames failed");
+    const failure = await Promise.allSettled([reader.read()]);
+    expect(failure).toEqual([{ status: "rejected", reason: new Error("frames failed") }]);
   });
 });
 

@@ -17,9 +17,9 @@ import {
 } from "../src/services/idle";
 import { registerRenderer, render } from "../src/store";
 import { beginActivity, resetActivities } from "../src/panels/activity-panel";
-import { registerPlatform } from "../src/platform";
+import { installMockPlatform } from "./harness";
 import type { IdleSource } from "../src/services/idle";
-import type { StudioPlatform } from "../src/types";
+import type { GitStatusResult } from "../src/types";
 
 /** A frame scheduler that runs synchronously, so a test never waits on a compositor. */
 function syncRaf(): (callback: () => void) => void {
@@ -32,8 +32,21 @@ function source(name: string, blockers: () => string[]): IdleSource {
   return { blockers, name };
 }
 
+/** Settle a probe that must time out, and hand back the `NotIdleError` it rejected with. */
+async function notIdle(promise: Promise<void>): Promise<NotIdleError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof NotIdleError) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error("probeIdle resolved, but this probe was configured to time out");
+}
+
 beforeEach(() => {
-  delete (globalThis as { __jxPlatform?: StudioPlatform }).__jxPlatform;
+  Reflect.deleteProperty(globalThis, "__jxPlatform");
 });
 
 describe("probeIdle", () => {
@@ -85,7 +98,7 @@ describe("probeIdle", () => {
       ],
       timeoutMs: 0,
     });
-    const failure = (await promise.catch((error: unknown) => error)) as NotIdleError;
+    const failure = await notIdle(promise);
     expect(failure).toBeInstanceOf(NotIdleError);
     expect(failure.blockedBy).toEqual([
       "canvas[pane.primary]: gen 7 unacked",
@@ -109,7 +122,7 @@ describe("probeIdle", () => {
       sources: [settlesTooLate],
       timeoutMs: 6,
     });
-    const failure = (await promise.catch((error: unknown) => error)) as NotIdleError;
+    const failure = await notIdle(promise);
     expect(failure.blockedBy).toEqual(["canvas: fonts loading"]);
   });
 
@@ -122,7 +135,7 @@ describe("probeIdle", () => {
       sources: [],
       timeoutMs: 1,
     });
-    const failure = (await promise.catch((error: unknown) => error)) as NotIdleError;
+    const failure = await notIdle(promise);
     expect(failure.blockedBy).toEqual([]);
     expect(failure.message).toContain("consecutive quiet frames");
   });
@@ -167,7 +180,7 @@ describe("defaultIdleSources", () => {
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    registerRenderer("idle-test", (() => pending) as () => void);
+    registerRenderer("idle-test", () => pending);
     try {
       render();
       expect(idleBlockers()).toContain("render: 1 renderer(s) mid-paint");
@@ -191,15 +204,23 @@ describe("defaultIdleSources", () => {
    */
 
   test("an unsettled platform call blocks, named by its method", async () => {
-    let finish: (value: string) => void = () => {};
-    const slow = new Promise<string>((resolve) => {
+    const status: GitStatusResult = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: [],
+    };
+    let finish: (value: GitStatusResult) => void = () => {};
+    const slow = new Promise<GitStatusResult>((resolve) => {
       finish = resolve;
     });
-    registerPlatform({ gitStatus: () => slow } as unknown as StudioPlatform);
+    installMockPlatform({ gitStatus: () => slow });
     const { getPlatform } = await import("../src/platform");
-    void (getPlatform() as unknown as { gitStatus: () => Promise<string> }).gitStatus();
+    void getPlatform().gitStatus();
     expect(idleBlockers()).toEqual(["platform: 1 in-flight (gitStatus)"]);
-    finish("done");
+    finish(status);
     await slow;
     expect(idleBlockers()).toEqual([]);
   });

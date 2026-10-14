@@ -20,6 +20,8 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { isString } from "@jxsuite/schema/guards";
+
 const WORKFLOWS = ".github/workflows";
 
 /** A step that packages the Electrobun app, by any of the routes a workflow could spell it. */
@@ -42,15 +44,17 @@ interface Workflow {
 function desktopBuildSteps(): { where: string; prepared: boolean }[] {
   const found: { where: string; prepared: boolean }[] = [];
   for (const file of readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f))) {
+    /* SAFETY: every file is a committed GitHub Actions workflow, and every `Workflow` / `Step`
+     * member is optional; `run`, the one member read for its value, is re-checked as a string. */
     const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, file), "utf8")) as Workflow;
     for (const [job, { steps = [] }] of Object.entries(workflow.jobs ?? {})) {
       for (const [index, step] of steps.entries()) {
-        if (typeof step.run !== "string" || !DESKTOP_BUILD.test(step.run)) {
+        if (!isString(step.run) || !DESKTOP_BUILD.test(step.run)) {
           continue;
         }
         const prepared = steps
           .slice(0, index)
-          .some((earlier) => typeof earlier.run === "string" && earlier.run.includes(VENDOR_INIT));
+          .some((earlier) => isString(earlier.run) && earlier.run.includes(VENDOR_INIT));
         found.push({ where: `${file} › ${job} › ${step.name ?? step.run}`, prepared });
       }
     }

@@ -53,11 +53,11 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
    */
   const result = await page.evaluate((srcsetSeparator: string) => {
     const separator = new RegExp(srcsetSeparator);
-    const assets: { url: string; source: string }[] = [];
+    const assets: DiscoveredAsset[] = [];
     const seen = new Set<string>();
     let inlineSvgCount = 0;
 
-    function add(url: string, source: string) {
+    function add(url: string, source: DiscoveredAsset["source"]) {
       if (!url || seen.has(url)) {
         return;
       }
@@ -98,8 +98,10 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
     }
 
     // Img[src]
-    for (const el of document.querySelectorAll("img[src]")) {
-      add((el as HTMLImageElement).src, "img-src");
+    /* Each selector below names its element by tag, so the type argument states what the
+       selector already guarantees. */
+    for (const el of document.querySelectorAll<HTMLImageElement>("img[src]")) {
+      add(el.src, "img-src");
     }
 
     // Img[srcset] and source[srcset]
@@ -112,13 +114,13 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
     }
 
     // Picture > source (type-based, not just srcset)
-    for (const el of document.querySelectorAll("picture > source[src]")) {
-      add((el as HTMLSourceElement).src, "picture-source");
+    for (const el of document.querySelectorAll<HTMLSourceElement>("picture > source[src]")) {
+      add(el.src, "picture-source");
     }
 
     // Video[poster]
-    for (const el of document.querySelectorAll("video[poster]")) {
-      add((el as HTMLVideoElement).poster, "video-poster");
+    for (const el of document.querySelectorAll<HTMLVideoElement>("video[poster]")) {
+      add(el.poster, "video-poster");
     }
 
     // Inline style url() on any element
@@ -141,8 +143,7 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
     }
 
     // @font-face from stylesheets + retain full source CSS (F0)
-    const stylesheets: { href: string | null; cssText: string | null; fontFaceRules: string[] }[] =
-      [];
+    const stylesheets: CapturedStylesheet[] = [];
     for (const sheet of document.styleSheets) {
       let rules: CSSRuleList | null = null;
       let fullCssText: string | null = null;
@@ -174,18 +175,18 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
     }
 
     // Favicon and other link icons
-    for (const el of document.querySelectorAll(
+    for (const el of document.querySelectorAll<HTMLLinkElement>(
       'link[rel~="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]',
     )) {
-      const { href } = el as HTMLLinkElement;
+      const { href } = el;
       if (href) {
         add(href, "favicon");
       }
     }
 
     // Open Graph images
-    for (const el of document.querySelectorAll('meta[property="og:image"]')) {
-      const { content } = el as HTMLMetaElement;
+    for (const el of document.querySelectorAll<HTMLMetaElement>('meta[property="og:image"]')) {
+      const { content } = el;
       if (content) {
         add(content, "og-image");
       }
@@ -194,11 +195,7 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
     // Count inline SVGs (kept inline, not downloaded)
     inlineSvgCount = document.querySelectorAll("svg").length;
 
-    return { assets, inlineSvgCount, stylesheets } as {
-      assets: { url: string; source: string }[];
-      inlineSvgCount: number;
-      stylesheets: { href: string | null; cssText: string | null; fontFaceRules: string[] }[];
-    };
+    return { assets, inlineSvgCount, stylesheets };
   }, SRCSET_SEPARATOR.source);
 
   // R2: For cross-origin sheets we couldn't access (cssText=null, has href), fetch them
@@ -256,5 +253,5 @@ export async function collectAssets(page: ImportPage): Promise<AssetCollectionRe
     }
   }
 
-  return result as AssetCollectionResult;
+  return result;
 }

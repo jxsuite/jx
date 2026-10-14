@@ -179,11 +179,12 @@ if (maxDepth > 0) {
 
 // The interactive flow runs inside an async function rather than via top-level await so a test can
 // Dynamic-import this entry and await the same sequence (see create/index.ts for the rationale).
-async function main() {
+// The URL is passed in because a hoisted declaration cannot see the module-level check above.
+async function main(siteUrl: string) {
   try {
     const result = await importSite(
       {
-        url: url as string,
+        url: siteUrl,
         outDir,
         breakpoints,
         maxDepth,
@@ -254,4 +255,4 @@ async function main() {
 }
 
 // oxlint-disable-next-line unicorn/prefer-top-level-await
-export const ready = main();
+export const ready = main(url);

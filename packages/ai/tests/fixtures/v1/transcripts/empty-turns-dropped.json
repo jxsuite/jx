@@ -1,7 +1,7 @@
 {
   "name": "empty-turns-dropped",
   "description": "Two empty assistant turns, both left out of the wire: a finished turn that streamed nothing (it stays in the transcript, so two user messages end up adjacent on the wire) and the in-flight placeholder sendMessage pushes for the request being built.",
-  "shapes": ["placeholder-dropped"],
+  "scenarios": ["placeholder-dropped"],
   "script": [
     ["sendMessage", "Hello"],
     ["finishStream", "stop"],

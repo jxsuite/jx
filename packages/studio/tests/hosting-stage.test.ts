@@ -157,8 +157,9 @@ describe("stageStudioAssets", () => {
   test("a missing required asset throws, naming it and what it costs", async () => {
     const from = studioTree();
     rmSync(join(from, "dist/codicon.ttf"));
-    await expect(stageStudioAssets(dest(), { from })).rejects.toThrow(/codicon\.ttf/);
-    await expect(stageStudioAssets(dest(), { from })).rejects.toThrow(/Monaco's icon font/);
+    const staging = stageStudioAssets(dest(), { from });
+    await expect(staging).rejects.toThrow(/codicon\.ttf/);
+    await expect(staging).rejects.toThrow(/Monaco's icon font/);
   });
 
   test("missingStudioAssets reports the same gap without copying anything", () => {
@@ -168,6 +169,24 @@ describe("stageStudioAssets", () => {
     expect(missingStudioAssets(studioTree())).toEqual([]);
   });
 });
+
+/**
+ * The JSON shape writeAssetManifest serializes; `preload` is present only when the caller passed
+ * one.
+ */
+interface WrittenManifest {
+  readonly assets: readonly { readonly path: string; readonly why: string }[];
+  readonly preload?: readonly string[];
+  readonly shell: string;
+}
+
+/** Read back the manifest writeAssetManifest just wrote under `root`. */
+function readWrittenManifest(root: string): WrittenManifest {
+  /* SAFETY: every caller awaits writeAssetManifest(root) first, which JSON.stringifies
+     `{ assets: STUDIO_ASSETS, preload?, shell: STUDIO_SHELL }` into exactly this file, and
+     STUDIO_ASSETS entries carry string `path` and `why` members. */
+  return JSON.parse(readFileSync(join(root, "dist", "manifest.json"), "utf8")) as WrittenManifest;
+}
 
 describe("the documents, read from a package root", () => {
   test("canvasDocument reads the package's canvas.html and rebases its entry", async () => {
@@ -191,10 +210,7 @@ describe("the documents, read from a package root", () => {
   test("writeAssetManifest emits the manifest as json", async () => {
     const root = dest();
     await writeAssetManifest(root);
-    const written = JSON.parse(readFileSync(join(root, "dist", "manifest.json"), "utf8")) as {
-      assets: { path: string; why: string }[];
-      shell: string;
-    };
+    const written = readWrittenManifest(root);
     expect(written.shell).toBe("index.html");
     expect(written.assets.map((a) => a.path)).toEqual(STUDIO_ASSETS.map((a) => a.path));
     expect(written.assets.every((a) => a.why.length > 0)).toBe(true);
@@ -205,7 +221,7 @@ describe("the documents, read from a package root", () => {
   test("writeAssetManifest writes no preload field unless one is passed", async () => {
     const root = dest();
     await writeAssetManifest(root);
-    const written = JSON.parse(readFileSync(join(root, "dist", "manifest.json"), "utf8")) as object;
+    const written = readWrittenManifest(root);
     expect("preload" in written).toBe(false);
   });
 
@@ -213,10 +229,7 @@ describe("the documents, read from a package root", () => {
     const root = dest();
     const preload = ["dist/chunks/a-11111111.js", "dist/chunks/b-22222222.js"];
     await writeAssetManifest(root, { preload });
-    const written = JSON.parse(readFileSync(join(root, "dist", "manifest.json"), "utf8")) as {
-      preload: string[];
-      shell: string;
-    };
+    const written = readWrittenManifest(root);
     expect(written.preload).toEqual(preload);
     // The rest of the manifest is untouched by the extra.
     expect(written.shell).toBe("index.html");

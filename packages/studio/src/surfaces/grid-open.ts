@@ -19,16 +19,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import gridOpenDoc from "./grid-open.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceAction, SurfaceHandle } from "../ui/surface";
 
-registerSurface("grid-open", gridOpenDoc as unknown as JxDocument);
-
-/** One openable source. The id is opaque here: only the flow knows what it names. */
-export interface GridSourceRow {
-  id: string;
-  label: string;
-}
+registerSurface("grid-open", gridOpenDoc);
 
 /** One origin of sources — the project itself, or one connection. */
 export interface GridSourceGroup {
@@ -36,7 +29,7 @@ export interface GridSourceGroup {
   key: string;
   title: string;
   state: "listed" | "empty";
-  rows: GridSourceRow[];
+  rows: SurfaceAction[];
   /** Why the group is empty, in a sentence. Empty when it is not. */
   emptyMessage: string;
 }
@@ -47,7 +40,7 @@ export interface GridOpenSurfaceHandle {
   dispose: () => void;
 }
 
-interface GridOpenScope extends Record<string, unknown> {
+interface GridOpenScope {
   groups: GridSourceGroup[];
   open: (id: string) => void;
 }
@@ -65,16 +58,19 @@ export function mountGridOpenSurface(
   groups: GridSourceGroup[],
   open: (id: string) => void,
 ): GridOpenSurfaceHandle {
-  const scope = reactive<GridOpenScope>({ groups, open }) as GridOpenScope;
+  const scope: GridOpenScope = reactive<GridOpenScope>({ groups, open });
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("grid-open", scope, host).then((surface) => {
+    /* SAFETY: `grid-open.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
   return {
     dispose() {

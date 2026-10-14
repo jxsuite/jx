@@ -30,7 +30,9 @@ import type {
   SchemaFormContext,
   SchemaFormControlArgs,
   SchemaFormMountedControl,
+  SchemaFormPatch,
 } from "../src/ui/schema-form";
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 
 /**
  * A registered control the test drives, as the registry now holds one: a MOUNT that owns its host.
@@ -81,10 +83,10 @@ const containers: HTMLElement[] = [];
 
 interface Mount {
   container: HTMLElement;
-  patches: Record<string, unknown>[];
+  patches: SchemaFormPatch[];
   renders: { count: number };
   /** Re-run the engine over a new value, the way a host's repaint does. */
-  repaint: (value: Record<string, unknown>) => Promise<void>;
+  repaint: (value: JsonObject) => Promise<void>;
 }
 
 type Opts = Omit<RenderFormOptions, "onChange"> & { withRerender?: boolean };
@@ -94,19 +96,15 @@ type Opts = Omit<RenderFormOptions, "onChange"> & { withRerender?: boolean };
  *
  * The form key is unique per mount, so two forms in one test never share a standing mount.
  */
-async function mountForm(
-  schema: JsonSchema,
-  value: Record<string, unknown>,
-  opts: Opts = {},
-): Promise<Mount> {
+async function mountForm(schema: JsonSchema, value: JsonObject, opts: Opts = {}): Promise<Mount> {
   const { withRerender, ...rest } = opts;
   const container = document.createElement("div");
   document.body.append(container);
   containers.push(container);
-  const patches: Record<string, unknown>[] = [];
+  const patches: SchemaFormPatch[] = [];
   const renders = { count: 0 };
   const key = `test:${containers.length}`;
-  const build = (next: Record<string, unknown>) =>
+  const build = (next: JsonObject) =>
     mountSchemaForm(key, schema, next, {
       onChange: (patch) => patches.push(patch),
       ...rest,
@@ -132,44 +130,69 @@ async function mountForm(
 /** One row of the form, by the property it edits. */
 function row(m: Mount, prop: string): HTMLElement {
   const el = m.container.querySelector(`[data-prop="${prop}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no field row ${prop}`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** A named part inside a row. */
-function part<T extends Element>(m: Mount, prop: string, name: string): T {
+function part(m: Mount, prop: string, name: string): Element {
   const el = row(m, prop).querySelector(`[part="${name}"]`);
   if (!el) {
     throw new Error(`no [part="${name}"] in row ${prop}`);
   }
-  return el as T;
+  return el;
+}
+
+/** The native elements a kit field reads and writes its value through. */
+type NativeControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+/** `el` as the native control it must be; anything else means the field drew no control. */
+function asNativeControl(el: Element | null, where: string): NativeControl {
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  ) {
+    return el;
+  }
+  throw new Error(`no native control ${where}`);
 }
 
 /** The native control a kit field is made of. */
-function control<T extends Element>(m: Mount, prop: string, widget: string): T {
-  return part<Element>(m, prop, widget).querySelector(
-    '[part="input"], [part="control"]',
-  ) as unknown as T;
+function control(m: Mount, prop: string, widget: string): NativeControl {
+  return asNativeControl(
+    part(m, prop, widget).querySelector('[part="input"], [part="control"]'),
+    `in [part="${widget}"] of row ${prop}`,
+  );
 }
 
 /** Type into a control the way a reader does: it reports, and the event bubbles. */
 function type(el: Element, value: string): void {
-  (el as HTMLInputElement).value = value;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  const target = asNativeControl(el, "to type into");
+  target.value = value;
+  target.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /** Commit a control: the value is set and `change` fires, as a blur or a pick does. */
 function commit(el: Element, value: string): void {
-  (el as HTMLInputElement).value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  const target = asNativeControl(el, "to commit");
+  target.value = value;
+  target.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-/** Toggle a checkbox the way a reader does. */
-function check(el: Element, next: boolean): void {
-  (el as HTMLInputElement).checked = next;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+/**
+ * Toggle a kit checkbox the way a reader does: through its native box, whose `change` bubbles to
+ * the `jx-checkbox` host the form listens on.
+ */
+function check(m: Mount, prop: string, next: boolean): void {
+  const box = part(m, prop, "checkbox").querySelector('[part="input"]');
+  if (!(box instanceof HTMLInputElement)) {
+    throw new Error(`no native checkbox in row ${prop}`);
+  }
+  box.checked = next;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /** The values a select offers, in order. */
@@ -182,13 +205,13 @@ async function openSourceMenu(m: Mount, prop: string): Promise<HTMLElement> {
   pointer(part(m, prop, "source").querySelector('[part="control"]')!, "click");
   await flush(6);
   const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu');
-  if (!menu) {
+  if (!(menu instanceof HTMLElement)) {
     throw new Error("the value-source menu did not open");
   }
-  return menu as HTMLElement;
+  return menu;
 }
 
-const ctxOver = (projectConfig: Record<string, unknown>): SchemaFormContext => ({
+const ctxOver = (projectConfig: ProjectConfig): SchemaFormContext => ({
   resolvePointer: (ptr, scope) =>
     resolveContextPointer(ptr, { projectConfig, ...(scope !== undefined && { scope }) }),
 });
@@ -334,7 +357,7 @@ describe("form dispatch", () => {
       {},
     );
     const layout = control(m, "layout", "select");
-    expect((layout as HTMLSelectElement).value).toBe("grid");
+    expect(layout.value).toBe("grid");
     commit(layout, "list");
     commit(layout, "__none__");
     expect(m.patches).toEqual([{ layout: "list" }, { layout: undefined }]);
@@ -343,7 +366,7 @@ describe("form dispatch", () => {
 
   test("boolean renders a checkbox committing checked state", async () => {
     const m = await mountForm({ properties: { live: { type: "boolean" } } }, {});
-    check(control(m, "live", "checkbox"), true);
+    check(m, "live", true);
     expect(m.patches).toEqual([{ live: true }]);
   });
 
@@ -386,9 +409,7 @@ describe("form dispatch", () => {
       { properties: { alerts: { type: ["object", "boolean"] } } },
       { alerts: { NOTE: "doc-note" } },
     );
-    expect((control(m, "alerts", "json-text") as HTMLTextAreaElement).value).toContain(
-      '"NOTE": "doc-note"',
-    );
+    expect(control(m, "alerts", "json-text").value).toContain('"NOTE": "doc-note"');
     type(control(m, "alerts", "json-text"), "false");
     await settle(560);
     type(control(m, "alerts", "json-text"), '{"INFO":true}');
@@ -398,29 +419,29 @@ describe("form dispatch", () => {
 
   test("a json-schema field names the shape it holds and commits parsed JSON", async () => {
     const m = await mountForm(
-      { properties: { shape: { format: "json-schema", type: "object" } } },
-      { shape: { properties: { count: { type: "number" }, name: {} }, type: "object" } },
+      { properties: { itemSchema: { format: "json-schema", type: "object" } } },
+      { itemSchema: { properties: { count: { type: "number" }, name: {} }, type: "object" } },
     );
-    const chips = [...row(m, "shape").querySelectorAll('[part="chip"]')].map((el) =>
-      el.textContent?.trim(),
+    const chips = [...row(m, "itemSchema").querySelectorAll('[part="chip"]')].map((el) =>
+      el.textContent.trim(),
     );
     expect(chips).toEqual(["count: number", "name: any"]);
 
-    type(control(m, "shape", "json-text"), '{"type":"object"}');
+    type(control(m, "itemSchema", "json-text"), '{"type":"object"}');
     await settle(560);
-    type(control(m, "shape", "json-text"), "{broken");
+    type(control(m, "itemSchema", "json-text"), "{broken");
     await settle(560);
     // The invalid text is ignored; only the parsed JSON committed.
-    expect(m.patches).toEqual([{ shape: { type: "object" } }]);
+    expect(m.patches).toEqual([{ itemSchema: { type: "object" } }]);
   });
 
   test("a json-schema field holding a $ref keeps the editor and names no shape", async () => {
     const m = await mountForm(
-      { properties: { shape: { format: "json-schema", type: "object" } } },
-      { shape: { $ref: "#/defs/thing" } },
+      { properties: { itemSchema: { format: "json-schema", type: "object" } } },
+      { itemSchema: { $ref: "#/defs/thing" } },
     );
-    expect(part(m, "shape", "json-text")).not.toBeNull();
-    expect(row(m, "shape").querySelectorAll('[part="chip"]')).toHaveLength(0);
+    expect(part(m, "itemSchema", "json-text")).not.toBeNull();
+    expect(row(m, "itemSchema").querySelectorAll('[part="chip"]')).toHaveLength(0);
   });
 });
 
@@ -445,7 +466,7 @@ describe("binding a config field", () => {
 
   test("without a source, a ref left in the record is edited as the pointer string it is", async () => {
     const m = await mountForm(schema, { id: { $ref: "#/$params/sku" } });
-    const tf = control(m, "id", "text") as HTMLInputElement;
+    const tf = control(m, "id", "text");
     expect(tf.value).toBe("#/$params/sku");
     commit(tf, "#/other/path");
     commit(tf, "  ");
@@ -480,13 +501,13 @@ describe("binding a config field", () => {
       { id: { $ref: "#/$params/sku" } },
       { context: sourced({ signals: ["query"] }) },
     );
-    const pick = control(m, "id", "pointer-pick") as HTMLSelectElement;
+    const pick = control(m, "id", "pointer-pick");
     expect(options(pick)).toEqual(["#/state/query", "#/$params/sku"]);
     expect(pick.value).toBe("#/$params/sku");
 
     /* The kit has no combobox, so the rung is two controls over one value: the select offers what
        the host named and the field takes anything. */
-    const free = control(m, "id", "pointer") as HTMLInputElement;
+    const free = control(m, "id", "pointer");
     expect(free.value).toBe("#/$params/sku");
     commit(free, "#/state/query/id");
     expect(m.patches).toEqual([{ id: { $ref: "#/state/query/id" } }]);
@@ -513,14 +534,14 @@ describe("binding a config field", () => {
       {
         properties: {
           fields: { type: "object" },
-          shape: { format: "json-schema", type: "object" },
+          itemSchema: { format: "json-schema", type: "object" },
           token: { type: "string" },
         },
       },
       {},
       { context: sourced(), ui: { token: { control: "owns-it" } } },
     );
-    for (const prop of ["fields", "shape", "token"]) {
+    for (const prop of ["fields", "itemSchema", "token"]) {
       expect(row(m, prop).querySelector('[part="source"]')).toBeNull();
     }
     expect(stub(m.container, "owns-it")).not.toBeNull();
@@ -775,9 +796,9 @@ describe("inline errors", () => {
 describe("the standing mount", () => {
   test("the same key updates the form in place rather than building a second one", async () => {
     const m = await mountForm({ properties: { a: { type: "string" } } }, { a: "one" });
-    const input = control(m, "a", "text") as HTMLInputElement;
+    const input = control(m, "a", "text");
     await m.repaint({ a: "two" });
-    expect(control(m, "a", "text")).toBe(input as unknown as Element);
+    expect(control(m, "a", "text")).toBe(input);
     expect(input.value).toBe("two");
     expect(m.container.querySelectorAll('[part="form"]')).toHaveLength(1);
   });
@@ -789,7 +810,7 @@ describe("the standing mount", () => {
     await m.repaint({ a: "two" });
     await flush(4);
     expect(m.container.querySelector('[part="form"]')).not.toBeNull();
-    expect((control(m, "a", "text") as HTMLInputElement).value).toBe("two");
+    expect(control(m, "a", "text").value).toBe("two");
   });
 
   test("a form taken down while its mount is in flight leaves nothing behind", async () => {

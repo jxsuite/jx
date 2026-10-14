@@ -1,27 +1,33 @@
 import "./harness";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { CODE_DEBOUNCE, INPUT_DEBOUNCE, LIVE_PREVIEW, POLL_GIT } from "../src/ui/timing";
 import { debouncedStyleCommit } from "../src/store";
 
 // ─── Local helpers ───────────────────────────────────────────────────────────
 
+const realSetTimeout = globalThis.setTimeout;
+
 /**
  * Swap `setTimeout` for a recorder so a delay can be asserted without waiting for it. Returns the
- * list the delays land in; the real timer is restored by the afterEach below.
+ * list the delays land in; the scheduled callback never runs (the handle returned belongs to an
+ * inert no-op timer), and the real timer is restored by the afterEach below.
  */
 function recordDelays(): number[] {
   const delays: number[] = [];
-  globalThis.setTimeout = ((_fn: () => void, ms?: number) => {
+  const recorder = (_callback: () => void, ms?: number) => {
     delays.push(ms ?? 0);
-    return 0 as unknown as ReturnType<typeof setTimeout>;
-  }) as unknown as typeof setTimeout;
+    return realSetTimeout(() => {}, 0);
+  };
+  /* SAFETY: The recorder implements the one call shape the code under test makes,
+     `setTimeout(callback, delay)` in `debouncedStyleCommit`, and answers it with a real timer
+     handle; the overloads it lacks (extra callback arguments, a string handler, `__promisify__`)
+     are never reached before the afterEach restores the real function. */
+  spyOn(globalThis, "setTimeout").mockImplementation(recorder as typeof setTimeout);
   return delays;
 }
 
-const realSetTimeout = globalThis.setTimeout;
-
 afterEach(() => {
-  globalThis.setTimeout = realSetTimeout;
+  mock.restore();
 });
 
 // ─── The constants themselves ────────────────────────────────────────────────

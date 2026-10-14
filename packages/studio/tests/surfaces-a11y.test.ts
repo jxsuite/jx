@@ -9,7 +9,8 @@ import { join, resolve } from "node:path";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isNodeObject } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const dir = resolve(import.meta.dir, "../src/surfaces");
 const documents = readdirSync(dir).filter((name) => name.endsWith(".json"));
@@ -21,7 +22,10 @@ describe("surface documents", () => {
 
   for (const name of documents) {
     test(`${name} passes the overlay, dialog and accessibility lints`, () => {
-      const doc = JSON.parse(readFileSync(join(dir, name), "utf8")) as JxElement;
+      const doc: JsonValue = JSON.parse(readFileSync(join(dir, name), "utf8"));
+      if (!isNodeObject(doc)) {
+        throw new Error(`${name} is not an element document`);
+      }
       expect(findPopoverDefects(doc)).toEqual([]);
       expect(findDialogDefects(doc)).toEqual([]);
       expect(findA11yDefects(doc)).toEqual([]);

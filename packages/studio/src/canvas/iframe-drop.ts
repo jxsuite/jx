@@ -17,7 +17,7 @@
  */
 
 import { parseJxPath } from "./path-mapping";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNonNullObject } from "@jxsuite/schema/guards";
 import { rectOf, elementAtPoint } from "../utils/geometry";
 import { getNodeAtPath, isAncestor, pathsEqual } from "../state";
 import type { DragSrcKind, DropPreview } from "./iframe-protocol";
@@ -52,9 +52,11 @@ const VOID_TAGS = new Set([
  * reuse it. Returns null when no addressable node is found.
  */
 function nearestPathEl(start: Element | null): HTMLElement | null {
-  let el = start instanceof Element ? (start as HTMLElement) : null;
+  // Only an `HTMLElement` is ever stamped (`makeStamper` skips every other node), so the walk
+  // Passes over SVG and other foreign elements on its way up.
+  let el = start;
   while (el) {
-    if (el.dataset?.jxPath) {
+    if (el instanceof HTMLElement && el.dataset.jxPath) {
       return el;
     }
     el = el.parentElement;
@@ -94,15 +96,15 @@ export function computeDropInstruction(
   shadowDoc: JxMutableNode,
   src: DragSrcKind,
 ): DropPreview | null {
-  const serialized = targetEl.dataset?.jxPath;
+  const serialized = targetEl.dataset.jxPath;
   if (serialized == null) {
     return null;
   }
-  const targetPath = parseJxPath(serialized) as JxPath;
+  const targetPath = parseJxPath(serialized);
 
   // Root: pick the nearest child edge among the element's element children.
   if (targetPath.length === 0) {
-    const children = [...targetEl.children] as HTMLElement[];
+    const children = [...targetEl.children];
     if (children.length === 0) {
       return canDrop(src, targetPath)
         ? {
@@ -120,11 +122,10 @@ export function computeDropInstruction(
     return null;
   }
 
-  const node = getNodeAtPath(shadowDoc, targetPath) as JxMutableNode | undefined;
+  const node = getNodeAtPath(shadowDoc, targetPath);
   const tag = (displayTagName(node?.tagName) || "div").toLowerCase();
   const hasElementChildren =
-    Array.isArray(node?.children) &&
-    node.children.some((c: unknown) => c != null && typeof c === "object");
+    Array.isArray(node?.children) && node.children.some((c) => isNonNullObject(c));
   const isLeaf = VOID_TAGS.has(tag) || !hasElementChildren;
 
   const rect = rectFor(targetEl);
@@ -150,7 +151,7 @@ export function computeDropInstruction(
  * parentElementPath(slice(0,-2)) / childIndex(at(-1)) read the same parent + index.
  */
 function nearestChildEdge(
-  children: HTMLElement[],
+  children: Element[],
   cursorY: number,
   parentPath: JxPath,
   src: DragSrcKind,
@@ -175,7 +176,7 @@ function nearestChildEdge(
     }
   }
 
-  const childPath = [...parentPath, "children", closestIdx] as JxPath;
+  const childPath: JxPath = [...parentPath, "children", closestIdx];
   if (!canDrop(src, childPath)) {
     return null;
   }
@@ -192,7 +193,7 @@ function canDrop(src: DragSrcKind, targetPath: JxPath): boolean {
   if (src.type !== "tree-node") {
     return true;
   }
-  const srcPath = src.path as JxPath;
+  const srcPath = src.path;
   if (pathsEqual(srcPath, targetPath)) {
     return false;
   }

@@ -8,6 +8,8 @@
  */
 import "./with-dom.js";
 import { describe, expect, mock, test } from "bun:test";
+import type { JxDocument } from "@jxsuite/schema/types";
+import type { PreviewRecord } from "../src/utils/preview-format";
 
 // Jx-validate treats ajv as an optional peer dependency: this file exercises the degraded
 // Path where the compile step throws, so the mock must land before the module loads.
@@ -71,27 +73,33 @@ describe("validateDocOrNull under a broken ajv", () => {
 
 describe("render-critic error translation branches", () => {
   test('"is not a function" errors get the handler-oriented fix hint', async () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ children: ["${state.count()}"], tagName: "span" }],
       state: { count: 5 },
       tagName: "div",
     };
-    const result = await renderCheck(doc as never);
+    const result = await renderCheck(doc);
     expect(result.ok).toBe(false);
-    const { error } = result as { error: string; ok: false };
+    if (result.ok) {
+      throw new Error("the document was expected to fail its detached render");
+    }
+    const { error } = result;
     expect(error).toContain("is not a function");
     expect(error).toContain('$prototype: "Function"');
   });
 
   test('"is not a constructor" errors get the prototype-oriented fix hint', async () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ children: ["${new state.count()}"], tagName: "span" }],
       state: { count: 5 },
       tagName: "div",
     };
-    const result = await renderCheck(doc as never);
+    const result = await renderCheck(doc);
     expect(result.ok).toBe(false);
-    const { error } = result as { error: string; ok: false };
+    if (result.ok) {
+      throw new Error("the document was expected to fail its detached render");
+    }
+    const { error } = result;
     expect(error).toContain("is not a constructor");
     expect(error).toContain("$export");
   });
@@ -100,7 +108,7 @@ describe("render-critic error translation branches", () => {
 describe("preview-format stringify failure", () => {
   test("falls back to String() when JSON.stringify throws", () => {
     expect(formatPreviewValue(7n)).toBe("7");
-    const circular: Record<string, unknown> = {};
+    const circular: PreviewRecord = {};
     circular.self = circular;
     expect(formatPreviewValue(circular)).toBe("[object Object]");
   });

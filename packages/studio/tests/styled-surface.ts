@@ -69,7 +69,9 @@ export async function emittedClassesOf(rel: string): Promise<Set<string>> {
  * (`ui/field-row.ts`'s rows) are not this file's to answer for.
  */
 export function inlineStyledOwn(root: ParentNode, own: Set<string>): string[] {
-  return [...root.querySelectorAll("[style]")]
-    .filter((el) => [...el.classList].some((name) => own.has(name)))
-    .map((el) => `${el.tagName.toLowerCase()}[${el.getAttribute("style")}]`);
+  return [...root.querySelectorAll("[style]")].flatMap((el) =>
+    [...el.classList].some((name) => own.has(name))
+      ? [`${el.tagName.toLowerCase()}[${el.getAttribute("style")}]`]
+      : [],
+  );
 }

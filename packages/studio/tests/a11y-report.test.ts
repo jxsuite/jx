@@ -14,16 +14,17 @@ import {
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext, makeContext } from "../src/commands/context";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
 /** A one-element document, so each test states only what it is about. */
 function doc(children: JxElement[], extra: Partial<JxElement> = {}): JxElement {
-  return { children, lang: "en", tagName: "my-page", ...extra } as JxElement;
+  return { children, lang: "en", tagName: "my-page", ...extra };
 }
 
 /** A tab holding the given children, so the command has an active document to check. */
 function setupDocTab(children: JxElement[]): void {
-  resetWorkspaceWithTab({ children, lang: "en", tagName: "my-page" } as never, {
+  resetWorkspaceWithTab(doc(children), {
     documentPath: "pages/index.json",
   });
 }
@@ -60,9 +61,7 @@ describe("images", () => {
       ids(
         doc([
           {
-            children: [
-              { attributes: { coords: "0,0,9,9", href: "/", shape: "rect" }, tagName: "area" },
-            ],
+            children: [{ attributes: { coords: "0,0,9,9", href: "/" }, tagName: "area" }],
             tagName: "map",
           },
         ]),
@@ -74,10 +73,10 @@ describe("images", () => {
           {
             children: [
               {
-                attributes: { alt: "Home", coords: "0,0,9,9", href: "/", shape: "rect" },
+                attributes: { alt: "Home", coords: "0,0,9,9", href: "/" },
                 tagName: "area",
               },
-              { attributes: { coords: "9,9,9,9", shape: "rect" }, tagName: "area" },
+              { attributes: { coords: "9,9,9,9" }, tagName: "area" },
             ],
             tagName: "map",
           },
@@ -240,7 +239,7 @@ describe("structure", () => {
   });
 
   test("a document with no language is flagged", () => {
-    const noLang = { children: [], tagName: "my-page" } as JxElement;
+    const noLang: JxElement = { children: [], tagName: "my-page" };
     expect(ids(noLang)).toContain("no-lang");
   });
 
@@ -379,23 +378,31 @@ describe("document.checkAccessibility", () => {
     resetNotifications();
     await registry.run("document.checkAccessibility");
 
+    /* SAFETY: `a11yCommands()` stores the record as `AnyCommand`, whose argument type is erased to
+       `never`, so no real value can be typed here; check_accessibility's `report` takes no
+       parameters at all and reads only the Problems store, so the value passed is never read. */
     const facts = { after: emptyContext(), args: undefined as never, before: emptyContext() };
     const report = command!.aiTool!.report(facts);
-    expect(typeof report).toBe("object");
-    const { data, summary } = report as {
-      data: { message: string; key?: string }[];
-      summary: string;
-    };
+    if (isString(report)) {
+      throw new Error("check_accessibility reports its findings as data, not as a bare sentence");
+    }
+    const { data, summary } = report;
     expect(summary).toStartWith("Filed 1 accessibility problem in Problems.");
     expect(summary).toContain("could not run");
-    expect(data).toHaveLength(1);
-    expect(data[0]!.message).toContain("alt text");
-    expect(data[0]!.key).toStartWith("a11y.");
-    expect(data.some((finding) => finding.key?.startsWith("a11y.unavailable."))).toBe(false);
+    // One finding: the missing alt text, keyed under `a11y.` but never as an unchecked-coverage row.
+    expect(data).toEqual([
+      expect.objectContaining({
+        key: expect.stringMatching(/^a11y\.(?!unavailable\.)/),
+        message: expect.stringContaining("alt text"),
+      }),
+    ]);
 
     setupDocTab([{ tagName: "p", textContent: "Hello" }]);
     await registry.run("document.checkAccessibility");
-    const clean = command!.aiTool!.report(facts) as { data: unknown[]; summary: string };
+    const clean = command!.aiTool!.report(facts);
+    if (isString(clean)) {
+      throw new Error("check_accessibility reports its findings as data, not as a bare sentence");
+    }
     expect(clean.summary).toStartWith("No accessibility problems found in this document.");
     expect(clean.data).toEqual([]);
   });

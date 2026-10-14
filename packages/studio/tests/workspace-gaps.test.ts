@@ -29,7 +29,7 @@ beforeEach(() => {
  */
 describe("tabIsLive", () => {
   test("is false for no tab, for a closed one, and for a stale object of the same id", () => {
-    const nothing = undefined as Tab | undefined;
+    const nothing: Tab | undefined = undefined;
     expect(tabIsLive(null)).toBe(false);
     expect(tabIsLive(nothing)).toBe(false);
 
@@ -38,7 +38,7 @@ describe("tabIsLive", () => {
 
     // Same id, different object: a tab that was closed and reopened is not the tab a commit was
     // Promised to, and writing into it would push history onto a document nobody asked about.
-    const stale = { ...tab, id: "t1" } as typeof tab;
+    const stale: Tab = { ...tab, id: "t1" };
     expect(tabIsLive(stale)).toBe(false);
 
     closeTab("t1");

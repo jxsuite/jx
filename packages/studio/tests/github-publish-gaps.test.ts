@@ -61,7 +61,6 @@ void mock.module("../src/panels/git-panel.js", () => ({
   refreshGitStatus: async () => {
     refreshCalls += 1;
   },
-  renderGitPanel: () => null,
 }));
 
 // `notify` in place of the deleted `statusMessage`: the publish flow's three progress lines and
@@ -72,7 +71,6 @@ const record = (message: string, opts?: { detail?: string }) => {
   if (opts?.detail) {
     details.push(opts.detail);
   }
-  return { id: "n", message } as never;
 };
 void mock.module("../src/services/notify.js", () =>
   notifyModule((call) => record(call.message, call.options)),
@@ -101,9 +99,11 @@ function dialogElement(): HTMLElement | null {
 
 /** One row's native control: the input a reader types into, or the switch's checkbox. */
 function control(row: string): HTMLInputElement {
-  return dialogElement()!.querySelector<HTMLInputElement>(
-    `[data-field="${row}"] [part="input"]`,
-  ) as HTMLInputElement;
+  const input = dialogElement()?.querySelector(`[data-field="${row}"] [part="input"]`);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error(`no native input in the publish dialog's "${row}" row`);
+  }
+  return input;
 }
 
 /** Type into a field the way a reader does: the control moves, and the element hears it. */
@@ -280,8 +280,9 @@ describe("the dialog's own markup", () => {
      * because the defect is silent: the dialog looks identical either way.
      */
     const { dialog, promise } = await openPublishDialog();
-    const toggle = dialog.querySelector('[part="toggle"]') as HTMLElement;
-    expect(toggle.getAttribute("labelledby")).toBeNull();
+    const toggle = dialog.querySelector('[part="toggle"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute("labelledby")).toBeNull();
     expect(control("visibility").getAttribute("aria-labelledby")).toBeNull();
     expect(dialog.querySelector('[part="toggle"] [part="label"]')?.textContent).toBe(
       "Private repository",

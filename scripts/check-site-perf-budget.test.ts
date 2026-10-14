@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Budget } from "./check-site-perf-budget.ts";
 import { eagerRefs } from "./check-site-perf-budget.ts";
 
 describe("eagerRefs", () => {
@@ -54,8 +55,9 @@ describe("eagerRefs", () => {
    */
   test("does not see a dynamically imported module", () => {
     const html = `<script type="module" src="/components/search.js"></script>`;
-    expect(eagerRefs(html)).toEqual(["components/search.js"]);
-    expect(eagerRefs(html)).not.toContain("assets/search-client.js");
+    const refs = eagerRefs(html);
+    expect(refs).toEqual(["components/search.js"]);
+    expect(refs).not.toContain("assets/search-client.js");
   });
 
   test("strips query strings and fragments, and dedupes", () => {
@@ -71,7 +73,7 @@ describe("eagerRefs", () => {
 });
 
 describe("check-site-perf-budget CLI", () => {
-  function site(budget: unknown, dist: Record<string, string> | null): string {
+  function site(budget: Budget, dist: Record<string, string> | null): string {
     const dir = mkdtempSync(join(tmpdir(), "jx-perf-budget-"));
     writeFileSync(join(dir, "perf-budget.json"), JSON.stringify(budget), "utf8");
     if (dist) {

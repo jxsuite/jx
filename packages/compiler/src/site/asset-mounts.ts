@@ -20,7 +20,15 @@ import {
 } from "@jxsuite/schema/asset-paths";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+
+/** What {@link copyMountedAssets} reports: files written, and URLs that resolved to nothing. */
+export interface MountedAssetCopy {
+  copied: number;
+  missing: string[];
+}
 
 /**
  * Gather every asset mount contributed by the project's extensions.
@@ -45,31 +53,33 @@ export async function loadAssetMounts(
 
   for (const entry of registry.assetProviders()) {
     const sectionKey = entry.project?.key;
-    const sectionValue = sectionKey
-      ? (projectConfig as unknown as Record<string, unknown>)[sectionKey]
-      : undefined;
+    const sectionValue = sectionKey ? projectConfig[sectionKey] : undefined;
     if (
       sectionKey &&
       (sectionValue == null ||
-        (typeof sectionValue === "object" && Object.keys(sectionValue).length === 0))
+        (isNonNullObject(sectionValue) && Object.keys(sectionValue).length === 0))
     ) {
       continue;
     }
     try {
-      const declared = (await entry.call("assets", sectionValue ?? null, {
+      const declared = await entry.call("assets", sectionValue ?? null, {
         projectConfig,
         root: projectRoot,
-      })) as AssetMount[] | null;
+      });
+      /* The answer is extension code's, so each entry is checked before it is used: a hole, or a
+         mount missing its URL prefix or its directory, declares nothing. */
       for (const mount of declared ?? []) {
-        if (!mount?.urlPrefix || !mount.dir) {
+        if (!isNonNullObject(mount) || !mount.urlPrefix || !mount.dir) {
           continue;
         }
         const normalized: AssetMount = {
           dir: mount.dir,
           urlPrefix: normalizeAssetPrefix(mount.urlPrefix),
-          // What the owner says the mount may serve travels with it (a notes folder's `exclude`).
-          ...(typeof mount.filter === "function" && { filter: mount.filter }),
         };
+        // What the owner says the mount may serve travels with it (a notes folder's `exclude`).
+        if (isFunction(mount.filter)) {
+          normalized.filter = mount.filter;
+        }
         const prior = byPrefix.get(normalized.urlPrefix);
         if (prior) {
           if (prior.dir !== normalized.dir) {
@@ -84,7 +94,7 @@ export async function loadAssetMounts(
         mounts.push(normalized);
       }
     } catch (error) {
-      errors.push(`Error in ${entry.name}.assets: ${(error as Error).message}`);
+      errors.push(`Error in ${entry.name}.assets: ${errorMessage(error)}`);
     }
   }
 
@@ -113,13 +123,13 @@ export function collectAssetRefs(text: string, mounts: readonly AssetMount[], in
  * @param {Iterable<string>} urls - Mounted URLs collected from the compiled output
  * @param {readonly AssetMount[]} mounts
  * @param {string} outDir - Absolute build output directory
- * @returns {{ copied: number; missing: string[] }} Files written, and URLs that resolved to nothing
+ * @returns {MountedAssetCopy} Files written, and URLs that resolved to nothing
  */
 export function copyMountedAssets(
   urls: Iterable<string>,
   mounts: readonly AssetMount[],
   outDir: string,
-): { copied: number; missing: string[] } {
+): MountedAssetCopy {
   let copied = 0;
   const missing: string[] = [];
 

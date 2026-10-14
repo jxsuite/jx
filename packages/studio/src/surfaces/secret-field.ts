@@ -28,10 +28,9 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import secretDoc from "./secret-field.json";
 
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("secret-field", secretDoc as unknown as JxDocument);
+registerSurface("secret-field", secretDoc);
 
 /** What the field says right now. Every field is the flow's, never a state it derives. */
 export interface SecretFieldView {
@@ -65,7 +64,7 @@ export interface SecretFieldSurfaceHandle {
   dispose: () => void;
 }
 
-interface SecretScope extends Record<string, unknown>, SecretFieldView, SecretFieldActions {
+interface SecretScope extends SecretFieldView, SecretFieldActions {
   /**
    * What the field's value is bound to, and the whole of the "never render a secret back" rule.
    *
@@ -92,7 +91,7 @@ export function mountSecretFieldSurface(
   actions: SecretFieldActions,
 ): SecretFieldSurfaceHandle {
   host.textContent = "";
-  const scope = reactive<SecretScope>({ ...emptyView(), ...actions, shown: "" }) as SecretScope;
+  const scope: SecretScope = reactive<SecretScope>({ ...emptyView(), ...actions, shown: "" });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;
@@ -101,13 +100,17 @@ export function mountSecretFieldSurface(
 
   const mount = (): Promise<HTMLElement> =>
     mountSurface("secret-field", scope, host).then((mounted) => {
+      /* SAFETY: `secret-field.json`'s root definition carries `tagName: "div"`, so the runtime
+         mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+         string. */
+      const root = mounted.root as HTMLElement;
       mounting = false;
       if (disposed) {
         mounted.dispose();
-        return mounted.root as HTMLElement;
+        return root;
       }
       handle = mounted;
-      return mounted.root as HTMLElement;
+      return root;
     });
 
   const ready = mount();

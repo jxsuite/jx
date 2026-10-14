@@ -19,34 +19,47 @@ import {
 } from "./harness";
 import { activateTab, openTab, workspace } from "../src/workspace/workspace";
 import { setLayoutSelection, shell } from "../src/shell";
-import type { LayoutHit } from "../src/canvas/iframe-protocol";
+import type { postMessageChannel } from "../src/canvas/iframe-channel";
+import type {
+  EvalExprResult,
+  IframeToParent,
+  LayoutHit,
+  ParentToIframe,
+} from "../src/canvas/iframe-protocol";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies the window's
+   members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
 // ─── Mocks (mirrors iframe-host-gaps.test.ts): capture channels, stub the resolver ───
 
+/** What the host hands the channel factory: its target window, origins and token. */
+type ChannelOptions = Parameters<typeof postMessageChannel<ParentToIframe, IframeToParent>>[0];
+
 interface FakeChannel {
-  posts: Record<string, unknown>[];
+  posts: ParentToIframe[];
   disposed: boolean;
-  deliver: (m: Record<string, unknown>) => void;
+  deliver: (m: IframeToParent) => void;
 }
 const channels: FakeChannel[] = [];
 
 void mock.module("../src/canvas/iframe-channel", () => ({
-  postMessageChannel: (opts: Record<string, unknown>) => {
-    let handler: ((m: Record<string, unknown>) => void) | null = null;
+  postMessageChannel: (opts: ChannelOptions) => {
+    let handler: ((m: IframeToParent) => void) | null = null;
     const rec: FakeChannel = { deliver: (m) => handler?.(m), disposed: false, posts: [] };
     channels.push(rec);
     return {
       dispose: () => {
         rec.disposed = true;
       },
-      onMessage: (h: (m: Record<string, unknown>) => void) => {
+      onMessage: (h: (m: IframeToParent) => void) => {
         handler = h;
         return () => {};
       },
-      post: (m: Record<string, unknown>) => {
+      post: (m: ParentToIframe) => {
         rec.posts.push(m);
       },
       target: opts.target,
@@ -95,7 +108,7 @@ const QUIET = { animations: 0, fonts: true, images: 0, kind: "idle" as const };
 
 /** One expression to preview, and the reply the frame would send for it. */
 const EXPRS = [{ id: "e1", node: { operator: "+" } }];
-const EVAL_RESULTS = [{ id: "e1", values: [["$", "2"]] as [string, string][] }];
+const EVAL_RESULTS: EvalExprResult[] = [{ id: "e1", values: [["$", "2"]] }];
 
 const LAYOUT_HIT: LayoutHit = {
   className: "site-header",
@@ -106,9 +119,9 @@ const LAYOUT_HIT: LayoutHit = {
 };
 
 const STYLEBOOK_GENERATED = () => ({
-  doc: { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" } as never,
+  doc: { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" },
   pathToTag: new Map([['["children",0]', "h1"]]),
-  tagToCardPath: new Map([["h1", ["children", 0] as (string | number)[]]]),
+  tagToCardPath: new Map<string, (string | number)[]>([["h1", ["children", 0]]]),
 });
 
 /** Mount one page host inside `parent` and take it all the way to "has acked its render". */
@@ -118,7 +131,7 @@ async function mountReady(
   const { gen = 1, parent = document.body, tabId = null } = opts;
   const canvasEl = document.createElement("div");
   parent.append(canvasEl);
-  await mountIframeCanvas(gen, { tagName: "div" } as never, canvasEl, null, tabId);
+  await mountIframeCanvas(gen, { tagName: "div" }, canvasEl, null, tabId);
   const channel = channels.at(-1)!;
   channel.deliver({ kind: "ready" });
   // The tab identity is adopted on the ACK, never at mount time.
@@ -133,9 +146,20 @@ function makeRoot(): HTMLElement {
   return root;
 }
 
-/** Every post of one kind a channel received. */
-function postsOfKind(channel: FakeChannel, kind: string): Record<string, unknown>[] {
-  return channel.posts.filter((post) => post.kind === kind);
+type Posted<K extends ParentToIframe["kind"]> = Extract<ParentToIframe, { kind: K }>;
+
+/** Every post of one kind a channel received, each narrowed to that message's own shape. */
+function postsOfKind<K extends ParentToIframe["kind"]>(channel: FakeChannel, kind: K): Posted<K>[] {
+  return channel.posts.filter((post): post is Posted<K> => post.kind === kind);
+}
+
+/** The selection box an overlay drew under `root`; throws rather than handing a test null. */
+function selectionBox(root: ParentNode): HTMLElement {
+  const box = root.querySelector(".overlay-selection");
+  if (!(box instanceof HTMLElement)) {
+    throw new TypeError("expected an .overlay-selection box under the canvas");
+  }
+  return box;
 }
 
 /** What a promise settled with — or the sentinel, when it has not settled at all. */
@@ -320,7 +344,7 @@ describe("layoutHit", () => {
 
     book.deliver({ hit: LAYOUT_HIT, kind: "layoutHit" });
     expect(shell.layoutSelection).toBeNull();
-    const bookBox = bookEl.querySelector(".overlay-selection") as HTMLElement;
+    const bookBox = selectionBox(bookEl);
     expect(bookBox.style.display).toBe("none");
 
     // The same message in a page host is the click the layout panel exists for.
@@ -328,7 +352,7 @@ describe("layoutHit", () => {
     page.channel.deliver({ hit: LAYOUT_HIT, kind: "layoutHit" });
     expect(shell.layoutSelection?.layoutFile).toBe("layouts/base.json");
     expect(shell.layoutSelection?.tagName).toBe("header");
-    const pageBox = page.canvasEl.querySelector(".overlay-selection") as HTMLElement;
+    const pageBox = selectionBox(page.canvasEl);
     expect(pageBox.style.display).toBe("block");
     expect(pageBox.style.left).toBe("24px");
   });
@@ -346,7 +370,7 @@ describe("forwardWheel", () => {
     shiftKey: false,
     x: 100,
     y: 50,
-  };
+  } satisfies IframeToParent;
 
   test("replays on the stage containing the frame", async () => {
     const surface = standUpPaneGrid("primary");
@@ -356,7 +380,7 @@ describe("forwardWheel", () => {
     Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 300 });
 
     const seen: WheelEvent[] = [];
-    const onWheel = (event: Event) => seen.push(event as WheelEvent);
+    const onWheel = (event: WheelEvent) => seen.push(event);
     surface.wrap.addEventListener("wheel", onWheel);
     channel.deliver(WHEEL);
     surface.wrap.removeEventListener("wheel", onWheel);
@@ -450,7 +474,8 @@ describe("publishKeymap", () => {
       publishKeymap();
       expect(postsOfKind(channel, "keymap")).toHaveLength(2);
     } finally {
-      setKeymapSource(undefined as never);
+      // Back to a table with no chords: the API has no "unset", and nothing below this test reads it.
+      setKeymapSource(() => ({ chords: [], mac: false }));
     }
   });
 });

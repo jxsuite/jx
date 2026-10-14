@@ -16,16 +16,40 @@ import {
   bundleSchema,
   emitProjectSchema,
 } from "../src/project-schemas";
+import { isJsonObject } from "../src/guards";
 import { generateProjectCoreSchema } from "../src/schema";
+import type { JsonObject, JsonValue } from "../types";
 
 const TMP = resolve(import.meta.dir, "__test-bundle-schema__");
-const FRAG_ID = "https://test.invalid/parser/project.fragment.schema.json";
 
 /** File loader for the bundler — plain reads, no restrictions (tests exercise paths directly). */
-const loadJson = async (path: string): Promise<Record<string, unknown>> =>
-  JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+const loadJson = async (path: string): Promise<JsonObject> => {
+  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!isJsonObject(parsed)) {
+    throw new Error(`${path} does not hold a JSON object`);
+  }
+  return parsed;
+};
 
-function writeJson(relPath: string, content: object) {
+/** The value at `keys` below `value`, descending only through JSON objects. */
+function dig(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
+}
+
+/** The `$ref` of each member of a composition array such as `allOf`. */
+function refsIn(value: JsonValue | undefined): (JsonValue | undefined)[] {
+  return Array.isArray(value) ? value.map((member) => dig(member, "$ref")) : [];
+}
+
+/** Write a fixture file: a JSON value, or the generated core schema (whose arrays are readonly). */
+function writeJson(
+  relPath: string,
+  content: JsonValue | ReturnType<typeof generateProjectCoreSchema>,
+) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
   writeFileSync(abs, JSON.stringify(content, null, 2), "utf8");
@@ -33,7 +57,7 @@ function writeJson(relPath: string, content: object) {
 
 /** A parser-like project fragment contributing `content`, with fields on the well-known union. */
 const contentFragment = {
-  $id: FRAG_ID,
+  $id: "https://test.invalid/parser/project.fragment.schema.json",
   $schema: "https://json-schema.org/draft/2020-12/schema",
   properties: {
     content: {
@@ -65,7 +89,8 @@ const entrySchema = emitProjectSchema({
   fragments: ["./frags/project.fragment.schema.json"],
 });
 
-function validProject(): Record<string, unknown> {
+/** A project the entry accepts; `extraFields` joins the posts collection's field map. */
+function validProject(extraFields: JsonObject = {}) {
   return {
     $schema: "./project.schema.json",
     content: {
@@ -75,6 +100,7 @@ function validProject(): Record<string, unknown> {
           properties: {
             author: { $ref: "#/content/authors" },
             title: { type: "string" },
+            ...extraFields,
           },
         },
         source: "./content/posts/",
@@ -115,26 +141,11 @@ describe("bundleSchema round-trip", () => {
     // Self-contained: compiles with NO external resolution at all.
     const validateBundled = new Ajv2020({ allErrors: true, strict: false }).compile(bundled);
 
-    const cases: Record<string, unknown>[] = [
+    const cases = [
       validProject(),
       { ...validProject(), unknownTopLevelKey: {} },
-      (() => {
-        const doc = validProject();
-        const content = doc.content as Record<string, Record<string, unknown>>;
-        (content.posts!.schema as { properties: Record<string, unknown> }).properties.broken = {
-          neither: "type nor $ref",
-        };
-        return doc;
-      })(),
-      (() => {
-        const doc = validProject();
-        const content = doc.content as Record<string, Record<string, unknown>>;
-        (content.posts!.schema as { properties: Record<string, unknown> }).properties.tags = {
-          items: { $ref: "#/content/tags" },
-          type: "array",
-        };
-        return doc;
-      })(),
+      validProject({ broken: { neither: "type nor $ref" } }),
+      validProject({ tags: { items: { $ref: "#/content/tags" }, type: "array" } }),
       { content: "not an object", name: 5 },
     ];
     for (const doc of cases) {
@@ -148,19 +159,28 @@ describe("bundleSchema round-trip", () => {
 
   test("relative refs are rewritten to canonical $ids and targets embed once under $defs", async () => {
     const bundled = await bundleSchema(entrySchema, loadJson, TMP);
-    const allOf = bundled.allOf as { $ref: string }[];
-    expect(allOf.map((e) => e.$ref)).toEqual([PROJECT_CORE_SCHEMA_ID, FRAG_ID]);
-    const defs = bundled.$defs as Record<string, Record<string, unknown>>;
-    expect(defs[PROJECT_CORE_SCHEMA_ID]!.$id).toBe(PROJECT_CORE_SCHEMA_ID);
-    expect(defs[FRAG_ID]!.$id).toBe(FRAG_ID);
+    const fragId = contentFragment.$id;
+    expect(refsIn(bundled.allOf)).toEqual([PROJECT_CORE_SCHEMA_ID, fragId]);
+    const defs = bundled.$defs;
+    expect(dig(defs, PROJECT_CORE_SCHEMA_ID, "$id")).toBe(PROJECT_CORE_SCHEMA_ID);
+    expect(dig(defs, fragId, "$id")).toBe(fragId);
     // The entry's own Fields embed survives with its canonical $id.
-    expect(defs.Fields!.$id).toBe(PROJECT_FIELDS_SCHEMA_ID);
+    expect(dig(defs, "Fields", "$id")).toBe(PROJECT_FIELDS_SCHEMA_ID);
     // Canonical refs inside embedded resources stay untouched.
-    const frag = defs[FRAG_ID] as typeof contentFragment;
-    expect(
-      frag.properties.content.additionalProperties.properties.schema.properties.properties
-        .additionalProperties.$ref,
-    ).toBe(PROJECT_FIELDS_SCHEMA_ID);
+    const fieldsRef = dig(
+      defs,
+      fragId,
+      "properties",
+      "content",
+      "additionalProperties",
+      "properties",
+      "schema",
+      "properties",
+      "properties",
+      "additionalProperties",
+      "$ref",
+    );
+    expect(fieldsRef).toBe(PROJECT_FIELDS_SCHEMA_ID);
   });
 
   test("does not mutate the input entry document", async () => {
@@ -184,12 +204,11 @@ describe("bundleSchema mechanics", () => {
     const entry = { $ref: "./nested/mid.schema.json" };
     const bundled = await bundleSchema(entry, loadJson, TMP);
     expect(bundled.$ref).toBe("https://test.invalid/mid");
-    const defs = bundled.$defs as Record<string, Record<string, unknown>>;
-    const mid = defs["https://test.invalid/mid"] as {
-      properties: { leafy: { $ref: string } };
-    };
-    expect(mid.properties.leafy.$ref).toBe("https://test.invalid/leaf");
-    expect(defs["https://test.invalid/leaf"]!.type).toBe("string");
+    const defs = bundled.$defs;
+    expect(dig(defs, "https://test.invalid/mid", "properties", "leafy", "$ref")).toBe(
+      "https://test.invalid/leaf",
+    );
+    expect(dig(defs, "https://test.invalid/leaf", "type")).toBe("string");
     const validate = new Ajv2020({ strict: false }).compile(bundled);
     expect(validate({ leafy: "ok" })).toBe(true);
     expect(validate({ leafy: 42 })).toBe(false);
@@ -204,10 +223,8 @@ describe("bundleSchema mechanics", () => {
       type: "object",
     };
     const bundled = await bundleSchema(entry, loadJson, TMP);
-    const props = bundled.properties as Record<string, { $ref: string }>;
-    expect(props.pick!.$ref).toBe("urn:jx:bundled:1#/$defs/Named");
-    const defs = bundled.$defs as Record<string, Record<string, unknown>>;
-    expect(defs["urn:jx:bundled:1"]!.$id).toBe("urn:jx:bundled:1");
+    expect(dig(bundled, "properties", "pick", "$ref")).toBe("urn:jx:bundled:1#/$defs/Named");
+    expect(dig(bundled, "$defs", "urn:jx:bundled:1", "$id")).toBe("urn:jx:bundled:1");
     const validate = new Ajv2020({ strict: false }).compile(bundled);
     expect(validate({ pick: "named" })).toBe(true);
     expect(validate({ pick: "other" })).toBe(false);
@@ -224,11 +241,11 @@ describe("bundleSchema mechanics", () => {
       properties: { probe: { $ref: "./fields-default.schema.json" } },
     };
     const bundled = await bundleSchema(entry, loadJson, TMP);
-    const props = bundled.properties as Record<string, { $ref: string }>;
-    expect(props.probe!.$ref).toBe(PROJECT_FIELDS_SCHEMA_ID);
-    const defs = bundled.$defs as Record<string, unknown>;
-    expect(defs[PROJECT_FIELDS_SCHEMA_ID]).toBeUndefined();
-    expect(defs.Fields).toBeDefined();
+    expect(dig(bundled, "properties", "probe", "$ref")).toBe(PROJECT_FIELDS_SCHEMA_ID);
+    const defs = bundled.$defs;
+    expect(isJsonObject(defs)).toBe(true);
+    expect(dig(defs, PROJECT_FIELDS_SCHEMA_ID)).toBeUndefined();
+    expect(dig(defs, "Fields")).toBeDefined();
   });
 
   test("'..' segments normalize so aliased paths share one embed", async () => {
@@ -239,9 +256,10 @@ describe("bundleSchema mechanics", () => {
       ],
     };
     const bundled = await bundleSchema(entry, loadJson, TMP);
-    const allOf = bundled.allOf as { $ref: string }[];
-    expect(allOf.map((e) => e.$ref)).toEqual([FRAG_ID, FRAG_ID]);
-    expect(Object.keys(bundled.$defs as object)).toEqual([FRAG_ID]);
+    const fragId = contentFragment.$id;
+    expect(refsIn(bundled.allOf)).toEqual([fragId, fragId]);
+    const defs = bundled.$defs;
+    expect(isJsonObject(defs) ? Object.keys(defs) : defs).toEqual([fragId]);
   });
 
   test("alsoEmbed pulls in resources only a canonical-$id ref reaches", async () => {
@@ -259,8 +277,7 @@ describe("bundleSchema mechanics", () => {
     const bundled = await bundleSchema(entry, loadJson, TMP, [
       "./frags/document.fragment.schema.json",
     ]);
-    const defs = bundled.$defs as Record<string, Record<string, unknown>>;
-    expect(defs["https://test.invalid/parser/document/v1"]).toBeDefined();
+    expect(dig(bundled, "$defs", "https://test.invalid/parser/document/v1")).toBeDefined();
     // Self-contained: ajv compiles it with no external resolution.
     expect(() => new Ajv2020({ strict: false }).compile(bundled)).not.toThrow();
   });
@@ -276,7 +293,7 @@ describe("bundleSchema mechanics", () => {
     try {
       await bundleSchema(entry, failing, TMP);
     } catch (error) {
-      expect((error as Error).cause).toBeInstanceOf(Error);
+      expect(error).toMatchObject({ cause: expect.any(Error) });
     }
   });
 
@@ -287,8 +304,7 @@ describe("bundleSchema mechanics", () => {
       type: "object",
     };
     const bundled = await bundleSchema(entry, loadJson, `${TMP}\\`);
-    const props = bundled.properties as Record<string, { $ref: string }>;
-    expect(props.n!.$ref).toBe("#/$defs/Local");
+    expect(dig(bundled, "properties", "n", "$ref")).toBe("#/$defs/Local");
     expect(bundled).toEqual(entry);
   });
 
@@ -296,29 +312,27 @@ describe("bundleSchema mechanics", () => {
     // A "sub" baseDir plus a parent-escaping "../child.json" ref cancel out to a bare "child.json"
     // With no directory part, so schemaDirOf finds no "/" and returns "." as the embed's scope.
     const seen: string[] = [];
-    const loader = async (path: string): Promise<Record<string, unknown>> => {
+    const loader = async (path: string): Promise<JsonObject> => {
       seen.push(path);
       return { type: "string" };
     };
     const entry = { properties: { c: { $ref: "../child.json" } }, type: "object" };
     const bundled = await bundleSchema(entry, loader, "sub");
     expect(seen).toEqual(["child.json"]);
-    const props = bundled.properties as Record<string, { $ref: string }>;
-    expect(props.c!.$ref).toBe("urn:jx:bundled:1");
+    expect(dig(bundled, "properties", "c", "$ref")).toBe("urn:jx:bundled:1");
   });
 
   test("leading '..' segments survive normalization for relative base dirs", async () => {
     // A relative baseDir with a parent-escaping ref keeps its ".." prefix (only absolute paths
     // Clamp at the root) — the loader receives the preserved relative path.
     const seen: string[] = [];
-    const loader = async (path: string): Promise<Record<string, unknown>> => {
+    const loader = async (path: string): Promise<JsonObject> => {
       seen.push(path);
       return { type: "string" };
     };
     const entry = { properties: { x: { $ref: "../../shared/frag.json" } }, type: "object" };
     const bundled = await bundleSchema(entry, loader, "rel");
     expect(seen).toEqual(["../shared/frag.json"]);
-    const props = bundled.properties as Record<string, { $ref: string }>;
-    expect(props.x!.$ref).toBe("urn:jx:bundled:1");
+    expect(dig(bundled, "properties", "x", "$ref")).toBe("urn:jx:bundled:1");
   });
 });

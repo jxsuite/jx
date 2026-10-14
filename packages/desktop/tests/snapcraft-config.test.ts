@@ -8,6 +8,8 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import type { JsonObject } from "@jxsuite/schema/types";
+
 const desktopDir = resolve(import.meta.dir, "..");
 const repo = resolve(desktopDir, "..", "..");
 
@@ -15,7 +17,8 @@ interface App {
   command: string;
   desktop: string;
   extensions?: string[];
-  plugs?: (string | Record<string, unknown>)[];
+  /** A bare interface name, or `{ <plug>: <attributes> }` for a plug that sets attributes. */
+  plugs?: (string | JsonObject)[];
   environment?: Record<string, string>;
 }
 interface Part {
@@ -24,6 +27,9 @@ interface Part {
   "build-snaps"?: string[];
   "override-build"?: string;
 }
+/* SAFETY: snap/snapcraft.yaml is committed beside this test and `snapcraft pack` refuses it unless
+   the scalar top-level keys below are strings; the parts and apps this suite probes are declared
+   optional, so a removed one reads as undefined and fails its expectation instead of crashing. */
 const snapcraft = Bun.YAML.parse(
   readFileSync(resolve(desktopDir, "snap", "snapcraft.yaml"), "utf8"),
 ) as {
@@ -33,9 +39,10 @@ const snapcraft = Bun.YAML.parse(
   grade: string;
   icon: string;
   "adopt-info": string;
-  platforms: Record<string, unknown>;
-  apps: Record<string, App>;
-  parts: Record<string, Part>;
+  /** Architecture -> build settings, `null` when an architecture takes the defaults. */
+  platforms: Record<string, JsonObject | null>;
+  apps: { "jx-studio"?: App };
+  parts: { app?: Part; bun?: Part; chromium?: Part };
 };
 const app = snapcraft.apps["jx-studio"]!;
 const launcher = readFileSync(resolve(desktopDir, "snap", "local", "jx-studio"), "utf8");

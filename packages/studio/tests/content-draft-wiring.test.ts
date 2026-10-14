@@ -17,9 +17,8 @@ import { closeAllTabs, workspace } from "../src/workspace/workspace";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import { draftView } from "../src/content/draft-state";
-import type { CommandContext } from "../src/commands/context";
 import type { CommandRegistry } from "../src/commands/registry";
-import type { StudioPlatform } from "../src/types";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 void mock.module("tabulator-tables", () => ({}));
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
@@ -38,11 +37,14 @@ const POSTS_SCHEMA = {
 };
 
 /** A project with one collection whose schema declares the draft axis, and one draft in it. */
-function setup(schema: object | null = POSTS_SCHEMA) {
-  installMockPlatform({ formatAction: mockFormatAction } as unknown as Partial<StudioPlatform>, {
-    "content/posts/draft.md": DRAFT_MD,
-    "content/posts/live.md": LIVE_MD,
-  });
+function setup(schema: JsonObject | null = POSTS_SCHEMA) {
+  installMockPlatform(
+    { formatAction: mockFormatAction },
+    {
+      "content/posts/draft.md": DRAFT_MD,
+      "content/posts/live.md": LIVE_MD,
+    },
+  );
   resetStudioState({
     projectConfig: {
       content: { posts: { format: "Markdown", schema, source: "./content/posts/" } },
@@ -53,7 +55,11 @@ function setup(schema: object | null = POSTS_SCHEMA) {
 /** A registry holding the real content records over a project-is-open context. */
 function contentRegistry(): CommandRegistry {
   const registry = createCommandRegistry({
-    getContext: () => ({ ...emptyContext(), project: { open: true } }) as CommandContext,
+    getContext: () => {
+      const context = emptyContext();
+      context.project.open = true;
+      return context;
+    },
   });
   registerContentCommands(registry);
   return registry;
@@ -112,9 +118,12 @@ describe("content.setIncludeDrafts reaches the collection listing", () => {
   });
 
   test("a grid on a collection with no draft axis is left entirely alone", async () => {
-    installMockPlatform({ formatAction: mockFormatAction } as unknown as Partial<StudioPlatform>, {
-      "content/notes/one.md": "---\ntitle: One\n---\n",
-    });
+    installMockPlatform(
+      { formatAction: mockFormatAction },
+      {
+        "content/notes/one.md": "---\ntitle: One\n---\n",
+      },
+    );
     resetStudioState({
       projectConfig: {
         content: {

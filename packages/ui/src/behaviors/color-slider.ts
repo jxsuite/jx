@@ -24,7 +24,7 @@
  * @docs extending/ui-kit
  */
 
-import { snapToStep } from "../color.ts";
+import { ARROW_SIGN, snapToStep } from "../color.ts";
 
 /** The tag this sidecar belongs to. */
 const HOST = "jx-color-slider";
@@ -41,16 +41,14 @@ export interface ColorSliderState {
   step: number;
   /** Whether the element refuses to move. */
   disabled: boolean;
-  [key: string]: unknown;
 }
 
-/** Which way each arrow moves the value. */
-const KEY_SIGN: Readonly<Record<string, number>> = {
-  ArrowDown: -1,
-  ArrowLeft: -1,
-  ArrowRight: 1,
-  ArrowUp: 1,
-};
+/** The track's resolved range and grid, every member a finite number. */
+interface SliderBounds {
+  min: number;
+  max: number;
+  step: number;
+}
 
 /** The `jx-color-slider` an event is being handled on. */
 function hostOf(event: Event): HTMLElement | null {
@@ -79,7 +77,7 @@ function announce(host: HTMLElement, ...names: string[]): void {
  * is what the inner range's own `max` attribute is bound to, so the platform's clamp and this one
  * cannot drift apart.
  */
-function boundsOf(state: ColorSliderState): { min: number; max: number; step: number } {
+function boundsOf(state: ColorSliderState): SliderBounds {
   const min = Number.isFinite(Number(state.min)) ? Number(state.min) : 0;
   const top = Number(state.maxValue);
   const step = Number(state.step);
@@ -104,6 +102,8 @@ export function onSliderInput(state: ColorSliderState, event: Event): void {
     return;
   }
   event.stopPropagation();
+  /* SAFETY: the element's only form control is its `input[part="input"]` range, so an `input` event
+     reaching the host from anything other than the host itself was fired by that range. */
   state.value = Number((event.target as HTMLInputElement).value);
   announce(host, "input");
 }
@@ -120,6 +120,8 @@ export function onSliderChange(state: ColorSliderState, event: Event): void {
     return;
   }
   event.stopPropagation();
+  /* SAFETY: the element's only form control is its `input[part="input"]` range, so a `change` event
+     reaching the host from anything other than the host itself was fired by that range. */
   state.value = Number((event.target as HTMLInputElement).value);
   announce(host, "change");
 }
@@ -132,7 +134,7 @@ export function onSliderChange(state: ColorSliderState, event: Event): void {
  */
 export function onSliderKeydown(state: ColorSliderState, event: KeyboardEvent): void {
   const host = hostOf(event);
-  const sign = KEY_SIGN[event.key];
+  const sign = ARROW_SIGN.get(event.key);
   if (!host || !sign || !event.shiftKey || state.disabled === true) {
     return;
   }

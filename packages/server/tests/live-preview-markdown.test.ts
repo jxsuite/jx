@@ -15,6 +15,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import {
   clearLivePreviewOverlay,
   setLivePreviewOverlay,
@@ -36,14 +38,10 @@ title: Written in markdown
 A paragraph the composer never sees as JSON.
 `;
 
-function write(root: string, relPath: string, content: string | object) {
+function write(root: string, relPath: string, content: string | JsonObject) {
   const abs = resolve(root, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 async function bodyOf(origin: string, route: string) {

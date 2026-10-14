@@ -10,6 +10,7 @@ import {
   releaseSourceCanonical,
 } from "../src/source-lock.ts";
 import { seedStructure, sourceText } from "../src/schema.ts";
+import type { CollabAwarenessState } from "../src/awareness-types.ts";
 
 describe("canonical lock", () => {
   test("acquire seeds the text, flips canonical, and bumps the rev", () => {
@@ -50,7 +51,10 @@ describe("canonical lock", () => {
 });
 
 describe("source editor election", () => {
-  function awarenessWith(states: [number, Record<string, unknown>][], selfId: number): Awareness {
+  function awarenessWith(
+    states: [number, Partial<CollabAwarenessState>][],
+    selfId: number,
+  ): Awareness {
     const awareness = new Awareness(new Doc());
     Object.defineProperty(awareness, "clientID", { value: selfId });
     const map = awareness.getStates();

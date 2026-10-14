@@ -9,12 +9,15 @@
 import "./with-dom.ts";
 import { describe, expect, test } from "bun:test";
 import {
-  AI_TOOL_TIERS as HAND_TOOLS,
+  AI_TOOL_TIERS,
   SYSTEM_PROMPT_STATIC_PREFIX,
   buildSystemPrompt,
 } from "../src/services/ai-system-prompt";
 import type { ComponentEntry } from "../src/files/components";
 import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+
+/** The builder's own options type, read off its signature (the interface is module-private). */
+type SystemPromptOptions = NonNullable<Parameters<typeof buildSystemPrompt>[0]>;
 
 describe("ai-system-prompt — buildSystemPrompt", () => {
   test("emits the static core sections with no context", () => {
@@ -26,7 +29,7 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
   });
 
   test("summarizes the open document: element tree, typed state, and imported elements", () => {
-    const document = {
+    const document: JxMutableNode = {
       $elements: ["my-button", { $ref: "site-card" }, {}],
       $id: "DemoPage",
       children: [
@@ -43,7 +46,7 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
         typed: { type: "number" }, // Typed (number)
       },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
 
     const prompt = buildSystemPrompt({ document });
     expect(prompt).toContain("## Current Document");
@@ -61,10 +64,10 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
   });
 
   test("an unnamed document with no state or imports still summarizes", () => {
-    const document = {
+    const document: JxMutableNode = {
       children: [{ tagName: "p", textContent: "hi" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const prompt = buildSystemPrompt({ document });
     expect(prompt).toContain("Document: (unnamed)");
     expect(prompt).not.toContain("State keys");
@@ -72,7 +75,7 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
   });
 
   test("summarizes project context: name, root, components, tokens, and breakpoints", () => {
-    const projectConfig = {
+    const projectConfig: ProjectConfig = {
       $media: { lg: "min-width: 1200px", sm: "max-width: 600px" },
       name: "Demo Site",
       style: {
@@ -81,14 +84,18 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
         "--radius-md": "8px", // "other" token group
         notAToken: "ignored", // Not a -- token → filtered out
       },
-    } as unknown as ProjectConfig;
+    };
 
-    const components = [
+    const discovered: (Partial<ComponentEntry> & { tag?: string; name?: string })[] = [
       { $id: "Card", path: "components/card.json", tagName: "my-card" },
       { path: "components/nav.json", tag: "my-nav" }, // Tag fallback
       { name: "thing-widget" }, // Name fallback
       { path: "components/orphan.json" }, // Path fallback, no $id
-    ] as unknown as ComponentEntry[];
+    ];
+    /* SAFETY: these are the legacy discovered shapes (no tagName, a `tag` or `name` instead) that
+       buildProjectSummary reads as `ComponentEntry & { tag?, name? }`, falling back tagName → tag →
+       name → path; the assertion only admits them to the declared list type. */
+    const components = discovered as ComponentEntry[];
 
     const prompt = buildSystemPrompt({
       components,
@@ -112,7 +119,7 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
   });
 
   test("a context-less but truthy project config yields no Project Context section", () => {
-    const prompt = buildSystemPrompt({ projectConfig: {} as unknown as ProjectConfig });
+    const prompt = buildSystemPrompt({ projectConfig: {} });
     expect(prompt).not.toContain("## Project Context");
   });
 });
@@ -147,7 +154,7 @@ describe("ai-system-prompt — state-aware modes", () => {
 
   test("document mode lists document AND file tools", () => {
     const prompt = buildSystemPrompt({
-      document: { children: [], tagName: "div" } as unknown as JxMutableNode,
+      document: { children: [], tagName: "div" },
       projectRoot: "/proj",
     });
     expect(prompt).toContain("- set_property(");
@@ -252,7 +259,6 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
    * a projection would otherwise vanish quietly.
    */
   test("hand tools are the tier table, projected tools are the declarations, and the two are disjoint", async () => {
-    const { AI_TOOL_TIERS } = await import("../src/services/ai-system-prompt");
     const { appCommandSet } = await import("../src/commands/app-commands");
     const { withEveryTool } = await import("./harness/every-tool");
 
@@ -276,7 +282,7 @@ describe("ai-system-prompt — tool-table/gating consistency", () => {
 
   test("the command-projected blurbs render under every workflow heading, and only when passed", () => {
     const line = "delete_node(paths) — Delete elements from the document as one undoable step.";
-    const document = { children: [], tagName: "x-a" } as unknown as JxMutableNode;
+    const document: JxMutableNode = { children: [], tagName: "x-a" };
     const states = [
       buildSystemPrompt({ commandTools: [line], hasProject: false }),
       buildSystemPrompt({ commandTools: [line], hasProject: true }),
@@ -318,7 +324,6 @@ describe("the agent's gate is the human's gate", () => {
   ];
 
   test("every element-tree WRITER is document-tree; the read is not", async () => {
-    const { AI_TOOL_TIERS } = await import("../src/services/ai-system-prompt");
     const tierOf = new Map(AI_TOOL_TIERS.map((t) => [t.name, t.tier]));
     for (const name of TREE_WRITERS) {
       expect([name, tierOf.get(name)]).toEqual([name, "document-tree"]);
@@ -362,12 +367,12 @@ describe("the agent's gate is the human's gate", () => {
     // A model told about a tool that is then refused burns a round trip learning it. The prompt's
     // Filter and the gate's predicate are the same function over the same facts.
     const withTree = buildSystemPrompt({
-      document: { children: [], tagName: "x-a" } as unknown as JxMutableNode,
+      document: { children: [], tagName: "x-a" },
       hasProject: true,
       treeEditable: true,
     });
     const withoutTree = buildSystemPrompt({
-      document: { children: [], tagName: "x-a" } as unknown as JxMutableNode,
+      document: { children: [], tagName: "x-a" },
       hasProject: true,
       treeEditable: false,
     });
@@ -383,7 +388,7 @@ describe("the importSite capability gate", () => {
   test("a tier cannot express it, so `import_site` carries a capability", async () => {
     /* "No project is open" is exactly as true on cloud as anywhere else, and cloud ships no
        `importSite` — so the tool must be gated on the PAL, not on what happens to be open. */
-    const { AI_TOOL_TIERS, toolActive } = await import("../src/services/ai-system-prompt");
+    const { toolActive } = await import("../src/services/ai-system-prompt");
     const importTool = AI_TOOL_TIERS.find((t) => t.name === "import_site")!;
     expect(importTool.tier).toBe("no-project");
     expect(importTool.capability).toBe("importSite");
@@ -398,15 +403,14 @@ describe("the importSite capability gate", () => {
   });
 
   test("a tool with no capability is unaffected by the platform's answer", async () => {
-    const { AI_TOOL_TIERS, toolActive } = await import("../src/services/ai-system-prompt");
+    const { toolActive } = await import("../src/services/ai-system-prompt");
     const createTool = AI_TOOL_TIERS.find((t) => t.name === "create_project")!;
     const state = { canImport: false, hasDocument: false, hasProject: false, treeEditable: true };
     expect(toolActive(createTool, state)).toBe(true);
   });
 
   test("`ask_user` is active in every state, because a question is not gated on one", async () => {
-    const { AI_TOOL_TIERS, tierActive, toolActive } =
-      await import("../src/services/ai-system-prompt");
+    const { tierActive, toolActive } = await import("../src/services/ai-system-prompt");
     const askTool = AI_TOOL_TIERS.find((t) => t.name === "ask_user")!;
     expect(askTool.tier).toBe("always");
     expect(
@@ -452,7 +456,7 @@ describe("ai-system-prompt — a stable prefix for the prompt cache", () => {
     "Extensions enabled:",
     "## Asking the user",
     CLOSING_START,
-    ...HAND_TOOLS.map((t) => `- ${t.blurb}`),
+    ...AI_TOOL_TIERS.map((t) => `- ${t.blurb}`),
   ];
 
   const FLAGS = [
@@ -466,26 +470,27 @@ describe("ai-system-prompt — a stable prefix for the prompt cache", () => {
   ] as const;
 
   /** The builder's options for one combination, each flag set to the value that changes most. */
-  function optionsFor(on: ReadonlySet<(typeof FLAGS)[number]>) {
-    return {
+  function optionsFor(on: ReadonlySet<(typeof FLAGS)[number]>): SystemPromptOptions {
+    const options: SystemPromptOptions = {
       canImport: on.has("canImport"),
       commandTools: on.has("commandTools") ? ["delete_node(paths) — Delete elements."] : [],
       hasProject: on.has("hasProject"),
       treeEditable: on.has("treeEditable"),
-      ...(on.has("hasProject")
-        ? {
-            projectConfig: { extensions: ["@jxsuite/parser"], name: "Site" } as ProjectConfig,
-            projectRoot: "/site",
-          }
-        : {}),
-      ...(on.has("hasDocument")
-        ? { document: { $id: "Page", children: [], tagName: "x-a" } as unknown as JxMutableNode }
-        : {}),
-      ...(on.has("fileInventory") ? { fileInventory: ["pages/index.json"] } : {}),
-      ...(on.has("extensionCatalog")
-        ? { extensionCatalog: [{ name: "@jxsuite/parser", sections: ["content"] }] }
-        : {}),
     };
+    if (on.has("hasProject")) {
+      options.projectConfig = { extensions: ["@jxsuite/parser"], name: "Site" };
+      options.projectRoot = "/site";
+    }
+    if (on.has("hasDocument")) {
+      options.document = { $id: "Page", children: [], tagName: "x-a" };
+    }
+    if (on.has("fileInventory")) {
+      options.fileInventory = ["pages/index.json"];
+    }
+    if (on.has("extensionCatalog")) {
+      options.extensionCatalog = [{ name: "@jxsuite/parser", sections: ["content"] }];
+    }
+    return options;
   }
 
   const combinations = Array.from(

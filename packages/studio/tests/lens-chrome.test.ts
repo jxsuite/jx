@@ -19,8 +19,9 @@
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { documents as kitDocuments } from "@jxsuite/ui/documents";
+import { documents } from "@jxsuite/ui/documents";
 import type { Tab } from "../src/tabs/tab";
+import type { PaneDerivation } from "../src/workspace/workspace";
 
 const paneContext = await import("../src/panels/pane-context");
 const tabStrip = await import("../src/panels/tab-strip");
@@ -50,20 +51,39 @@ const { resetDiffViews, setDiffView } = await import("../src/canvas/diff-view");
 
 type Ctx = Parameters<typeof paneContext.mount>[1];
 
-function makeCtx(): Ctx {
+/** The bar's dependencies, each a mock so a test can count what the bar asked of it. */
+function makeCtx() {
   return {
     exportFile: mock(() => {}),
-    parseMediaEntries: mock(() => ({
+    parseMediaEntries: mock((): ReturnType<Ctx["parseMediaEntries"]> => ({
       baseWidth: 1200,
-      featureQueries: [] as { name: string; query: string }[],
-      sizeBreakpoints: [] as { name: string; query: string; width: number; type: string }[],
+      featureQueries: [],
+      sizeBreakpoints: [],
     })),
     setCanvasMode: mock((tab: Tab | null, mode: string) => {
       if (tab) {
         tab.session.ui.canvasMode = mode;
       }
     }),
-  } as Ctx;
+  } satisfies Ctx;
+}
+
+/** The lens record `paneId` carries, or a failure: every caller set one up with `lensGrid()`. */
+function lensOf(paneId: string): Extract<PaneDerivation, { kind: "lens" }> {
+  const derived = derivationOfPane(paneId);
+  if (derived?.kind !== "lens") {
+    throw new Error(`${paneId} is not drawing a lens`);
+  }
+  return derived;
+}
+
+/** The first HTML element under `scope` matching `selector`, or a failure naming the selector. */
+function required(scope: ParentNode, selector: string): HTMLElement {
+  const found = scope.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return found;
 }
 
 let primaryHost: HTMLElement;
@@ -136,9 +156,7 @@ function twoPaneGrid(): Tab {
 }
 
 function axesOf(host: HTMLElement): string[] {
-  return [...host.querySelectorAll('[part="axis-label"]')].map(
-    (el) => el.textContent?.trim() ?? "",
-  );
+  return [...host.querySelectorAll('[part="axis-label"]')].map((el) => el.textContent.trim());
 }
 
 /**
@@ -154,7 +172,7 @@ function chromePart(host: HTMLElement, name: string): HTMLElement | null {
 
 /** What the pod's reset button reads — the scale this pane is drawing at. */
 function zoomLabelOf(host: HTMLElement): string | undefined {
-  return chromePart(host, "zoom-label")?.querySelector('[part="label"]')?.textContent?.trim();
+  return chromePart(host, "zoom-label")?.querySelector('[part="label"]')?.textContent.trim();
 }
 
 /** One of the pod's two write controls, addressed by the tooltip the author reads. */
@@ -163,7 +181,10 @@ function zoomControl(host: HTMLElement, title: string): HTMLElement {
     hintOf(el)?.startsWith(title),
   );
   expect(button).toBeDefined();
-  return button as HTMLElement;
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`no zoom control is titled ${title}`);
+  }
+  return button;
 }
 
 beforeEach(() => {
@@ -246,7 +267,7 @@ describe("the context bar in a lens pane", () => {
     await flush(8);
     expect(zoomLabelOf(sideHost)).toBe("100%");
 
-    (derivationOfPane(SECONDARY_PANE) as { zoom: number }).zoom = 0.5;
+    lensOf(SECONDARY_PANE).zoom = 0.5;
     await flush();
 
     expect(zoomLabelOf(sideHost)).toBe("50%");
@@ -280,10 +301,7 @@ describe("the context bar in a lens pane", () => {
   test("the lens's Context summary parses no media map to print one name", async () => {
     lensGrid();
     const ctx = makeCtx();
-    const parses = ctx.parseMediaEntries as unknown as {
-      mock: { calls: unknown[] };
-      mockClear: () => void;
-    };
+    const parses = ctx.parseMediaEntries;
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, ctx);
     await flush(8);
@@ -295,7 +313,7 @@ describe("the context bar in a lens pane", () => {
     parses.mockClear();
     paneContext.render();
 
-    expect(chromePart(sideHost, "static")?.textContent?.trim()).toBe("Base");
+    expect(chromePart(sideHost, "static")?.textContent.trim()).toBe("Base");
     expect(parses.mock.calls).toEqual([]);
   });
 
@@ -319,14 +337,14 @@ describe("the context bar in a lens pane", () => {
     paneContext.mount(primaryHost, makeCtx());
     await flush(8);
 
-    expect(chromePart(sideHost, "static")?.textContent?.trim()).toBe("Tablet");
+    expect(chromePart(sideHost, "static")?.textContent.trim()).toBe("Tablet");
 
     // …and a BASE lens says Base, though the tab it shares is still on `wide`. `null` is the
     // Lens's answer, not a missing one.
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { media: null });
     paneContext.render();
     await flush();
-    expect(chromePart(sideHost, "static")?.textContent?.trim()).toBe("Base");
+    expect(chromePart(sideHost, "static")?.textContent.trim()).toBe("Base");
   });
 });
 
@@ -409,8 +427,7 @@ describe("the preset menu's rows", () => {
   test("a derived pane is offered no breakpoint rows at all", () => {
     const page = lensGrid();
     page.doc.document.$media = { "--": "400px", tablet: "(min-width: 768px)" };
-    const labels = (paneId: string) =>
-      paneContext.presetRows(paneId).map((row) => row.label as string);
+    const labels = (paneId: string) => paneContext.presetRows(paneId).map((row) => row.label);
 
     // The pane that owns the document gets one row per declared size, plus base.
     expect(labels(PRIMARY_PANE).filter((l) => l.startsWith("Same page at"))).toEqual([
@@ -434,7 +451,7 @@ describe("the preset menu's rows", () => {
     page.capabilities.modes = ["settings", "stylebook", "source"];
     const breakpoints = paneContext
       .presetRows(PRIMARY_PANE)
-      .filter((row) => (row.args as { preset?: string }).preset === "breakpoint");
+      .filter((row) => row.args["preset"] === "breakpoint");
 
     expect(breakpoints.length).toBeGreaterThan(0);
     for (const row of breakpoints) {
@@ -446,7 +463,7 @@ describe("the preset menu's rows", () => {
     expect(
       paneContext
         .presetRows(PRIMARY_PANE)
-        .filter((row) => (row.args as { preset?: string }).preset === "breakpoint")
+        .filter((row) => row.args["preset"] === "breakpoint")
         .every((row) => row.disabled === null),
     ).toBe(true);
   });
@@ -459,9 +476,7 @@ describe("the preset menu's rows", () => {
   test("a locale row per declared locale, labelled in that language, carrying its tag", () => {
     twoPaneGrid();
     const localeRows = () =>
-      paneContext
-        .presetRows(PRIMARY_PANE)
-        .filter((row) => (row.args as { preset?: string }).preset === "locale");
+      paneContext.presetRows(PRIMARY_PANE).filter((row) => row.args["preset"] === "locale");
 
     // A project with no `i18n` block: the menu is the menu it has always been.
     expect(localeRows()).toEqual([]);
@@ -494,9 +509,7 @@ describe("the preset menu's rows", () => {
     const page = twoPaneGrid();
     resetStudioState({ projectConfig: { i18n: { defaultLocale: "en", locales: ["en"] } } });
     const localeRows = () =>
-      paneContext
-        .presetRows(PRIMARY_PANE)
-        .filter((row) => (row.args as { preset?: string }).preset === "locale");
+      paneContext.presetRows(PRIMARY_PANE).filter((row) => row.args["preset"] === "locale");
 
     expect(localeRows()).toHaveLength(1);
     expect(localeRows()[0]?.disabled).toBe(
@@ -523,7 +536,7 @@ describe("the preset menu's rows", () => {
     const localeLabels = (paneId: string) =>
       paneContext
         .presetRows(paneId)
-        .map((row) => row.label as string)
+        .map((row) => row.label)
         .filter((label) => label.startsWith("Same page in"));
 
     expect(localeLabels(PRIMARY_PANE)).toEqual(["Same page in English", "Same page in français"]);
@@ -569,12 +582,14 @@ describe("the preset menu, opened", () => {
    */
   function menuItems(): HTMLElement[] {
     const menu = document.querySelector('[aria-label="Show beside this pane"]');
-    return menu ? ([...menu.querySelectorAll("jx-menu-item")] as HTMLElement[]) : [];
+    return menu
+      ? [...menu.querySelectorAll("jx-menu-item")].filter((item) => item instanceof HTMLElement)
+      : [];
   }
 
   /** A row's own words, without the "Needs …" sentence a refused row carries beside them. */
   function rowTitle(row: HTMLElement): string {
-    return row.querySelector('[part="label"]')?.textContent?.trim() ?? "";
+    return row.querySelector('[part="label"]')?.textContent.trim() ?? "";
   }
 
   function rowNamed(title: string): HTMLElement {
@@ -740,11 +755,11 @@ describe("the tab strip in a derived pane", () => {
     tabStrip.mount(stripHost);
     await flush();
 
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe(
       "Component definition",
     );
     // The pane owns no tab, so "what it is a projection of" is the SOURCE pane's document.
-    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("/");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent.trim()).toBe("/");
     // …and the ✕ is there, which is the only way out of a pane that draws nothing.
     expect(stripHost.querySelector('[part="overflow"]:not([hidden])')).not.toBeNull();
   });
@@ -761,9 +776,9 @@ describe("the tab strip in a derived pane", () => {
     expect(stripHost.querySelector('[part="derivation"]')).not.toBeNull();
     expect(stripHost.querySelectorAll('[part="tab"]')).toHaveLength(0);
     // The chip names the projection AND the document it is a projection of.
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Code");
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe("Code");
     // `tabLabel` prints a page's ROUTE, and `pages/index.json` is the home route.
-    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("/");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent.trim()).toBe("/");
   });
 
   /* "no document" IS A NAME, and it is the one state the chip has no other way to say. A
@@ -776,13 +791,13 @@ describe("the tab strip in a derived pane", () => {
     focusPane(SECONDARY_PANE);
     tabStrip.mount(stripHost);
     await flush();
-    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("/");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent.trim()).toBe("/");
 
     // The pane this one follows loses its document — the welcome-screen state, beside a projection.
     paneById(PRIMARY_PANE)!.activeTabId = null;
     await flush();
 
-    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("no document");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent.trim()).toBe("no document");
     // The chip's tooltip says the same thing, so hover and label cannot disagree.
     expect(stripHost.querySelector('[part="derivation"]')?.getAttribute("title")).toBe(
       "Code · no document",
@@ -853,9 +868,11 @@ describe("the tab strip in a derived pane", () => {
          the reveal below to find. */
       const strip = sideStripHost.querySelector('[part="tabs"]')!;
       expect(sideStripHost.querySelectorAll('[part="tabs"]')).toHaveLength(1);
-      expect(([...strip.children] as HTMLElement[]).map((chip) => chip.dataset.tab)).toEqual([
-        "layouts/base.json",
-      ]);
+      // A child that is not an HTML element has no tab to name, and stays in the list as `null`.
+      const chipTabs = [...strip.children].map((chip) =>
+        chip instanceof HTMLElement ? chip.dataset.tab : null,
+      );
+      expect(chipTabs).toEqual(["layouts/base.json"]);
       expect(scrolled.filter((el) => sideStripHost.contains(el))).not.toHaveLength(0);
     } finally {
       Element.prototype.scrollIntoView = original;
@@ -877,14 +894,14 @@ describe("the tab strip in a derived pane", () => {
     focusPane(SECONDARY_PANE);
     tabStrip.mount(stripHost);
     await flush();
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe(
       "Same page at Tablet",
     );
 
     // The base lens says Base, which is a name and not an absence.
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { media: null });
     await flush();
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe(
       "Same page at Base",
     );
   });
@@ -909,7 +926,7 @@ describe("the tab strip in a derived pane", () => {
     tabStrip.mount(stripHost);
     await flush();
 
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe(
       "Same page in français",
     );
 
@@ -918,7 +935,7 @@ describe("the tab strip in a derived pane", () => {
        hand-built state a stale session or a bad argument could still produce. */
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { locale: null });
     await flush();
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Same page in —");
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe("Same page in —");
   });
 
   /* THE CHIP'S LABEL IS A RENDER INPUT, and re-deriving a pane rewrites it in place. `pane.derive`
@@ -932,12 +949,12 @@ describe("the tab strip in a derived pane", () => {
     focusPane(SECONDARY_PANE);
     tabStrip.mount(stripHost);
     await flush();
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Code");
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe("Code");
 
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { mode: "git-diff", preset: "diff" });
     await flush();
 
-    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Diff vs HEAD");
+    expect(stripHost.querySelector('[part="preset"]')?.textContent.trim()).toBe("Diff vs HEAD");
   });
 
   /* THE CHIP ROW'S OWN mousedown, and it is the only thing that can focus a derived pane from its
@@ -958,7 +975,7 @@ describe("the tab strip in a derived pane", () => {
       await flush();
       expect(sideStrip.querySelector('[part="derivation"]')).not.toBeNull();
 
-      (sideStrip.querySelector('[part="strip-row"]') as HTMLElement).dispatchEvent(
+      required(sideStrip, '[part="strip-row"]').dispatchEvent(
         new MouseEvent("mousedown", { bubbles: true }),
       );
       await flush();
@@ -976,15 +993,14 @@ describe("the tab strip in a derived pane", () => {
     await flush();
     // The primary draws into the shared host while it has focus; the row's mousedown is what moves
     // Focus to the pane a click lands in.
-    (stripHost.querySelector('[part="strip-row"]') as HTMLElement).dispatchEvent(
+    required(stripHost, '[part="strip-row"]').dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true }),
     );
     await flush();
     focusPane(SECONDARY_PANE);
     await flush();
 
-    const close = stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
-    expect(close).not.toBeNull();
+    const close = required(stripHost, '[part="overflow"]:not([hidden])');
     close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     // Unsplit collapsed the grid and left the document standing.
@@ -1023,7 +1039,8 @@ describe("the tab strip in a derived pane", () => {
     paneById(PRIMARY_PANE)!.activeTabId = layout.id;
     focusPane(SECONDARY_PANE);
 
-    (activeRegistry() as { run: (id: string) => unknown }).run("pane.unsplit");
+    // `beforeEach` published the registry, so there is always one to run against.
+    void activeRegistry()!.run("pane.unsplit");
 
     // Both panes are still here, and the secondary still holds the document the author was in.
     expect(workspace.panes.map((pane) => pane.id)).toEqual([PRIMARY_PANE, SECONDARY_PANE]);
@@ -1053,7 +1070,8 @@ describe("the tab strip in a derived pane", () => {
     paneById(PRIMARY_PANE)!.activeTabId = null;
     focusPane(SECONDARY_PANE);
 
-    (activeRegistry() as { run: (id: string) => unknown }).run("pane.unsplit");
+    // `beforeEach` published the registry, so there is always one to run against.
+    void activeRegistry()!.run("pane.unsplit");
 
     expect(workspace.panes.map((pane) => pane.id)).toEqual([PRIMARY_PANE]);
     expect(derivationOfPane(PRIMARY_PANE)).toBeNull();
@@ -1098,8 +1116,11 @@ describe("the derivation chip's box", () => {
       const tab = stripHost.querySelector('[part="tab"]');
       expect(chip).not.toBeNull();
       expect(tab).not.toBeNull();
-      const chipBox = getComputedStyle(chip as Element);
-      const tabBox = getComputedStyle(tab as Element);
+      if (!chip || !tab) {
+        throw new Error("the strips drew no chip or no tab to compare");
+      }
+      const chipBox = getComputedStyle(chip);
+      const tabBox = getComputedStyle(tab);
 
       /* The chip's row is a `4px` inset plus the `2px` underline a tab chip reserves, so the two
          rows sit on one baseline grid. Asserted as an equality — the numbers are the tab chip's,
@@ -1113,10 +1134,8 @@ describe("the derivation chip's box", () => {
       expect(chipBox.borderBottomWidth).toBe("2px");
       // The tab's own underline, read where it is declared. `jx-tab` is the single owner of a tab
       // Chip's selected mark, so this is the value the chip above is holding a place for.
-      const kitTab = kitDocuments["jx-tab"]!;
-      expect((kitTab.style as Record<string, string>)["borderBlockEnd"]).toBe(
-        "2px solid transparent",
-      );
+      const kitTab = documents["jx-tab"]!;
+      expect(kitTab.style?.["borderBlockEnd"]).toBe("2px solid transparent");
     } finally {
       sideStripHost.remove();
     }
@@ -1192,7 +1211,7 @@ describe("what a lens's chrome reads about ITS pane", () => {
     // A Code lens: no panzoom surface, so no pod.
     expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
 
-    (derivationOfPane(SECONDARY_PANE) as { mode: string }).mode = "design";
+    lensOf(SECONDARY_PANE).mode = "design";
     await flush();
 
     expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(1);
@@ -1257,7 +1276,7 @@ describe("what a lens's chrome reads about ITS pane", () => {
     // The keyboard is in the pane that OWNS the document, which is the whole hazard.
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
 
-    const lensZoom = () => (derivationOfPane(SECONDARY_PANE) as { zoom: number }).zoom;
+    const lensZoom = () => lensOf(SECONDARY_PANE).zoom;
 
     zoomControl(sideHost, "Zoom out").dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();

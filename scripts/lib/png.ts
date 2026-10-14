@@ -19,15 +19,21 @@ import { inflateSync } from "node:zlib";
 const SIGNATURE = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 /** Channels per pixel, by IHDR colour type. Indices 1, 3 and 5 are palette/undefined. */
-const CHANNELS: Readonly<Record<number, number>> = { 0: 1, 2: 3, 4: 2, 6: 4 };
+const CHANNELS: ReadonlyMap<number, number> = new Map([
+  [0, 1],
+  [2, 3],
+  [4, 2],
+  [6, 4],
+]);
 
-export interface PngSize {
+/** A width and height in pixels: a PNG's IHDR size, or the viewport a shot renders at. */
+export interface PixelSize {
   width: number;
   height: number;
 }
 
 /** A decoded image, always widened to 8-bit RGBA so comparison never branches on colour type. */
-export interface PngImage extends PngSize {
+export interface PngImage extends PixelSize {
   /** `width * height * 4` bytes, row-major, R G B A. */
   pixels: Uint8Array;
 }
@@ -62,7 +68,7 @@ function chunkType(bytes: Uint8Array, offset: number): string {
  * The lock records `w`/`h` for every image, and a 2.4 MB capture costs ~24 bytes to measure this
  * way; `writeLock` therefore never pays for a decode it does not need.
  */
-export function readPngSize(bytes: Uint8Array): PngSize | null {
+export function readPngSize(bytes: Uint8Array): PixelSize | null {
   if (bytes.length < 24 || !hasSignature(bytes)) {
     return null;
   }
@@ -73,7 +79,7 @@ export function readPngSize(bytes: Uint8Array): PngSize | null {
   return { width: readU32(bytes, 16), height: readU32(bytes, 20) };
 }
 
-interface Header extends PngSize {
+interface Header extends PixelSize {
   bitDepth: number;
   colorType: number;
   interlace: number;
@@ -224,7 +230,7 @@ export function decodePng(bytes: Uint8Array): PngImage | null {
     return null;
   }
   const { header } = chunks;
-  const channels = CHANNELS[header.colorType];
+  const channels = CHANNELS.get(header.colorType);
   if (
     channels === undefined ||
     header.bitDepth !== 8 ||

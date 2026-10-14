@@ -20,7 +20,6 @@ import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } f
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { AnyCommand } from "../src/commands/registry";
-import type { JxPath } from "../src/state";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -79,11 +78,11 @@ function makeCtx(): PaneCtx {
     exportFile: () => {},
     parseMediaEntries: () => ({
       baseWidth: 1200,
-      featureQueries: [] as { name: string; query: string }[],
-      sizeBreakpoints: [] as { name: string; query: string; width: number; type: string }[],
+      featureQueries: [],
+      sizeBreakpoints: [],
     }),
     setCanvasMode: () => {},
-  } as unknown as PaneCtx;
+  };
 }
 
 // ─── editor/context-menu.ts · the target fallback ────────────────────────────
@@ -116,7 +115,7 @@ describe("the element records' target falls back to the SELECTION", () => {
 
   test("a selected node IS the target when no menu is open", () => {
     const tab = resetWorkspaceWithTab(styled());
-    tab.session.selection = [["children", 0] as JxPath];
+    tab.session.selection = [["children", 0]];
     const ctx = emptyContext();
     expect(record("edit.copyStyles").when!(ctx)).toBe(true);
     expect(record("edit.copyStyles").enablement!(ctx)).toBe(true);
@@ -189,12 +188,12 @@ describe("contextMenuRegistry prefers the app's registry", () => {
     setContextMenuNavigate((path) => {
       navigated.push(path);
     });
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
     const tab = resetWorkspaceWithTab({
       children: [{ children: [], tagName: "x-card" }],
       tagName: "div",
     });
-    tab.session.selection = [["children", 0] as JxPath];
+    tab.session.selection = [["children", 0]];
 
     const registry = contextMenuRegistry();
     expect(registry.isVisible("selection.editComponent")).toBe(true);
@@ -205,12 +204,12 @@ describe("contextMenuRegistry prefers the app's registry", () => {
   test("…and with no hook published the same row is inert rather than a throw", () => {
     setActiveRegistry(null);
     setContextMenuNavigate(null);
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
     const tab = resetWorkspaceWithTab({
       children: [{ children: [], tagName: "x-card" }],
       tagName: "div",
     });
-    tab.session.selection = [["children", 0] as JxPath];
+    tab.session.selection = [["children", 0]];
     expect(() => contextMenuRegistry().run("selection.editComponent")).not.toThrow();
   });
 });
@@ -219,7 +218,7 @@ describe("contextMenuRegistry prefers the app's registry", () => {
 
 /** One `document.addEventListener` / `removeEventListener` call, as the spy recorded it. */
 interface Registration {
-  capture: unknown;
+  capture: boolean | EventListenerOptions | undefined;
   handler: EventListenerOrEventListenerObject;
   op: "add" | "remove";
   type: string;
@@ -233,27 +232,27 @@ interface Registration {
  * is the only observable that can, which is why this reads the arguments rather than the effect.
  */
 function recordDocumentListeners(log: Registration[]): () => void {
-  const realAdd = document.addEventListener.bind(document);
-  const realRemove = document.removeEventListener.bind(document);
-  document.addEventListener = ((
+  const realAdd = document.addEventListener;
+  const realRemove = document.removeEventListener;
+  document.addEventListener = (
     type: string,
     handler: EventListenerOrEventListenerObject,
-    capture?: unknown,
+    capture?: boolean | AddEventListenerOptions,
   ) => {
     log.push({ capture, handler, op: "add", type });
-    realAdd(type, handler, capture as AddEventListenerOptions | boolean);
-  }) as Document["addEventListener"];
-  document.removeEventListener = ((
+    realAdd.call(document, type, handler, capture);
+  };
+  document.removeEventListener = (
     type: string,
     handler: EventListenerOrEventListenerObject,
-    capture?: unknown,
+    capture?: boolean | EventListenerOptions,
   ) => {
     log.push({ capture, handler, op: "remove", type });
-    realRemove(type, handler, capture as EventListenerOptions | boolean);
-  }) as Document["removeEventListener"];
+    realRemove.call(document, type, handler, capture);
+  };
   return () => {
-    document.addEventListener = realAdd as Document["addEventListener"];
-    document.removeEventListener = realRemove as Document["removeEventListener"];
+    document.addEventListener = realAdd;
+    document.removeEventListener = realRemove;
   };
 }
 
@@ -276,10 +275,10 @@ describe("the element menu binds nothing on the document", () => {
       children: [{ style: { color: "red" }, tagName: "p", textContent: "A" }],
       tagName: "div",
     });
-    tab.session.selection = [["children", 0] as JxPath];
+    tab.session.selection = [["children", 0]];
     showContextMenu(
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }),
-      ["children", 0] as JxPath,
+      ["children", 0],
     );
   }
 
@@ -376,11 +375,13 @@ describe("the layout `$head` read", () => {
       isSiteProject: true,
       projectConfig: { defaults: { layout: "./layouts/main-layout.json" } },
     });
-    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" }) as Tab;
+    const tab = resetWorkspaceWithTab(undefined, { documentPath: "pages/about.json" });
 
     // Both calls happen before the first read lands, so both see an empty middle layer…
-    expect(layoutHeadEntries(tab)).toEqual({ entries: [], name: "Main Layout" });
-    expect(layoutHeadEntries(tab)).toEqual({ entries: [], name: "Main Layout" });
+    const first = layoutHeadEntries(tab);
+    const second = layoutHeadEntries(tab);
+    expect(first).toEqual({ entries: [], name: "Main Layout" });
+    expect(second).toEqual({ entries: [], name: "Main Layout" });
     await flush();
 
     // …and the file was opened exactly once for the two of them.
@@ -408,7 +409,7 @@ describe("applyContentMutation", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "posts/hello.json",
       id: "fm-tab",
-    }) as Tab;
+    });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { title: "Old" };
     return tab;
@@ -468,6 +469,15 @@ describe("the preset menu", () => {
     return menu ? [...menu.querySelectorAll<HTMLElement>("jx-menu-item")] : [];
   }
 
+  /** The pane bar's ⟲ trigger; a bar drawn without one is a failure of the mount, not a skip. */
+  function presetTrigger(): Element {
+    const trigger = host.querySelector('[part="preset"]');
+    if (!trigger) {
+      throw new Error("the pane context bar drew no preset trigger");
+    }
+    return trigger;
+  }
+
   function menus(): NodeListOf<Element> {
     return document.querySelectorAll('[aria-label="Show beside this pane"]');
   }
@@ -503,8 +513,7 @@ describe("the preset menu", () => {
     );
     paneContext.mount(host, makeCtx());
     await flush(8);
-    const trigger = host.querySelector('[part="preset"]') as HTMLElement;
-    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    presetTrigger().dispatchEvent(new MouseEvent("click", { bubbles: true }));
     // The menu mounts a document of its own and then shows it.
     await flush(8);
   }
@@ -525,8 +534,7 @@ describe("the preset menu", () => {
     await openPresetMenu();
     expect(menus()).toHaveLength(1);
 
-    const trigger = host.querySelector('[part="preset"]') as HTMLElement;
-    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    presetTrigger().dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush(8);
     expect(menus()).toHaveLength(1);
     expect(menuItems().length).toBeGreaterThan(0);
@@ -591,21 +599,21 @@ describe("a route-param load that lands after its tab left the panes", () => {
     await flush();
 
     // Not auto-selected: the candidates belong to a picker no pane is showing.
-    expect(dyn.session.ui.previewParams?.sku).toBeUndefined();
+    expect(dyn.session.ui.previewParams.sku).toBeUndefined();
 
     // Nor cached — the pane that comes back has to ask again, which is the honest state.
     activateTab("dyn");
     paneContext.render();
     await flush();
     expect(paramLoads).toEqual(["pages/products/[sku].json", "pages/products/[sku].json"]);
-    expect(dyn.session.ui.previewParams?.sku).toBeUndefined();
+    expect(dyn.session.ui.previewParams.sku).toBeUndefined();
 
     /* …and the answer that lands while the pane IS showing the tab is auto-selected. The positive
        control: without it, "nothing was selected" could just as well mean a loader that never
        answers, and the refusal above would prove nothing. */
     releaseParams!({ sku: ["alpha", "beta"] });
     await flush();
-    expect(dyn.session.ui.previewParams?.sku).toBe("alpha");
+    expect(dyn.session.ui.previewParams.sku).toBe("alpha");
   });
 });
 

@@ -34,10 +34,14 @@ const canvasPanels = surface.panels;
  * are kept, `editor.setValue` goes through `model.setValue`, and `model.setValue` fires the
  * adopting editor's handlers exactly as Monaco's does (which is why `_ignoreNextChange` exists).
  */
+/** What the mocked `Uri.parse` returns: the one member the repaint reads off a model's uri. */
+interface FakeUri {
+  toString: () => string;
+}
 interface FakeModel {
   _value: string;
   /** A model carries the file identity Monaco validates against; the repaint compares it. */
-  uri: unknown;
+  uri: FakeUri;
   /** Fires the adopting editor's change handlers, as a real model's `setValue` does. */
   _fire: () => void;
   dispose: ReturnType<typeof mock>;
@@ -76,7 +80,7 @@ void mock.module("monaco-editor/editor", () => ({
         _changeHandlers: [],
         _focused: false,
         _ignoreNextChange: false,
-        _model: opts?.model ?? null,
+        _model: opts.model ?? null,
         // Mirrors Monaco: `dispose()` runs `_detachModel()`, so `getModel()` is null and
         // `getValue()` is `""` afterwards. See `tests/canvas-render.test.ts` for why that matters.
         dispose: mock(() => {
@@ -105,7 +109,7 @@ void mock.module("monaco-editor/editor", () => ({
       createdEditors.push(ed);
       return ed;
     },
-    createModel: (value: string, _lang: string, uri: unknown) => {
+    createModel: (value: string, _lang: string, uri: FakeUri) => {
       const m: FakeModel = {
         _fire: () => {},
         _value: value,
@@ -208,7 +212,7 @@ void mock.module("../src/files/file-ops.js", () => ({
 
 // Grid panel: controllable mounted-state + render spy (the real panel needs tabulator).
 let gridMounted = false;
-const renderGridMode = mock((_host: HTMLElement, _tab: Tab) => {});
+const renderGridMode = mock((_surface: CanvasSurface, _tab: Tab) => {});
 const detachGridPanel = mock(() => {});
 void mock.module("../src/grid/grid-panel.js", () => ({
   detachGridPanel,
@@ -328,12 +332,11 @@ beforeEach(() => {
   surfaceForPane("primary").centerObserver = null;
   surfaceForPane("primary").renderGeneration = 0;
   initCanvasRender({
-    getCanvasMode: () => canvasMode,
     gitDiffState: null,
     openFileFromTree: () => {},
-    setCanvasMode: setMode,
+    setCanvasMode: (_tab: Tab | null, mode: string) => setMode(mode),
     setGitDiffState: () => {},
-  } as never);
+  });
   const tab = resetWorkspaceWithTab();
   tab.session.ui.canvasMode = canvasMode;
 });
@@ -352,7 +355,7 @@ describe("grid mode", () => {
     expect(renderGridMode).toHaveBeenCalledTimes(1);
     // The SURFACE is the first argument, not a host element: the grid draws into one pane's stage,
     // And `#canvas-wrap` could only ever have named the primary's.
-    const [drawnOn, tab] = renderGridMode.mock.calls[0]! as unknown as [CanvasSurface, Tab];
+    const [drawnOn, tab] = renderGridMode.mock.calls[0]!;
     expect(drawnOn).toBe(surfaceForPane("primary"));
     expect(tab).toBe(activeTab.value!);
     expect(drawnOn.wrap.style.display).toBe("block");
@@ -368,7 +371,8 @@ describe("grid mode", () => {
     gridMounted = true;
     renderCanvas();
     await flush(); // The source editor mounts behind the lazy Monaco import.
-    expect(renderGridMode).toHaveBeenCalledTimes(1);
+    // Still the one hand-over, to this pane's stage for this tab: the repaint drew nothing new.
+    expect(renderGridMode.mock.calls).toEqual([[surfaceForPane("primary"), activeTab.value!]]);
   });
 });
 
@@ -406,7 +410,7 @@ describe("source-mode collab binding", () => {
     const { awareness, editors, model, origin, text } = bindings[0]!.options;
     expect(text).toBe(collabCtx.text);
     expect(model).toBe(createdEditors[0]!.getModel()!);
-    expect([...(editors as Iterable<FakeEditor>)][0]).toBe(createdEditors[0]);
+    expect([...(editors ?? [])][0]).toBe(createdEditors[0]);
     expect(awareness).toBe(collabCtx.awareness);
     /* Local keystrokes transact under the session's own origin, not an opaque binding instance —
        the value the collab UndoManager and the source reconciler both filter on. */
@@ -532,7 +536,7 @@ describe("source-mode collab binding", () => {
     expect(() => renderCanvas()).not.toThrow();
     await settle(() => ctx.leave.mock.calls.length > 0);
     expect(bindings).toHaveLength(0);
-    expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[0] as never);
+    expect(surfaceForPane("primary").monacoEditor).toBe<FakeEditor | undefined>(createdEditors[0]);
     expect(ctx.leave).toHaveBeenCalledTimes(1);
     expect(createdEditors[0]!.updateOptions).toHaveBeenCalledWith({ readOnly: true });
   });

@@ -12,8 +12,10 @@ import { buildChangeMap } from "../src/canvas/diff-marks";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 const p = (text: string) => ({ tagName: "p", textContent: text });
-const doc = (...children: unknown[]): JxMutableNode =>
-  ({ children, tagName: "div" }) as unknown as JxMutableNode;
+const doc = (...children: (JxMutableNode | string)[]): JxMutableNode => ({
+  children,
+  tagName: "div",
+});
 
 describe("buildChangeMap", () => {
   test("an identical pair yields nothing at all", () => {
@@ -129,9 +131,17 @@ describe("buildChangeMap", () => {
     test("are reported in words and never tinted", () => {
       // Rule 3: the root's stamped element is the whole page, so a mark there says "everything
       // Changed" and the reader learns nothing.
-      const before = { children: [p("same")], state: { n: { default: 1 } }, tagName: "div" };
-      const after = { children: [p("same")], state: { n: { default: 2 } }, tagName: "div" };
-      const map = buildChangeMap(before as JxMutableNode, after as JxMutableNode);
+      const before: JxMutableNode = {
+        children: [p("same")],
+        state: { n: { default: 1 } },
+        tagName: "div",
+      };
+      const after: JxMutableNode = {
+        children: [p("same")],
+        state: { n: { default: 2 } },
+        tagName: "div",
+      };
+      const map = buildChangeMap(before, after);
       expect(map.rootKeys).toEqual(["state"]);
       expect(map.original).toEqual([]);
       expect(map.current).toEqual([]);
@@ -139,18 +149,30 @@ describe("buildChangeMap", () => {
     });
 
     test("a root key change alongside a node change reports both, separately", () => {
-      const before = { children: [p("x")], state: { n: { default: 1 } }, tagName: "div" };
-      const after = { children: [p("y")], state: { n: { default: 2 } }, tagName: "div" };
-      const map = buildChangeMap(before as JxMutableNode, after as JxMutableNode);
+      const before: JxMutableNode = {
+        children: [p("x")],
+        state: { n: { default: 1 } },
+        tagName: "div",
+      };
+      const after: JxMutableNode = {
+        children: [p("y")],
+        state: { n: { default: 2 } },
+        tagName: "div",
+      };
+      const map = buildChangeMap(before, after);
       expect(map.rootKeys).toEqual(["state"]);
       expect(map.steps).toHaveLength(1);
     });
   });
 
   test("children replaced wholesale mark the owning node", () => {
+    // A mapped-array `children` is not a list of nodes, so there is no per-child alignment to make.
     const before = doc({ children: [p("a")], tagName: "ul" });
-    const after = doc({ children: "not an array", tagName: "ul" });
-    expect(buildChangeMap(before, after as unknown as JxMutableNode).steps).toEqual([
+    const after = doc({
+      children: { $prototype: "Array", items: [], map: { tagName: "li" } },
+      tagName: "ul",
+    });
+    expect(buildChangeMap(before, after).steps).toEqual([
       { currentPath: ["children", 0], kind: "modified", originalPath: ["children", 0] },
     ]);
   });

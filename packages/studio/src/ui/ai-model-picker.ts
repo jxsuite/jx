@@ -22,8 +22,8 @@
  * A closure factory (precedent: `createComposer`, `createAiCredentialsForm`) so two hosts never
  * share a loading flag or a failed-fetch record.
  *
- * @docs studio/ai
  * @license MIT
+ * @docs studio/ai
  */
 
 import {
@@ -146,8 +146,8 @@ export function createModelPicker(opts: ModelPickerOptions): ModelPicker {
     failure = "";
     attempted = credentials;
     fetchAvailableModels({ credentials, force })
-      .catch((error: unknown) => {
-        failure = (error as Error).message || "Failed to fetch models";
+      .catch((error) => {
+        failure = (error instanceof Error && error.message) || "Failed to fetch models";
       })
       .finally(() => {
         loading = false;

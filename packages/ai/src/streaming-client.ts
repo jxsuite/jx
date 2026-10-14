@@ -145,15 +145,18 @@ interface OpenAIChatRequestBody {
 }
 
 /** A tool-call fragment inside an OpenAI streaming `delta`. */
-interface OpenAIToolCallDelta {
+export interface OpenAIToolCallDelta {
   index: number;
   id?: string;
   type?: string;
   function?: { name?: string; arguments?: string };
 }
 
-/** A single OpenAI chat-completions streaming chunk (the JSON after `data: `). */
-interface OpenAIStreamChunk {
+/**
+ * A single OpenAI chat-completions streaming chunk (the JSON after `data: `). Exported as a type
+ * only, for the gateway's normalizer, which reads the same chunks.
+ */
+export interface OpenAIStreamChunk {
   choices?: {
     index?: number;
     delta?: {
@@ -184,7 +187,7 @@ export interface OpenAIUsage {
  * which is not the same as zero.
  */
 export function usageEventFromOpenAI(usage?: OpenAIUsage | null): StreamUsageEvent | null {
-  if (!usage || typeof usage.prompt_tokens !== "number") {
+  if (!usage || !isCount(usage.prompt_tokens)) {
     return null;
   }
   const event: StreamUsageEvent = {
@@ -193,11 +196,11 @@ export function usageEventFromOpenAI(usage?: OpenAIUsage | null): StreamUsageEve
     outputTokens: usage.completion_tokens ?? 0,
   };
   const cached = usage.prompt_tokens_details?.cached_tokens;
-  if (typeof cached === "number") {
+  if (isCount(cached)) {
     event.cachedInputTokens = cached;
   }
   const reasoning = usage.completion_tokens_details?.reasoning_tokens;
-  if (typeof reasoning === "number") {
+  if (isCount(reasoning)) {
     event.reasoningTokens = reasoning;
   }
   return event;
@@ -215,56 +218,137 @@ function stopReasonFromOpenAI(reason: string | null | undefined): string | null 
   return null;
 }
 
-/** Error response body — the proxy's flat `{ error: "..." }` or OpenAI's `{ error: { message } }`. */
-interface ErrorResponseBody {
-  error?: string | { message?: string; code?: string; type?: string };
-  /**
-   * The proxy's machine code, alongside its human `error` — `cf_reconnect_required` and friends.
-   *
-   * A backend that knows WHY it refused says so here, and a client can only act on the reason it is
-   * given: the whole point of the code is that the Reconnect affordance appears without the user
-   * reading a sentence and deciding what it meant.
-   */
-  code?: string;
-  /**
-   * An array-shaped envelope, as Cloudflare's own REST API uses for a BYOK base URL pointed
-   * directly at it: `{ success: false, errors: [{ code, message }] }`, with no top-level `error`
-   * key at all. Reachable only when `baseUrl` bypasses the Studio proxy and talks to such a
-   * provider directly — the proxy itself normalizes this shape before it ever reaches a client.
-   */
-  errors?: { code?: number; message?: string }[];
+/**
+ * True when a figure the provider sent is a number. A chunk is upstream JSON, so a figure its
+ * interface calls a number is checked before it is reported.
+ *
+ * @param {unknown} value - A usage figure, as the provider sent it
+ * @returns {boolean}
+ */
+function isCount(value: unknown): value is number {
+  return typeof value === "number";
+}
+
+/**
+ * True when a member of a parsed body or chunk is a string, empty or not.
+ *
+ * @param {unknown} value - A member, as sent
+ * @returns {boolean}
+ */
+function isText(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+/**
+ * True when a member of a parsed error body is a non-empty string, the only `code` worth reading.
+ *
+ * @param {unknown} value - A `code` member, as sent
+ * @returns {boolean}
+ */
+function isSentence(value: unknown): value is string {
+  return isText(value) && value !== "";
+}
+
+/**
+ * True when a parsed value is a JSON object (or array) whose members may be probed with `in`; false
+ * for `null` and every primitive.
+ *
+ * @param {unknown} value - A parsed body, or one of its members
+ * @returns {boolean}
+ */
+function isMemberBag(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * True when a parsed `errors` member is an array.
+ *
+ * @param {unknown} value - The parsed body's `errors` member
+ * @returns {boolean}
+ */
+function isEntryList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
 }
 
 /**
  * Extract a human-readable message from an error body, falling back to the raw body (or `fallback`
  * when the body is empty).
+ *
+ * The body is the proxy's flat `{ error: "..." }`, OpenAI's `{ error: { message } }`, or the
+ * array-shaped envelope Cloudflare's own REST API uses for a BYOK base URL pointed directly at it:
+ * `{ success: false, errors: [{ code, message }] }`, with no top-level `error` key at all. That
+ * last one is reachable only when `baseUrl` bypasses the Studio proxy, which normalizes the shape
+ * before it ever reaches a client.
  */
 function extractErrorMessage(rawBody: string, fallback: string): string {
   if (!rawBody) {
     return fallback;
   }
+  let parsed: unknown;
   try {
-    const { error, errors } = JSON.parse(rawBody) as ErrorResponseBody;
-    if (typeof error === "string") {
-      return error;
-    }
-    if (error) {
-      const { message } = error;
-      if (message) {
-        return message;
-      }
-    }
-    const [first] = errors ?? [];
-    if (first) {
-      const { message } = first;
-      if (message) {
-        return message;
-      }
-    }
+    parsed = JSON.parse(rawBody);
   } catch {
     /* Not JSON — use the raw body. */
+    return rawBody;
+  }
+  // JSON `null`, a primitive or an array carries neither member, so it is the raw body.
+  if (isMemberBag(parsed)) {
+    if ("error" in parsed) {
+      const { error } = parsed;
+      if (isText(error)) {
+        return error;
+      }
+      if (isMemberBag(error) && "message" in error && Boolean(error.message)) {
+        return String(error.message);
+      }
+    }
+    if ("errors" in parsed && isEntryList(parsed.errors)) {
+      const [first] = parsed.errors;
+      if (isMemberBag(first) && "message" in first && Boolean(first.message)) {
+        return String(first.message);
+      }
+    }
   }
   return rawBody;
+}
+
+/**
+ * The proxy's machine code in an error body (`cf_reconnect_required` and friends), or "" when the
+ * body carries none.
+ *
+ * A backend that knows WHY it refused says so in `code`, beside its human `error`, and a client can
+ * only act on the reason it is given: the whole point of the code is that the Reconnect affordance
+ * appears without the user reading a sentence and deciding what it meant.
+ */
+function extractMachineCode(rawBody: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    /* Not JSON — there is no code. */
+    return "";
+  }
+  return isMemberBag(parsed) && "code" in parsed && isSentence(parsed.code) ? parsed.code : "";
+}
+
+/**
+ * The event for an exchange that failed: `done: cancelled` for an abort, otherwise an `error` event
+ * whose message is `prefix` and the failure's own message.
+ *
+ * @param {"Network error" | "Stream error"} prefix - Which half of the exchange failed
+ * @param {unknown} cause - What the request or the read rejected with
+ * @returns {StreamEvent}
+ */
+function failureEvent(prefix: "Network error" | "Stream error", cause: unknown): StreamEvent {
+  /* SAFETY: `fetch` and a body reader reject with an Error (a TypeError, or the abort's
+     AbortError DOMException), and the reads in a stream throw only TypeErrors. Only `name` and
+     `message` are read, so a custom non-null abort reason that is not an Error reads both as
+     undefined, as it always has. */
+  const failure = cause as Error;
+  if (failure.name === "AbortError") {
+    return { type: "done", stopReason: "cancelled" };
+  }
+  return { type: "error", message: `${prefix}: ${failure.message}` };
 }
 
 // ─── Type definitions ────────────────────────────────────────────────────────
@@ -369,7 +453,7 @@ export function createOpenAIStreamingClient({
       body.temperature = temperature;
     }
 
-    if (tools && tools.length > 0) {
+    if (tools.length > 0) {
       body.tools = tools;
       body.tool_choice = "auto";
       body.parallel_tool_calls = true;
@@ -389,14 +473,7 @@ export function createOpenAIStreamingClient({
         signal,
       });
     } catch (error) {
-      if ((error as Error).name === "AbortError") {
-        yield { type: "done", stopReason: "cancelled" };
-        return;
-      }
-      yield {
-        type: "error",
-        message: `Network error: ${(error as Error).message}`,
-      };
+      yield failureEvent("Network error", error);
       return;
     }
 
@@ -458,13 +535,8 @@ export function createOpenAIStreamingClient({
     }
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        buffer += decoder.decode(chunk.value, { stream: true });
         const lines = buffer.split("\n");
         // Keep the last (potentially incomplete) line in the buffer
         buffer = lines.pop() || "";
@@ -483,6 +555,10 @@ export function createOpenAIStreamingClient({
 
           let parsed: OpenAIStreamChunk;
           try {
+            /* SAFETY: the interface is the provider's wire shape, and this loop only reads it: each
+               member passes optional chaining, a truthiness test or a predicate before it shapes an
+               event, and a chunk too malformed to read (JSON `null`, a non-iterable `tool_calls`)
+               throws into the catch below, which reports it as a stream error. */
             parsed = JSON.parse(dataStr) as OpenAIStreamChunk;
           } catch {
             continue; // Skip unparseable chunks
@@ -505,7 +581,7 @@ export function createOpenAIStreamingClient({
 
           // Chain-of-thought, under either of the two names providers give it.
           const reasoning = delta?.reasoning_content ?? delta?.reasoning;
-          if (typeof reasoning === "string" && reasoning) {
+          if (isText(reasoning) && reasoning) {
             yield { type: "reasoning", content: reasoning };
           }
 
@@ -553,14 +629,7 @@ export function createOpenAIStreamingClient({
       yield* finish();
     } catch (error) {
       void reader.cancel();
-      if ((error as Error).name === "AbortError") {
-        yield { type: "done", stopReason: "cancelled" };
-        return;
-      }
-      yield {
-        type: "error",
-        message: `Stream error: ${(error as Error).message}`,
-      };
+      yield failureEvent("Stream error", error);
     }
   }
 
@@ -570,22 +639,25 @@ export function createOpenAIStreamingClient({
 // ─── Anthropic implementation (stub for v1) ──────────────────────────────────
 
 /**
- * Creates an Anthropic-compatible streaming client. Stub for v1 — throws on use. Full
- * implementation in v2 handles Anthropic's content_block delta model.
- *
- * @param {object} _opts
- * @param {string} _opts.baseUrl
- * @param {string} _opts.apiKey
- * @returns {StreamingClient}
+ * The credentials a provider endpoint is opened with: its base URL and the API key it takes, two
+ * fields that belong together. Studio keys its model listing on the same pair.
  */
-export interface AnthropicStreamingClientOptions {
+export interface AiCredentials {
   baseUrl: string;
   apiKey: string;
 }
 
-export function createAnthropicStreamingClient(
-  _opts: AnthropicStreamingClientOptions,
-): StreamingClient {
+/** The Anthropic client's options: the provider credentials and nothing more, for now. */
+export type { AiCredentials as AnthropicStreamingClientOptions };
+
+/**
+ * Creates an Anthropic-compatible streaming client. Stub for v1 — throws on use. Full
+ * implementation in v2 handles Anthropic's content_block delta model.
+ *
+ * @param {AiCredentials} _opts
+ * @returns {StreamingClient}
+ */
+export function createAnthropicStreamingClient(_opts: AiCredentials): StreamingClient {
   /**
    * @yields {StreamEvent} Normalized stream events.
    * @returns {AsyncGenerator<StreamEvent>}
@@ -631,6 +703,27 @@ export interface ProxyStreamingClientOptions {
   sessionId?: string | undefined;
 }
 
+/**
+ * The headers a proxy request carries: always the content type, plus `X-Api-Key`, `X-Api-Base-URL`
+ * and the session header `AI_SESSION_HEADER` names, each only when the client was given its value.
+ * The optional names go through the index signature, as a `fetch` init's record takes them.
+ */
+interface ProxyRequestHeaders extends Record<string, string> {
+  "Content-Type": string;
+}
+
+/**
+ * True when a proxy's `chatUrl` is a lookup to call rather than the URL itself.
+ *
+ * @param {ProxyStreamingClientOptions["chatUrl"]} chatUrl
+ * @returns {boolean}
+ */
+function isUrlLookup(
+  chatUrl: ProxyStreamingClientOptions["chatUrl"],
+): chatUrl is () => string | Promise<string> {
+  return typeof chatUrl === "function";
+}
+
 export function createProxyStreamingClient({
   chatUrl,
   model = "gpt-4o",
@@ -655,7 +748,7 @@ export function createProxyStreamingClient({
     systemPrompt: string,
     signal: AbortSignal,
   ): AsyncGenerator<StreamEvent> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: ProxyRequestHeaders = { "Content-Type": "application/json" };
     // Client-supplied key (e.g. from Studio settings) — the proxy also falls back to OPENAI_API_KEY.
     if (apiKey) {
       headers["X-Api-Key"] = apiKey;
@@ -671,20 +764,20 @@ export function createProxyStreamingClient({
       headers[AI_SESSION_HEADER] = sessionId;
     }
 
-    resolvedUrl ??= Promise.resolve(typeof chatUrl === "function" ? chatUrl() : chatUrl);
+    resolvedUrl ??= Promise.resolve(isUrlLookup(chatUrl) ? chatUrl() : chatUrl);
     let url: string;
     try {
       url = await resolvedUrl;
     } catch (error) {
       // A lookup that failed after the turn was stopped is part of the stop, not an error.
-      if (signal?.aborted) {
+      if (signal.aborted) {
         yield { type: "done", stopReason: "cancelled" };
         return;
       }
       throw error;
     }
     // Stopped while the URL was being resolved: nothing has been sent, and nothing will be.
-    if (signal?.aborted) {
+    if (signal.aborted) {
       yield { type: "done", stopReason: "cancelled" };
       return;
     }
@@ -698,14 +791,7 @@ export function createProxyStreamingClient({
         signal,
       });
     } catch (error) {
-      if ((error as Error).name === "AbortError") {
-        yield { type: "done", stopReason: "cancelled" };
-        return;
-      }
-      yield {
-        type: "error",
-        message: `Network error: ${(error as Error).message}`,
-      };
+      yield failureEvent("Network error", error);
       return;
     }
 
@@ -722,15 +808,7 @@ export function createProxyStreamingClient({
          unconditionally, so a proxy answering 401 `{ code: "cf_reconnect_required" }` reached the
          client as `"401"` — indistinguishable from a bad BYOK key, and the one reading that would
          have put a Reconnect button on screen was thrown away at the only place it arrived. */
-      let machineCode = "";
-      try {
-        const { code } = JSON.parse(errorBody) as ErrorResponseBody;
-        if (typeof code === "string" && code) {
-          machineCode = code;
-        }
-      } catch {
-        /* Not JSON — use the raw body. */
-      }
+      const machineCode = extractMachineCode(errorBody);
       yield {
         type: "error",
         message: cleanMessage,
@@ -749,13 +827,8 @@ export function createProxyStreamingClient({
     let buffer = "";
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        buffer += decoder.decode(chunk.value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
@@ -768,6 +841,10 @@ export function createProxyStreamingClient({
           const dataStr = trimmed.slice(6);
           let event: StreamEvent;
           try {
+            /* SAFETY: the proxy is the chat route, whose every `data:` line is one StreamEvent
+               (`encodeSse` frames exactly that). The event is relayed as sent and only `type` is
+               read; a line of JSON `null` is relayed, then throws at that read into the catch
+               below. */
             event = JSON.parse(dataStr) as StreamEvent;
           } catch {
             continue; // Skip unparseable chunks
@@ -782,14 +859,7 @@ export function createProxyStreamingClient({
       }
     } catch (error) {
       void reader.cancel();
-      if ((error as Error).name === "AbortError") {
-        yield { type: "done", stopReason: "cancelled" };
-        return;
-      }
-      yield {
-        type: "error",
-        message: `Stream error: ${(error as Error).message}`,
-      };
+      yield failureEvent("Stream error", error);
     }
   }
 

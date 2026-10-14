@@ -80,18 +80,24 @@ import "monaco-editor/languages/definitions/javascript/register";
 import { flattenSchema } from "@jxsuite/schema/project-schemas";
 import jxSchema from "@jxsuite/schema/schema.json";
 import projectSchema from "@jxsuite/schema/project-schema.json";
+import type { JsonObject } from "@jxsuite/schema/types";
+import type { ProjectSchemasResponse } from "../types";
 import { bundleUrl } from "./bundle-base";
 
 /* Re-exported for the modules that already imported it from here. New callers should reach for
    `./model-uri` directly — it is Monaco-free, and importing this module loads the editor. */
 export { modelUriFor } from "./model-uri";
 
-const WORKER_FILES: Record<string, string> = {
-  editorWorkerService: "editor.worker.js",
-  javascript: "ts.worker.js",
-  json: "json.worker.js",
-  typescript: "ts.worker.js",
-};
+/** The worker every label without a language service of its own runs in. */
+const EDITOR_WORKER_FILE = "editor.worker.js";
+
+/** Monaco worker label → the pre-bundled worker file that serves it. */
+const WORKER_FILES = new Map([
+  ["editorWorkerService", EDITOR_WORKER_FILE],
+  ["javascript", "ts.worker.js"],
+  ["json", "json.worker.js"],
+  ["typescript", "ts.worker.js"],
+]);
 
 /**
  * Resolve a Monaco worker to the PRE-BUNDLED copy that ships NEXT TO THE ENTRY — `dist/workers/`
@@ -119,7 +125,7 @@ const WORKER_FILES: Record<string, string> = {
  * @returns {string} Absolute URL of the worker bundle
  */
 export function workerUrl(label: string): string {
-  const file = WORKER_FILES[label] || WORKER_FILES.editorWorkerService!;
+  const file = WORKER_FILES.get(label) ?? EDITOR_WORKER_FILE;
   return bundleUrl(`workers/${file}`);
 }
 
@@ -132,10 +138,13 @@ self.MonacoEnvironment = {
 /* Monaco caches glyph widths when an editor is created. JetBrains Mono is a
    vendored webfont (index.html @font-face) and may finish loading after the
    first editor mounts, so remeasure once all document fonts are ready to keep
-   cursor and selection alignment correct. */
-if (typeof document !== "undefined" && document.fonts?.ready) {
+   cursor and selection alignment correct. `lib.dom` declares `document.fonts` unconditionally, but
+   DOM shims (happy-dom under test) ship without it, so the font set is typed as possibly absent. */
+const documentFonts: FontFaceSet | undefined =
+  typeof document === "undefined" ? undefined : document.fonts;
+if (documentFonts?.ready) {
   // oxlint-disable-next-line unicorn/prefer-top-level-await -- fire-and-forget: awaiting fonts.ready at top level would block module evaluation (and studio startup) until webfonts load
-  void document.fonts.ready.then(async () => {
+  void documentFonts.ready.then(async () => {
     const monaco = await import("monaco-editor/editor");
     monaco.editor.remeasureFonts();
   });
@@ -186,7 +195,7 @@ const DOCUMENT_ENTRY_SCHEMA_ID = "file:///document.schema.json";
  * worse, resolved to an empty schema, so the fileMatch registration never ran and REAL violations
  * went unreported behind that one diagnostic.
  */
-function applyJsonSchemas(documentSchema: unknown, projectJsonSchema: unknown) {
+function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObject) {
   jsonDefaults.setDiagnosticsOptions({
     allowComments: false,
     schemas: [
@@ -212,8 +221,8 @@ function applyJsonSchemas(documentSchema: unknown, projectJsonSchema: unknown) {
    a URI before the `#` by FETCHING it — with `enableSchemaRequest` off that just fails, leaving
    `$paths` reporting an unresolvable ref. Flattening rewrites those refs onto the shipped defaults
    embedded in the same document, which is exactly the right fallback semantics. */
-const FALLBACK_DOCUMENT_SCHEMA = flattenSchema(jxSchema as Record<string, unknown>);
-const FALLBACK_PROJECT_SCHEMA = flattenSchema(projectSchema as Record<string, unknown>);
+const FALLBACK_DOCUMENT_SCHEMA = flattenSchema(jxSchema);
+const FALLBACK_PROJECT_SCHEMA = flattenSchema(projectSchema);
 
 // Bundled core schemas register at module init — the offline fallback every platform starts from.
 applyJsonSchemas(FALLBACK_DOCUMENT_SCHEMA, FALLBACK_PROJECT_SCHEMA);
@@ -232,9 +241,7 @@ applyJsonSchemas(FALLBACK_DOCUMENT_SCHEMA, FALLBACK_PROJECT_SCHEMA);
  * @param {object | null} schemas - Pre-bundled `{ document, project }` payload
  * @returns {boolean} True when per-project schemas were applied; false on fallback
  */
-export function applyProjectSchemas(
-  schemas: { project?: unknown; document?: unknown } | null | undefined,
-): boolean {
+export function applyProjectSchemas(schemas: ProjectSchemasResponse | null | undefined): boolean {
   const { document, project } = schemas ?? {};
   if (!document && !project) {
     return false;

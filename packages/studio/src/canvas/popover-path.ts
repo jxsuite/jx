@@ -14,6 +14,7 @@
 import { activeTab } from "../workspace/workspace";
 import { getNodeAtPath } from "../state";
 import { documentHasPopover, isPopover } from "@jxsuite/schema/overlays";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { INVOKER_TAGS, POPOVER_TAGS } from "@jxsuite/ui";
 import { primarySelection } from "../tabs/selection";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -49,7 +50,7 @@ export function ancestorPopoverPath(
   for (let end = path.length; end >= 0; end -= 1) {
     const prefix = path.slice(0, end);
     const node = getNodeAtPath(doc, prefix);
-    if (node && typeof node === "object" && isPopover(node, KIT_SCOPE)) {
+    if (isNonNullObject(node) && isPopover(node, KIT_SCOPE)) {
       return prefix;
     }
   }
@@ -72,13 +73,16 @@ export function ancestorPopoverPath(
  * @returns The popover's path, or null.
  */
 export function popoverPathFor(tab: Tab, explicit?: JxPath): JxPath | null {
+  /* SAFETY: a widening, not a narrowing. A tab built by createTab always carries a document, but
+   * the command is a public entry point and the contract (pinned in popover-state.test.ts) is that
+   * a tab record without one answers null rather than throwing inside getNodeAtPath. */
   const doc = tab.doc.document as JxMutableNode | undefined;
   if (!doc) {
     return null;
   }
   if (explicit) {
     const node = getNodeAtPath(doc, explicit);
-    return node && typeof node === "object" && isPopover(node, KIT_SCOPE) ? explicit : null;
+    return isNonNullObject(node) && isPopover(node, KIT_SCOPE) ? explicit : null;
   }
   return ancestorPopoverPath(doc, primarySelection(tab.session.selection));
 }
@@ -101,6 +105,6 @@ export function popoverPathFor(tab: Tab, explicit?: JxPath): JxPath | null {
  * @returns True when the focused document declares at least one popover.
  */
 export function activeDocumentHasPopover(): boolean {
-  const doc = activeTab.value?.doc.document as JxMutableNode | undefined;
+  const doc = activeTab.value?.doc.document;
   return doc ? documentHasPopover(doc, KIT_SCOPE) : false;
 }

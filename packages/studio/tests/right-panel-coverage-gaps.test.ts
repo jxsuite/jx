@@ -31,6 +31,11 @@ const { initShellRefs, updateUi } = store;
 const { mount, render, unmount } = await import("../src/panels/right-panel");
 const { activeTab, closeAllTabs } = await import("../src/workspace/workspace");
 
+/** The shell's Inspector cell, which `initShellRefs()` found in `beforeEach`. */
+function inspectorHost(): HTMLElement {
+  return store.requireShellRef(store.rightPanel, "right-panel");
+}
+
 function makeCtx() {
   return {
     getCanvasMode: mock(() => "design"),
@@ -42,7 +47,7 @@ function makeCtx() {
 
 /** The tab panel that is showing. Exactly one, always. */
 function showingPanel(): HTMLElement | null {
-  return store.rightPanel.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
+  return inspectorHost().querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
 }
 
 beforeEach(() => {
@@ -64,12 +69,12 @@ afterEach(() => {
 describe("right panel gaps", () => {
   test("a render issued around unmount neither throws nor puts the dock back", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     unmount();
     expect(() => render()).not.toThrow();
     await flush(4);
-    expect(store.rightPanel.querySelector('[role="tablist"]')).toBeNull();
+    expect(inspectorHost().querySelector('[role="tablist"]')).toBeNull();
   });
 
   test("the events tab consults the custom-element predicate once a node is selected", async () => {
@@ -77,9 +82,9 @@ describe("right panel gaps", () => {
       children: [{ tagName: "button", textContent: "Go" }],
       state: { greet: { $prototype: "Function", body: "return 1" } },
       tagName: "my-widget",
-    } as never);
+    });
     tab.session.selection = [["children", 0]];
-    mount(makeCtx() as never);
+    mount(makeCtx());
     updateUi(activeTab.value, "rightTab", "events");
     render();
     await flush(4);
@@ -92,15 +97,15 @@ describe("right panel gaps", () => {
   test("a tab that throws while taking its body cannot stop the dock from drawing", async () => {
     resetWorkspaceWithTab();
     styleThrows = true;
-    mount(makeCtx() as never);
+    mount(makeCtx());
     updateUi(activeTab.value, "rightTab", "style");
     render();
     await flush(4);
     /* The dock is still navigable, so the reader can leave the tab that failed — and the OTHER
        three tabs still got their hosts, which is the part the old boundary could not promise:
        `_ensureContainers` built them in a loop and the throw ended it. */
-    expect(store.rightPanel.querySelector('[role="tablist"]')).not.toBeNull();
-    expect(store.rightPanel.querySelectorAll('[role="tab"]')).toHaveLength(4);
-    expect(store.rightPanel.querySelectorAll('[part="panel-body"]')).toHaveLength(4);
+    expect(inspectorHost().querySelector('[role="tablist"]')).not.toBeNull();
+    expect(inspectorHost().querySelectorAll('[role="tab"]')).toHaveLength(4);
+    expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(4);
   });
 });

@@ -26,19 +26,12 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import defsDoc from "./settings-defs.json";
 
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("settings-defs", defsDoc as unknown as JxDocument);
-
-/** One row of a picker: a field type, a format, or a reference target. */
-export interface DefsChoice {
-  value: string;
-  label: string;
-}
+registerSurface("settings-defs", defsDoc);
 
 /** One data shape in the left column. */
-export interface DefsShapeView {
+export interface DefsEntryView {
   name: string;
   selected: boolean;
 }
@@ -87,7 +80,7 @@ export interface DefsFieldView {
 
 /** Everything the document draws, as one value. */
 export interface DefsView {
-  shapes: DefsShapeView[];
+  defs: DefsEntryView[];
   /** Whether the left column is offering the new-shape button or the form. */
   newState: "closed" | "open";
   newName: string;
@@ -95,10 +88,10 @@ export interface DefsView {
   editorState: "empty" | "editing";
   selected: string;
   fields: DefsFieldView[];
-  typeOptions: DefsChoice[];
-  formatOptions: DefsChoice[];
+  typeOptions: SurfaceOption[];
+  formatOptions: SurfaceOption[];
   /** The content types a reference field can point at. */
-  targets: DefsChoice[];
+  targets: SurfaceOption[];
   addState: "closed" | "open";
   addName: string;
   addType: string;
@@ -114,7 +107,7 @@ export interface DefsActions {
   editNew: (value: string) => void;
   createNew: () => void;
   cancelNew: () => void;
-  removeShape: () => void;
+  removeSelected: () => void;
   renameField: (key: string, value: string) => void;
   setType: (key: string, value: string) => void;
   setFormat: (key: string, value: string) => void;
@@ -149,7 +142,7 @@ export interface DefsSurfaceHandle {
   dispose: () => void;
 }
 
-interface DefsScope extends Record<string, unknown>, DefsView, DefsActions {}
+interface DefsScope extends DefsView, DefsActions {}
 
 /** The view a freshly mounted surface starts on: no shapes, and nothing chosen. */
 function emptyView(): DefsView {
@@ -160,13 +153,13 @@ function emptyView(): DefsView {
     addRequired: false,
     addState: "closed",
     addType: "string",
+    defs: [],
     editorState: "empty",
     fields: [],
     formatOptions: [],
     newName: "",
     newState: "closed",
     selected: "",
-    shapes: [],
     targets: [],
     typeOptions: [],
   };
@@ -181,17 +174,20 @@ function emptyView(): DefsView {
  */
 export function mountDefsSurface(host: HTMLElement, actions: DefsActions): DefsSurfaceHandle {
   host.textContent = "";
-  const scope = reactive<DefsScope>({ ...emptyView(), ...actions }) as DefsScope;
+  const scope: DefsScope = reactive<DefsScope>({ ...emptyView(), ...actions });
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("settings-defs", scope, host).then((surface) => {
+    /* SAFETY: `settings-defs.json`'s root definition carries `tagName: "section"`, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {
@@ -218,13 +214,13 @@ export function mountDefsSurface(host: HTMLElement, actions: DefsActions): DefsS
       scope.addRequired = view.addRequired;
       scope.addState = view.addState;
       scope.addType = view.addType;
+      scope.defs = view.defs;
       scope.editorState = view.editorState;
       scope.fields = view.fields;
       scope.formatOptions = view.formatOptions;
       scope.newName = view.newName;
       scope.newState = view.newState;
       scope.selected = view.selected;
-      scope.shapes = view.shapes;
       scope.targets = view.targets;
       scope.typeOptions = view.typeOptions;
     },

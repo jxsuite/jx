@@ -105,5 +105,5 @@ export function hintOf(el: Element | null): string | null {
  * @param el The `jx-action-button` or `jx-button` host.
  */
 export function printedOf(el: Element | null): string {
-  return el?.querySelector('[part="label"]')?.textContent?.trim() ?? "";
+  return el?.querySelector('[part="label"]')?.textContent.trim() ?? "";
 }

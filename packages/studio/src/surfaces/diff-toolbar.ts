@@ -18,10 +18,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import diffToolbarDoc from "./diff-toolbar.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("diff-toolbar", diffToolbarDoc as unknown as JxDocument);
+registerSurface("diff-toolbar", diffToolbarDoc);
 
 /** Everything the bar draws, as one value. Every field is already a string or a boolean. */
 export interface DiffToolbarView {
@@ -66,7 +65,7 @@ export interface DiffToolbarSurfaceHandle {
 }
 
 /** The scope the document reads: {@link DiffToolbarView} plus the actions its controls call. */
-interface DiffToolbarScope extends Record<string, unknown>, DiffToolbarView, DiffToolbarActions {}
+interface DiffToolbarScope extends DiffToolbarView, DiffToolbarActions {}
 
 /** Write a projection into the scope. */
 function project(scope: DiffToolbarScope, view: DiffToolbarView): void {
@@ -98,7 +97,7 @@ export function mountDiffToolbarSurface(
   actions: DiffToolbarActions,
 ): DiffToolbarSurfaceHandle {
   host.replaceChildren();
-  const scope = reactive<DiffToolbarScope>({
+  const scope: DiffToolbarScope = reactive<DiffToolbarScope>({
     codeChecked: "false",
     countLabel: "",
     degraded: "hidden",
@@ -113,18 +112,21 @@ export function mountDiffToolbarSurface(
     stepper: "hidden",
     viewMode: "choice",
     visualChecked: "true",
-  }) as DiffToolbarScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("diff-toolbar", scope, host).then((surface) => {
+    /* SAFETY: `diff-toolbar.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

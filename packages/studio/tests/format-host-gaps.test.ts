@@ -40,7 +40,18 @@ describe("format registry when the backend fails", () => {
         throw new Error("registry exploded");
       },
     });
-    setFormats([{ name: "Stale" } as StudioFormat]);
+    setFormats([
+      {
+        capabilities: {},
+        documentKinds: [],
+        exportTarget: false,
+        extensions: [],
+        mediaType: null,
+        name: "Stale",
+        remote: false,
+        studio: null,
+      },
+    ]);
     refreshFormats();
     expect(await loadFormats()).toEqual([]);
     expect(getFormats()).toEqual([]);
@@ -77,12 +88,18 @@ describe("format registry when the backend fails", () => {
    format declares for everything else. Markdown leaves it unset and falls through to content, so
    only a format that opts in exercises this. */
 describe("documentMode.default", () => {
-  const componentByDefault = {
+  const componentByDefault: StudioFormat = {
+    capabilities: {},
+    documentKinds: [],
+    exportTarget: false,
+    extensions: [],
+    mediaType: null,
     name: "Bespoke",
+    remote: false,
     studio: {
       documentMode: { componentWhen: { frontmatterKey: "tagName" }, default: "component" },
     },
-  } as unknown as StudioFormat;
+  };
 
   test("a document that matched no componentWhen rule still opens as a component", () => {
     const split = splitFormatDocument(componentByDefault, { children: [], title: "No tagName" });
@@ -123,7 +140,7 @@ describe("content split", () => {
       imports: { "x-card": "./x-card.json" },
       state: { count: 0 },
       title: "Post",
-    } as never);
+    });
     expect(split.mode).toBe("content");
     expect(split.document).toMatchObject({
       imports: { "x-card": "./x-card.json" },
@@ -133,9 +150,7 @@ describe("content split", () => {
   });
 
   test("an empty content document gets one paragraph to type into", () => {
-    const split = splitFormatDocument(undefined, { children: [] } as never);
-    expect((split.document as { children: unknown[] }).children).toEqual([
-      { children: [], tagName: "p" },
-    ]);
+    const split = splitFormatDocument(undefined, { children: [] });
+    expect(split.document.children).toEqual([{ children: [], tagName: "p" }]);
   });
 });

@@ -33,13 +33,18 @@ import { setActiveRegistry } from "../src/commands/active-registry";
 import { notify, problems, resetNotifications, toasts } from "../src/services/notify";
 import { getPanel, resetPanels } from "../src/panels/panel-registry";
 import { registerProblemsPanel } from "../src/panels/problems-panel";
-import { initShellRefs, setProjectState, statusbarEl } from "../src/store";
+import { initShellRefs, requireShellRef, setProjectState, statusbarEl } from "../src/store";
 import { mountStatusbar, renderStatusbar, unmountStatusbar } from "../src/surfaces/statusbar";
 import { resetProjectShell } from "../src/shell";
 import { closeAllTabs } from "../src/workspace/workspace";
 import type { CommandContext } from "../src/commands/context";
 import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
-import type { NavigatorPanelContext } from "../src/panels/panel-registry";
+import type { NavigatorPanelContext, NavigatorPanelDeps } from "../src/panels/panel-registry";
+
+/** The shell's status bar cell, which `initShellRefs()` found before these tests run. */
+function barHost(): HTMLElement {
+  return requireShellRef(statusbarEl, "statusbar");
+}
 
 /* The file opener, doubled, for the same reason `tests/problems-panel.test.ts` doubles it: a path
    button hands off to `files/files.ts` through a lazy import, and the real module would reach the
@@ -50,6 +55,7 @@ void mock.module("../src/files/files.js", () => ({
 
 /** A registry the helper can be handed: only `run` is read, so only `run` is real. */
 function fakeRegistry(run: CommandRegistry["run"]): CommandRegistry {
+  // SAFETY: runReported only calls `registry.run(id, args)`; no other member is ever read.
   return { run } as CommandRegistry;
 }
 
@@ -274,7 +280,7 @@ function requiresName(id: string, extra: Partial<AnyCommand> = {}): AnyCommand {
     run: () => {},
     title: "Needs a name",
     ...extra,
-  } as AnyCommand;
+  };
 }
 
 describe("a keybinding whose record refuses its arguments", () => {
@@ -300,7 +306,7 @@ describe("a keybinding whose record refuses its arguments", () => {
       level: "application",
       run: () => Promise.reject(new Error("the disk said no")),
       title: "Rejects",
-    } as AnyCommand);
+    });
     const press = { altKey: false, ctrlKey: false, key: "s", metaKey: true, shiftKey: false };
     expect(registry.handleKeyEvent(press, ["global"])).toBe("file.rejects");
     await flush();
@@ -312,7 +318,9 @@ describe("a keybinding whose record refuses its arguments", () => {
 
 /** What the Bottom dock hands a tab: no deps, no document — Problems is a project-level list. */
 const PANEL_CTX: NavigatorPanelContext = {
-  deps: {} as never,
+  /* SAFETY: problems-panel.ts's `render` takes no context and its `afterRender` ignores the one it
+     is handed (`_ctx`), so not one NavigatorPanelDeps member is ever read off this empty object. */
+  deps: {} as NavigatorPanelDeps,
   doc: null,
   rerender: () => {},
 };
@@ -353,8 +361,10 @@ describe("a notice's recovery action, clicked in Problems", () => {
     panel.render(PANEL_CTX);
     panel.afterRender?.(PANEL_CTX, host);
     await flush(4);
-    const control = host.querySelector('[part="action"] [part="control"]') as HTMLElement;
-    expect(control).not.toBeNull();
+    const control = host.querySelector('[part="action"] [part="control"]');
+    if (!(control instanceof HTMLElement)) {
+      throw new Error("the notice's action rendered no control");
+    }
     expect(() => control.click()).not.toThrow();
     await flush();
     expect(filed()).toEqual([
@@ -376,7 +386,7 @@ describe("a surface button whose record refuses its arguments", () => {
 
   beforeEach(() => {
     closeAllTabs();
-    setProjectState(null as never);
+    setProjectState(null);
     resetProjectShell();
   });
 
@@ -395,10 +405,13 @@ describe("a surface button whose record refuses its arguments", () => {
     mountStatusbar();
     renderStatusbar();
     await flush(2);
-    const button = statusbarEl
+    const button = barHost()
       .querySelector('[data-jx-region="statusbar/project"]')
-      ?.querySelector("button") as HTMLButtonElement;
-    expect(button.textContent?.trim()).toBe("My Site");
+      ?.querySelector("button");
+    if (!button) {
+      throw new Error("the status bar rendered no project button");
+    }
+    expect(button.textContent.trim()).toBe("My Site");
     expect(() => button.click()).not.toThrow();
     await flush();
     expect(filed()).toEqual([

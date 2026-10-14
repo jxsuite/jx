@@ -4,6 +4,7 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 import { basename, resolve } from "node:path";
+import type { ProjectOptions } from "../generate";
 
 const prompts: string[] = [];
 // Answers in prompt order: name, description, url, template (5 = first starter, after the four
@@ -24,7 +25,9 @@ void mock.module("@jxsuite/starters", () => ({
   listStarters: () => [{ id: "restaurant", name: "Bistro & Café", tagline: "A menu-driven site." }],
 }));
 
-const generateProject = mock(() => Promise.resolve());
+const generateProject = mock<(destPath: string, opts: ProjectOptions) => Promise<void>>(() =>
+  Promise.resolve(),
+);
 void mock.module("../generate", () => ({ generateProject }));
 
 const logs: string[] = [];
@@ -34,12 +37,9 @@ console.log = (...args: unknown[]) => {
 
 process.argv = [process.argv[0] ?? "bun", "index.ts", "my-test-site"];
 
-// Non-literal specifier: keeps tsgo from adding the CLI entry (which has a pre-existing
-// TS7053 implicit-any at adapterMap[adapterChoice]) to the type-check program.
-const cliEntry = "../index";
 // The entry runs its interactive flow in an exported `ready` promise (not a top-level await), so
 // Await it: Bun's test runtime drops a dynamically-imported module's top-level-await continuation.
-const cliModule = (await import(cliEntry)) as { ready?: Promise<unknown> };
+const cliModule = await import("../index");
 await cliModule.ready;
 
 const destPath = resolve("my-test-site");
@@ -74,7 +74,8 @@ describe("create-jxsuite CLI", () => {
   });
 
   test("resolves the destination relative to the working directory", () => {
-    expect(generateProject).toHaveBeenCalledTimes(1);
+    // One generate call, aimed at argv's directory resolved against the working directory.
+    expect(generateProject.mock.calls.map(([dest]) => dest)).toEqual([destPath]);
   });
 
   test("prints the adapter menu and next steps", () => {

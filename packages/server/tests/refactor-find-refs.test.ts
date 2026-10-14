@@ -10,27 +10,26 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  buildProjectExtensionRegistry,
-  buildProjectFormatRegistry,
-} from "@jxsuite/compiler/format-host";
+import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
+import { FormatRegistry } from "@jxsuite/schema/format-registry";
+import { isString } from "@jxsuite/schema/guards";
 import { findReferences, invalidateReferenceCache } from "../src/refactor/index";
 import { countTagUses, walkDocRefs } from "../src/refactor/refs";
 import { looksLikeFileRef } from "../src/refactor/paths";
-import type { FormatRegistry } from "@jxsuite/schema/format-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 
 let root = "";
 const tmpRoots: string[] = [];
 
-function write(rel: string, content: unknown): void {
+function write(rel: string, content: JsonValue): void {
   const fp = join(root, rel);
   mkdirSync(join(fp, ".."), { recursive: true });
-  writeFileSync(fp, typeof content === "string" ? content : JSON.stringify(content));
+  writeFileSync(fp, isString(content) ? content : JSON.stringify(content));
 }
 
 async function registry(): Promise<FormatRegistry> {
-  return buildProjectFormatRegistry(root);
+  const extensions = await buildProjectExtensionRegistry(root);
+  return extensions.formats;
 }
 
 /**
@@ -42,6 +41,9 @@ async function registry(): Promise<FormatRegistry> {
  * is half of why issue 239 survived this file; use this for anything non-JSON.
  */
 async function routeRegistry(): Promise<FormatRegistry> {
+  /* SAFETY: buildProjectExtensionRegistry reads only `extensions` from the config and validates
+     that list itself, and the one test calling this wrote project.json just before as
+     `{ extensions: ["@jxsuite/parser"], name: "p" }`, two members ProjectConfig declares. */
   const config = JSON.parse(readFileSync(join(root, "project.json"), "utf8")) as ProjectConfig;
   const extensions = await buildProjectExtensionRegistry(root, config);
   return extensions.formats;
@@ -244,12 +246,11 @@ describe("the cache", () => {
 
   test("a failed sweep is not remembered as the answer", async () => {
     seedProject();
-    const broken = {
-      byExtension: () => null,
-      documentExtensions: () => {
-        throw new Error("registry exploded");
-      },
-    } as unknown as FormatRegistry;
+    // A registry whose document sweep fails outright.
+    const broken = new FormatRegistry([]);
+    broken.documentExtensions = () => {
+      throw new Error("registry exploded");
+    };
     const query = { path: "components/card.json", registry: broken, root };
     expect(findReferences(query)).rejects.toThrow("registry exploded");
     // The rejection was dropped from the cache, so a healthy retry is not poisoned by it.
@@ -746,14 +747,14 @@ describe("findReferences — copy keys and collection sources", () => {
  * but refusing prose is, and these are the values that decide whether a rename dialog offers to
  * rewrite a sentence, a MIME type or a version number.
  */
-const FILE_SHAPED = [
+const FILE_REFS = [
   "/images/hero.jpg",
   "./layouts/base.json",
   "../../docs/nav.json",
   "content/listings.csv",
 ];
 
-const NOT_FILE_SHAPED = [
+const NOT_FILE_REFS = [
   "/pricing",
   "image/png",
   "1.2.3",
@@ -766,11 +767,11 @@ const NOT_FILE_SHAPED = [
 ];
 
 describe("looksLikeFileRef", () => {
-  test.each(FILE_SHAPED)("%p is file-shaped", (value) => {
+  test.each(FILE_REFS)("%p is file-shaped", (value) => {
     expect(looksLikeFileRef(value)).toBe(true);
   });
 
-  test.each(NOT_FILE_SHAPED)("%p is not file-shaped", (value) => {
+  test.each(NOT_FILE_REFS)("%p is not file-shaped", (value) => {
     expect(looksLikeFileRef(value)).toBe(false);
   });
 });

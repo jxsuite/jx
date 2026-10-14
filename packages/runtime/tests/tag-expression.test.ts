@@ -11,10 +11,22 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describe, expect, test } from "bun:test";
 import { renderNode, resolveTagName } from "../src/runtime";
 import { reactive } from "@vue/reactivity";
-import type { JxTagExpression } from "@jxsuite/schema/types";
+import type { JxElement, JxTagExpression } from "@jxsuite/schema/types";
+import type { JxScope } from "../src/types";
 
-if (!globalThis.document) {
+try {
   GlobalRegistrator.register();
+} catch {
+  /* Already registered */
+}
+
+/** Render a definition whose tag is an element name, failing the test if a Text node comes back. */
+function renderElement(def: JxElement, state: JxScope): HTMLElement {
+  const node = renderNode(def, state);
+  if (!(node instanceof HTMLElement)) {
+    throw new Error("renderNode returned a Text node for an element definition");
+  }
+  return node;
 }
 
 const conditional = (value: string, initial: string) =>
@@ -50,25 +62,25 @@ describe("resolveTagName", () => {
 
 describe("renderNode", () => {
   test("builds the branch the state selects, with the subtree written once", () => {
-    const state = reactive({ href: "/about" }) as Record<string, unknown>;
-    const el = renderNode(
+    const state = reactive<JxScope>({ href: "/about" });
+    const el = renderElement(
       {
         attributes: { href: "${state.href}" },
         children: [{ tagName: "span", textContent: "Read" }],
         tagName: conditional("a", "div"),
       },
       state,
-    ) as HTMLElement;
+    );
     expect(el.tagName.toLowerCase()).toBe("a");
     expect(el.getAttribute("href")).toBe("/about");
     expect(el.querySelector("span")?.textContent).toBe("Read");
   });
 
   test("the other branch, from the same document", () => {
-    const el = renderNode(
+    const el = renderElement(
       { children: [{ tagName: "span" }], tagName: conditional("a", "div") },
-      reactive({ href: "" }) as Record<string, unknown>,
-    ) as HTMLElement;
+      reactive<JxScope>({ href: "" }),
+    );
     expect(el.tagName.toLowerCase()).toBe("div");
   });
 
@@ -77,8 +89,8 @@ describe("renderNode", () => {
        implicit, because "the formula is live" is what every other `$expression` position teaches
        and this is the one place it is not — a test is the only thing that keeps that promise from
        drifting into a reactive implementation nobody costed. */
-    const state = reactive({ href: "" }) as Record<string, unknown>;
-    const el = renderNode({ children: [], tagName: conditional("a", "div") }, state) as HTMLElement;
+    const state = reactive<JxScope>({ href: "" });
+    const el = renderElement({ children: [], tagName: conditional("a", "div") }, state);
     expect(el.tagName.toLowerCase()).toBe("div");
     state.href = "/now-a-link";
     expect(el.tagName.toLowerCase()).toBe("div");

@@ -32,6 +32,7 @@
  */
 
 import { LOCATION_ID_FILE } from "@jxsuite/protocol/routes";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 
 /** Re-exported so a caller wiring up `locate` need not also reach into the protocol package. */
@@ -57,11 +58,20 @@ type ShowDirectoryPicker = (opts?: {
   startIn?: string;
 }) => Promise<DirectoryHandle>;
 
+/** A realm that exposes the File System Access API's folder chooser. */
+type DirectoryPickerRealm = typeof globalThis & { showDirectoryPicker: ShowDirectoryPicker };
+
+/**
+ * Whether a realm carries `showDirectoryPicker`. The DOM lib this package compiles against does not
+ * declare it (the API is Chromium-only), so the global is probed rather than read.
+ */
+function hasDirectoryPicker(realm: typeof globalThis): realm is DirectoryPickerRealm {
+  return "showDirectoryPicker" in realm && typeof realm.showDirectoryPicker === "function";
+}
+
 /** Whether this browser can open a native folder chooser at all. */
 export function canPickDirectory(): boolean {
-  return (
-    typeof (globalThis as { showDirectoryPicker?: unknown }).showDirectoryPicker === "function"
-  );
+  return hasDirectoryPicker(globalThis);
 }
 
 /** A location id: URL-safe, unguessable enough that a concurrent pick cannot collide. */
@@ -76,13 +86,8 @@ function newLocationId(): string {
  * `showDirectoryPicker`, a test double) is not `instanceof Error` here, but it still says what it
  * is.
  */
-function nameOf(error: unknown): string {
-  return typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    typeof error.name === "string"
-    ? error.name
-    : "";
+function nameOf(cause: unknown): string {
+  return isNonNullObject(cause) && "name" in cause && isString(cause.name) ? cause.name : "";
 }
 
 /**
@@ -111,12 +116,13 @@ function nameOf(error: unknown): string {
 export async function pickDirectoryPath(
   locate: (query: { name: string; id: string }) => Promise<string | null>,
 ): Promise<string | null> {
-  const show = (globalThis as { showDirectoryPicker?: ShowDirectoryPicker }).showDirectoryPicker;
-  if (typeof show !== "function") {
+  const realm = globalThis;
+  if (!hasDirectoryPicker(realm)) {
     throw new TypeError(
       "This browser has no folder chooser. Type the folder's path into Location instead.",
     );
   }
+  const show = realm.showDirectoryPicker;
 
   let handle: DirectoryHandle;
   try {

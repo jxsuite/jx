@@ -54,7 +54,7 @@ const errors = new WeakMap<HTMLElement, string>();
 
 /** The live project configuration, or an empty one before a project is open. */
 function config(): ProjectConfig {
-  return (projectState?.projectConfig ?? {}) as ProjectConfig;
+  return projectState?.projectConfig ?? {};
 }
 
 // ─── Deploy ───────────────────────────────────────────────────────────────────

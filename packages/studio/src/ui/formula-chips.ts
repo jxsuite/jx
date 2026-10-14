@@ -13,14 +13,28 @@
  * set. The lit drawing lives beside its one remaining caller in `ui/expression-editor.ts` and dies
  * with that conversion; nothing here has to be touched when it does.
  *
- * The preview is taken structurally (`{ values }`) rather than as a named type, because the two
- * callers hold two spellings of the same record — `EditorPreview` and `services/preview-eval.ts`'s
- * `ExpressionPreview` — and a chip only ever reads one field of it.
+ * The preview is taken structurally (`{ values }`) rather than as `services/preview-eval.ts`'s
+ * `ExpressionPreview`, because a chip only ever reads that one field of it.
  */
 
-import { isJsonObject, isRef } from "@jxsuite/schema/guards";
+import { isJsonObject, isRef, isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue } from "@jxsuite/schema/types";
 
 type NodePath = (string | number)[];
+
+/**
+ * A value of an expression tree: anything a document holds, or a node an editor rebuilt from one.
+ *
+ * The rebuilt half is why this is not just `JxDocumentValue`. Replacing one operand spreads the
+ * node it sits in, and a member the source node lacked can come through as `undefined` (a blank
+ * node's `target`); it serializes away, and until then `"target" in node` still sees the key.
+ */
+export type ExpressionValue = JxDocumentValue | ExpressionFields | ExpressionValue[];
+
+/** An expression node's members by name — `operator`, `target`, `value`, `cases`, … */
+export interface ExpressionFields {
+  [key: string]: ExpressionValue | undefined;
+}
 
 /** What a chip needs to know about the live evaluation: display strings keyed by node path. */
 export interface ChipPreview {
@@ -28,13 +42,13 @@ export interface ChipPreview {
 }
 
 interface ChainLink {
-  node: Record<string, unknown>;
+  node: ExpressionFields;
   path: NodePath;
 }
 
 interface Chain {
   /** The innermost target operand (ref/literal), absent for target-less roots. */
-  head: { value: unknown; path: NodePath } | null;
+  head: { value: ExpressionValue | undefined; path: NodePath } | null;
   /** Operator nodes, deepest target first → outermost operator last. */
   links: ChainLink[];
 }
@@ -60,8 +74,8 @@ export interface FormulaChip {
   group: boolean;
 }
 
-function isExprNode(value: unknown): value is Record<string, unknown> {
-  return isJsonObject(value) && typeof value.operator === "string";
+function isExprNode(value: ExpressionValue | undefined): value is ExpressionFields {
+  return isJsonObject(value) && isString(value.operator);
 }
 
 /** Human label for a pointer ref: strips the #/state/ and window#/ prefixes. */
@@ -76,14 +90,14 @@ function refLabel(ref: string): string {
 }
 
 /** Compact label for a non-node operand (ref or literal). */
-function operandLabel(value: unknown): string {
+function operandLabel(value: ExpressionValue | undefined): string {
   if (isRef(value)) {
     return refLabel(value.$ref);
   }
   if (isExprNode(value)) {
     return `(${chipSummary(value)})`;
   }
-  if (typeof value === "string") {
+  if (isString(value)) {
     return JSON.stringify(value);
   }
   return String(value);
@@ -95,10 +109,10 @@ function targetPath(basePath: NodePath, hops: number): NodePath {
 }
 
 /** Unroll a node's target chain into head operand + operator links (deepest first). */
-function unrollChain(node: Record<string, unknown>, basePath: NodePath): Chain {
+function unrollChain(node: ExpressionFields, basePath: NodePath): Chain {
   // Collect the chain root-first, then materialize each link's path from its descent depth.
-  const nodes: Record<string, unknown>[] = [];
-  let current: Record<string, unknown> = node;
+  const nodes: ExpressionFields[] = [];
+  let current: ExpressionFields = node;
   for (;;) {
     nodes.push(current);
     const next = current.target;
@@ -109,8 +123,9 @@ function unrollChain(node: Record<string, unknown>, basePath: NodePath): Chain {
     }
   }
   const deepest = nodes.at(-1)!;
+  // Reading an absent key yields undefined, so `in` alone decides whether a head operand exists.
   const head: Chain["head"] =
-    "target" in deepest || deepest.target !== undefined
+    "target" in deepest
       ? { path: targetPath(basePath, nodes.length), value: deepest.target }
       : null;
   const rootFirst = nodes.map((n, i) => ({ node: n, path: targetPath(basePath, i) }));
@@ -118,7 +133,7 @@ function unrollChain(node: Record<string, unknown>, basePath: NodePath): Chain {
 }
 
 /** Compact one-line text form of a node: head operand followed by the operator chain. */
-export function chipSummary(node: unknown): string {
+export function chipSummary(node: ExpressionValue | undefined): string {
   if (!isExprNode(node)) {
     return operandLabel(node);
   }
@@ -155,7 +170,7 @@ function chip(
 /** Group chips for a link's non-target expression operands (value / initial / cases / default). */
 function groupChips(link: ChainLink, preview: ChipPreview | null | undefined): FormulaChip[] {
   const chips: FormulaChip[] = [];
-  const add = (operand: unknown, path: NodePath) => {
+  const add = (operand: ExpressionValue | undefined, path: NodePath) => {
     if (isExprNode(operand)) {
       chips.push(chip(`(${chipSummary(operand)})`, path, preview, true));
     }
@@ -185,13 +200,13 @@ function groupChips(link: ChainLink, preview: ChipPreview | null | undefined): F
  * strip of no chips and no strip at all are the same thing on screen, and saying it here keeps both
  * drawings from having to decide.
  *
- * @param {unknown} node The expression node to read.
+ * @param {ExpressionValue | undefined} node The expression node to read.
  * @param {{ preview?: ChipPreview | null; path?: NodePath }} [opts] The live evaluation, and the
  *   document position `node` sits at — every chip path is prefixed with it.
  * @returns {FormulaChip[]}
  */
 export function formulaChipStrip(
-  node: unknown,
+  node: ExpressionValue | undefined,
   opts: { preview?: ChipPreview | null; path?: NodePath } = {},
 ): FormulaChip[] {
   if (!isExprNode(node)) {

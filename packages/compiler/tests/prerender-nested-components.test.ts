@@ -12,7 +12,6 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  MAX_COMPONENT_NESTING,
   buildAttrs,
   buildInitialScope,
   buildInstanceScope,
@@ -22,6 +21,8 @@ import {
   renderStaticNode,
   resolveHostStyle,
 } from "../src/shared";
+import { MAX_COMPONENT_NESTING } from "@jxsuite/runtime";
+import { isString } from "@jxsuite/schema/guards";
 import type { ComponentPrerenderContext } from "../src/shared";
 import type { JxElement } from "@jxsuite/schema/types";
 
@@ -102,7 +103,14 @@ const innerWrap: JxElement = {
 };
 
 function registry(...defs: JxElement[]): ComponentPrerenderContext {
-  return { componentDefs: new Map(defs.map((d) => [d.tagName as string, d])) };
+  const componentDefs = new Map<string, JxElement>();
+  for (const def of defs) {
+    if (!isString(def.tagName)) {
+      throw new Error("A registered fixture definition must name a literal tag");
+    }
+    componentDefs.set(def.tagName, def);
+  }
+  return { componentDefs };
 }
 
 // ── Expansion ─────────────────────────────────────────────────────────────────
@@ -457,7 +465,8 @@ describe("liftPropsAttributes", () => {
       lifted: null,
       rest: { "props.": "x" },
     });
-    expect(liftPropsAttributes(({} as JxElement).attributes)).toEqual({ lifted: null, rest: {} });
+    const bare: JxElement = { tagName: "div" };
+    expect(liftPropsAttributes(bare.attributes)).toEqual({ lifted: null, rest: {} });
   });
 });
 

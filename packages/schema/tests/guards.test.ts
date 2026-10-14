@@ -27,13 +27,52 @@ import {
   isServerFnDef,
   isTagExpression,
   isTemplateString,
+  isBigInt,
+  isBoolean,
+  isFunction,
+  isJsonPrimitive,
+  isNonNullObject,
+  isNumber,
+  isString,
+  isSymbol,
   paramNames,
   tagNameCandidates,
 } from "../src/guards";
 import type { JxStyle } from "../types";
 
 /** A genuinely-undefined value (guards take required params; a literal gets autofixed away). */
-const UNDEF = ([] as unknown[]).at(0);
+const NOTHING: undefined[] = [];
+const UNDEF = NOTHING.at(0);
+
+describe("primitive guards", () => {
+  const samples = ["text", 0, Number.NaN, true, 10n, Symbol("s"), () => 1, null, UNDEF, {}, []];
+  const accepted = (guard: (value: (typeof samples)[number]) => boolean) =>
+    samples.flatMap((sample, index) => (guard(sample) ? [index] : []));
+
+  test("each accepts exactly its own primitive", () => {
+    expect(accepted(isString)).toEqual([0]);
+    expect(accepted(isNumber)).toEqual([1, 2]);
+    expect(accepted(isBoolean)).toEqual([3]);
+    expect(accepted(isBigInt)).toEqual([4]);
+    expect(accepted(isSymbol)).toEqual([5]);
+    expect(accepted(isFunction)).toEqual([6]);
+  });
+
+  test("isNonNullObject accepts objects and arrays, never null", () => {
+    expect(accepted(isNonNullObject)).toEqual([9, 10]);
+  });
+
+  test("isJsonPrimitive accepts the four JSON scalars only", () => {
+    expect(accepted(isJsonPrimitive)).toEqual([0, 1, 2, 3, 7]);
+  });
+
+  test("isFunction narrows a declared union to its function member", () => {
+    const measure = (handler: string | (() => number)) =>
+      isFunction(handler) ? handler() : handler.length;
+    expect(measure(() => 7)).toBe(7);
+    expect(measure("abc")).toBe(3);
+  });
+});
 
 describe("isJsonObject", () => {
   test("accepts plain objects", () => {
@@ -327,7 +366,7 @@ describe("isNestedStyle", () => {
   test("rejects scalar CSS values and undefined", () => {
     expect(isNestedStyle("red")).toBe(false);
     expect(isNestedStyle(4)).toBe(false);
-    expect(isNestedStyle(UNDEF as undefined)).toBe(false);
+    expect(isNestedStyle(UNDEF)).toBe(false);
   });
 });
 
@@ -403,7 +442,7 @@ describe("paramNames", () => {
   });
 
   test("returns [] for undefined and empty parameter lists", () => {
-    expect(paramNames(UNDEF as undefined)).toEqual([]);
+    expect(paramNames(UNDEF)).toEqual([]);
     expect(paramNames([])).toEqual([]);
   });
 });

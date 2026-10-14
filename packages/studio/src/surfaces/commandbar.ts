@@ -57,9 +57,8 @@ import type { Tab } from "../tabs/tab";
 import type { SiteBuildResult, SitePreviewResult, StudioPlatform } from "../types";
 import type { CommandRegistry } from "../commands/registry";
 import type { EffectScope } from "@vue/reactivity";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("commandbar", commandbarDoc as unknown as JxDocument);
+registerSurface("commandbar", commandbarDoc);
 
 /**
  * What the Command Bar is handed at mount.
@@ -146,7 +145,7 @@ export interface SegmentProjection {
 export type WindowControlLayout = "none" | "mac" | "other";
 
 /** The document's scope: the projections, and the host functions its handlers `call`. */
-interface CommandBarScope extends Record<string, unknown> {
+interface CommandBarScope {
   csd: WindowControlLayout;
   menuVisible: boolean;
   menuOpen: boolean;
@@ -262,7 +261,7 @@ export function openInBrowserTarget(tab: Tab | null): BrowserTarget {
   }
   const params = dynamicRouteParams(documentPath);
   if (params.length > 0) {
-    const chosen = (tab?.session.ui.previewParams ?? {}) as Record<string, string>;
+    const chosen: Record<string, string> = tab?.session.ui.previewParams ?? {};
     const missing = params.filter((name) => !chosen[name]);
     if (missing.length > 0) {
       const names = missing.map((name) => `:${name}`).join(", ");
@@ -482,8 +481,8 @@ const BUILD_SITE = "project.buildSite";
 const OPEN_IN_BROWSER = "view.openInBrowser";
 
 /** The sentence in an unknown thrown value. */
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** The document's label: its path without the project root, which is already segment one. */
@@ -546,8 +545,14 @@ interface WindowControls {
 }
 
 function windowControls(): WindowControls | undefined {
-  return (globalThis as unknown as { __jxPlatform?: { windowControls?: WindowControls } })
-    .__jxPlatform?.windowControls;
+  const platform = globalThis.__jxPlatform;
+  if (platform == null || !("windowControls" in platform)) {
+    return undefined;
+  }
+  /* SAFETY: the PAL interface deliberately leaves `windowControls` undeclared; the one adapter that
+     adds it is the desktop launcher's (`packages/desktop/src/platform.ts`), whose object carries the
+     `close`, `maximize` and `minimize` functions this bar calls. */
+  return platform.windowControls as WindowControls | undefined;
 }
 
 // ─── The Command Center pill, the layout tabs and the docks, projected ───────
@@ -769,7 +774,7 @@ function state(): CommandBarScope {
     windowControl: (action) => {
       windowControls()?.[action]();
     },
-  }) as CommandBarScope;
+  });
   return _state;
 }
 

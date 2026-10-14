@@ -276,8 +276,9 @@ describe("the lists stay honest about the real tree", () => {
       // And the runner turns that into a red gate naming both, which is what a caller sees.
       const { failed, lines } = report(r);
       expect(failed).toBeTrue();
-      expect(lines.join("\n")).toContain("ui/deleted-module.ts (allows 1, found 0)");
-      expect(lines.join("\n")).toContain("ui/deleted-module.ts (allows 2, found 0)");
+      const printed = lines.join("\n");
+      expect(printed).toContain("ui/deleted-module.ts (allows 1, found 0)");
+      expect(printed).toContain("ui/deleted-module.ts (allows 2, found 0)");
     } finally {
       delete SELF_QUERY_DEBT["ui/deleted-module.ts"];
       delete LIVE_BINDING_DEBT["ui/deleted-module.ts"];

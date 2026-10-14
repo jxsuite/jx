@@ -39,9 +39,8 @@ import formulaPaletteDoc from "./formula-palette.json";
 
 import type { FormulaCatalogEntry } from "../ui/formula-catalog";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("formula-palette", formulaPaletteDoc as unknown as JxDocument);
+registerSurface("formula-palette", formulaPaletteDoc);
 
 /** The popover slot id, and so the `overlay.popover:formula-palette` region the shots address. */
 const SLOT = "formula-palette";
@@ -81,7 +80,7 @@ interface GroupProjection {
 }
 
 /** The scope `formula-palette.json` reads, and the six things a gesture asks of this module. */
-interface FormulaPaletteScope extends Record<string, unknown> {
+interface FormulaPaletteScope {
   open: boolean;
   query: string;
   groups: GroupProjection[];
@@ -106,7 +105,7 @@ interface FormulaPaletteScope extends Record<string, unknown> {
   move: (delta: number) => void;
   activate: () => void;
   hover: (index: number) => void;
-  activateRow: (value: unknown) => void;
+  activateRow: (value: string) => void;
 }
 
 let _open = false;
@@ -228,7 +227,7 @@ function scope(): FormulaPaletteScope {
     },
     open: false,
     query: "",
-  }) as FormulaPaletteScope;
+  });
   return _scope;
 }
 

@@ -238,20 +238,31 @@ describe("createVirtualWindow", () => {
   });
 
   test("observes resizes where the environment has a ResizeObserver", () => {
-    const observed: Element[] = [];
-    let disconnected = false;
+    const observers: FakeResizeObserver[] = [];
     const original = globalThis.ResizeObserver;
-    function FakeResizeObserver(this: Record<string, unknown>, cb: () => void) {
-      this.disconnect = () => {
-        disconnected = true;
-      };
-      this.observe = (target: Element) => {
-        observed.push(target);
-        cb();
-      };
-      this.unobserve = () => null;
+    class FakeResizeObserver implements ResizeObserver {
+      readonly observed: Element[] = [];
+      disconnected = false;
+      readonly #onResize: ResizeObserverCallback;
+      constructor(onResize: ResizeObserverCallback) {
+        this.#onResize = onResize;
+        observers.push(this);
+      }
+      disconnect() {
+        this.disconnected = true;
+      }
+      observe(target: Element) {
+        this.observed.push(target);
+        this.#onResize([], this);
+      }
+      unobserve(target: Element) {
+        const at = this.observed.indexOf(target);
+        if (at !== -1) {
+          this.observed.splice(at, 1);
+        }
+      }
     }
-    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.ResizeObserver = FakeResizeObserver;
     try {
       const el = scroller(100);
       const handle = createVirtualWindow({
@@ -260,9 +271,9 @@ describe("createVirtualWindow", () => {
         rowHeight: () => 10,
         scroller: el,
       });
-      expect(observed).toEqual([el]);
+      expect(observers.flatMap((observer) => observer.observed)).toEqual([el]);
       handle.destroy();
-      expect(disconnected).toBe(true);
+      expect(observers.map((observer) => observer.disconnected)).toEqual([true]);
     } finally {
       globalThis.ResizeObserver = original;
     }
@@ -607,8 +618,10 @@ describe("scrollerFor", () => {
   test("memoizes the resolved scroller per list, and answers the same element again", () => {
     const scroller = scrollBox({ clientHeight: 200, scrollHeight: 2000 });
     const list = listIn(scroller, 0);
-    expect(scrollerFor(list)).toBe(scroller);
-    expect(scrollerFor(list)).toBe(scroller);
+    const firstAnswer = scrollerFor(list);
+    const secondAnswer = scrollerFor(list);
+    expect(firstAnswer).toBe(scroller);
+    expect(secondAnswer).toBe(firstAnswer);
   });
 
   test("re-resolves when the list moves under a different scroller", () => {

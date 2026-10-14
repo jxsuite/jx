@@ -15,9 +15,9 @@
 
 import { readFileSync } from "node:fs";
 import { slugifyHeading } from "../../../extensions/parser/src/transpile.ts";
+import { FRONTMATTER_DELIMITER } from "./frontmatter.ts";
+import { FENCE } from "./spec-status.ts";
 
-const FENCE = /^\s*(```|~~~)/;
-const FRONTMATTER = /^---\s*$/;
 const HEADING = /^(#{1,6})\s+(.+?)\s*$/;
 
 export interface Heading {
@@ -62,10 +62,10 @@ export function headingsOf(source: string): Heading[] {
 
   for (const [i, line] of source.split("\n").entries()) {
     if (inFrontmatter) {
-      inFrontmatter = !FRONTMATTER.test(line);
+      inFrontmatter = !FRONTMATTER_DELIMITER.test(line);
       continue;
     }
-    if (i === 0 && FRONTMATTER.test(line)) {
+    if (i === 0 && FRONTMATTER_DELIMITER.test(line)) {
       inFrontmatter = true;
       continue;
     }

@@ -4,7 +4,9 @@
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { DeployConfig } from "@jxsuite/schema/types";
+import { isFunction, isJsonObject } from "@jxsuite/schema/guards";
+import type { DeployConfig, JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { StudioPlatform } from "../src/types";
 
 const {
   connectDeploy,
@@ -16,28 +18,41 @@ const {
   writeDeployConfig,
 } = await import("../src/publish/pages-service");
 
-const DEPLOY: DeployConfig = {
+const DEPLOY = {
   provider: "cloudflare-pages",
   accountId: "a".repeat(32),
   projectName: "my-site",
-};
+} satisfies DeployConfig;
+
+/** What a `cfApi` request carries besides its path. */
+interface CfInit {
+  method?: string;
+  body?: unknown;
+}
 
 interface CfCall {
   path: string;
-  init?: { method?: string; body?: unknown };
+  init?: CfInit;
 }
+
+/** A route's answer: the JSON `result` to resolve with, or an Error to reject with. */
+type CfAnswer = JsonValue | Error;
 
 /** Install a mock platform whose cfApi answers from a path-keyed table. */
 function withCfApi(
-  routes: Record<string, unknown | ((init?: { method?: string; body?: unknown }) => unknown)>,
-  overrides: Record<string, unknown> = {},
+  routes: Record<string, CfAnswer | ((init?: CfInit) => CfAnswer)>,
+  overrides: Partial<StudioPlatform> = {},
 ) {
   const calls: CfCall[] = [];
-  const cfApi = mock((path: string, init?: { method?: string; body?: unknown }) => {
-    calls.push({ path, ...(init === undefined ? {} : { init }) });
+  const cfApi = mock((path: string, init?: CfInit): Promise<JsonValue> => {
+    const call: CfCall = { path };
+    if (init !== undefined) {
+      call.init = init;
+    }
+    calls.push(call);
     for (const [needle, response] of Object.entries(routes)) {
       if (path.includes(needle)) {
-        const value = typeof response === "function" ? response(init) : response;
+        const value = isFunction(response) ? response(init) : response;
         return value instanceof Error ? Promise.reject(value) : Promise.resolve(value);
       }
     }
@@ -45,6 +60,33 @@ function withCfApi(
   });
   const { state } = installMockPlatform({ cfApi, ...overrides });
   return { calls, cfApi, state };
+}
+
+/** The body of the first POST the service sent, which is always a JSON object. */
+function postBody(calls: CfCall[]): JsonObject {
+  const body = calls.find((c) => c.init?.method === "POST")?.init?.body;
+  if (!isJsonObject(body)) {
+    throw new Error("no POST with an object body was sent");
+  }
+  return body;
+}
+
+/** Parse a written file as the JSON object it must be. */
+function parseObject(text: string): JsonObject {
+  const value: JsonValue = JSON.parse(text);
+  if (!isJsonObject(value)) {
+    throw new Error(`not a JSON object: ${text}`);
+  }
+  return value;
+}
+
+/** The `build` block of a written `project.json`. */
+function buildBlock(text: string): JsonObject {
+  const { build } = parseObject(text);
+  if (!isJsonObject(build)) {
+    throw new Error("project.json was written without a build block");
+  }
+  return build;
 }
 
 beforeEach(() => {
@@ -93,15 +135,12 @@ describe("Cloudflare API wrappers", () => {
       projectName: "my-site",
       repo: "site",
     });
-    const post = calls.find((c) => c.init?.method === "POST");
-    const body = post?.init?.body as {
-      build_config: { build_command: string; destination_dir: string };
-      source: { type: string; config: { owner: string; repo_name: string } };
-    };
+    const body = postBody(calls);
     expect(body.build_config).toEqual({ build_command: "bunx jx build", destination_dir: "dist" });
-    expect(body.source.type).toBe("github");
-    expect(body.source.config.owner).toBe("octocat");
-    expect(body.source.config.repo_name).toBe("site");
+    expect(body.source).toMatchObject({
+      config: { owner: "octocat", repo_name: "site" },
+      type: "github",
+    });
   });
 
   test("a project in a subfolder builds in that folder", async () => {
@@ -116,9 +155,7 @@ describe("Cloudflare API wrappers", () => {
       repo: "mono",
       rootDir: "sites/blog",
     });
-    const post = calls.find((c) => c.init?.method === "POST");
-    const body = post?.init?.body as { build_config: Record<string, string> };
-    expect(body.build_config).toEqual({
+    expect(postBody(calls).build_config).toEqual({
       build_command: "bunx jx build",
       destination_dir: "dist",
       root_dir: "sites/blog",
@@ -157,15 +194,10 @@ describe("writeDeployConfig", () => {
     const writes = state.calls.filter((c) => c[0] === "writeFile");
     const project = writes.find((c) => c[1] === "project.json");
     const wrangler = writes.find((c) => c[1] === "wrangler.jsonc");
-    const config = JSON.parse(String(project?.[2])) as {
-      build: { adapter: string; deploy: DeployConfig };
-    };
-    expect(config.build.deploy).toEqual(DEPLOY);
-    expect(config.build.adapter).toBe("cloudflare-pages");
-    const wranglerConfig = JSON.parse(String(wrangler?.[2])) as {
-      name: string;
-      pages_build_output_dir: string;
-    };
+    const build = buildBlock(String(project?.[2]));
+    expect(build.deploy).toEqual(DEPLOY);
+    expect(build.adapter).toBe("cloudflare-pages");
+    const wranglerConfig = parseObject(String(wrangler?.[2]));
     expect(wranglerConfig.name).toBe("my-site");
     expect(wranglerConfig.pages_build_output_dir).toBe("./dist");
   });
@@ -178,9 +210,9 @@ describe("writeDeployConfig", () => {
     );
     const writes = state.calls.filter((c) => c[0] === "writeFile");
     expect(writes.some((c) => c[1] === "wrangler.jsonc")).toBe(false);
-    const config = JSON.parse(String(writes[0]?.[2])) as { build: Record<string, unknown> };
-    expect(config.build["deploy"]).toBeUndefined();
-    expect(config.build["adapter"]).toBe("cloudflare-pages");
+    const build = buildBlock(String(writes[0]?.[2]));
+    expect(build.deploy).toBeUndefined();
+    expect(build.adapter).toBe("cloudflare-pages");
   });
 });
 

@@ -1,6 +1,7 @@
 import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
+import { isString } from "@jxsuite/schema/guards";
 import document_ from "../components/jx-number-field.json";
 import { registerUi } from "../src/index.ts";
 import {
@@ -43,6 +44,8 @@ afterEach(() => {
  */
 async function field(attrs: Record<string, string> = {}): Promise<JxNumberField> {
   const outer = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-number-field, so createElement returns the
+     upgraded element, and jx-number-field.json declares every prop JxNumberField names. */
   const el = document.createElement("jx-number-field") as JxNumberField;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -68,10 +71,19 @@ interface Heard {
   badInput: boolean;
 }
 
+/** Every `input` and `change` an ancestor heard, each in order. */
+interface Hearing {
+  input: Heard[];
+  change: Heard[];
+}
+
 /** What the ANCESTOR heard, in order, so a doubled commit is a visible failure rather than a pass. */
-function record(el: HTMLElement): { input: Heard[]; change: Heard[] } {
-  const heard = { input: [] as Heard[], change: [] as Heard[] };
+function record(el: HTMLElement): Hearing {
+  const heard: Hearing = { input: [], change: [] };
   const seen = (event: Event): Heard => {
+    /* SAFETY: the ancestor holds only this field, and the only nodes that dispatch input or change
+       inside it are the inner `<input part="input">` and the jx-number-field itself, both of
+       which carry a string `value`. */
     const target = event.target as HTMLElement & { value: string };
     const host = target.closest<JxNumberField>("jx-number-field");
     return { badInput: host?.badInput === true, from: target.localName, value: target.value };
@@ -83,6 +95,13 @@ function record(el: HTMLElement): { input: Heard[]; change: Heard[] } {
     heard.change.push(seen(e));
   });
   return heard;
+}
+
+/** An event whose `currentTarget` reads as the given node, the way a handler bound there sees it. */
+function eventAt(currentTarget: EventTarget | null): Event {
+  const event = new Event("click");
+  Object.defineProperty(event, "currentTarget", { value: currentTarget });
+  return event;
 }
 
 /** A keydown the platform would deliver to the inner control. */
@@ -127,7 +146,7 @@ describe("jx-number-field", () => {
        undefined is the failure this clause exists for, because `Number(null)` is 0 and a host
        deleting a numeric key would write 0 into the document instead of removing it. */
     expect(el.value).toBe("");
-    expect(typeof el.value).toBe("string");
+    expect(isString(el.value)).toBe(true);
     expect(control(el).value).toBe("");
   });
 
@@ -174,6 +193,8 @@ describe("jx-number-field", () => {
 
   test("a form reset is a no-op, which is the price of the value attribute mirror", async () => {
     const form = document.createElement("form");
+    /* SAFETY: registerUi() in beforeAll defined jx-number-field, so createElement returns the
+       upgraded element, and jx-number-field.json declares every prop JxNumberField names. */
     const el = document.createElement("jx-number-field") as JxNumberField;
     el.setAttribute("label", "Opacity");
     el.setAttribute("value", "3");
@@ -352,9 +373,12 @@ describe("jx-number-field", () => {
         /* A sanitized control keeps nothing the reader typed. */
       },
     });
+    /* SAFETY: the stand-in carries only `badInput`, and that is the one ValidityState member the
+       element reads: number-field.ts's sync and the document's `event#/target/validity/badInput`. */
+    const validity = { badInput: true } as ValidityState;
     Object.defineProperty(input, "validity", {
       configurable: true,
-      get: () => ({ badInput: true }) as ValidityState,
+      get: () => validity,
     });
 
     const heard = record(el);
@@ -388,7 +412,9 @@ describe("jx-number-field", () => {
     const heard = record(el);
     const numbers: number[] = [];
     above(el).addEventListener("change", (e) => {
-      numbers.push((e.target as HTMLInputElement).valueAsNumber);
+      if (e.target instanceof HTMLInputElement) {
+        numbers.push(e.target.valueAsNumber);
+      }
     });
     const input = control(el);
     input.value = "8";
@@ -463,8 +489,8 @@ describe("the number-field sidecar", () => {
       calls.push(["down", n]);
     };
     const state = { badInput: false, value: "2" };
-    stepBy(state, { currentTarget: input } as unknown as Event, 3);
-    stepBy(state, { currentTarget: input } as unknown as Event, -7);
+    stepBy(state, eventAt(input), 3);
+    stepBy(state, eventAt(input), -7);
     expect(calls).toEqual([
       ["up", 3],
       ["down", 7],
@@ -475,9 +501,9 @@ describe("the number-field sidecar", () => {
     const el = await field({ label: "Size", step: "2", value: "10" });
     const input = control(el);
     const state = { badInput: false, value: "10" };
-    onStepUp(state, { currentTarget: input } as unknown as Event);
+    onStepUp(state, eventAt(input));
     expect(state.value).toBe("12");
-    onStepDown(state, { currentTarget: input } as unknown as Event);
+    onStepDown(state, eventAt(input));
     expect(state.value).toBe("10");
   });
 
@@ -488,7 +514,9 @@ describe("the number-field sidecar", () => {
     const event = new Event("change", { bubbles: true, cancelable: true });
     const reached: string[] = [];
     above(el).addEventListener("change", (e) => {
-      reached.push((e.target as Element).localName);
+      if (e.target instanceof Element) {
+        reached.push(e.target.localName);
+      }
     });
     Object.defineProperty(event, "currentTarget", { value: input });
     const state = { badInput: false, value: "1" };
@@ -504,12 +532,13 @@ describe("the number-field sidecar", () => {
     const el = await field({ label: "Size", step: "1", value: "5" });
     const input = control(el);
     const state = { badInput: false, value: "5" };
-    for (const [name, shift] of [
+    const presses: [string, boolean][] = [
       ["ArrowUp", false],
       ["ArrowDown", false],
       ["Enter", true],
       ["PageUp", true],
-    ] as [string, boolean][]) {
+    ];
+    for (const [name, shift] of presses) {
       const event = key(name, shift);
       Object.defineProperty(event, "currentTarget", { value: input });
       onNumberKeydown(state, event);
@@ -526,7 +555,7 @@ describe("the number-field sidecar", () => {
     };
     const heard = record(el);
     const state = { badInput: false, value: "5" };
-    stepBy(state, { currentTarget: input } as unknown as Event, 1);
+    stepBy(state, eventAt(input), 1);
     expect(state.value).toBe("5");
     expect(heard.input).toEqual([]);
     expect(heard.change).toEqual([]);
@@ -535,9 +564,9 @@ describe("the number-field sidecar", () => {
   test("an event from outside a field is a no-op rather than a throw", () => {
     const loose = document.createElement("div");
     const state = { badInput: false, value: "1" };
-    stepBy(state, { currentTarget: loose } as unknown as Event, 1);
-    onNumberChange(state, { currentTarget: loose } as unknown as Event);
-    stepBy(state, { currentTarget: null } as unknown as Event, 1);
+    stepBy(state, eventAt(loose), 1);
+    onNumberChange(state, eventAt(loose));
+    stepBy(state, eventAt(null), 1);
     expect(state.value).toBe("1");
   });
 });

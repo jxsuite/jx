@@ -2,29 +2,30 @@
  * Ai-command-tools.ts — the assistant's tools that ARE command records.
  *
  * A `ToolRegistry` that is a VIEW over this window's active command registry, in the idiom of
- * `services/automation.ts`'s `scriptableCommands()`: nothing is registered here, ever. Every call to
- * `listForLLM()` enumerates the records that carry an `aiTool` projection and builds one function
- * schema per record whose `parameters` is the record's own `args` object — by reference, so a
- * `derivedEnumProperty` getter serialises live on every agent-loop round — whose `description` is
- * the record's, and which is advertised exactly while `registry.isEnabled(id)` holds. `execute` is
- * `registry.run(id, args)`.
+ * `services/automation.ts`'s `scriptableCommands()`: nothing is registered here, ever. Every call
+ * to `listForLLM()` enumerates the records that carry an `aiTool` projection and builds one
+ * function schema per record whose `parameters` is the record's own `args` object — by reference,
+ * so a `derivedEnumProperty` getter serialises live on every agent-loop round — whose `description`
+ * is the record's, and which is advertised exactly while `registry.isEnabled(id)` holds. `execute`
+ * is `registry.run(id, args)`.
  *
  * **Why a view and not a registration.** `const assistant = createDocumentAssistant()` runs at
  * module load of `panels/ai-panel.ts`, before the bootstrap composes the registry, so a
  * registration step would have to import `app-commands.ts` (every command module into the
- * assistant's import graph) and read `report` from a record built with `noopCommandDeps` — a
- * second instance of every record, whose closures are not the app's. A view has neither problem,
- * and it cannot be dormant: issue 273 was forty-seven declarations that reached the assistant from
- * none of them, because each waited on a hand-registered tool nobody wrote. There is no
- * registration step between `aiTool` and the tool, so there is nothing to omit.
+ * assistant's import graph) and read `report` from a record built with `noopCommandDeps` — a second
+ * instance of every record, whose closures are not the app's. A view has neither problem, and it
+ * cannot be dormant: issue 273 was forty-seven declarations that reached the assistant from none of
+ * them, because each waited on a hand-registered tool nobody wrote. There is no registration step
+ * between `aiTool` and the tool, so there is nothing to omit.
  *
- * **What the model reads.** A refusal is the person's own sentence: `CommandUnavailableError.message`
- * IS `refusalSentence`, and a `RangeError` from `coerceArgs` (which `registry.run` applies for
- * every caller) or from inside `run` already names the value and the declared list. Both pass
- * through untouched. There is deliberately no pre-check with `refusalMessage` — `run` refuses with
- * the same sentence, and a second call site for one predicate is precisely the divergence
- * `specs/studio-ui-guidelines.md` §12.4 is about. And because this module owns `execute`,
- * `@jxsuite/ai`'s `Tool "<name>" execution error:` prefix never wraps a refusal.
+ * **What the model reads.** A refusal is the person's own sentence:
+ * `CommandUnavailableError.message` IS `refusalSentence`, and a `RangeError` from `coerceArgs`
+ * (which `registry.run` applies for every caller) or from inside `run` already names the value and
+ * the declared list. Both pass through untouched. There is deliberately no pre-check with
+ * `refusalMessage` — `run` refuses with the same sentence, and a second call site for one predicate
+ * is precisely the divergence `specs/studio-ui-guidelines.md` §12.4 is about. And because this
+ * module owns `execute`, `@jxsuite/ai`'s `Tool "<name>" execution error:` prefix never wraps a
+ * refusal.
  *
  * **The write witness.** A record with `undo: "document"` is held to having written: `transactDoc`
  * replaces the document's root reference on every applied transaction (`tabs/transact.ts`), so an
@@ -36,11 +37,11 @@
  * a transaction on the configuration document (`tabs/project-config.ts`), whose bind effect keeps
  * `projectState.projectConfig` equal to `toRaw(document.doc.document)` — so a record with `undo:
  * "project"` that left that reference alone wrote nothing, whatever its report says. The ledger
- * then files nothing (`wrote: []`, mechanically, for every project record), and a report that
- * named no `wrote` of its own — one with no latch to know it was a no-op — has its sentence
- * replaced by "changed nothing", because "Wrote project.json" over an untouched file is the
- * phantom the ledger exists to keep out. A record whose report answered `wrote: []` itself is one
- * that KNEW, and its sentence ("already enabled") is the one the witness cannot write. That is why
+ * then files nothing (`wrote: []`, mechanically, for every project record), and a report that named
+ * no `wrote` of its own — one with no latch to know it was a no-op — has its sentence replaced by
+ * "changed nothing", because "Wrote project.json" over an untouched file is the phantom the ledger
+ * exists to keep out. A record whose report answered `wrote: []` itself is one that KNEW, and its
+ * sentence ("already enabled") is the one the witness cannot write. That is why
  * `add_project_locale` keeps its latch: the sentence, not the ledger, is what the latch is for.
  *
  * **A tool with nothing it could be called with is withheld.** A `derivedEnumProperty` on a
@@ -52,8 +53,8 @@
  * the coercion's own refusal (`is not declared — declared: none`) rather than `Unknown tool`.
  *
  * **`validate()` is a no-op, on purpose.** `@jxsuite/ai`'s validator never checks `enum` and treats
- * a required `null` as missing (`packages/ai/src/tools.ts`), which would refuse `select_node
- * { path: null }`. The registry's coercion is the single validator, so every projected tool is
+ * a required `null` as missing (`packages/ai/src/tools.ts`), which would refuse `select_node {
+ * path: null }`. The registry's coercion is the single validator, so every projected tool is
  * `strict: false`.
  *
  * @license MIT
@@ -61,14 +62,18 @@
 
 import { createToolContext, toolError } from "@jxsuite/ai/tools";
 import type {
+  ToolArguments,
   ToolContext,
   ToolDefinition,
   ToolRegistry,
   ToolResult,
   WriteLedger,
 } from "@jxsuite/ai/tools";
+import { isString } from "@jxsuite/schema/guards";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 import { activeRegistry } from "../commands/active-registry";
 import { argsSchema } from "../commands/command-args";
+import type { CommandArgsSchema, PropertySchema } from "../commands/command-args";
 import { inCanvas } from "../commands/context";
 import { toRaw } from "../reactivity";
 import { projectState } from "../state";
@@ -99,12 +104,6 @@ export interface CommandToolDeps extends WriteReportDeps {
 /** Schema for a record that declares no `args`: an empty object, so the wire shape is uniform. */
 const EMPTY_ARGS = argsSchema({});
 
-/** The loosely-typed view of a record's `args` this module reads. */
-interface ArgsShape {
-  properties?: Record<string, { enum?: unknown }>;
-  required?: readonly string[];
-}
-
 /**
  * Whether a required argument's choice list is empty right now.
  *
@@ -112,10 +111,10 @@ interface ArgsShape {
  * runs on the wire — so this is the same answer the model would have been shown. Only a REQUIRED
  * property counts: an optional enum that is empty is an argument the model can leave out.
  */
-function hasEmptyRequiredEnum(args: object | undefined): boolean {
-  const shape = (args ?? EMPTY_ARGS) as ArgsShape;
-  return (shape.required ?? []).some((key) => {
-    const declared = shape.properties?.[key]?.enum;
+function hasEmptyRequiredEnum(args: CommandArgsSchema | undefined): boolean {
+  const view = args ?? EMPTY_ARGS;
+  return (view.required ?? []).some((key) => {
+    const declared = view.properties?.[key]?.enum;
     return Array.isArray(declared) && declared.length === 0;
   });
 }
@@ -125,9 +124,8 @@ function hasEmptyRequiredEnum(args: object | undefined): boolean {
  * description the model reads is the selector's. `undefined` when the selector is not registered,
  * in which case no selection-level record can be composed and none is projected.
  */
-function pathsProperty(registry: CommandRegistry): object | undefined {
-  const args = registry.get(SELECTOR)?.args as ArgsShape | undefined;
-  return args?.properties?.paths;
+function pathsProperty(registry: CommandRegistry): PropertySchema | undefined {
+  return registry.get(SELECTOR)?.args?.properties?.paths;
 }
 
 /**
@@ -136,8 +134,8 @@ function pathsProperty(registry: CommandRegistry): object | undefined {
  * selection verb with an argument of its own compose without a rule change — and `register()`
  * refuses a selection-level record that declares `paths` itself, so the two cannot collide.
  */
-function withPaths(paths: object, args: object | undefined): object {
-  const own = (args ?? EMPTY_ARGS) as ArgsShape;
+function withPaths(paths: PropertySchema, args: CommandArgsSchema | undefined): CommandArgsSchema {
+  const own = args ?? EMPTY_ARGS;
   return {
     additionalProperties: false,
     properties: { paths, ...own.properties },
@@ -203,10 +201,10 @@ function projected(registry: CommandRegistry): AnyCommand[] {
 function definitionOf(
   registry: CommandRegistry,
   command: AnyCommand,
-  execute: (name: string, args: object, ctx: ToolContext) => Promise<ToolResult>,
+  execute: (name: string, args: ToolArguments, ctx: ToolContext) => Promise<ToolResult>,
 ): ToolDefinition | undefined {
   const tool = command.aiTool!;
-  let parameters: object;
+  let parameters: CommandArgsSchema;
   if (command.level === "selection") {
     const paths = pathsProperty(registry);
     if (paths === undefined) {
@@ -219,6 +217,11 @@ function definitionOf(
   return {
     name: tool.name,
     description: `${tool.description}${undoSuffix(command)}`,
+    /* SAFETY: `parameters` is an `argsSchema()` object (or the selector's composed from one), a
+       JSON Schema object whose only departures from `JSONSchema` are readonly arrays and a
+       property `type` that may be a list — neither of which the registry's validator ever reads,
+       because every projected tool is `strict: false`. It is passed by reference so a
+       `derivedEnumProperty` getter still serialises live on the wire. */
     parameters: parameters as ToolDefinition["parameters"],
     strict: false,
     llmStrict: false,
@@ -233,15 +236,16 @@ function definitionOf(
  * what the gate will honour — one function, not two that agree until someone edits one.
  *
  * @param {CommandRegistry} registry
- * @param {(name: string, args: object) => Promise<ToolResult>} [execute] What each definition's
- *   `execute` calls. Defaults to a refusal, so a caller that only reads definitions cannot run
- *   one.
+ * @param {(name: string, args: ToolArguments) => Promise<ToolResult>} [execute] What each
+ *   definition's `execute` calls. Defaults to a refusal, so a caller that only reads definitions
+ *   cannot run one.
  * @returns {ToolDefinition[]}
  */
 export function advertisedCommandTools(
   registry: CommandRegistry,
-  execute: (name: string, args: object, ctx: ToolContext) => Promise<ToolResult> = async (name) =>
-    toolError(`Tool "${name}" was listed without an executor.`),
+  execute: (name: string, args: ToolArguments, ctx: ToolContext) => Promise<ToolResult> = async (
+    name,
+  ) => toolError(`Tool "${name}" was listed without an executor.`),
 ): ToolDefinition[] {
   const definitions: ToolDefinition[] = [];
   for (const command of projected(registry)) {
@@ -257,10 +261,9 @@ export function advertisedCommandTools(
 }
 
 /** The parameter list a prompt blurb prints: `a, b?` — required names bare, optional ones marked. */
-function signatureOf(parameters: object): string {
-  const shape = parameters as ArgsShape;
-  const required = new Set(shape.required);
-  return Object.keys(shape.properties ?? {})
+function signatureOf(parameters: ToolDefinition["parameters"]): string {
+  const required = new Set(parameters.required);
+  return Object.keys(parameters.properties ?? {})
     .map((key) => (required.has(key) ? key : `${key}?`))
     .join(", ");
 }
@@ -290,7 +293,7 @@ export function commandToolBlurbs(registry: CommandRegistry | null): string[] {
 
 /** A `report` return, normalised: a bare string is a summary alone. */
 function normaliseReport(report: string | AiToolReport): AiToolReport {
-  return typeof report === "string" ? { summary: report } : report;
+  return isString(report) ? { summary: report } : report;
 }
 
 /**
@@ -301,9 +304,9 @@ function normaliseReport(report: string | AiToolReport): AiToolReport {
  * configuration document is a new reference here — and an unchanged reference is a run that never
  * transacted, however the record's report reads.
  */
-function projectConfigRef(): object | null {
+function projectConfigRef(): ProjectConfig | null {
   const config = projectState?.projectConfig;
-  return config ? toRaw(config as unknown as object) : null;
+  return config ? toRaw(config) : null;
 }
 
 /**
@@ -362,12 +365,12 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
    * Run one projected record as the agent — the whole of `ai.md` §3.6.
    *
    * @param {string} name
-   * @param {object} received
+   * @param {ToolArguments} args
    * @returns {Promise<ToolResult>}
    */
   async function execute(
     name: string,
-    received: object,
+    args: ToolArguments,
     ctx: ToolContext = createToolContext(),
   ): Promise<ToolResult> {
     const registry = activeRegistry();
@@ -380,7 +383,6 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
         : { error: `Cannot run "${name}" — this window has no command registry.`, success: false };
     }
     const tool = command.aiTool!;
-    const args = received as Record<string, unknown>;
 
     /* The witness and the snapshot, only for a record that writes the document: `rootBefore` is
        what `transactDoc` replaces, and the snapshot is what the verdict compares against. */
@@ -434,6 +436,10 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
     const after = registry.context();
     let report: AiToolReport;
     try {
+      /* SAFETY: `AnyCommand` erases the record's argument type to `never` (see its declaration), so
+         `report` cannot be called without one assertion. Every key here was just accepted by
+         `registry.run` — `paths` by the selector, the rest by this record's own `coerceArgs` pass
+         against its `args` schema — and a refusal threw into the catch above, which returned. */
       report = normaliseReport(tool.report({ after, args: args as never, before }));
     } catch (error) {
       /* `run` has resolved, so the write HAPPENED; a report that throws must not make it vanish.
@@ -465,11 +471,11 @@ export function createCommandToolRegistry(deps: CommandToolDeps): ToolRegistry {
       /* A success verdict may have appended the token hints; the report's sentence is kept. */
       summary = verdict.summary ?? summary;
     }
-    return {
-      success: true,
-      summary,
-      ...(report.data === undefined ? {} : { data: report.data }),
-    };
+    const result: ToolResult = { success: true, summary };
+    if (report.data !== undefined) {
+      result.data = report.data;
+    }
+    return result;
   }
 
   return {

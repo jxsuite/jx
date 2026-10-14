@@ -40,6 +40,8 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, rmSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
@@ -129,7 +131,9 @@ export function shadowsIn(root: string): Shadow[] {
     let version = "unknown";
     try {
       const manifest = readFileSync(join(path, "package.json"), "utf8");
-      version = (JSON.parse(manifest) as { version?: string }).version ?? "unknown";
+      const parsed: JsonValue = JSON.parse(manifest);
+      const declared = isJsonObject(parsed) ? parsed.version : undefined;
+      version = isString(declared) ? declared : "unknown";
     } catch {
       // A half-written install still shadows; report it without a version rather than skipping it.
     }

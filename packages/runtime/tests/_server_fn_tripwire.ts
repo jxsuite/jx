@@ -2,8 +2,10 @@
 // Trips the flag, so a test can prove the runtime posted the call to the proxy without ever
 // Importing the module in the browser.
 
-(globalThis as { __jxTripwire?: boolean }).__jxTripwire = true;
+import type { JsonObject } from "@jxsuite/schema/types";
 
-export async function trip(args: Record<string, unknown>) {
+Object.assign(globalThis, { __jxTripwire: true });
+
+export async function trip(args: JsonObject) {
   return { ranInProcess: true, args };
 }

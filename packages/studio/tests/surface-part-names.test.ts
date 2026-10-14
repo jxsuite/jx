@@ -53,29 +53,26 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { resolveNestedSelector, splitSelectorList } from "@jxsuite/runtime/css";
-import { documents as kitDocuments } from "@jxsuite/ui/documents";
-
-type Json = Record<string, unknown>;
-
-const isObject = (value: unknown): value is Json =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+import { documents } from "@jxsuite/ui/documents";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /**
  * The element nodes under `value`, depth first, never descending into a `style` block.
  *
- * @yields {Json} Each object carrying a `tagName`, `value` itself first when it is one.
+ * @yields {JsonObject} Each object carrying a `tagName`, `value` itself first when it is one.
  */
-function* elementsUnder(value: unknown): Generator<Json> {
+function* elementsUnder(value: JxDocument | JsonValue | undefined): Generator<JsonObject> {
   if (Array.isArray(value)) {
     for (const item of value) {
       yield* elementsUnder(item);
     }
     return;
   }
-  if (!isObject(value)) {
+  if (!isJsonObject(value)) {
     return;
   }
-  if (typeof value["tagName"] === "string") {
+  if (isString(value["tagName"])) {
     yield value;
   }
   for (const [key, child] of Object.entries(value)) {
@@ -86,19 +83,19 @@ function* elementsUnder(value: unknown): Generator<Json> {
 }
 
 /** The whitespace-separated part names a node's own attributes give it. */
-function partsOf(node: Json): string[] {
+function partsOf(node: JsonObject): string[] {
   const { attributes } = node;
-  const part = isObject(attributes) ? attributes["part"] : undefined;
-  return typeof part === "string" ? part.split(/\s+/).filter(Boolean) : [];
+  const part = isJsonObject(attributes) ? attributes["part"] : undefined;
+  return isString(part) ? part.split(/\s+/).filter(Boolean) : [];
 }
 
 /** Every part a kit node keeps in the tree as a live region: the nodes that carry `aria-live`. */
-function reservedParts(docs: Readonly<Record<string, unknown>>): Set<string> {
+function reservedParts(docs: Readonly<Record<string, JxDocument>>): Set<string> {
   const reserved = new Set<string>();
   for (const doc of Object.values(docs)) {
     for (const node of elementsUnder(doc)) {
       const { attributes } = node;
-      if (isObject(attributes) && "aria-live" in attributes) {
+      if (isJsonObject(attributes) && "aria-live" in attributes) {
         for (const part of partsOf(node)) {
           reserved.add(part);
         }
@@ -113,7 +110,7 @@ function reservedParts(docs: Readonly<Record<string, unknown>>): Set<string> {
  * that does, found by growing the set until a pass adds nothing.
  */
 function regionHolders(
-  docs: Readonly<Record<string, unknown>>,
+  docs: Readonly<Record<string, JxDocument>>,
   reserved: ReadonlySet<string>,
 ): Set<string> {
   const holders = new Set<string>();
@@ -122,11 +119,14 @@ function regionHolders(
     grew = false;
     for (const [tag, doc] of Object.entries(docs)) {
       const inner = [...elementsUnder(doc)].filter((node) => node !== doc);
-      const holds = inner.some(
-        (node) =>
+      const holds = inner.some((node) => {
+        // Every node elementsUnder yields has a string tagName; the guard states it to the compiler.
+        const { tagName } = node;
+        return (
           partsOf(node).some((part) => reserved.has(part)) ||
-          holders.has(node["tagName"] as string),
-      );
+          (isString(tagName) && holders.has(tagName))
+        );
+      });
       if (holds && !holders.has(tag)) {
         holders.add(tag);
         grew = true;
@@ -143,11 +143,11 @@ function regionHolders(
  *
  * @yields {string} Each nested rule's selector.
  */
-function* selectorsOf(block: Json, scope: string): Generator<string> {
+function* selectorsOf(block: JsonObject, scope: string): Generator<string> {
   for (const [key, value] of Object.entries(block)) {
     const blocks = Array.isArray(value)
-      ? value.filter((entry) => isObject(entry))
-      : isObject(value)
+      ? value.filter((entry) => isJsonObject(entry))
+      : isJsonObject(value)
         ? [value]
         : [];
     for (const child of blocks) {
@@ -168,10 +168,10 @@ function* selectorsOf(block: Json, scope: string): Generator<string> {
  * @yields {string} Each rule's selector, the root's resolved against `SCOPE` and a node's against
  *   `NODE`.
  */
-function* documentSelectors(doc: Json): Generator<string> {
+function* documentSelectors(doc: JsonObject): Generator<string> {
   for (const node of elementsUnder(doc)) {
     const { style } = node;
-    if (isObject(style)) {
+    if (isJsonObject(style)) {
       yield* selectorsOf(style, node === doc ? "SCOPE" : "NODE");
     }
   }
@@ -211,8 +211,8 @@ function collisions(
   );
 }
 
-const RESERVED = reservedParts(kitDocuments);
-const HOLDERS = regionHolders(kitDocuments, RESERVED);
+const RESERVED = reservedParts(documents);
+const HOLDERS = regionHolders(documents, RESERVED);
 
 const STUDIO = resolve(import.meta.dir, "..");
 const SOURCES = [
@@ -229,7 +229,14 @@ const SHEETS = readdirSync(join(STUDIO, "styles"))
   .map((name) => `styles/${name}`)
   .toSorted();
 
-const read = (path: string) => JSON.parse(readFileSync(join(STUDIO, path), "utf8")) as Json;
+/** A Studio JSON source, refused unless its top level is a JSON object. */
+function read(path: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(join(STUDIO, path), "utf8"));
+  if (!isJsonObject(parsed)) {
+    throw new Error(`${path} is not a JSON object`);
+  }
+  return parsed;
+}
 
 /**
  * Every rule selector a hand-written sheet declares.
@@ -259,7 +266,7 @@ function* sheetSelectors(css: string): Generator<string> {
  * the list is one line when an island gains a body, and the test below fails when a named host
  * stops drawing the island it is listed for, so it cannot rot into a no-op.
  */
-const ISLAND_GUESTS: Readonly<Record<string, readonly string[]>> = {
+const ISLAND_GUESTS = {
   "dialog.json": ["grid-open.json", "push-plan.json"],
   "new-project.json": [
     "ai-credentials-form.json",
@@ -271,7 +278,7 @@ const ISLAND_GUESTS: Readonly<Record<string, readonly string[]>> = {
     "ai-managed-connect.json",
     "ai-model-picker.json",
   ],
-};
+} satisfies Readonly<Record<string, readonly string[]>>;
 
 /**
  * The parts of every box a document draws and never fills: a mount point.
@@ -282,9 +289,9 @@ const ISLAND_GUESTS: Readonly<Record<string, readonly string[]>> = {
  * children, no `$switch`, no `$map`, no text. That is the document saying "somebody else puts
  * something here".
  */
-function mountBoxes(doc: Json): string[] {
+function mountBoxes(doc: JsonObject): string[] {
   return [...elementsUnder(doc)].flatMap((node) => {
-    const attributes = isObject(node["attributes"]) ? node["attributes"] : {};
+    const attributes = isJsonObject(node["attributes"]) ? node["attributes"] : {};
     const filled = ["children", "cases", "map", "$switch", "textContent"].some(
       (key) => node[key] !== undefined,
     );
@@ -311,7 +318,7 @@ function drawnParts(files: readonly string[]): Map<string, GuestNode[]> {
 /** One node a guest document draws, with the little a host's selector could test it against. */
 interface GuestNode {
   file: string;
-  node: Json;
+  node: JsonObject;
   /**
    * The part names of the element this one sits inside, or `undefined` for the guest's root: that
    * one's parent is the host's own mount box, so a rule reaching it cannot be ruled out.
@@ -328,7 +335,7 @@ interface GuestNode {
  * @yields {GuestNode} Each element, the document's own root first.
  */
 function* guestNodes(
-  value: unknown,
+  value: JsonValue | undefined,
   file: string,
   parentParts?: readonly string[],
 ): Generator<GuestNode> {
@@ -338,10 +345,10 @@ function* guestNodes(
     }
     return;
   }
-  if (!isObject(value)) {
+  if (!isJsonObject(value)) {
     return;
   }
-  const element = typeof value["tagName"] === "string";
+  const element = isString(value["tagName"]);
   if (element) {
     yield { file, node: value, parentParts };
   }
@@ -396,8 +403,8 @@ function sequence(member: string): { combinator: string; compound: string }[] {
  * the rule saying it means a node of the host's own, which is how a host keeps a shared part name
  * without reaching into its guest. Pseudo-classes are ignored — they are state, not identity.
  */
-function compoundCouldMatch(compound: string, node: Json): boolean {
-  const attributes = isObject(node["attributes"]) ? node["attributes"] : {};
+function compoundCouldMatch(compound: string, node: JsonObject): boolean {
+  const attributes = isJsonObject(node["attributes"]) ? node["attributes"] : {};
   const tag = /^[a-z][a-z0-9-]*/.exec(compound)?.[0];
   if (tag !== undefined && tag !== node["tagName"]) {
     return false;
@@ -472,13 +479,13 @@ describe("the reserved names are the kit's own", () => {
 describe("the walker sees every rule a style block emits", () => {
   const RESERVED_HERE = new Set(["error"]);
   const HOLDERS_HERE = new Set(["jx-textfield"]);
-  const found = (style: Json) =>
+  const found = (style: JsonObject) =>
     [...selectorsOf(style, "SCOPE")].flatMap((selector) =>
       collisions(selector, RESERVED_HERE, HOLDERS_HERE),
     );
 
   test("a nested at-rule block, a nested `&` block and a comma list", () => {
-    const style: Json = {
+    const style: JsonObject = {
       '& [part="row"]': { color: "red", "& [part='error']": { padding: "6px" } },
       "@(forced-colors: active)": { '& [part~="error"]': { border: "1px solid CanvasText" } },
       '& [part="help"], & [part=error]:empty': { margin: "0" },
@@ -491,7 +498,7 @@ describe("the walker sees every rule a style block emits", () => {
   });
 
   test("an anchor on the kit element that holds the region is not a collision", () => {
-    const style: Json = {
+    const style: JsonObject = {
       '& jx-textfield [part="error"]': { color: "red" },
       "& jx-textfield": { '& > [part="error"]': { margin: "0" } },
       '& jx-dialog [part="error"]': { margin: "0" },
@@ -501,7 +508,7 @@ describe("the walker sees every rule a style block emits", () => {
   });
 
   test("a document's node-level style blocks are read as well as its root's", () => {
-    const doc: Json = {
+    const doc: JsonObject = {
       tagName: "section",
       style: { color: "red" },
       children: [{ tagName: "div", style: { '& [part="error"]': { margin: "0" } } }],
@@ -632,7 +639,7 @@ describe("a surface that hosts an island does not style its guest's parts", () =
   });
 
   test("a guest node's parent is the nearest element above it, through a case or a map", () => {
-    const doc: Json = {
+    const doc: JsonObject = {
       attributes: { part: "root" },
       children: [
         {

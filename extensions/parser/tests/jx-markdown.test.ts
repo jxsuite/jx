@@ -13,9 +13,37 @@ import {
 } from "../src/md";
 
 import { jxKey, mdKey } from "../src/transpile";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
 
 const __dirname = import.meta.dirname;
 const EXAMPLES_DIR = join(__dirname, "..", "..", "..", "examples");
+
+/** `el`'s children as a list, failing the test when they are a mapped array or absent. */
+function childList(el: JxElement): (JxElement | string)[] {
+  if (!Array.isArray(el.children)) {
+    throw new TypeError(`<${el.tagName ?? "?"}> has no children list`);
+  }
+  return el.children;
+}
+
+/** Child `index` of `el` as an element, failing the test when a string or nothing sits there. */
+function childAt(el: JxElement, index: number): JxElement {
+  const node = childList(el)[index];
+  if (node === undefined || isString(node)) {
+    throw new TypeError(`child ${index} of <${el.tagName ?? "?"}> is not an element`);
+  }
+  return node;
+}
+
+/** The first child of `el` whose tag is `tagName`, failing the test when there is none. */
+function childTagged(el: JxElement, tagName: string): JxElement {
+  const found = childList(el).find((c): c is JxElement => !isString(c) && c.tagName === tagName);
+  if (found === undefined) {
+    throw new TypeError(`<${el.tagName ?? "?"}> has no <${tagName}> child`);
+  }
+  return found;
+}
 
 // ─── jxKey / mdKey ──────────────────────────────────────────────────────────
 
@@ -275,7 +303,7 @@ state:
 
 # Title
 `;
-    const doc = transpileJxMarkdown(source) as any;
+    const doc = transpileJxMarkdown(source);
     expect(doc.$schema).toBe("https://jxsuite.com/schema/v1");
     expect(doc.$id).toBe("TestComponent");
     expect(doc.tagName).toBe("test-component");
@@ -292,7 +320,7 @@ style:
 
 # Hello
 `;
-    const doc = transpileJxMarkdown(source) as any;
+    const doc = transpileJxMarkdown(source);
     expect(doc.style).toEqual({ color: "red", fontSize: "16px" });
   });
 
@@ -307,7 +335,7 @@ style:
     color: white
 ---
 `;
-    const doc = transpileJxMarkdown(source) as any;
+    const doc = transpileJxMarkdown(source);
     expect(doc.style).toEqual({
       ":hover": { color: "blue" },
       "@--dark": { color: "white" },
@@ -325,8 +353,8 @@ tagName: my-comp
 Some content here.
 ::::
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [section] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const section = childAt(doc, 0);
     expect(section.tagName).toBe("my-section");
     expect(section.style).toEqual({
       backgroundColor: "white",
@@ -341,8 +369,8 @@ tagName: my-comp
 
 ::button{style.color="red" style.hover.color="blue" style.hover.cursor="pointer"}
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [button] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const button = childAt(doc, 0);
     expect(button.style).toEqual({
       ":hover": { color: "blue", cursor: "pointer" },
       color: "red",
@@ -356,8 +384,8 @@ tagName: my-comp
 
 ::div{style.gap="0.5rem" style.--md.gap="1rem" style.--dark.backgroundColor="#1a1a1a"}
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [div] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const div = childAt(doc, 0);
     expect(div.style).toEqual({
       "@--dark": { backgroundColor: "#1a1a1a" },
       "@--md": { gap: "1rem" },
@@ -372,12 +400,12 @@ tagName: my-comp
 
 ::input{type="text" value="\${state.name}" placeholder="Enter name"}
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [input] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const input = childAt(doc, 0);
     expect(input.tagName).toBe("input");
-    expect(input.attributes.type).toBe("text");
-    expect(input.attributes.value).toBe("${state.name}");
-    expect(input.attributes.placeholder).toBe("Enter name");
+    expect(input.attributes?.type).toBe("text");
+    expect(input.attributes?.value).toBe("${state.name}");
+    expect(input.attributes?.placeholder).toBe("Enter name");
   });
 
   test("routes aria-* and data-* to attributes sub-object", () => {
@@ -387,8 +415,8 @@ tagName: my-comp
 
 ::button{onclick="handleClick()" aria-label="Close" data-id="42"}
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [button] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const button = childAt(doc, 0);
     expect(button.onclick).toBe("handleClick()");
     expect(button.attributes).toEqual({
       "aria-label": "Close",
@@ -404,11 +432,11 @@ tagName: my-comp
 ::hr
 ::img{src="/photo.jpg" alt="A photo"}
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    expect(doc.children[0].tagName).toBe("hr");
-    expect(doc.children[1].tagName).toBe("img");
-    expect(doc.children[1].attributes.src).toBe("/photo.jpg");
-    expect(doc.children[1].attributes.alt).toBe("A photo");
+    const doc = transpileJxMarkdown(source);
+    expect(childAt(doc, 0).tagName).toBe("hr");
+    expect(childAt(doc, 1).tagName).toBe("img");
+    expect(childAt(doc, 1).attributes?.src).toBe("/photo.jpg");
+    expect(childAt(doc, 1).attributes?.alt).toBe("A photo");
   });
 
   test("handles container directives with nested children", () => {
@@ -422,10 +450,10 @@ Content
 :::::
 ::::::
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [outer] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const outer = childAt(doc, 0);
     expect(outer.tagName).toBe("outer");
-    const [inner] = outer.children;
+    const inner = childAt(outer, 0);
     expect(inner.tagName).toBe("inner");
   });
 
@@ -438,8 +466,8 @@ tagName: my-comp
 Hello world
 :::::::::
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [p] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const p = childAt(doc, 0);
     expect(p.tagName).toBe("p");
     expect(p.style).toEqual({ color: "red", fontSize: "1.25rem" });
     // Text should be textContent, NOT a nested paragraph
@@ -460,17 +488,17 @@ Ship as static HTML.
 ::::
 :::::::::
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [h1] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const h1 = childAt(doc, 0);
     expect(h1.tagName).toBe("h1");
     expect(h1.style).toEqual({ fontSize: "3rem" });
     // Should have mixed children: text, br, span
-    expect(h1.children.length).toBe(3);
-    expect(h1.children[0]).toBe("Design visually.");
-    expect(h1.children[1].tagName).toBe("br");
-    expect(h1.children[2].tagName).toBe("span");
-    expect(h1.children[2].style).toEqual({ color: "gray" });
-    expect(h1.children[2].textContent).toBe("Ship as static HTML.");
+    expect(childList(h1).length).toBe(3);
+    expect(childList(h1)[0]).toBe("Design visually.");
+    expect(childAt(h1, 1).tagName).toBe("br");
+    expect(childAt(h1, 2).tagName).toBe("span");
+    expect(childAt(h1, 2).style).toEqual({ color: "gray" });
+    expect(childAt(h1, 2).textContent).toBe("Ship as static HTML.");
   });
 
   test("preserves paragraph children in block-level directives", () => {
@@ -482,11 +510,11 @@ tagName: my-comp
 Some text
 :::
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [div] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const div = childAt(doc, 0);
     expect(div.tagName).toBe("div");
     // Div CAN contain paragraphs, so they should NOT be unwrapped
-    expect(div.children[0].tagName).toBe("p");
+    expect(childAt(div, 0).tagName).toBe("p");
   });
 
   test("converts standard markdown nodes to Jx elements", () => {
@@ -498,15 +526,15 @@ tagName: my-comp
 
 A paragraph with **bold** and *italic* text.
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [h1] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const h1 = childAt(doc, 0);
     expect(h1.tagName).toBe("h1");
     expect(h1.textContent).toBe("Hello World");
 
-    const [, p] = doc.children;
+    const p = childAt(doc, 1);
     expect(p.tagName).toBe("p");
     // Should have mixed children (text, strong, text, em, text)
-    expect(p.children.length).toBeGreaterThan(1);
+    expect(childList(p).length).toBeGreaterThan(1);
   });
 
   test("expands dot-paths for Array namespace children on parent", () => {
@@ -519,8 +547,8 @@ state:
 ::::::todo-list{children.prototype="Array" children.items.ref="#/state/items" children.map.component="todo-item" children.map.props.item.ref="$map/item"}
 ::::::
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [list] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const list = childAt(doc, 0);
     expect(list.tagName).toBe("todo-list");
     expect(list.children).toEqual({
       $prototype: "Array",
@@ -534,31 +562,30 @@ state:
 
   test("transpiles the todo-item example", () => {
     const source = readFileSync(join(EXAMPLES_DIR, "components", "todo-item.md"), "utf8");
-    const doc = transpileJxMarkdown(source) as any;
+    const doc = transpileJxMarkdown(source);
 
     expect(doc.$schema).toBe("https://jxsuite.com/schema/v1");
     expect(doc.$id).toBe("TodoItem");
     expect(doc.tagName).toBe("todo-item");
-    expect(doc.state.item).toEqual({});
-    expect(doc.state.onToggle.$prototype).toBe("Function");
+    expect(doc.state?.item).toEqual({});
+    expect(doc.state?.onToggle).toMatchObject({ $prototype: "Function" });
     expect(doc.style).toBeDefined();
-    expect(doc.style.display).toBe("flex");
-    expect(doc.children.length).toBe(3); // Input, span, button
-    expect(doc.children[0].tagName).toBe("input");
-    expect(doc.children[1].tagName).toBe("span");
-    expect(doc.children[2].tagName).toBe("button");
+    expect(doc.style?.display).toBe("flex");
+    expect(childList(doc).length).toBe(3); // Input, span, button
+    expect(childAt(doc, 0).tagName).toBe("input");
+    expect(childAt(doc, 1).tagName).toBe("span");
+    expect(childAt(doc, 2).tagName).toBe("button");
     // Each child should have its own style from dot-path attributes
-    expect(doc.children[0].style).toBeDefined();
-    expect(doc.children[1].style).toBeDefined();
-    expect(doc.children[2].style).toBeDefined();
+    expect(childAt(doc, 0).style).toBeDefined();
+    expect(childAt(doc, 1).style).toBeDefined();
+    expect(childAt(doc, 2).style).toBeDefined();
     // Button should have :hover styles from style.hover.* attributes
-    expect(doc.children[2].style[":hover"]).toBeDefined();
-    expect(doc.children[2].style[":hover"].color).toBe("var(--color-danger)");
+    expect(childAt(doc, 2).style?.[":hover"]).toMatchObject({ color: "var(--color-danger)" });
   });
 
   test("transpiles the todo-app example", () => {
     const source = readFileSync(join(EXAMPLES_DIR, "components", "todo-app.md"), "utf8");
-    const doc = transpileJxMarkdown(source) as any;
+    const doc = transpileJxMarkdown(source);
 
     expect(doc.$schema).toBe("https://jxsuite.com/schema/v1");
     // The markdown twin of components/todo-app.json carries its own tag/$id so both can register
@@ -566,16 +593,16 @@ state:
     expect(doc.$id).toBe("MarkdownTodoApp");
     expect(doc.tagName).toBe("markdown-todo-app");
     expect(doc.$media).toBeDefined();
-    expect(doc.state.items.$prototype).toBe("LocalStorage");
-    expect(doc.state.addItem.$prototype).toBe("Function");
+    expect(doc.state?.items).toMatchObject({ $prototype: "LocalStorage" });
+    expect(doc.state?.addItem).toMatchObject({ $prototype: "Function" });
     expect(doc.style).toBeDefined();
-    expect(doc.style["@--dark"]).toBeDefined();
+    expect(doc.style?.["@--dark"]).toBeDefined();
     // Should have header, add-form, todo-list, footer sections
-    expect(doc.children.length).toBe(4);
-    expect(doc.children[0].tagName).toBe("header");
-    expect(doc.children[1].tagName).toBe("add-form");
-    expect(doc.children[2].tagName).toBe("todo-list");
-    expect(doc.children[3].tagName).toBe("footer");
+    expect(childList(doc).length).toBe(4);
+    expect(childAt(doc, 0).tagName).toBe("header");
+    expect(childAt(doc, 1).tagName).toBe("add-form");
+    expect(childAt(doc, 2).tagName).toBe("todo-list");
+    expect(childAt(doc, 3).tagName).toBe("footer");
   });
 });
 
@@ -589,10 +616,10 @@ tagName: my-comp
 
 This has \`inline code\` in it.
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [para] = doc.children;
+    const doc = transpileJxMarkdown(source);
+    const para = childAt(doc, 0);
     expect(para.tagName).toBe("p");
-    const codeNode = para.children.find((c: any) => c.tagName === "code");
+    const codeNode = childTagged(para, "code");
     expect(codeNode).toBeDefined();
     expect(codeNode.textContent).toBe("inline code");
   });
@@ -604,12 +631,12 @@ tagName: my-comp
 
 Click [here](https://example.com "Example") for more.
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [para] = doc.children;
-    const link = para.children.find((c: any) => c.tagName === "a");
+    const doc = transpileJxMarkdown(source);
+    const para = childAt(doc, 0);
+    const link = childTagged(para, "a");
     expect(link).toBeDefined();
-    expect(link.attributes.href).toBe("https://example.com");
-    expect(link.attributes.title).toBe("Example");
+    expect(link.attributes?.href).toBe("https://example.com");
+    expect(link.attributes?.title).toBe("Example");
   });
 
   test("images convert to img elements", () => {
@@ -619,13 +646,13 @@ tagName: my-comp
 
 ![Alt text](image.png "Image title")
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [para] = doc.children;
-    const img = para.children.find((c: any) => c.tagName === "img");
+    const doc = transpileJxMarkdown(source);
+    const para = childAt(doc, 0);
+    const img = childTagged(para, "img");
     expect(img).toBeDefined();
-    expect(img.attributes.src).toBe("image.png");
-    expect(img.attributes.alt).toBe("Alt text");
-    expect(img.attributes.title).toBe("Image title");
+    expect(img.attributes?.src).toBe("image.png");
+    expect(img.attributes?.alt).toBe("Alt text");
+    expect(img.attributes?.title).toBe("Image title");
   });
 
   test("ordered list converts to ol element", () => {
@@ -637,11 +664,11 @@ tagName: my-comp
 2. Second
 3. Third
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const list = doc.children.find((c: any) => c.tagName === "ol");
+    const doc = transpileJxMarkdown(source);
+    const list = childTagged(doc, "ol");
     expect(list).toBeDefined();
-    expect(list.children.length).toBe(3);
-    expect(list.children[0].tagName).toBe("li");
+    expect(childList(list).length).toBe(3);
+    expect(childAt(list, 0).tagName).toBe("li");
   });
 
   test("ordered list with non-1 start gets start attribute", () => {
@@ -652,8 +679,8 @@ tagName: my-comp
 5. Fifth
 6. Sixth
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const list = doc.children.find((c: any) => c.tagName === "ol");
+    const doc = transpileJxMarkdown(source);
+    const list = childTagged(doc, "ol");
     expect(list).toBeDefined();
     expect(list.attributes?.start).toBe("5");
   });
@@ -667,12 +694,13 @@ tagName: my-comp
 const x = 42;
 \`\`\`
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const pre = doc.children.find((c: any) => c.tagName === "pre");
+    const doc = transpileJxMarkdown(source);
+    const pre = childTagged(doc, "pre");
     expect(pre).toBeDefined();
-    expect(pre.children[0].tagName).toBe("code");
-    expect(pre.children[0].className).toBe("language-javascript");
-    expect(pre.children[0].textContent).toContain("const x = 42;");
+    const code = childAt(pre, 0);
+    expect(code.tagName).toBe("code");
+    expect(code.className).toBe("language-javascript");
+    expect(code.textContent).toContain("const x = 42;");
   });
 
   test("table converts to table with thead and tbody", () => {
@@ -685,11 +713,11 @@ tagName: my-comp
 | Alice | 30 |
 | Bob | 25 |
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const table = doc.children.find((c: any) => c.tagName === "table");
+    const doc = transpileJxMarkdown(source);
+    const table = childTagged(doc, "table");
     expect(table).toBeDefined();
-    const thead = table.children.find((c: any) => c.tagName === "thead");
-    const tbody = table.children.find((c: any) => c.tagName === "tbody");
+    const thead = childTagged(table, "thead");
+    const tbody = childTagged(table, "tbody");
     expect(thead).toBeDefined();
     expect(tbody).toBeDefined();
   });
@@ -701,11 +729,11 @@ tagName: my-comp
 
 [**Bold link** text](https://example.com)
 `;
-    const doc = transpileJxMarkdown(source) as any;
-    const [para] = doc.children;
-    const link = para.children.find((c: any) => c.tagName === "a");
+    const doc = transpileJxMarkdown(source);
+    const para = childAt(doc, 0);
+    const link = childTagged(para, "a");
     expect(link).toBeDefined();
     expect(link.children).toBeDefined();
-    expect(link.children.length).toBeGreaterThan(0);
+    expect(childList(link).length).toBeGreaterThan(0);
   });
 });

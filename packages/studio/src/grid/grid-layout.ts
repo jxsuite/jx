@@ -23,6 +23,7 @@
  * layout keep their relative position at the end; saved fields that no longer exist are ignored —
  * schemas drift).
  */
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 
 /** One sort, as a saved view records it. The grid is single-key sorted; a second key is not saved. */
 export interface GridSortSpec {
@@ -70,7 +71,7 @@ const STORAGE_PREFIX = "jx-grid-layout:";
 
 function storage(): Storage | null {
   try {
-    return globalThis.localStorage ?? null;
+    return typeof localStorage === "undefined" ? null : localStorage;
   } catch {
     return null; // Storage disabled (privacy mode) — layouts just don't persist.
   }
@@ -83,8 +84,11 @@ function readRecord(gridId: string): GridLayoutRecord | null {
     return null;
   }
   try {
-    const parsed = JSON.parse(raw) as GridLayoutRecord;
-    return typeof parsed === "object" && parsed !== null ? parsed : null;
+    const parsed: unknown = JSON.parse(raw);
+    /* SAFETY: this key is written only by `writeRecord`, which stores a serialized
+       GridLayoutRecord, and every reader treats each field as possibly absent (`?.`, `??`, and
+       `listSavedViews` drops any entry that is not a named view). A non-object is refused here. */
+    return isNonNullObject(parsed) ? (parsed as GridLayoutRecord) : null;
   } catch {
     return null;
   }
@@ -153,7 +157,11 @@ export function resetGridLayout(gridId: string): void {
   if (!record) {
     return;
   }
-  writeRecord(gridId, { active: null, ...(record.views ? { views: record.views } : {}) });
+  const next: GridLayoutRecord = { active: null };
+  if (record.views) {
+    next.views = record.views;
+  }
+  writeRecord(gridId, next);
 }
 
 // ─── Named views ──────────────────────────────────────────────────────────────
@@ -161,7 +169,15 @@ export function resetGridLayout(gridId: string): void {
 /** The named views for a grid id, in save order. */
 export function listSavedViews(gridId: string): SavedGridView[] {
   const views = readRecord(gridId)?.views;
-  return Array.isArray(views) ? views.filter((view) => typeof view?.name === "string") : [];
+  return Array.isArray(views) ? views.filter((view) => isSavedGridView(view)) : [];
+}
+
+/**
+ * Whether a stored `views` entry is a named view. Storage outlives the code that wrote it, so an
+ * entry without a string `name` (null, a primitive, an older shape) is skipped rather than shown.
+ */
+function isSavedGridView(view: unknown): view is SavedGridView {
+  return isNonNullObject(view) && "name" in view && isString(view.name);
 }
 
 /** The name of the view last applied to this grid, or null when the layout is unnamed. */

@@ -14,22 +14,23 @@ import {
   emitProjectSchema,
   flattenSchema,
 } from "../src/project-schemas";
-
-const FRAG_ID = "https://test.invalid/parser/project.fragment.schema.json";
+import { isJsonObject, isString } from "../src/guards";
+import { FRAG_ID } from "./schema-fixtures";
+import type { JsonObject, JsonValue } from "../types";
 
 /** Every `$ref` in a document, paired with the pointer it sits at. */
-function allRefs(node: unknown, path = "", out: [string, string][] = []): [string, string][] {
+function allRefs(node: JsonValue, path = "", out: [string, string][] = []): [string, string][] {
   if (Array.isArray(node)) {
     for (const [index, item] of node.entries()) {
       allRefs(item, `${path}/${index}`, out);
     }
     return out;
   }
-  if (typeof node !== "object" || node === null) {
+  if (!isJsonObject(node)) {
     return out;
   }
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    if (key === "$ref" && typeof value === "string") {
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "$ref" && isString(value)) {
       out.push([value, path]);
     } else {
       allRefs(value, `${path}/${key}`, out);
@@ -38,45 +39,64 @@ function allRefs(node: unknown, path = "", out: [string, string][] = []): [strin
   return out;
 }
 
-/** A compound document shaped like a real bundle: an entry plus two embedded resources. */
-function compound(): Record<string, unknown> {
+/** The value at `keys` below `value`, descending only through JSON objects. */
+function dig(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
+}
+
+/** The keys of `value` in insertion order, or `value` itself when it is not a JSON object. */
+function keysOf(value: JsonValue | undefined): string[] | JsonValue | undefined {
+  return isJsonObject(value) ? Object.keys(value) : value;
+}
+
+/** The `$defs` of {@link compound}: the entry's Fields embed plus two URI-keyed resources. */
+function compoundDefs(): JsonObject {
   return {
-    $defs: {
-      Fields: {
-        $id: PROJECT_FIELDS_SCHEMA_ID,
-        anyOf: [{ $ref: `${PROJECT_CORE_SCHEMA_ID}#/$defs/JxFieldSchema` }],
-      },
-      [PROJECT_CORE_SCHEMA_ID]: {
-        $defs: {
-          JxFieldSchema: {
-            properties: {
-              items: { $ref: PROJECT_FIELDS_SCHEMA_ID },
-              type: { type: "string" },
-            },
-            required: ["type"],
-            type: "object",
-          },
-          StyleObject: {
-            // Recursive through a LOCAL pointer — the ref form VS Code cannot re-base.
-            additionalProperties: { oneOf: [{ type: "string" }, { $ref: "#/$defs/StyleObject" }] },
-            type: "object",
-          },
-        },
-        $id: PROJECT_CORE_SCHEMA_ID,
-        properties: {
-          name: { type: "string" },
-          style: { $ref: "#/$defs/StyleObject" },
-        },
-        type: "object",
-      },
-      [FRAG_ID]: {
-        $id: FRAG_ID,
-        properties: {
-          content: { additionalProperties: { $ref: PROJECT_FIELDS_SCHEMA_ID }, type: "object" },
-        },
-        type: "object",
-      },
+    Fields: {
+      $id: PROJECT_FIELDS_SCHEMA_ID,
+      anyOf: [{ $ref: `${PROJECT_CORE_SCHEMA_ID}#/$defs/JxFieldSchema` }],
     },
+    [PROJECT_CORE_SCHEMA_ID]: {
+      $defs: {
+        JxFieldSchema: {
+          properties: {
+            items: { $ref: PROJECT_FIELDS_SCHEMA_ID },
+            type: { type: "string" },
+          },
+          required: ["type"],
+          type: "object",
+        },
+        StyleObject: {
+          // Recursive through a LOCAL pointer — the ref form VS Code cannot re-base.
+          additionalProperties: { oneOf: [{ type: "string" }, { $ref: "#/$defs/StyleObject" }] },
+          type: "object",
+        },
+      },
+      $id: PROJECT_CORE_SCHEMA_ID,
+      properties: {
+        name: { type: "string" },
+        style: { $ref: "#/$defs/StyleObject" },
+      },
+      type: "object",
+    },
+    [FRAG_ID]: {
+      $id: FRAG_ID,
+      properties: {
+        content: { additionalProperties: { $ref: PROJECT_FIELDS_SCHEMA_ID }, type: "object" },
+      },
+      type: "object",
+    },
+  };
+}
+
+/** A compound document shaped like a real bundle: an entry plus two embedded resources. */
+function compound(): JsonObject {
+  return {
+    $defs: compoundDefs(),
     $schema: "https://json-schema.org/draft/2020-12/schema",
     allOf: [{ $ref: PROJECT_CORE_SCHEMA_ID }, { $ref: FRAG_ID }],
     type: "object",
@@ -90,15 +110,16 @@ describe("flattenSchema structure", () => {
     for (const [ref, at] of allRefs(flat)) {
       expect(ref.startsWith("#/"), `${ref} at ${at}`).toBe(true);
     }
-    const defs = flat.$defs as Record<string, Record<string, unknown>>;
-    for (const [key, value] of Object.entries(defs)) {
-      expect(value.$id, `${key} kept an $id`).toBeUndefined();
+    const defs = flat.$defs;
+    expect(isJsonObject(defs)).toBe(true);
+    for (const [key, value] of Object.entries(isJsonObject(defs) ? defs : {})) {
+      expect(dig(value, "$id"), `${key} kept an $id`).toBeUndefined();
     }
   });
 
   test("rekeys URI-keyed $defs to readable slugs and repoints the composition", () => {
     const flat = flattenSchema(compound());
-    expect(Object.keys(flat.$defs as object)).toEqual([
+    expect(keysOf(flat.$defs)).toEqual([
       "Fields",
       "project-core-v2",
       "parser-project-fragment-schema-json",
@@ -111,27 +132,28 @@ describe("flattenSchema structure", () => {
 
   test("re-bases a local pointer onto the resource it appears in", () => {
     const flat = flattenSchema(compound());
-    const core = (flat.$defs as Record<string, Record<string, unknown>>)["project-core-v2"]!;
-    const props = core.properties as Record<string, { $ref: string }>;
-    expect(props.style!.$ref).toBe("#/$defs/project-core-v2/$defs/StyleObject");
-    const style = (core.$defs as Record<string, Record<string, unknown>>).StyleObject!;
-    const { oneOf } = style.additionalProperties as { oneOf: { $ref?: string }[] };
-    expect(oneOf[1]!.$ref).toBe("#/$defs/project-core-v2/$defs/StyleObject");
+    const core = dig(flat, "$defs", "project-core-v2");
+    expect(dig(core, "properties", "style", "$ref")).toBe(
+      "#/$defs/project-core-v2/$defs/StyleObject",
+    );
+    const oneOf = dig(core, "$defs", "StyleObject", "additionalProperties", "oneOf");
+    expect(Array.isArray(oneOf) ? dig(oneOf[1], "$ref") : oneOf).toBe(
+      "#/$defs/project-core-v2/$defs/StyleObject",
+    );
   });
 
   test("$id shadowing resolves to the entry document's own embed", () => {
     const flat = flattenSchema(compound());
-    const defs = flat.$defs as Record<string, Record<string, unknown>>;
+    const defs = flat.$defs;
     /* Both the fragment and the core field shape reference the fields union by canonical $id; each
        must land on `#/$defs/Fields` (the effective union), not on any shipped default. */
-    const frag = defs["parser-project-fragment-schema-json"]!;
-    const content = (frag.properties as Record<string, Record<string, unknown>>).content!;
-    expect((content.additionalProperties as { $ref: string }).$ref).toBe("#/$defs/Fields");
-    const field = (defs["project-core-v2"]!.$defs as Record<string, Record<string, unknown>>)
-      .JxFieldSchema!;
-    const fieldProps = field.properties as Record<string, { $ref?: string }>;
-    expect(fieldProps.items!.$ref).toBe("#/$defs/Fields");
-    expect(defs.Fields!.anyOf).toEqual([{ $ref: "#/$defs/project-core-v2/$defs/JxFieldSchema" }]);
+    const content = dig(defs, "parser-project-fragment-schema-json", "properties", "content");
+    expect(dig(content, "additionalProperties", "$ref")).toBe("#/$defs/Fields");
+    const field = dig(defs, "project-core-v2", "$defs", "JxFieldSchema");
+    expect(dig(field, "properties", "items", "$ref")).toBe("#/$defs/Fields");
+    expect(dig(defs, "Fields", "anyOf")).toEqual([
+      { $ref: "#/$defs/project-core-v2/$defs/JxFieldSchema" },
+    ]);
   });
 
   test("does not mutate the input document", () => {
@@ -170,7 +192,7 @@ describe("flattenSchema equivalence", () => {
   test("a bundled emitProjectSchema entry flattens to a compilable single resource", () => {
     const entry = {
       ...emitProjectSchema({ corePath: PROJECT_CORE_SCHEMA_ID, fragments: [] }),
-      $defs: compound().$defs as Record<string, unknown>,
+      $defs: compoundDefs(),
     };
     const flat = flattenSchema(entry);
     expect(() => new Ajv2020({ strict: false }).compile(flat)).not.toThrow();
@@ -196,12 +218,11 @@ describe("flattenSchema edge cases", () => {
       },
       allOf: [{ $ref: "https://test.invalid/res" }],
     });
-    const res = (flat.$defs as Record<string, Record<string, unknown>>)["res"]!;
-    const body = (res.properties as Record<string, Record<string, unknown>>).body!;
-    expect(body.examples).toEqual([{ $ref: "#/state/cart" }]);
-    expect(body.default).toEqual({ $ref: "#/state/fallback" });
-    expect(body.const).toEqual({ $ref: "#/state/frozen" });
-    expect(body.enum).toEqual([{ $ref: "#/state/one" }]);
+    const body = dig(flat, "$defs", "res", "properties", "body");
+    expect(dig(body, "examples")).toEqual([{ $ref: "#/state/cart" }]);
+    expect(dig(body, "default")).toEqual({ $ref: "#/state/fallback" });
+    expect(dig(body, "const")).toEqual({ $ref: "#/state/frozen" });
+    expect(dig(body, "enum")).toEqual([{ $ref: "#/state/one" }]);
   });
 
   test("walks tuple items, prefixItems, and dependentSchemas positions", () => {
@@ -216,11 +237,11 @@ describe("flattenSchema edge cases", () => {
         },
       },
     });
-    const r = (flat.$defs as Record<string, Record<string, unknown>>)["r"]!;
+    const r = dig(flat, "$defs", "r");
     const expected = "#/$defs/r/$defs/Leaf";
-    expect((r.items as { $ref: string }[])[0]!.$ref).toBe(expected);
-    expect((r.prefixItems as { $ref: string }[])[0]!.$ref).toBe(expected);
-    expect((r.dependentSchemas as Record<string, { $ref: string }>).flag!.$ref).toBe(expected);
+    expect(dig(r, "items")).toEqual([{ $ref: expected }]);
+    expect(dig(r, "prefixItems")).toEqual([{ $ref: expected }]);
+    expect(dig(r, "dependentSchemas", "flag", "$ref")).toBe(expected);
   });
 
   test("slugs collide-safely and cover urn, bare-authority, and reserved-key forms", () => {
@@ -233,7 +254,7 @@ describe("flattenSchema edge cases", () => {
         "urn:jx:bundled:1": { $id: "urn:jx:bundled:1" },
       },
     });
-    expect(Object.keys(flat.$defs as object)).toEqual([
+    expect(keysOf(flat.$defs)).toEqual([
       "core-v2",
       "core-v2-2",
       "core-v2-3",
@@ -246,7 +267,7 @@ describe("flattenSchema edge cases", () => {
     const flat = flattenSchema({
       $defs: { "https://test.invalid/schema/no-id": { type: "string" } },
     });
-    expect(Object.keys(flat.$defs as object)).toEqual(["no-id"]);
+    expect(keysOf(flat.$defs)).toEqual(["no-id"]);
   });
 
   test("keeps the root's own $id and its already-root-relative pointers", () => {
@@ -257,7 +278,7 @@ describe("flattenSchema edge cases", () => {
       type: "object",
     });
     expect(flat.$id).toBe("https://test.invalid/entry");
-    expect((flat.properties as Record<string, { $ref: string }>).n!.$ref).toBe("#/$defs/Local");
+    expect(dig(flat, "properties", "n", "$ref")).toBe("#/$defs/Local");
   });
 
   test("leaves refs to URIs that are not embedded here alone", () => {
@@ -265,7 +286,7 @@ describe("flattenSchema edge cases", () => {
       properties: { meta: { $ref: "https://json-schema.org/draft/2020-12/schema" } },
       type: "object",
     });
-    expect((flat.properties as Record<string, { $ref: string }>).meta!.$ref).toBe(
+    expect(dig(flat, "properties", "meta", "$ref")).toBe(
       "https://json-schema.org/draft/2020-12/schema",
     );
   });
@@ -290,10 +311,10 @@ describe("flattenSchema edge cases", () => {
         },
       },
     });
-    const outer = (flat.$defs as Record<string, Record<string, unknown>>).Outer!;
-    const inner = (outer.properties as Record<string, Record<string, unknown>>).inner!;
-    expect(inner.$id).toBeUndefined();
-    expect((inner.additionalProperties as { $ref: string }).$ref).toBe(
+    const inner = dig(flat, "$defs", "Outer", "properties", "inner");
+    expect(isJsonObject(inner)).toBe(true);
+    expect(dig(inner, "$id")).toBeUndefined();
+    expect(dig(inner, "additionalProperties", "$ref")).toBe(
       "#/$defs/Outer/properties/inner/$defs/Leaf",
     );
   });

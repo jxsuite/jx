@@ -26,8 +26,25 @@ function open(id: string, documentPath: string | null = `pages/${id}.md`) {
 }
 
 function labels(): string[] {
-  return [...host.querySelectorAll('[part="label"]')].map((el) => el.textContent ?? "");
+  return [...host.querySelectorAll('[part="label"]')].map((el) => el.textContent);
 }
+
+/** `el` as the HTMLElement the strip draws there, or a thrown error naming what is missing. */
+function drawn(el: Element | null, what: string): HTMLElement {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`${what} is not drawn`);
+  }
+  return el;
+}
+
+/** Every HTMLElement under `root` matching `selector`, in document order. */
+function drawnAll(root: ParentNode, selector: string): HTMLElement[] {
+  return [...root.querySelectorAll(selector)].filter((el) => el instanceof HTMLElement);
+}
+
+/* SAFETY: tabLabel reads only `documentPath` and, when that is empty, `id` (for the grid label);
+   these fixtures supply both, so the members a full Tab adds are never dereferenced. */
+const labelOf = (fields: Pick<Tab, "documentPath" | "id">): string => tabLabel(fields as Tab);
 
 /** Happy-dom performs no layout; stub the two metrics the overflow check reads. */
 function stubMetrics(el: HTMLElement, scrollWidth: number, clientWidth: number) {
@@ -36,7 +53,7 @@ function stubMetrics(el: HTMLElement, scrollWidth: number, clientWidth: number) 
 }
 
 function strip(): HTMLElement {
-  return host.querySelector('[part="tabs"]') as HTMLElement;
+  return drawn(host.querySelector('[part="tabs"]'), "the jx-tabs strip");
 }
 
 beforeEach(() => {
@@ -47,7 +64,7 @@ beforeEach(() => {
     <div id="layer-dialog"></div>
   `;
   initLayers();
-  host = document.querySelector("#tab-strip") as HTMLElement;
+  host = drawn(document.querySelector("#tab-strip"), "#tab-strip");
   closeAllTabs();
   mount(host);
 });
@@ -132,13 +149,12 @@ describe("computeTabLabels", () => {
 
 describe("tabLabel", () => {
   test("names one tab for the close dialog", () => {
-    const tab = { documentPath: "pages/blog/index.md", id: "x" } as Tab;
-    expect(tabLabel(tab)).toBe("/blog");
-    expect(tabLabel({ documentPath: "components/card.json", id: "y" } as Tab)).toBe("card.json");
+    expect(labelOf({ documentPath: "pages/blog/index.md", id: "x" })).toBe("/blog");
+    expect(labelOf({ documentPath: "components/card.json", id: "y" })).toBe("card.json");
   });
 
   test("falls back to Untitled with no path and no grid label", () => {
-    expect(tabLabel({ documentPath: null, id: "y" } as Tab)).toBe("Untitled");
+    expect(labelOf({ documentPath: null, id: "y" })).toBe("Untitled");
   });
 });
 
@@ -179,7 +195,7 @@ describe("drill-in relationship", () => {
     });
     expect(child.session.openedFrom).not.toBeNull();
     await flush();
-    const chips = [...host.querySelectorAll('[part="tab"]')] as HTMLElement[];
+    const chips = drawnAll(host, '[part="tab"]');
     /* The marker is a slotted child of `jx-tab`'s icon slot, drawn BEFORE the label, and it is
        always in the tree: a bound `hidden` is what takes it off screen, so "absent" is asked as
        `:not([hidden])` rather than as a missing node. It is `aria-hidden` because the tab already
@@ -202,7 +218,7 @@ describe("drill-in relationship", () => {
   test("an ordinary tab's tooltip is just its path", async () => {
     open("a", "components/card.json");
     await flush();
-    const chip = host.querySelector('[part="tab"]') as HTMLElement;
+    const chip = drawn(host.querySelector('[part="tab"]'), "a tab chip");
     expect(chip.getAttribute("title")).toBe("components/card.json");
   });
 });
@@ -223,8 +239,11 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
-    expect(chevron).not.toBeNull();
+    // Drawn() refuses a missing chevron, so its appearing is asserted here.
+    const chevron = drawn(
+      host.querySelector('[part="overflow"]:not([hidden])'),
+      "the overflow chevron",
+    );
     // ONE accessible name: `title` alone, with the glyph aria-hidden (studio-ui-guidelines.md §10).
     expect(chevron.getAttribute("title")).toBe("Show hidden tabs");
     expect(chevron.getAttribute("aria-label")).toBeNull();
@@ -237,10 +256,10 @@ describe("overflow chevron", () => {
     const menu = document.querySelector("#layer-popover jx-menu")!;
     expect(menu.getAttribute("aria-label")).toBe("Hidden tabs");
     expect(menu.parentElement!.dataset["jxRegion"]).toBe("overlay.menu:tab-overflow");
-    const items = [...document.querySelectorAll("#layer-popover jx-menu-item")];
-    expect(items.map((el) => el.textContent?.trim())).toEqual(["/a", "/b", "/c"]);
+    const items = drawnAll(document, "#layer-popover jx-menu-item");
+    expect(items.map((el) => el.textContent.trim())).toEqual(["/a", "/b", "/c"]);
     // A row is addressed by the tab it activates, which is what the kit menu carries.
-    expect(items.map((el) => (el as HTMLElement).dataset.commandId)).toEqual(["a", "b", "c"]);
+    expect(items.map((el) => el.dataset.commandId)).toEqual(["a", "b", "c"]);
   });
 
   /**
@@ -256,7 +275,7 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
+    drawn(host.querySelector('[part="overflow"]:not([hidden])'), "the overflow chevron").click();
     await flush(3);
 
     const rows = [...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item")];
@@ -272,9 +291,9 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
+    drawn(host.querySelector('[part="overflow"]:not([hidden])'), "the overflow chevron").click();
     await flush(3);
-    const first = document.querySelector("#layer-popover jx-menu-item") as HTMLElement;
+    const first = drawn(document.querySelector("#layer-popover jx-menu-item"), "a menu row");
     first.click();
     await flush();
     expect(workspace.activeTabId).toBe("a");
@@ -288,7 +307,10 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
+    const chevron = drawn(
+      host.querySelector('[part="overflow"]:not([hidden])'),
+      "the overflow chevron",
+    );
     chevron.click();
     await flush(3);
     chevron.click();
@@ -304,7 +326,7 @@ describe("overflow chevron", () => {
     const el = strip();
     stubMetrics(el, 500, 100);
     el.scrollLeft = 0;
-    const chips = [...el.querySelectorAll('[part="tab"]')] as HTMLElement[];
+    const chips = drawnAll(el, '[part="tab"]');
     const place = (chip: HTMLElement, left: number, width: number) => {
       Object.defineProperty(chip, "offsetLeft", { configurable: true, value: left });
       Object.defineProperty(chip, "offsetWidth", { configurable: true, value: width });

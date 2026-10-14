@@ -5,6 +5,7 @@ import { documents } from "../src/documents.ts";
 import { iconPath } from "../src/icons.ts";
 import { registerUi } from "../src/index.ts";
 import { clearField, focusField, mintFieldId, selectValue } from "../src/behaviors/textfield.ts";
+import type { TextfieldState } from "../src/behaviors/textfield.ts";
 import { expectInertWhileEmpty } from "./error-region.ts";
 
 const tick = () =>
@@ -28,8 +29,17 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+/** A fresh, unattached `jx-textfield`, typed with the state its document declares. */
+function createTextfield(): JxTextfield {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-textfield` from its document before any test
+     runs, so `createElement` constructs that class synchronously, and jx-textfield.json declares
+     every JxTextfield member (value, invalid, error, multiline, clearable, grows) as a state prop
+     the class exposes as a property. */
+  return document.createElement("jx-textfield") as JxTextfield;
+}
+
 async function field(attrs: Record<string, string> = {}): Promise<JxTextfield> {
-  const el = document.createElement("jx-textfield") as JxTextfield;
+  const el = createTextfield();
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
   }
@@ -50,20 +60,26 @@ const escape = (el: Element) => press(el, "Escape");
 const enter = (el: Element) => press(el, "Enter");
 
 /** Every emitted CSS rule scoped to this element's own document, in source order. */
-function rules(el: Element): string[] {
-  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+function rules(el: HTMLElement): string[] {
+  const scope = `[data-jx="${el.dataset["jx"]}"]`;
   return documentStyleText()
     .split("\n")
     .filter((line) => line.startsWith(scope) || line.includes(`{ ${scope}`));
 }
 /** The first emitted rule whose selector carries `selector`. */
-const ruleFor = (el: Element, selector: string) =>
+const ruleFor = (el: HTMLElement, selector: string) =>
   rules(el).find((line) => line.slice(0, line.indexOf("{") + 1).includes(selector)) ?? "";
 
 /** Record which element an event came from, not merely that one arrived. */
 function record(el: Element, heard: string[]): void {
   for (const name of ["input", "change"]) {
-    el.addEventListener(name, (e) => heard.push(`${name}:${(e.target as Element).localName}`));
+    el.addEventListener(name, (e) => {
+      /* SAFETY: the listener sits on `el`, a connected element, and input and change are only
+         dispatched at elements (the host itself or its form control), never at a text node or at
+         the document, so whatever this hears was targeted at an Element. */
+      const target = e.target as Element;
+      heard.push(`${name}:${target.localName}`);
+    });
   }
 }
 
@@ -142,7 +158,7 @@ describe("jx-textfield", () => {
       readonly: "",
       type: "email",
     });
-    const input = control(el) as HTMLInputElement;
+    const input = control(el);
     expect(input.type).toBe("email");
     expect(input.name).toBe("email");
     expect(input.getAttribute("autocomplete")).toBe("email");
@@ -174,7 +190,7 @@ describe("jx-textfield", () => {
     // So the reset a field cannot hear cannot empty its control behind the state's back.
     for (const multiline of [false, true]) {
       const form = document.createElement("form");
-      const el = document.createElement("jx-textfield") as JxTextfield;
+      const el = createTextfield();
       el.setAttribute("label", "Layout name");
       el.setAttribute("name", "title");
       el.setAttribute("value", "Draft");
@@ -471,17 +487,17 @@ describe("jx-textfield", () => {
   });
 
   test("clearField with no field around the click does nothing", () => {
-    const state: Record<string, unknown> = { value: "about" };
+    const state: TextfieldState = { value: "about" };
     clearField(state, new Event("click"));
-    expect(state["value"]).toBe("about");
+    expect(state.value).toBe("about");
   });
 
   test("mintFieldId gives each scope it touches an id no other has", () => {
-    const one: Record<string, unknown> = {};
-    const two: Record<string, unknown> = {};
+    const one: TextfieldState = {};
+    const two: TextfieldState = {};
     mintFieldId(one);
     mintFieldId(two);
-    expect(one["uid"]).toBeString();
-    expect(one["uid"]).not.toBe(two["uid"]);
+    expect(one.uid).toBeString();
+    expect(one.uid).not.toBe(two.uid);
   });
 });

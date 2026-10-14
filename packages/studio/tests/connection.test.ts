@@ -12,12 +12,17 @@ import { installMockPlatform } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { watchConnection } from "../src/services/connection";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
-import type { StudioPlatform } from "../src/types";
 
 type Listener = (state: { online: boolean; reason?: string }) => void;
 
+/** The test's handle on a mock connection: push a transition, and ask whether the watcher let go. */
+interface ConnectionDriver {
+  emit: Listener;
+  unsubscribed: () => boolean;
+}
+
 /** Install a platform that can report its connection, and return the hook that drives it. */
-function withConnection(): { emit: Listener; unsubscribed: () => boolean } {
+function withConnection(): ConnectionDriver {
   let listener: Listener | null = null;
   let stopped = false;
   installMockPlatform({
@@ -28,7 +33,7 @@ function withConnection(): { emit: Listener; unsubscribed: () => boolean } {
         listener = null;
       };
     },
-  } as Partial<StudioPlatform>);
+  });
   return {
     emit: (state) => listener?.(state),
     unsubscribed: () => stopped,
@@ -56,7 +61,7 @@ afterEach(() => {
 describe("watchConnection", () => {
   test("installs nothing on a platform with no connection to lose", () => {
     // The dev server talks over fetch; a notice about a socket it does not have would be a lie.
-    installMockPlatform({} as Partial<StudioPlatform>);
+    installMockPlatform({});
     expect(watchConnection()).toBeNull();
   });
 

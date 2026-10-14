@@ -20,7 +20,8 @@ describe("jx cli — schema success", () => {
     const result = await runEntry("cli", ["schema", "/tmp/jx-cli-schema-site"]);
     expect(result.exited).toBe(false);
     expect(writeProjectSchemasCalls).toEqual([resolve("/tmp/jx-cli-schema-site")]);
-    expect(result.logs.join("\n")).toContain("Wrote project.schema.json");
-    expect(result.logs.join("\n")).toContain("Wrote document.schema.json");
+    const logText = result.logs.join("\n");
+    expect(logText).toContain("Wrote project.schema.json");
+    expect(logText).toContain("Wrote document.schema.json");
   });
 });

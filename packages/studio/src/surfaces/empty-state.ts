@@ -28,13 +28,12 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import emptyStateDoc from "./empty-state.json";
 import type { EmptyStateSpec } from "../panels/empty-state";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("empty-state", emptyStateDoc as unknown as JxDocument);
+registerSurface("empty-state", emptyStateDoc);
 
 /** One button, as the document draws it: a key, a word, and whether it can act. */
-interface EmptyStateActionRow extends Record<string, unknown> {
+interface EmptyStateActionRow {
   /** The repeater's key and what a press is addressed with — this action's slot in the list. */
   id: string;
   label: string;
@@ -44,10 +43,8 @@ interface EmptyStateActionRow extends Record<string, unknown> {
 /**
  * What the document draws, with every branch already decided.
  *
- * Named apart from the scope rather than derived from it with `Omit`: the scope carries the kit's
- * `Record<string, unknown>` index signature, and `Omit` over a type with one keeps the signature
- * and drops every named property — so the projection below would have type-checked against
- * anything.
+ * Named apart from the scope, which adds the one callback, so the projection below is checked
+ * against exactly the fields the document draws.
  */
 interface EmptyStateView {
   message: string;
@@ -59,7 +56,7 @@ interface EmptyStateView {
 }
 
 /** The scope `empty-state.json` reads. Every field is a value; the document asks no question. */
-interface EmptyStateScope extends Record<string, unknown>, EmptyStateView {
+interface EmptyStateScope extends EmptyStateView {
   runAction: (id: string) => void;
 }
 
@@ -89,12 +86,12 @@ export function createEmptyStateSurface(spec: EmptyStateSpec): EmptyStateSurface
 
   /** The handlers, held apart from the scope so `runAction` never has to be reassigned. */
   let handlers: (() => void)[] = [];
-  const scope = reactive<EmptyStateScope>({
+  const scope: EmptyStateScope = reactive<EmptyStateScope>({
     ...project(spec),
     runAction: (id: string) => {
       handlers[Number(id)]?.();
     },
-  }) as EmptyStateScope;
+  });
   handlers = handlersOf(spec);
 
   let mounted: SurfaceHandle | null = null;

@@ -41,6 +41,7 @@ import {
   validateRedirects,
 } from "./redirects";
 import { optionalStringArg, stringProperty } from "../commands/command-args";
+import { GRID_STUB_DOCUMENT } from "./grid-source";
 import type { RedirectConfig, RedirectRule, RedirectTarget } from "./redirects";
 import type {
   CommitResult,
@@ -67,8 +68,10 @@ export const REDIRECTS_TAB_ID = "grid://redirects";
 /** Who the Problems list attributes a redirect finding to. Also the key it clears them by. */
 export const REDIRECTS_PROBLEM_SOURCE = "Redirects";
 
-/** Placeholder document for the virtual tab — the grid never reads it; save routes to the source. */
-const GRID_STUB_DOCUMENT = { children: [], tagName: "div" };
+/** The one key a redirect commit patches; `undefined` removes `redirects` from project.json. */
+interface RedirectsPatch {
+  redirects: RedirectConfig | undefined;
+}
 
 /** Extensions the router treats as pages. Anything else under `pages/` is an asset, not a route. */
 const PAGE_EXTENSIONS = [".json", ".md", ".html"];
@@ -120,7 +123,7 @@ export function redirectRow(rule: RedirectRule, index: number): GridRow {
 
 /** The live redirects map, straight off the configuration document. */
 function currentConfig(): RedirectConfig | undefined {
-  return projectState?.projectConfig?.redirects as RedirectConfig | undefined;
+  return projectState?.projectConfig?.redirects;
 }
 
 /**
@@ -133,7 +136,10 @@ function parseTarget(raw: string): RedirectTarget {
     return REWRITE;
   }
   const value = Number(trimmed);
-  return Number.isInteger(value) ? (value as RedirectTarget) : (trimmed as RedirectTarget);
+  /* SAFETY: deliberately unchecked, per the doc above. Every rule built from cells reaches
+     `ruleErrors` in `commit()`, which tests `status` against REDIRECT_TARGETS and refuses the whole
+     batch before `configFromRules` can write an unrecognised target to project.json. */
+  return (Number.isInteger(value) ? value : trimmed) as RedirectTarget;
 }
 
 /** A cell bag back to a rule. An unrecognised target is refused by {@link ruleErrors}. */
@@ -327,9 +333,12 @@ export function createRedirectsSource(): GridSource {
       // `undefined` CLEARS the key (see `commitProjectConfig`): an empty table should leave no
       // `"redirects": {}` behind. The local type spells the undefined out, which
       // `exactOptionalPropertyTypes` will not let `Partial<ProjectConfig>` do.
-      const patch: { redirects: RedirectConfig | undefined } = {
+      const patch: RedirectsPatch = {
         redirects: next.length > 0 ? configFromRules(next) : undefined,
       };
+      /* SAFETY: `commitProjectConfig` spreads the patch onto the document and documents an own
+         `undefined` as "clear this key"; the only other value is a RedirectConfig, which is
+         structurally ProjectConfig["redirects"]. Only the spelling of "absent" differs. */
       const commit = await commitProjectConfig(patch as Partial<ProjectConfig>);
       if (!commit.ok) {
         // `commitProjectConfig` already filed the Problem; repeating it would list one failure

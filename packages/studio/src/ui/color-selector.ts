@@ -25,18 +25,22 @@
  * @docs studio/design/style-inspector
  */
 
+import { isNumber, isString } from "@jxsuite/schema/guards";
+
 import { activeTab } from "../workspace/workspace";
 import { getEffectiveStyle } from "../site-context";
 import { resolveTokenValue, tokenRefName } from "../style/token-ref";
 import { kebabToLabel } from "../utils/studio-utils";
 
 /**
- * One colour the project has named, as a swatch reads it.
+ * One colour the project has named, as a swatch reads it — the palette a Style or Content `color`
+ * row offers inside its picker.
  *
- * `Record<string, unknown>` because it is a `$map` item: a repeater's scope is a record, and a
- * shape that is not one cannot be read through `$map/item/...`.
+ * `value` and `color` are two fields because they are two things: choosing a swatch commits
+ * `var(--color-accent)`, while the chip is only how that reads on screen. A swatch is a `$map`
+ * item, read through `$map/item/...` by member name, so every member is a value a scope can hold.
  */
-export interface ColorTokenView extends Record<string, unknown> {
+export interface ColorTokenView {
   /** What choosing this swatch commits — the reference, never the literal behind it. */
   value: string;
   /** The chip's colour: how the token looks, which is not what it means. */
@@ -76,7 +80,7 @@ export function colorTokens(): ColorTokenView[] {
   const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
   const tokens: ColorTokenView[] = [];
   for (const [name, value] of Object.entries(style)) {
-    if (name.startsWith("--color") && (typeof value === "string" || typeof value === "number")) {
+    if (name.startsWith("--color") && (isString(value) || isNumber(value))) {
       tokens.push({ color: String(value), label: varToLabel(name), value: `var(${name})` });
     }
   }

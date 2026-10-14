@@ -36,8 +36,8 @@ export function resolveDevEntry(projectRoot: string): string {
 
 /** The slice of `process` runDev touches — injectable for tests. */
 export interface ProcessLike {
-  on: (event: string, handler: () => void) => unknown;
-  exitCode?: number | string | undefined;
+  on: (event: string, handler: () => void) => void;
+  exitCode?: number | string | null | undefined;
 }
 
 /**
@@ -53,7 +53,7 @@ export function runDev(
   projectRoot: string,
   port: number | undefined,
   spawnImpl: typeof spawn = spawn,
-  proc: ProcessLike = process as unknown as ProcessLike,
+  proc: ProcessLike = process,
 ): ChildProcess {
   const entry = resolveDevEntry(projectRoot);
   const args = [entry, "--root", projectRoot];

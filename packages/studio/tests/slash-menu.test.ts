@@ -313,7 +313,7 @@ describe("Slash Menu", () => {
         }
         const list = await rows();
         const shown = activeIndex(list);
-        const labels = list.map((el) => el.textContent?.trim() ?? "");
+        const labels = list.map((el) => el.textContent.trim());
         expect(shown).toBe(steps);
         // Exactly one, so nothing is left behind by a previous move.
         expect(list.filter((el) => el.getAttribute("aria-selected") === "true").length).toBe(1);

@@ -105,8 +105,10 @@
  * @docs studio/logic/code
  */
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { toRaw } from "../reactivity";
 import { notify } from "./notify";
+import type { NotifyOptions } from "./notify";
 import type { Tab } from "../tabs/tab";
 import { view } from "../view";
 import { allCanvasSurfaces } from "../canvas/surface-registry";
@@ -114,7 +116,7 @@ import { allCanvasSurfaces } from "../canvas/surface-registry";
 /** The slice of a Monaco editor this module needs. Both of Studio's Monacos satisfy it. */
 export interface MonacoBuffer {
   getValue: () => string;
-  getModel: () => unknown;
+  getModel: () => object | null;
   hasTextFocus: () => boolean;
   /** The debounced work armed over THIS buffer. Installed by {@link bufferWrites}. */
   _writes?: BufferWrites;
@@ -200,6 +202,19 @@ export interface BufferWrites {
 export const BUFFER_COMMIT = "commit";
 
 /**
+ * Whether a run answered with a promise to wait for, rather than finishing synchronously.
+ *
+ * Asked of the thenable shape, not of `instanceof Promise`, because that is what `await` itself
+ * asks: whatever the armed work handed back is waited on exactly when `await` would wait on it.
+ *
+ * @param {void | Promise<void>} result What an armed run (or a flush of one) returned.
+ * @returns {boolean}
+ */
+function isPending(result: void | Promise<void>): result is Promise<void> {
+  return isNonNullObject(result) && isFunction(result.then);
+}
+
+/**
  * Install (and return) the debounce holder for `buffer`.
  *
  * Called once per mount, right after the editor is created, so that the very first keystroke arms
@@ -223,10 +238,10 @@ export function bufferWrites(buffer: MonacoBuffer): BufferWrites {
    * report.
    */
   function track(key: string, result: void | Promise<void>): void | Promise<void> {
-    if (typeof (result as Promise<void> | undefined)?.then !== "function") {
+    if (!isPending(result)) {
       return result;
     }
-    const promise = (result as Promise<void>).finally(() => {
+    const promise = result.finally(() => {
       if (inFlight.get(key) === promise) {
         inFlight.delete(key);
       }
@@ -340,18 +355,19 @@ function reportDiscarded(
   const tab = buffer._editingTab ?? null;
   const where = tab?.documentPath ?? "Untitled";
   const { holds, reached, source } = SURFACE[surface];
-  notify.warn(`${holds} was discarded — it was never ${reached} "${where}".`, {
-    ...(failure ? { detail: describeCommitFailure(failure.error) } : {}),
-    key: `buffer-discarded:${surface}:${tab?.id ?? "none"}`,
-    source,
-    ...(tab?.documentPath ? { path: tab.documentPath } : {}),
-  });
+  const options: NotifyOptions = failure ? { detail: describeCommitFailure(failure.error) } : {};
+  options.key = `buffer-discarded:${surface}:${tab?.id ?? "none"}`;
+  options.source = source;
+  if (tab?.documentPath) {
+    options.path = tab.documentPath;
+  }
+  notify.warn(`${holds} was discarded — it was never ${reached} "${where}".`, options);
   return false;
 }
 
 /** What a failed commit is worth showing: the stack when there is one, the value otherwise. */
-function describeCommitFailure(error: unknown): string {
-  return error instanceof Error ? (error.stack ?? error.message) : String(error);
+function describeCommitFailure(cause: unknown): string {
+  return cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
 }
 
 /**
@@ -428,21 +444,21 @@ export function commitBufferWrites(
      ran, and a live 500ms timer was left over an editor whose container lit was about to replace.
      A timer reading `""` off a detached model is the exact defect this module was created to
      prevent, so the teardown below must happen whatever the commit does. */
-  let pending: Promise<void> | undefined;
+  let pending: void | Promise<void>;
   try {
     // Fire-and-forget on purpose: the disposer is synchronous, and the commit read `getValue()`
     // Before its own first `await`. What is left to await is the write INTO the document, which
     // Does not need this editor to still exist.
-    pending = writes.flush(BUFFER_COMMIT) as Promise<void> | undefined;
+    pending = writes.flush(BUFFER_COMMIT);
   } catch (error) {
     writes.cancel();
     return reportDiscarded(buffer, surface, { error });
   }
   writes.cancel();
-  if (typeof pending?.then === "function") {
+  if (isPending(pending)) {
     void pending.then(
       () => reportDiscarded(buffer, surface, null),
-      (error: unknown) => reportDiscarded(buffer, surface, { error }),
+      (error) => reportDiscarded(buffer, surface, { error }),
     );
     return true;
   }
@@ -512,20 +528,20 @@ export function bufferMovedOn(buffer: MonacoBuffer, expected?: string): boolean 
  * @returns {MonacoBuffer[]}
  */
 function buffersForTab(tab: Tab): MonacoBuffer[] {
-  const raw = toRaw(tab as object);
+  const raw = toRaw(tab);
   /* Every stage's source buffer, plus the dock's one function editor.
      The source view is per-PANE now: two Code panes are two Monaco instances over two documents,
      and a close gate that asked only "the" source editor would have missed whichever one it was
      not holding — which is the same half-answer that let ⌘W close a tab over unprompted typing. */
   const mounted: (MonacoBuffer | null)[] = [
-    ...allCanvasSurfaces().map((surface) => surface.monacoEditor as MonacoBuffer | null),
+    ...allCanvasSurfaces().map((surface) => surface.monacoEditor),
     view.functionEditor,
   ];
   return mounted.filter(
     (buffer): buffer is MonacoBuffer =>
       buffer != null &&
       buffer._editingTab != null &&
-      toRaw(buffer._editingTab as object) === raw &&
+      toRaw(buffer._editingTab) === raw &&
       bufferIsLive(buffer),
   );
 }
@@ -598,14 +614,17 @@ export async function commitTabBuffers(tab: Tab): Promise<void> {
     try {
       await buffer._writes?.flush(BUFFER_COMMIT);
     } catch (error) {
+      const options: NotifyOptions = {
+        detail: describeCommitFailure(error),
+        key: `buffer-commit:${tab.id}`,
+        source: "Editor",
+      };
+      if (tab.documentPath) {
+        options.path = tab.documentPath;
+      }
       notify.error(
         `Could not save the editor's contents into "${tab.documentPath ?? "Untitled"}".`,
-        {
-          detail: error instanceof Error ? (error.stack ?? error.message) : String(error),
-          key: `buffer-commit:${tab.id}`,
-          source: "Editor",
-          ...(tab.documentPath ? { path: tab.documentPath } : {}),
-        },
+        options,
       );
     }
   }

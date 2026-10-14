@@ -32,7 +32,8 @@ import { view } from "../src/view";
 import { getPanel, resetPanels } from "../src/panels/panel-registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
-import type { NavigatorPanelContext } from "../src/panels/panel-registry";
+import type { NavigatorPanelContext, NavigatorPanelDeps } from "../src/panels/panel-registry";
+import { CHILD_COUNT, COMFORTABLE, VIEWPORT } from "./shared-fixtures";
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: () => () => {},
@@ -43,12 +44,8 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 const { OUTLINE_ROW_HEIGHT, mountOutlinePanel, registerLayersPanel } =
   await import("../src/panels/layers-panel");
 
-/** Children of the root — enough that a window is a small fraction of the tree. */
-const CHILD_COUNT = 200;
 /** Model rows: the root plus one per child. */
 const ROW_COUNT = CHILD_COUNT + 1;
-/** A Navigator tall enough for ten rows, which is a real one at 24px a row. */
-const VIEWPORT = 240;
 
 let scroller: HTMLElement;
 let host: HTMLElement;
@@ -61,7 +58,7 @@ function makeDoc(): JxMutableNode {
       textContent: `Row ${index}`,
     })),
     tagName: "div",
-  } as JxMutableNode;
+  };
 }
 
 /**
@@ -69,10 +66,12 @@ function makeDoc(): JxMutableNode {
  * scroller's viewport, and the tree's top relative to it — which is what moves when you scroll.
  */
 function place(): void {
-  const el = tree(host);
+  // Looked up here rather than through the fixture's `tree()`, whose type cannot say it is absent.
+  const el = host.querySelector('[part="tree"]');
   if (el) {
-    (el as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
-      ({ height: ROW_COUNT * OUTLINE_ROW_HEIGHT, top: -scroller.scrollTop }) as DOMRect;
+    // A getter, not a snapshot: the panel reads the tree's top after scrolls this file never sees.
+    el.getBoundingClientRect = () =>
+      new DOMRect(0, -scroller.scrollTop, 0, ROW_COUNT * OUTLINE_ROW_HEIGHT);
   }
 }
 
@@ -96,6 +95,18 @@ async function scrollTo(top: number): Promise<void> {
   scroller.dispatchEvent(new Event("scroll"));
   await flush(3);
   place();
+}
+
+/** The Navigator's context for the Outline record, with only the members its `afterRender` reads. */
+function outlineContext(canvasMode: string, rerender: () => void): NavigatorPanelContext {
+  /* SAFETY: the Outline record's `afterRender` (layers-panel.ts, registerLayersPanel) reads
+     `deps.getCanvasMode`, `deps.registerLayersDnD` and `rerender` off its context and nothing
+     else; every other NavigatorPanelDeps member serves a different panel. */
+  const deps = {
+    getCanvasMode: () => canvasMode,
+    registerLayersDnD: () => {},
+  } as NavigatorPanelDeps;
+  return { deps, doc: null, rerender };
 }
 
 function childPath(index: number): JxPath {
@@ -127,7 +138,11 @@ function pads(): number[] {
 /** Stand the Navigator up around a fresh document and let the Outline window it. */
 async function mountWindowed(): Promise<void> {
   host = outlineHost(true);
-  scroller = document.querySelector("#scroller") as HTMLElement;
+  const wrapper = document.querySelector("#scroller");
+  if (!(wrapper instanceof HTMLElement)) {
+    throw new Error("outlineHost(true) drew no #scroller");
+  }
+  scroller = wrapper;
   scroller.style.overflowY = "auto";
   Object.defineProperty(scroller, "clientHeight", { configurable: true, value: VIEWPORT });
   Object.defineProperty(scroller, "scrollHeight", {
@@ -302,7 +317,7 @@ describe("the keyboard reaches rows the window does not hold", () => {
     expect(row(host, "")).not.toBeNull();
     /* Compared by VALUE, not by node. A `toBe` on a live element that fails makes Bun's failure
        printer walk the happy-dom object graph, and the run goes out of memory instead of red. */
-    const active = document.activeElement as HTMLElement | null;
+    const active = document.activeElement;
     expect(
       `${active?.localName ?? "none"}[value=${JSON.stringify(active?.getAttribute("value"))}]`,
     ).toBe('jx-tree-item[value=""]');
@@ -330,14 +345,11 @@ describe("the reveal that follows a selection made elsewhere", () => {
     activeTab.value!.session.selection = [childPath(180)];
 
     getPanel("layers")!.afterRender!(
-      {
-        deps: { getCanvasMode: () => "canvas", registerLayersDnD: () => {} },
-        // The Navigator's answer to a repaint request is another `afterRender`, which is what
-        // Carries the scroll watch's request for the second, windowed pass back to the rows.
-        rerender: () => {
-          void draw();
-        },
-      } as unknown as NavigatorPanelContext,
+      // The Navigator's answer to a repaint request is another `afterRender`, which is what
+      // Carries the scroll watch's request for the second, windowed pass back to the rows.
+      outlineContext("canvas", () => {
+        void draw();
+      }),
       host,
     );
     await flush(2);
@@ -404,7 +416,6 @@ describe("a density switch", () => {
       await mountWindowed();
       const list = tree(host);
       expect(ro.observes(list)).toBe(true);
-      const COMFORTABLE = 28;
       for (const el of allRows(host)) {
         Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMFORTABLE });
       }
@@ -443,10 +454,7 @@ describe("the panel takes its own body down", () => {
     registerLayersPanel();
     expect(treeItems(host).length).toBeGreaterThan(0);
     getPanel("layers")!.afterRender!(
-      {
-        deps: { getCanvasMode: () => "stylebook", registerLayersDnD: () => {} },
-        rerender: () => {},
-      } as unknown as NavigatorPanelContext,
+      outlineContext("stylebook", () => {}),
       host,
     );
     await flush(3);

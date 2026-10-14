@@ -3,6 +3,7 @@ import { handleStudioApi } from "../src/studio-api";
 import { join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const FIXTURES = resolve(import.meta.dir, "_git_gaps_fixtures");
 const REPO = join(FIXTURES, "repo");
@@ -12,12 +13,13 @@ function git(cmd: string, cwd: string = REPO) {
   return execSync(`git ${cmd}`, { cwd, encoding: "utf8", stdio: "pipe" });
 }
 
-async function gitReq(path: string, method = "GET", body?: unknown) {
+async function gitReq(path: string, method = "GET", body?: JsonObject) {
   const url = new URL(`http://localhost${path}`);
-  const req = new Request(url, {
-    method,
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  const req = new Request(url, init);
   const res = await handleStudioApi(req, url, REPO, null);
   if (!res) {
     throw new Error("handleStudioApi returned null");

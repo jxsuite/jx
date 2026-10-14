@@ -8,6 +8,7 @@
  * returns null, keeping statically generated pages on the signed-out state.
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
 import { getAuthClient } from "./client.ts";
 import { toSessionInfo } from "./config.ts";
 import type { SessionInfo } from "@jxsuite/connector/types";
@@ -20,7 +21,7 @@ const listeners = new Set<SessionListener>();
 
 /** True when running in a browser (session fetching is a client-only concern). */
 export function inBrowser(): boolean {
-  return typeof document !== "undefined" && typeof fetch === "function";
+  return typeof document !== "undefined" && isFunction(globalThis.fetch);
 }
 
 function notify(): void {
@@ -89,7 +90,6 @@ export function resetSessionStore(): void {
 /** Config of the Session state class. */
 export interface SessionConfig {
   baseUrl?: string;
-  [key: string]: unknown;
 }
 
 export class Session {

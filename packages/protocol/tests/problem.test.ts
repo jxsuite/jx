@@ -16,6 +16,7 @@ import {
   problemMessage,
   problemSlug,
 } from "../src/problem";
+import type { ProblemDetails } from "../src/problem";
 import { PROBLEM_TYPES, problemDetails, problemTypeByUri } from "../src/problems";
 
 describe("the problem document", () => {
@@ -38,9 +39,19 @@ describe("the problem document", () => {
   });
 
   test("emits the deprecated error alias equal to detail, and only when there is a detail", () => {
-    expect(problemDetails("forbidden", "Nope").error).toBe("Nope");
-    expect(problemDetails("forbidden")).not.toHaveProperty("error");
-    expect(problemDetails("forbidden")).not.toHaveProperty("detail");
+    // The serialized body, key order included, is the wire contract an unmigrated client reads.
+    expect(JSON.stringify(problemDetails("forbidden", "Nope"))).toBe(
+      JSON.stringify({
+        status: 403,
+        title: PROBLEM_TYPES.forbidden.title,
+        type: "https://jxsuite.com/problems/forbidden",
+        detail: "Nope",
+        error: "Nope",
+      }),
+    );
+    const bare = problemDetails("forbidden");
+    expect(bare).not.toHaveProperty("error");
+    expect(bare).not.toHaveProperty("detail");
   });
 
   test("carries the extension members a type documents", () => {
@@ -158,7 +169,8 @@ describe("problemDetail — one reader for every shape", () => {
 
   // A `title` describes the type, so it is the answer only when there is no `detail`.
   test("falls back to the title, but never over a detail", () => {
-    expect(problemDetail({ status: 404, title: "Not here", type: "x" })).toBe("Not here");
+    const titleOnly: ProblemDetails = { status: 404, title: "Not here", type: "x" };
+    expect(problemDetail(titleOnly)).toBe("Not here");
     expect(problemDetail({ detail: "This one", title: "The type" })).toBe("This one");
   });
 

@@ -11,8 +11,7 @@ import {
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
 const NOW = new Date("2026-08-15T00:00:00Z");
-const project = (extra: Partial<ProjectConfig>): ProjectConfig =>
-  ({ name: "Site", ...extra }) as ProjectConfig;
+const project = (extra: Partial<ProjectConfig>): ProjectConfig => ({ name: "Site", ...extra });
 
 const icons = [
   { sizes: "192x192", src: "/i192.png" },
@@ -28,21 +27,23 @@ describe("buildManifest", () => {
   // A project already has a name and a root; asking for them twice is how they drift apart.
   test("falls back to the project's own name and the site root", () => {
     const [file] = buildManifest(project({ manifest: { icons } })).files;
-    const manifest = JSON.parse(file?.content ?? "{}") as Record<string, unknown>;
-    expect(manifest.name).toBe("Site");
-    expect(manifest.short_name).toBe("Site");
-    expect(manifest.start_url).toBe("/");
-    expect(manifest.display).toBe("standalone");
+    expect(JSON.parse(file?.content ?? "{}")).toMatchObject({
+      display: "standalone",
+      name: "Site",
+      short_name: "Site",
+      start_url: "/",
+    });
   });
 
   test("maps camelCase config onto the standard's snake_case keys", () => {
     const [file] = buildManifest(
       project({ manifest: { backgroundColor: "#fff", icons, shortName: "S", themeColor: "#123" } }),
     ).files;
-    const manifest = JSON.parse(file?.content ?? "{}") as Record<string, unknown>;
-    expect(manifest.theme_color).toBe("#123");
-    expect(manifest.background_color).toBe("#fff");
-    expect(manifest.short_name).toBe("S");
+    expect(JSON.parse(file?.content ?? "{}")).toMatchObject({
+      background_color: "#fff",
+      short_name: "S",
+      theme_color: "#123",
+    });
   });
 
   test("omits keys the project did not set rather than writing nulls", () => {

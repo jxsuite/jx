@@ -98,8 +98,11 @@ describe("cell text", () => {
 
   test("every declared column has cell text, and an unknown field is empty", () => {
     const file = page(1);
+    /* Every field of this one is filled, so a declared column that fell through to the default
+       case would read as "" here, the same as an unknown field. */
+    const filled: LibraryFile = { ...file, locale: "fr" };
     for (const column of libraryColumns()) {
-      expect(typeof cellText(file, column.field)).toBe("string");
+      expect(cellText(filled, column.field), column.field).not.toBe("");
     }
     expect(cellText(file, "name")).toBe("page-1.json");
     expect(cellText(file, "category")).toBe("Pages");

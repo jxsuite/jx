@@ -19,6 +19,8 @@
  * mis-spelling fails silently in the direction of a cookie that never expires.
  */
 
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /** The cookie attributes an `external-class-def` may declare for the `Cookie` `$prototype`. */
 export interface CookieOptions {
   domain?: string | undefined;
@@ -67,11 +69,11 @@ export function readCookie(header: string, name: string): string | null {
  * - `SameSite=None` requires `Secure` (§5.4.7); without it the cookie is rejected outright.
  *
  * @param {string} name
- * @param {unknown} value JSON-encoded, then percent-encoded.
+ * @param {JsonValue} value JSON-encoded, then percent-encoded.
  * @param {CookieOptions} options
  * @returns {string}
  */
-export function serializeCookie(name: string, value: unknown, options: CookieOptions): string {
+export function serializeCookie(name: string, value: JsonValue, options: CookieOptions): string {
   const hostPrefixed = name.startsWith(HOST_PREFIX);
   const parts = [`${name}=${encodeURIComponent(JSON.stringify(value))}`];
 

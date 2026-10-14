@@ -5,9 +5,13 @@
 import { flush, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { closeAllTabs, openTab, workspace } from "../src/workspace/workspace";
+import type { NewFileRequest } from "../src/files/files";
+import type { Command } from "../src/commands/registry";
+import { isString } from "@jxsuite/schema/guards";
+import type { CommandArgValues } from "../src/commands/command-args";
 
 const notifications: { severity: string; message: string }[] = [];
-const created: Record<string, unknown>[] = [];
+const created: NewFileRequest[] = [];
 const opened: string[] = [];
 let createResult: string | null = "content/blog/first-post.json";
 
@@ -23,7 +27,7 @@ void mock.module("../src/services/notify", () => ({
 /** The default files mock. Re-installed per test: one case below replaces it deliberately. */
 function mockFiles(): void {
   void mock.module("../src/files/files", () => ({
-    createFileIn: (request: Record<string, unknown>) => {
+    createFileIn: (request: NewFileRequest) => {
       created.push(request);
       return Promise.resolve(createResult);
     },
@@ -106,7 +110,11 @@ describe("createEntry", () => {
     // Collection.
     expect(request.format).toEqual({ ext: ".json", kind: "fixed" });
     expect(request.source).toBe("Content");
-    expect(JSON.parse(request.content as string)).toEqual({ draft: false, title: "" });
+    const { content } = request;
+    if (!isString(content)) {
+      throw new Error("createEntry must seed a JSON collection's body as text");
+    }
+    expect(JSON.parse(content)).toEqual({ draft: false, title: "" });
   });
 
   test("opens what it created in the entry editor", async () => {
@@ -186,7 +194,10 @@ describe("openEntryEditor", () => {
     openTab({ document: { children: [], tagName: "div" }, documentPath: path, id: path });
     const before = workspace.tabs.get(path);
     const tab = await openEntryEditor(path);
-    expect(tab).toBe(before as never);
+    if (!before) {
+      throw new Error(`openTab did not register ${path}`);
+    }
+    expect(tab).toBe(before);
     expect(tab?.session.ui.canvasMode).toBe(ENTRY_MODE);
     expect(tab?.capabilities.modes[0]).toBe(ENTRY_MODE);
     expect(tab?.session.ui.preview).toBe(false);
@@ -221,21 +232,18 @@ describe("the records", () => {
     for (const record of contentCommands()) {
       expect(record.id).not.toContain("toggle");
     }
-    const args = command("content.setDraft").args as { required?: string[] };
-    expect(args.required).toEqual(["draft"]);
+    expect(command("content.setDraft").args?.required).toEqual(["draft"]);
   });
 
   test("New Entry's enum is the project's directory-backed collections only", () => {
-    const args = command("content.newEntry").args as {
-      properties: { collection: { enum: string[] } };
-    };
-    expect(args.properties.collection.enum).toEqual(["blog"]);
+    const { args } = command("content.newEntry");
+    expect(args?.properties?.["collection"]?.enum).toEqual(["blog"]);
   });
 
   test("New Entry is disabled — with a reason — in a project that declares no collection", () => {
     resetStudioState({ projectConfig: { content: {} } });
     const record = command("content.newEntry");
-    expect(record.enablement?.({} as never)).toBe(false);
+    expect(record.enablement?.(makeContext())).toBe(false);
     expect(record.requires).toContain("content collection");
   });
 
@@ -261,7 +269,7 @@ describe("the records", () => {
     });
     await flush();
     const registry = liveRegistry();
-    expect(command("content.setDraft").enablement?.({} as never)).toBe(true);
+    expect(command("content.setDraft").enablement?.(makeContext())).toBe(true);
     await registry.run("content.setDraft", { draft: true });
     expect(tab.doc.document.draft).toBe(true);
     expect(tab.doc.content.frontmatter.draft).toBeUndefined();
@@ -274,7 +282,7 @@ describe("the records", () => {
       id: "pages/index.json",
     });
     await flush();
-    expect(command("content.setDraft").enablement?.({} as never)).toBe(false);
+    expect(command("content.setDraft").enablement?.(makeContext())).toBe(false);
     // The registry refuses with the record's own `requires` sentence — the disabled button's
     // Tooltip, the palette's grey subtitle and the assistant's refusal are this one string.
     // The refusal is synchronous: an unavailable command never starts.
@@ -282,9 +290,11 @@ describe("the records", () => {
       "a content entry open",
     );
     // And the run body refuses too, for the caller that reaches it without the gate.
-    expect(() => command("content.setDraft").run({} as never, { draft: true } as never)).toThrow(
-      "not a content entry",
-    );
+    /* SAFETY: `contentCommands()` answers `AnyCommand`, which erases the argument type to `never`
+       for storage; at runtime every `run` receives the registry's coerced `CommandArgValues`, the
+       record `content.setDraft` reads `draft` from with `booleanArg`. */
+    const setDraft = command("content.setDraft") as Command<CommandArgValues>;
+    expect(() => setDraft.run(makeContext(), { draft: true })).toThrow("not a content entry");
   });
 
   test("newEntry runs the ONE creation flow for a declared collection, through the registry", async () => {

@@ -12,7 +12,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { emitProjectSchema } from "@jxsuite/schema/project-schemas";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { writeProjectSchemas } from "../src/site/schema-command";
 import {
   formatProjectTreeIssues,
@@ -22,14 +24,20 @@ import {
 
 const TMP = resolve(import.meta.dir, "__test-validate-command__");
 
-function writeFile(relPath: string, content: string | object) {
+/** Writes `content` verbatim when it is a string (raw, possibly malformed text), as JSON otherwise. */
+function writeFile(relPath: string, content: JsonValue) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
+}
+
+/** The committed `project.schema.json`, parsed; the generated entry document is always an object. */
+function readEntrySchema(text: string): JsonObject {
+  const schema: JsonValue = JSON.parse(text);
+  if (!isJsonObject(schema)) {
+    throw new TypeError("project.schema.json is not a JSON object");
+  }
+  return schema;
 }
 
 beforeAll(async () => {
@@ -160,8 +168,9 @@ describe("validateProjectTree", () => {
       expect(files).toContain("components/broken.json");
       expect(files).toContain("classes/Bad.class.json");
       const lines = formatProjectTreeIssues(result);
-      expect(lines.join("\n")).toContain("components/broken.json:");
-      expect(lines.join("\n")).toContain("required property 'title'");
+      const text = lines.join("\n");
+      expect(text).toContain("components/broken.json:");
+      expect(text).toContain("required property 'title'");
     } finally {
       rmSync(resolve(TMP, "components/broken.json"), { force: true });
       rmSync(resolve(TMP, "classes/Bad.class.json"), { force: true });
@@ -264,8 +273,12 @@ describe("validateProjectTree", () => {
   for (const [ref, reason] of OFFENDING_REFS) {
     it(`flags a committed $ref that ${reason} — "${ref}"`, async () => {
       const pristine = readFileSync(resolve(TMP, "project.schema.json"), "utf8");
-      const schema = JSON.parse(pristine) as { allOf: unknown[] };
-      schema.allOf.push({ $ref: ref });
+      const schema = readEntrySchema(pristine);
+      const { allOf } = schema;
+      if (!Array.isArray(allOf)) {
+        throw new TypeError("the entry document has no allOf array");
+      }
+      allOf.push({ $ref: ref });
       writeFile("project.schema.json", schema);
       try {
         const result = await validateProjectTree(TMP);
@@ -283,7 +296,7 @@ describe("validateProjectTree", () => {
      a source shape whose extension is not enabled passed validation and then expanded to zero pages
      at build time with only a console warning. The generated entry document now unions the core
      source shapes with each enabled extension's. */
-  const PATHS_CASES: [string, unknown, boolean][] = [
+  const PATHS_CASES: [string, JsonValue, boolean][] = [
     ["parser contentType source", { contentType: "posts", field: "id", param: "slug" }, true],
     ["core explicit values", { param: "lang", values: ["en", "fr"] }, true],
     ["core data-file $ref", { $ref: "./data/products.json", field: "sku", param: "id" }, true],
@@ -310,8 +323,12 @@ describe("validateProjectTree", () => {
   it("ignores $ref-shaped strings inside instance-data keywords", async () => {
     // Jx document examples legitimately contain refs like "#/state/cart" — not schema refs.
     const pristine = readFileSync(resolve(TMP, "project.schema.json"), "utf8");
-    const schema = JSON.parse(pristine) as { $defs: Record<string, unknown> };
-    schema.$defs.Probe = {
+    const schema = readEntrySchema(pristine);
+    const { $defs } = schema;
+    if (!isJsonObject($defs)) {
+      throw new TypeError("the entry document has no $defs object");
+    }
+    $defs.Probe = {
       default: { $ref: "#/state/fallback" },
       enum: [{ $ref: "#/state/one" }],
       examples: [{ $ref: "#/state/cart" }],

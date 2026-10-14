@@ -42,7 +42,7 @@
  * to paint. Preferences does not suspend the app.
  */
 
-import { CHROME_THEMES, setChromeTheme, shell } from "../shell";
+import { CHROME_THEMES, isChromeTheme, setChromeTheme, shell } from "../shell";
 import { layerHost } from "../ui/layers";
 import { hydrateAccountStatus } from "../account-status";
 import { getPlatform, hasPlatform } from "../platform";
@@ -63,7 +63,6 @@ import {
 import { applyKeybindingOverrides, rebindCommand, resetKeybinding } from "./preferences-keymap";
 import { openPreferencesSurface } from "../surfaces/preferences";
 
-import type { ChromeTheme } from "../shell";
 import type { ShortcutRow } from "../commands/reference";
 import type { RebindResult } from "./preferences-keymap";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -88,6 +87,7 @@ import {
   isPreferencesSection,
   PREFERENCES_SECTIONS,
 } from "./preferences-sections";
+import type { CommandArgValues } from "../commands/command-args";
 
 export {
   DEFAULT_PREFERENCES_SECTION,
@@ -232,7 +232,10 @@ function selectSection(id: string): void {
 }
 
 function setTheme(value: string): void {
-  setChromeTheme(value as ChromeTheme);
+  // The theme rows are drawn from CHROME_THEMES, so a picked value is always one of them.
+  if (isChromeTheme(value)) {
+    setChromeTheme(value);
+  }
   repaint();
 }
 
@@ -652,8 +655,8 @@ export function preferencesCommands(): AnyCommand[] {
       keybinding: "mod+,",
       menus: ["commandbar/overflow", "settings/menu", "palette"],
       group: "7_settings",
-      run: (_ctx, args) => {
-        const section = (args as { section?: unknown } | undefined)?.section;
+      run: (_ctx, args?: CommandArgValues) => {
+        const section = args?.section;
         if (section !== undefined && !isPreferencesSection(section)) {
           throw new RangeError(
             `command "app.preferences" argument "section": "${String(section)}" is not a ` +
@@ -661,7 +664,7 @@ export function preferencesCommands(): AnyCommand[] {
               `${PREFERENCES_SECTIONS.map((candidate) => candidate.id).join(", ")}`,
           );
         }
-        void openPreferences(section as string | undefined);
+        void openPreferences(section);
       },
       title: "Preferences…",
     },

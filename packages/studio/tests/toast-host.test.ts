@@ -8,7 +8,7 @@
  * account and then stops.
  */
 import { flush, mountOverlayLayers } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
   initLayers,
   overlayIdleBlockers,
@@ -65,7 +65,28 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const host = () => document.querySelector("#layer-toast") as HTMLElement;
+/** The toast layer `mountOverlayLayers()` put in the body before every test. */
+function host(): HTMLElement {
+  const layer = document.querySelector("#layer-toast");
+  if (!(layer instanceof HTMLElement)) {
+    throw new TypeError("the toast layer is not mounted");
+  }
+  return layer;
+}
+
+/**
+ * Answer every media query with `matches` until the returned spy is restored. Each answer is the
+ * runtime's own `MediaQueryList` with only `matches` overridden, so nothing else about it is
+ * faked.
+ */
+function answerMediaQueries(matches: boolean) {
+  const realMatchMedia = globalThis.matchMedia.bind(globalThis);
+  return spyOn(globalThis, "matchMedia").mockImplementation((query) => {
+    const list = realMatchMedia(query);
+    Object.defineProperty(list, "matches", { value: matches });
+    return list;
+  });
+}
 
 // ─── The layer itself ─────────────────────────────────────────────────────────
 
@@ -91,8 +112,8 @@ describe("rendering", () => {
   test("a notification paints a toast, severity-classed", async () => {
     notify.success("Copied");
     await flush();
-    const toast = host().querySelector('[part="toast"]');
-    expect((toast as HTMLElement | null)?.dataset["severity"] === "success").toBe(true);
+    const toast = host().querySelector<HTMLElement>('[part="toast"]');
+    expect(toast?.dataset["severity"] === "success").toBe(true);
     expect(toast?.querySelector('[part="message"]')?.textContent).toBe("Copied");
   });
 
@@ -115,7 +136,7 @@ describe("rendering", () => {
   test("dismissing removes the record, not just the node", async () => {
     notify.info("Syncing…", { timeoutMs: 0 });
     await flush();
-    (host().querySelector('[part="dismiss"] [part="control"]') as HTMLElement).click();
+    host().querySelector<HTMLElement>('[part="dismiss"] [part="control"]')!.click();
     await flush();
     expect(toasts).toHaveLength(0);
     expect(host().querySelectorAll('[part="toast"]')).toHaveLength(0);
@@ -128,13 +149,13 @@ describe("the recovery action", () => {
   test("is labelled with the COMMAND's title, not a bare Retry", async () => {
     notify.warn("Pasted", { action: "edit.undo", timeoutMs: 0 });
     await flush();
-    expect(host().querySelector('[part="action"]')?.textContent?.trim()).toBe("Undo");
+    expect(host().querySelector('[part="action"]')?.textContent.trim()).toBe("Undo");
   });
 
   test("runs the command with the record's args and retires the toast", async () => {
     notify.warn("Pasted", { action: "edit.undo", actionArgs: { steps: 2 }, timeoutMs: 0 });
     await flush();
-    (host().querySelector('[part="action"] [part="control"]') as HTMLElement).click();
+    host().querySelector<HTMLElement>('[part="action"] [part="control"]')!.click();
     await flush();
     expect(ran).toEqual([{ args: { steps: 2 }, id: "edit.undo" }]);
     expect(toasts).toHaveLength(0);
@@ -144,8 +165,8 @@ describe("the recovery action", () => {
     ctx = makeContext({ document: { open: true, canUndo: false } });
     notify.warn("Pasted", { action: "edit.undo", timeoutMs: 0 });
     await flush();
-    const action = host().querySelector('[part="action"]') as HTMLElement;
-    const button = action.querySelector('[part="control"]') as HTMLButtonElement;
+    const action = host().querySelector<HTMLElement>('[part="action"]')!;
+    const button = action.querySelector<HTMLButtonElement>('[part="control"]')!;
     expect(button.disabled).toBe(true);
     expect(action.getAttribute("title")).toContain("something to undo");
   });
@@ -164,11 +185,11 @@ describe("the recovery action", () => {
        as though it had been dealt with: the thing that went wrong is still true. */
     notify.warn("Pasted", { action: "edit.undo", timeoutMs: 0 });
     await flush();
-    const button = host().querySelector('[part="action"] [part="control"]') as HTMLElement;
+    const button = host().querySelector<HTMLElement>('[part="action"] [part="control"]');
     expect(button).not.toBeNull();
     setActiveRegistry(null);
     await flush();
-    button.click();
+    button!.click();
     await flush();
     expect(ran).toEqual([]);
     expect(toasts.map((record) => record.message)).toEqual(["Pasted"]);
@@ -262,9 +283,8 @@ describe("overlayIdleBlockers", () => {
   });
 
   test("names a settling toast, then stops — a RESTING toast is not a blocker", async () => {
-    const media = globalThis.matchMedia;
     // Reduced motion would (correctly) mean no settle window at all, so state the other case.
-    globalThis.matchMedia = (() => ({ matches: false })) as unknown as typeof globalThis.matchMedia;
+    const media = answerMediaQueries(false);
     try {
       notify.info("settling", { timeoutMs: 0 });
       await flush();
@@ -276,19 +296,18 @@ describe("overlayIdleBlockers", () => {
       expect(overlayIdleBlockers()).toEqual([]);
       expect(toasts).toHaveLength(1);
     } finally {
-      globalThis.matchMedia = media;
+      media.mockRestore();
     }
   });
 
   test("under reduced motion there is no settle window to wait for", async () => {
-    const media = globalThis.matchMedia;
-    globalThis.matchMedia = (() => ({ matches: true })) as unknown as typeof globalThis.matchMedia;
+    const media = answerMediaQueries(true);
     try {
       notify.info("no animation", { timeoutMs: 0 });
       await flush();
       expect(overlayIdleBlockers()).toEqual([]);
     } finally {
-      globalThis.matchMedia = media;
+      media.mockRestore();
     }
   });
 });

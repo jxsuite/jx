@@ -24,7 +24,11 @@ import {
 } from "../src/files/media-paths";
 import { beginListing, noteListing, resetAssetVersions } from "../src/files/asset-versions";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies the window's members
+   onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 
 /** A project whose `blog` collection is sourced from a directory that is not its mount prefix. */
 function withCollections(content: Record<string, { source: string }>): void {
@@ -118,7 +122,7 @@ describe("previewFileSrc", () => {
       assetSpace: "repo",
       canvasUrl: "https://studio.example.com/canvas.html",
       documentBaseUrl: "https://studio.example.com/p/o/r/main/raw/",
-    } as never);
+    });
     expect(previewFileSrc("public/hero.jpg")).toBe(
       "https://studio.example.com/p/o/r/main/raw/public/hero.jpg",
     );
@@ -136,7 +140,7 @@ describe("previewFileSrc", () => {
       assetSpace: "repo",
       canvasUrl: "https://studio.example.com/canvas.html",
       documentBaseUrl: "https://studio.example.com/p/o/r/main/raw/",
-    } as never);
+    });
     resetAssetVersions();
     noteListing(
       [{ name: "hero.jpg", path: "public/hero.jpg", type: "file", version: "abc123" }],
@@ -156,7 +160,7 @@ describe("previewFileSrc", () => {
 
   test("in site space the version is never added — that origin is not the versioning host", () => {
     happyDOM.setURL("http://localhost:3000/");
-    installMockPlatform({} as never);
+    installMockPlatform({});
     resetAssetVersions();
     noteListing(
       [{ name: "hero.jpg", path: "public/hero.jpg", type: "file", version: "abc123" }],

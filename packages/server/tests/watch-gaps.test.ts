@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { createWatcher, RECONNECT_MS } from "../src/watch";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import type { FSWatcher } from "chokidar";
 
 const FIXTURES = resolve(import.meta.dir, "_watch_gaps_fixtures");
 
@@ -13,10 +14,31 @@ function setup(name: string) {
   return dir;
 }
 
-function waitReady(watcher: { on: (ev: string, cb: () => void) => unknown }) {
+function waitReady(watcher: FSWatcher) {
   return new Promise<void>((done) => {
     watcher.on("ready", () => done());
   });
+}
+
+/** The reader over an SSE response's body, which `handleSSE` always attaches. */
+function streamReader(response: Response): ReadableStreamDefaultReader<Uint8Array> {
+  if (response.body === null) {
+    throw new Error("handleSSE answered without a stream body");
+  }
+  return response.body.getReader();
+}
+
+/** The next chunk off `reader`, or a rejection carrying `timeoutMessage` after three seconds. */
+function readWithinTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMessage: string,
+) {
+  return Promise.race([
+    reader.read(),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(timeoutMessage)), 3000);
+    }),
+  ]);
 }
 
 function sleep(ms: number) {
@@ -42,7 +64,7 @@ describe("createWatcher — rebuild integration", () => {
         },
       ];
       const { handleSSE, watcher } = createWatcher(dir, builds, { debounce: 10 });
-      const reader = (handleSSE().body as ReadableStream).getReader();
+      const reader = streamReader(handleSSE());
       await waitReady(watcher);
 
       writeFileSync(join(dir, "entry.js"), `export const v = ${Date.now()};`);
@@ -51,12 +73,7 @@ describe("createWatcher — rebuild integration", () => {
       const decoder = new TextDecoder();
       let reloaded = false;
       while (!reloaded) {
-        const { value } = (await Promise.race([
-          reader.read(),
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new Error("timeout waiting for reload")), 3000);
-          }),
-        ])) as ReadableStreamReadResult<Uint8Array>;
+        const { value } = await readWithinTimeout(reader, "timeout waiting for reload");
         if (value && decoder.decode(value).includes("data: reload")) {
           reloaded = true;
         }
@@ -93,7 +110,7 @@ describe("createWatcher — rebuild integration", () => {
         },
       ];
       const { handleSSE, watcher } = createWatcher(dir, builds, { debounce: 10 });
-      const reader = (handleSSE().body as ReadableStream).getReader();
+      const reader = streamReader(handleSSE());
       await waitReady(watcher);
 
       writeFileSync(join(dir, "entry.js"), "export const broken = 1;");
@@ -117,9 +134,7 @@ describe("createWatcher — rebuild integration", () => {
       ]);
       // The sidebar still receives a (named) fs event, but the preview must NOT be told to reload.
       if (raced !== "silent") {
-        const text = new TextDecoder().decode(
-          (raced as ReadableStreamReadResult<Uint8Array>).value ?? new Uint8Array(),
-        );
+        const text = new TextDecoder().decode(raced.value ?? new Uint8Array());
         expect(text).not.toContain("data: reload");
       }
       void reader.cancel();
@@ -144,7 +159,7 @@ describe("createWatcher — rebuild integration", () => {
         },
       ];
       const { handleSSE, watcher } = createWatcher(dir, builds, { debounce: 10 });
-      const reader = (handleSSE().body as ReadableStream).getReader();
+      const reader = streamReader(handleSSE());
       await waitReady(watcher);
 
       writeFileSync(join(dir, "entry.js"), "export const again = 2;");
@@ -157,9 +172,7 @@ describe("createWatcher — rebuild integration", () => {
       ]);
       // The sidebar still receives a (named) fs event, but the preview must NOT be told to reload.
       if (raced !== "silent") {
-        const text = new TextDecoder().decode(
-          (raced as ReadableStreamReadResult<Uint8Array>).value ?? new Uint8Array(),
-        );
+        const text = new TextDecoder().decode(raced.value ?? new Uint8Array());
         expect(text).not.toContain("data: reload");
       }
       void reader.cancel();
@@ -188,7 +201,7 @@ describe("createWatcher — rebuild integration", () => {
           },
           reloadOnAnyChange: true,
         });
-        const reader = (handleSSE().body as ReadableStream).getReader();
+        const reader = streamReader(handleSSE());
         await waitReady(watcher);
 
         writeFileSync(join(dir, "entry.js"), "export const changed = 1;");
@@ -196,12 +209,7 @@ describe("createWatcher — rebuild integration", () => {
         const decoder = new TextDecoder();
         let reloaded = false;
         while (!reloaded) {
-          const { value } = (await Promise.race([
-            reader.read(),
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("timeout waiting for reload")), 3000);
-            }),
-          ])) as ReadableStreamReadResult<Uint8Array>;
+          const { value } = await readWithinTimeout(reader, "timeout waiting for reload");
           if (value && decoder.decode(value).includes("data: reload")) {
             reloaded = true;
           }
@@ -223,16 +231,22 @@ describe("createWatcher — rebuild integration", () => {
     const dir = setup("sse-heartbeat");
     const realSetInterval = globalThis.setInterval;
     let heartbeat: (() => void) | undefined;
-    globalThis.setInterval = ((cb: () => void, ms?: number) => {
+    const captureHeartbeat = (cb: () => void, ms?: number) => {
       const timer = realSetInterval(() => {}, ms);
       if (ms === 15_000) {
         heartbeat = cb;
       }
       return timer;
-    }) as unknown as typeof setInterval;
+    };
+    /* SAFETY: while the stand-in is installed the only setInterval caller is sse.ts's heartbeat,
+       setInterval(callback, HEARTBEAT_MS) with a zero-argument callback whose handle goes only to
+       clearInterval (chokidar and watch.ts never call it). The stand-in returns a real timer
+       handle, so it serves every overload that call resolves to; the string-handler overload and
+       extra arguments are never reached, and the real timer is restored in the finally below. */
+    globalThis.setInterval = captureHeartbeat as typeof setInterval;
     try {
       const { handleSSE, watcher } = createWatcher(dir, [], { debounce: 10 });
-      const reader = (handleSSE().body as ReadableStream).getReader();
+      const reader = streamReader(handleSSE());
       expect(heartbeat).toBeDefined();
 
       // The stream opens with its `retry:` field; the heartbeat is the frame after it.
@@ -261,9 +275,6 @@ describe("createWatcher — rebuild integration", () => {
     try {
       const { watcher } = createWatcher(dir, [], { debounce: 10 });
       await waitReady(watcher);
-      const emit = (watcher as unknown as { emit: (e: string, a: unknown) => void }).emit.bind(
-        watcher,
-      );
 
       const logged: unknown[][] = [];
       const origError = console.error;
@@ -272,10 +283,10 @@ describe("createWatcher — rebuild integration", () => {
       };
       try {
         // EINVAL on transient Bun test dirs is expected churn — silently ignored.
-        emit("error", new Error("EINVAL: invalid argument, watch"));
+        watcher.emit("error", new Error("EINVAL: invalid argument, watch"));
         expect(logged).toHaveLength(0);
         // Any other error is surfaced to the console.
-        emit("error", new Error("EACCES: permission denied"));
+        watcher.emit("error", new Error("EACCES: permission denied"));
         expect(logged).toHaveLength(1);
       } finally {
         console.error = origError;
@@ -297,12 +308,7 @@ describe("createWatcher — SSE reconnection", () => {
   const decoder = new TextDecoder();
 
   async function readFrame(reader: ReadableStreamDefaultReader<Uint8Array>) {
-    const { value } = (await Promise.race([
-      reader.read(),
-      new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("timeout waiting for a frame")), 3000);
-      }),
-    ])) as ReadableStreamReadResult<Uint8Array>;
+    const { value } = await readWithinTimeout(reader, "timeout waiting for a frame");
     return value === undefined ? "" : decoder.decode(value);
   }
 
@@ -310,7 +316,7 @@ describe("createWatcher — SSE reconnection", () => {
     const dir = setup("sse-retry");
     try {
       const { handleSSE, watcher } = createWatcher(dir, [], { debounce: 10 });
-      const reader = (handleSSE().body as ReadableStream).getReader();
+      const reader = streamReader(handleSSE());
       expect(await readFrame(reader)).toBe(`retry: ${RECONNECT_MS}\n\n`);
       void reader.cancel();
       await watcher.close();
@@ -324,7 +330,7 @@ describe("createWatcher — SSE reconnection", () => {
     const dir = setup("sse-id");
     try {
       const { broadcast, handleSSE, watcher } = createWatcher(dir, [], { debounce: 10 });
-      const reader = (handleSSE().body as ReadableStream).getReader();
+      const reader = streamReader(handleSSE());
       await readFrame(reader); // The opening retry: field.
       broadcast();
       expect(await readFrame(reader)).toMatch(/^id: \d+\ndata: reload\n\n$/);
@@ -344,12 +350,12 @@ describe("createWatcher — SSE reconnection", () => {
       broadcast();
       broadcast();
       broadcast();
-      const reader = (
-        handleSSE(new Request("http://127.0.0.1/__reload", { headers: { "Last-Event-ID": "1" } }))
-          .body as ReadableStream
-      ).getReader();
+      const reader = streamReader(
+        handleSSE(new Request("http://127.0.0.1/__reload", { headers: { "Last-Event-ID": "1" } })),
+      );
       expect(await readFrame(reader)).toBe(`retry: ${RECONNECT_MS}\n\n`);
-      expect(await readFrame(reader)).toMatch(/^id: \d+\ndata: reload\n\n$/);
+      const resumed = await readFrame(reader);
+      expect(resumed).toMatch(/^id: \d+\ndata: reload\n\n$/);
       // The next frame is the heartbeat, not a second reload — one reload subsumes all three.
       void reader.cancel();
       await watcher.close();
@@ -363,9 +369,7 @@ describe("createWatcher — SSE reconnection", () => {
     const dir = setup("sse-fresh");
     try {
       const { handleSSE, watcher } = createWatcher(dir, [], { debounce: 10 });
-      const reader = (
-        handleSSE(new Request("http://127.0.0.1/__reload")).body as ReadableStream
-      ).getReader();
+      const reader = streamReader(handleSSE(new Request("http://127.0.0.1/__reload")));
       expect(await readFrame(reader)).toBe(`retry: ${RECONNECT_MS}\n\n`);
       // Reloading a page that just loaded is a reload loop; an absent Last-Event-ID must be inert.
       const raced = await Promise.race([

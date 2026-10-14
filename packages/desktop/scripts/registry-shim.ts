@@ -25,32 +25,69 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const [lockPath, treeDir, portArg] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const lockPath = args.at(0);
+const treeDir = args.at(1);
+const portArg = args.at(2);
 if (!lockPath || !treeDir) {
   throw new Error("usage: bun registry-shim.ts <bun.lock> <tarballTreeDir> [port]");
 }
 const port = Number(portArg ?? 48_732);
 
+/*
+ * The lockfile's values, as Bun's JSONC loader produces them. Declared here rather than imported:
+ * this file runs straight out of the Nix store BEFORE `bun install`, so nothing but Bun and the
+ * node builtins can be imported, and the predicates below are local for the same reason.
+ */
+type LockValue = string | number | boolean | null | LockValue[] | LockObject;
+
+interface LockObject {
+  [key: string]: LockValue;
+}
+
+/** What `import(…, { with: { type: "jsonc" } })` resolves to: the parsed document on `default`. */
+interface JsoncModule {
+  default: LockValue;
+}
+
+function isJsoncModule(value: unknown): value is JsoncModule {
+  return typeof value === "object" && value !== null && "default" in value;
+}
+
+function isLockObject(value: unknown): value is LockObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Takes `undefined` too: a lockfile entry is a short tuple, and a missing slot is undefined. */
+function isLockString(value: LockValue | undefined): value is string {
+  return typeof value === "string";
+}
+
 interface Versioned {
-  info: Record<string, unknown>;
+  info: LockObject;
   integrity: string | undefined;
 }
 
 // Reach Bun's built-in JSONC loader, as bun2nix's catalog resolver does
 // (bun.lock has trailing commas, so plain JSON.parse would choke).
-const lock = (
-  (await import(pathToFileURL(resolve(lockPath)).href, {
-    with: { type: "jsonc" },
-  })) as { default: { packages?: Record<string, [string, ...unknown[]]> } }
-).default;
-const packages = lock.packages ?? {};
+const lockModule: unknown = await import(pathToFileURL(resolve(lockPath)).href, {
+  with: { type: "jsonc" },
+});
+if (!isJsoncModule(lockModule) || !isLockObject(lockModule.default)) {
+  throw new Error(`${lockPath} did not parse to a JSON object`);
+}
+const lock = lockModule.default;
+const packages = isLockObject(lock.packages) ? lock.packages : {};
 
 // Name -> { version -> {info, integrity} }, built from every `packages` entry
 // (top-level and nested), so multi-version deps expose all their versions.
-const byName: Record<string, Record<string, Versioned>> = {};
+const byName = new Map<string, Map<string, Versioned>>();
 for (const entry of Object.values(packages)) {
-  const spec = entry?.[0];
-  if (typeof spec !== "string") {
+  if (!Array.isArray(entry)) {
+    continue;
+  }
+  const [spec, , rawInfo, rawIntegrity] = entry;
+  if (!isLockString(spec)) {
     continue;
   }
   const at = spec.lastIndexOf("@");
@@ -59,10 +96,14 @@ for (const entry of Object.values(packages)) {
   }
   const name = spec.slice(0, at);
   const version = spec.slice(at + 1);
-  const info =
-    entry[2] && typeof entry[2] === "object" ? (entry[2] as Record<string, unknown>) : {};
-  const integrity = typeof entry[3] === "string" ? entry[3] : undefined;
-  (byName[name] ??= {})[version] = { info, integrity };
+  const info = isLockObject(rawInfo) ? rawInfo : {};
+  const integrity = isLockString(rawIntegrity) ? rawIntegrity : undefined;
+  let versions = byName.get(name);
+  if (!versions) {
+    versions = new Map();
+    byName.set(name, versions);
+  }
+  versions.set(version, { info, integrity });
 }
 
 const unscoped = (name: string): string =>
@@ -83,21 +124,43 @@ const cmpVersion = (a: string, b: string): number => {
   return 0;
 };
 
-function packument(name: string): unknown {
-  const vers = byName[name];
+/** One version's manifest: the lockfile's info, then the identity and dist fields npm requires. */
+interface PackumentVersion {
+  [field: string]: LockValue | PackumentDist;
+  name: string;
+  version: string;
+  dist: PackumentDist;
+}
+
+interface PackumentDist {
+  tarball: string;
+  integrity: string | undefined;
+}
+
+/** The registry document `GET /<name>` answers with. */
+interface Packument {
+  name: string;
+  "dist-tags": { latest: string | undefined };
+  versions: Record<string, PackumentVersion>;
+}
+
+function packument(name: string): Packument | null {
+  const vers = byName.get(name);
   if (!vers) {
     return null;
   }
-  const versions: Record<string, unknown> = {};
-  for (const [v, { info, integrity }] of Object.entries(vers)) {
-    versions[v] = {
-      ...info,
-      name,
-      version: v,
-      dist: { tarball: `http://localhost:${port}${tarballPath(name, v)}`, integrity },
-    };
-  }
-  const latest = Object.keys(vers).toSorted(cmpVersion).at(-1);
+  const versions = Object.fromEntries(
+    [...vers].map(([v, { info, integrity }]): [string, PackumentVersion] => [
+      v,
+      {
+        ...info,
+        name,
+        version: v,
+        dist: { tarball: `http://localhost:${port}${tarballPath(name, v)}`, integrity },
+      },
+    ]),
+  );
+  const latest = [...vers.keys()].toSorted(cmpVersion).at(-1);
   return { name, "dist-tags": { latest }, versions };
 }
 

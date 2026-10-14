@@ -12,6 +12,9 @@
  * marks with `localStorage["jx-canvas-debug"] = "1"`.
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /** Rolling window per span. Bounded so a long session cannot grow the sample arrays. */
 const SAMPLE_LIMIT = 128;
 
@@ -106,7 +109,12 @@ export const canvasPerf: CanvasPerf = {
   timings: {},
 };
 
-(globalThis as Record<string, unknown>).__jxCanvasPerf = canvasPerf;
+declare global {
+  /** The live counters, for inspection from a devtools console or a profiling harness. */
+  var __jxCanvasPerf: CanvasPerf | undefined;
+}
+
+globalThis.__jxCanvasPerf = canvasPerf;
 
 /** Retained duration samples per span, parallel to `canvasPerf.timings`. */
 const samples = new Map<string, number[]>();
@@ -121,13 +129,11 @@ function debugEnabled() {
 
 /** Monotonic clock, or 0 when the environment has no `performance` (durations then read as 0). */
 function now(): number {
-  return typeof performance !== "undefined" && typeof performance.now === "function"
-    ? performance.now()
-    : 0;
+  return typeof performance !== "undefined" && isFunction(performance.now) ? performance.now() : 0;
 }
 
 /** Log a canvas perf event when debug mode is on. */
-export function perfLog(event: string, detail?: unknown) {
+export function perfLog(event: string, detail?: JsonValue) {
   if (debugEnabled()) {
     console.debug(`[jx-canvas] ${event}`, detail ?? "");
   }

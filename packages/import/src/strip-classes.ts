@@ -24,6 +24,7 @@
  * @docs studio/projects/create
  */
 
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
 /** The two spellings a class can arrive in — `attributes.class` from HTML, `className` from Jx. */
@@ -36,22 +37,22 @@ const CLASS_KEYS = ["class", "className"] as const;
  * @returns {number} How many class names were removed, for the progress line.
  */
 export function stripClasses(node: JxElement | string): number {
-  if (typeof node !== "object" || node === null) {
+  if (!isNonNullObject(node)) {
     return 0;
   }
 
   let removed = 0;
 
-  if ("className" in node && node.className !== undefined) {
+  if (node.className !== undefined) {
     delete node.className;
     removed += 1;
   }
 
   const { attributes } = node;
-  if (attributes && typeof attributes === "object") {
+  if (isNonNullObject(attributes)) {
     for (const key of CLASS_KEYS) {
       if (key in attributes) {
-        delete (attributes as Record<string, unknown>)[key];
+        delete attributes[key];
         removed += 1;
       }
     }
@@ -65,7 +66,7 @@ export function stripClasses(node: JxElement | string): number {
 
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      removed += stripClasses(child as JxElement | string);
+      removed += stripClasses(child);
     }
   }
 

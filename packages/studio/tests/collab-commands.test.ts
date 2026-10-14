@@ -17,10 +17,11 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 
-import type { AnyCommand } from "../src/commands/registry";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { AnyCommand, Command } from "../src/commands/registry";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { PeerPresence } from "../src/collab/collab-state";
+import { EMPTY_DOC } from "./shared-fixtures";
 
-const DOC: JxMutableNode = { children: [], tagName: "div" };
 const PATH = "pages/shared.json";
 
 function byId(id: string): AnyCommand {
@@ -31,10 +32,24 @@ function byId(id: string): AnyCommand {
   return found;
 }
 
+/**
+ * Run a record's `run` directly, past its `when` and `enablement` predicates, the way the
+ * registry's API path can reach it. The verbs here guard again inside `run`, and that guard is what
+ * is tested.
+ */
+function runDirect(command: AnyCommand, args: CommandArgValues = {}): void | Promise<void> {
+  /* SAFETY: AnyCommand is Command<never> only so one array can hold every record. The two collab
+     Records that declare `args` (collab.setEnabled, collab.follow) read them only through
+     `booleanArg` / `optionalStringArg`, which take a CommandArgValues record, and the other three
+     Never read their argument at all. */
+  const typed = command as Command<CommandArgValues>;
+  return typed.run(emptyContext(), args);
+}
+
 function openShared() {
   installMockPlatform();
   resetStudioState();
-  return openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+  return openTab({ document: structuredClone(EMPTY_DOC), documentPath: PATH, id: PATH });
 }
 
 /** Every message the family posted, whichever tier it landed in. */
@@ -80,16 +95,16 @@ describe("collab.setEnabled", () => {
   test("leaving, then leaving again, says it once — the second call is a no-op", async () => {
     const tab = openShared();
     void tab;
-    await byId("collab.setEnabled").run(emptyContext(), { enabled: false } as never);
+    await runDirect(byId("collab.setEnabled"), { enabled: false });
     expect(messages()).toEqual(["Left the collaboration session for this document."]);
-    await byId("collab.setEnabled").run(emptyContext(), { enabled: false } as never);
+    await runDirect(byId("collab.setEnabled"), { enabled: false });
     expect(messages()).toHaveLength(1);
   });
 
   test("re-joining after leaving is the same setter with the other value", async () => {
     openShared();
-    await byId("collab.setEnabled").run(emptyContext(), { enabled: false } as never);
-    await byId("collab.setEnabled").run(emptyContext(), { enabled: true } as never);
+    await runDirect(byId("collab.setEnabled"), { enabled: false });
+    await runDirect(byId("collab.setEnabled"), { enabled: true });
     expect(messages().at(-1)).toContain("Connecting");
   });
 
@@ -110,9 +125,9 @@ describe("collab.stop", () => {
   test("stopping leaves, and stopping twice says nothing the second time", async () => {
     const tab = openShared();
     collabState(tab).active = true;
-    await byId("collab.stop").run(emptyContext(), undefined as never);
+    await runDirect(byId("collab.stop"));
     expect(messages()).toEqual(["Left the collaboration session for this document."]);
-    await byId("collab.stop").run(emptyContext(), undefined as never);
+    await runDirect(byId("collab.stop"));
     expect(messages()).toHaveLength(1);
   });
 });
@@ -126,7 +141,7 @@ describe("collab.copyLink", () => {
   test("a copied link is confirmed, with the limit of what it grants stated", async () => {
     const tab = openShared();
     collabState(tab).active = true;
-    const original = (globalThis.navigator as { clipboard?: unknown }).clipboard;
+    const original = globalThis.navigator.clipboard;
     const written: string[] = [];
     Object.defineProperty(globalThis.navigator, "clipboard", {
       configurable: true,
@@ -137,7 +152,7 @@ describe("collab.copyLink", () => {
       },
     });
     try {
-      await byId("collab.copyLink").run(emptyContext(), undefined as never);
+      await runDirect(byId("collab.copyLink"));
     } finally {
       Object.defineProperty(globalThis.navigator, "clipboard", {
         configurable: true,
@@ -151,7 +166,7 @@ describe("collab.copyLink", () => {
   test("a clipboard refusal is reported with the link, not swallowed", async () => {
     const tab = openShared();
     collabState(tab).active = true;
-    const original = (globalThis.navigator as { clipboard?: unknown }).clipboard;
+    const original = globalThis.navigator.clipboard;
     Object.defineProperty(globalThis.navigator, "clipboard", {
       configurable: true,
       value: {
@@ -161,7 +176,7 @@ describe("collab.copyLink", () => {
       },
     });
     try {
-      await byId("collab.copyLink").run(emptyContext(), undefined as never);
+      await runDirect(byId("collab.copyLink"));
     } finally {
       Object.defineProperty(globalThis.navigator, "clipboard", {
         configurable: true,
@@ -174,7 +189,7 @@ describe("collab.copyLink", () => {
 });
 
 describe("collab.follow", () => {
-  const peer = (login: string, focusedPath: string | null) => ({
+  const peer = (login: string, focusedPath: string | null): PeerPresence => ({
     clientId: 1,
     state: {
       focusedPath,
@@ -190,8 +205,8 @@ describe("collab.follow", () => {
 
   test("following a peer offers the file they are in as the recovery command", async () => {
     const tab = openShared();
-    collabState(tab).peers = [peer("ada", "layouts/base.json")] as never;
-    await byId("collab.follow").run(emptyContext(), { login: "ada" } as never);
+    collabState(tab).peers = [peer("ada", "layouts/base.json")];
+    await runDirect(byId("collab.follow"), { login: "ada" });
     const note = [...toasts].at(-1)!;
     expect(note.message).toContain("layouts/base.json");
     expect(note.action).toBe("file.open");
@@ -200,15 +215,15 @@ describe("collab.follow", () => {
 
   test("naming somebody who is not here is refused by name", async () => {
     const tab = openShared();
-    collabState(tab).peers = [peer("ada", "a.json")] as never;
-    await byId("collab.follow").run(emptyContext(), { login: "bob" } as never);
+    collabState(tab).peers = [peer("ada", "a.json")];
+    await runDirect(byId("collab.follow"), { login: "bob" });
     expect(messages().at(-1)).toBe("bob is not in this session.");
   });
 
   test("a peer between documents is reported as such, not as an absence", async () => {
     const tab = openShared();
-    collabState(tab).peers = [peer("ada", null)] as never;
-    await byId("collab.follow").run(emptyContext(), {} as never);
+    collabState(tab).peers = [peer("ada", null)];
+    await runDirect(byId("collab.follow"), {});
     expect(messages().at(-1)).toBe("ada is not in a document right now.");
   });
 });
@@ -222,7 +237,7 @@ describe("collab.showStatus", () => {
       sourceCanonical: true,
       status: "synced",
     });
-    await byId("collab.showStatus").run(emptyContext(), undefined as never);
+    await runDirect(byId("collab.showStatus"));
     const detail = [...toasts].at(-1)!.detail ?? "";
     expect(detail).toContain("Status: synced");
     expect(detail).toContain("read access");
@@ -233,7 +248,7 @@ describe("collab.showStatus", () => {
   test("a failed attach carries its reason into the status", async () => {
     const tab = openShared();
     Object.assign(collabState(tab), { attachError: "relay unreachable", status: "failed" });
-    await byId("collab.showStatus").run(emptyContext(), undefined as never);
+    await runDirect(byId("collab.showStatus"));
     expect([...toasts].at(-1)!.detail).toContain("relay unreachable");
   });
 });
@@ -248,7 +263,7 @@ describe("with no document open", () => {
     closeAllTabs();
     for (const command of collabCommands()) {
       expect(command.when?.(emptyContext())).toBe(false);
-      await command.run(emptyContext(), { enabled: true } as never);
+      await runDirect(command, { enabled: true });
     }
     expect(messages()).toEqual([]);
   });

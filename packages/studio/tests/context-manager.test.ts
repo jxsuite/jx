@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createChatState } from "@jxsuite/ai";
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import { SEAL_CUT_OFF, isSealContent } from "@jxsuite/ai/messages";
 
 /**
@@ -29,7 +29,7 @@ function longContent(tokens: number) {
 
 function pushMessages(
   chatState: ReturnType<typeof createChatState>,
-  messages: Omit<Message, "id" | "timestamp">[],
+  messages: Omit<LiveMessage, "id" | "timestamp">[],
 ) {
   for (const m of messages) {
     chatState.messages.push({
@@ -58,7 +58,7 @@ describe("context-manager — trimContext", () => {
   test("trims oldest messages when over budget", () => {
     const cs = createChatState({ model: "gpt-4" });
     const msgCount = 40;
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < msgCount; i++) {
       msgs.push({
         role: i % 2 === 0 ? "user" : "assistant",
@@ -78,7 +78,7 @@ describe("context-manager — trimContext", () => {
 
   test("preserves the most recent messages after trim", () => {
     const cs = createChatState({ model: "gpt-4" });
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < 40; i++) {
       msgs.push({
         role: i % 2 === 0 ? "user" : "assistant",
@@ -95,7 +95,7 @@ describe("context-manager — trimContext", () => {
 
   test("trim does not orphan tool_calls (assistant with tool_calls kept iff tool result kept)", () => {
     const cs = createChatState({ model: "gpt-4" });
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < 30; i++) {
       msgs.push(
         { role: "user", content: longContent(200) },
@@ -131,7 +131,7 @@ describe("context-manager — trimContext", () => {
 
   test("sets contextWarning when trimming occurs", () => {
     const cs = createChatState({ model: "gpt-4" });
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < 40; i++) {
       msgs.push({
         role: i % 2 === 0 ? "user" : "assistant",
@@ -149,7 +149,7 @@ describe("context-manager — trimContext", () => {
     const csLarge = createChatState({ model: "gpt-4o" });
 
     // The gpt-4 budget: 8192 × 0.8 = 6553 tokens. Fill well past that.
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < 30; i++) {
       msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: longContent(300) });
     }
@@ -166,7 +166,7 @@ describe("context-manager — trimContext", () => {
 
   test("extends the keep window backward to preserve a minimum of user/tool turns", () => {
     const cs = createChatState({ model: "gpt-4" });
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     // 5 leading user turns, then 20 assistant-only messages — the recent window (KEEP_RECENT=20)
     // Has zero user/tool turns, forcing the backward extension to reach the early user turns.
     for (let i = 0; i < 5; i++) {
@@ -305,7 +305,7 @@ describe("context-manager — the provider's own count", () => {
 
   test("trimming forgets the count, because it described the dropped transcript", () => {
     const cs = createChatState({ model: "gpt-4" });
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < 40; i++) {
       msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: longContent(200) });
     }
@@ -322,7 +322,7 @@ describe("context-manager — the model's context window", () => {
   /** Fill a state with `count` messages of `tokens` each, so a budget can be crossed on purpose. */
   function stateWith(model: string, count: number, tokens: number) {
     const cs = createChatState({ model });
-    const msgs: Omit<Message, "id" | "timestamp">[] = [];
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
     for (let i = 0; i < count; i++) {
       msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: longContent(tokens) });
     }
@@ -373,7 +373,7 @@ describe("context-manager — the model's context window", () => {
 
 describe("context-manager — pruneOrphanToolMessages", () => {
   /** An assistant turn that requested one tool call, and the reply that answers it. */
-  function pair(callId: string): Omit<Message, "id" | "timestamp">[] {
+  function pair(callId: string): Omit<LiveMessage, "id" | "timestamp">[] {
     return [
       {
         role: "assistant",
@@ -466,20 +466,16 @@ describe("context-manager — pruneOrphanToolMessages", () => {
     expect(pruneOrphanToolMessages(cs)).toEqual({ dropped: 1, moved: 0, sealed: 1 });
 
     // The property that matters: every tool reply follows the assistant request that declared it.
-    const wire = cs.toMessagesArray() as {
-      role: string;
-      tool_calls?: { id: string }[];
-      tool_call_id?: string;
-    }[];
+    const wire = cs.toMessagesArray();
     const open = new Set<string>();
     for (const msg of wire) {
-      if (msg.tool_calls) {
-        for (const call of msg.tool_calls) {
+      if (msg.role === "assistant") {
+        for (const call of msg.tool_calls ?? []) {
           open.add(call.id);
         }
       } else if (msg.role === "tool") {
-        expect(open.has(msg.tool_call_id!)).toBe(true);
-        open.delete(msg.tool_call_id!);
+        expect(open.has(msg.tool_call_id)).toBe(true);
+        open.delete(msg.tool_call_id);
       }
     }
     expect(open.size).toBe(0);

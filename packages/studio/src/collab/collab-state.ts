@@ -60,17 +60,18 @@ const attachedPaths = new Map<string, number>();
 export function collabState(tab: Tab): TabCollabState {
   // Key on the raw tab: writers (the collab session, via ensureCollab's raw tab) and readers
   // (toolbar/tab-strip, via reactive `workspace.tabs.get` proxies) must resolve the same entry.
-  const key = toRaw(tab as unknown as object) as Tab;
+  const key = toRaw(tab);
   let state = states.get(key);
   if (!state) {
-    state = reactive({
+    const initial: TabCollabState = {
       active: false,
       attachError: "",
       peers: [],
       readOnly: false,
       sourceCanonical: false,
       status: "unavailable",
-    }) as TabCollabState;
+    };
+    state = reactive(initial);
     states.set(key, state);
   }
   return state;

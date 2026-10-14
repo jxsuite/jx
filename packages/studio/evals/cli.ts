@@ -25,11 +25,17 @@ import { writeRun } from "./scoreboard.js";
 // The provider is reached as a server reaches it: happy-dom's fetch would apply CORS to it.
 useNativeFetch();
 
-const TASKS_DIR = join(import.meta.dir as string, "tasks");
+const TASKS_DIR = join(import.meta.dir, "tasks");
+
+/** The command line, parsed: which tasks to run, and how many trials each gets. */
+interface CliArgs {
+  tasks: string[];
+  k: number;
+}
 
 /** Parse `--tasks a b --k 3` style args. */
-function parseArgs(argv: string[]) {
-  const out: { tasks: string[]; k: number } = { tasks: [], k: 3 };
+function parseArgs(argv: string[]): CliArgs {
+  const out: CliArgs = { tasks: [], k: 3 };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--k") {
       i += 1;
@@ -60,6 +66,10 @@ function loadTasks(selectors: string[]): Task[] {
       : readdirSync(TASKS_DIR)
           .filter((f) => f.endsWith(".json"))
           .map((f) => join(TASKS_DIR, f));
+  /* SAFETY: every file read here is a golden task fixture, authored by hand to the `Task`
+     interface (evals/tasks/*.json, or a path a developer names with --tasks). Nothing generates
+     them, and one that drifts from the interface fails in its own trial, where the transcript shows
+     it. */
   return files
     .filter((f) => existsSync(f) && statSync(f).isFile())
     .map((f) => JSON.parse(readFileSync(f, "utf8")) as Task);

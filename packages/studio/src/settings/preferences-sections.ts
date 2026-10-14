@@ -29,7 +29,7 @@ export interface PreferencesSection {
  * Four are built; a section is added here when it has something to configure, never before — an
  * empty pane is the "declared but unbuilt" state the rail already refuses to render.
  */
-export const PREFERENCES_SECTIONS: readonly PreferencesSection[] = [
+const SECTIONS = [
   { id: "appearance", title: "Appearance", blurb: "How the Studio chrome looks." },
   {
     id: "assistant",
@@ -46,12 +46,18 @@ export const PREFERENCES_SECTIONS: readonly PreferencesSection[] = [
     title: "Keyboard",
     blurb: "Generated from the command registry — the app's own record of every chord.",
   },
-];
+] as const satisfies readonly PreferencesSection[];
+
+/** The id of one built section: the literal set `app.preferences { section }` accepts. */
+export type PreferencesSectionId = (typeof SECTIONS)[number]["id"];
+
+/** {@link SECTIONS}, as the sheet and the rail read it. */
+export const PREFERENCES_SECTIONS: readonly PreferencesSection[] = SECTIONS;
 
 /** The section the sheet opens on when none is named. */
 export const DEFAULT_PREFERENCES_SECTION = PREFERENCES_SECTIONS[0]!.id;
 
-/** Whether a string names a section. */
-export function isPreferencesSection(id: unknown): boolean {
-  return PREFERENCES_SECTIONS.some((section) => section.id === id);
+/** Whether a value names a section. */
+export function isPreferencesSection(id: unknown): id is PreferencesSectionId {
+  return SECTIONS.some((section) => section.id === id);
 }

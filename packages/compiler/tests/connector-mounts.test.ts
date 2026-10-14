@@ -17,19 +17,33 @@ import { resolvePrototypes } from "../src/site/prototype-resolver";
 import { buildSite } from "../src/site/site-build";
 import { dbPush, readDevVars } from "../src/site/db-push";
 import { writeProjectSchemas } from "../src/site/schema-command";
+import type { TableDef } from "@jxsuite/connector/types";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { JxDocument } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-connector-mounts__");
 
-function writeFile(relPath: string, content: string | object) {
+function writeFile(relPath: string, content: JsonValue) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
+}
+
+/** A state entry as resolvePrototypes left it (lowered or untouched), read as a JSON object. */
+function resolvedEntry(doc: JxDocument, key: string): JsonObject {
+  const entry = doc.state?.[key];
+  if (!isJsonObject(entry)) {
+    throw new Error(`Expected state.${key} to be an object after resolvePrototypes`);
+  }
+  return entry;
+}
+
+/** A `fetch` that answers through `answer`, with the global's own `preconnect` beside it. */
+function fetchDouble(
+  answer: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
 }
 
 const PROJECT = {
@@ -50,7 +64,7 @@ const PROJECT = {
   },
   extensions: ["@jxsuite/parser", "@jxsuite/connector"],
   name: "Connector Mounts",
-};
+} satisfies ProjectConfig;
 
 let registry: ExtensionRegistry;
 
@@ -70,7 +84,7 @@ beforeAll(async () => {
     },
     tagName: "main",
   });
-  registry = await buildProjectExtensionRegistry(TMP, PROJECT as never);
+  registry = await buildProjectExtensionRegistry(TMP, PROJECT);
 });
 
 afterAll(() => {
@@ -275,7 +289,7 @@ describe("buildSite with the connector extension", () => {
 
 describe("prototype-resolver lower", () => {
   test("TableQuery lowers to a Request def; actions lower to Function defs", async () => {
-    const doc = {
+    const doc: JxDocument = {
       state: {
         addComment: { $prototype: "TableInsert", table: "comments", timing: "client" },
         comments: {
@@ -292,27 +306,27 @@ describe("prototype-resolver lower", () => {
         },
       },
       tagName: "main",
-    } as unknown as JxDocument;
+    };
 
     await resolvePrototypes(doc, { _pathParams: { id: "row-1" } }, TMP, {
-      config: PROJECT as never,
+      config: PROJECT,
       registry,
     });
 
-    const comments = doc.state!.comments as Record<string, unknown>;
+    const comments = resolvedEntry(doc, "comments");
     expect(comments.$prototype).toBe("Request");
     expect(comments.timing).toBe("client");
-    expect(comments.url as string).toStartWith("/_jx/data/comments?filter=");
-    expect(comments.url as string).toContain("_v=${(state._v || 0)}");
+    expect(comments.url).toStartWith("/_jx/data/comments?filter=");
+    expect(comments.url).toContain("_v=${(state._v || 0)}");
 
-    const entry = doc.state!.entry as Record<string, unknown>;
-    expect(entry.url as string).toStartWith("/_jx/data/comments/row-1");
+    const entry = resolvedEntry(doc, "entry");
+    expect(entry.url).toStartWith("/_jx/data/comments/row-1");
 
-    const action = doc.state!.addComment as Record<string, unknown>;
+    const action = resolvedEntry(doc, "addComment");
     expect(action.$prototype).toBe("Function");
     expect(action.parameters).toEqual(["event"]);
-    expect(action.body as string).toContain('fetch("/_jx/data/comments"');
-    expect(action.body as string).toContain("state._v = (state._v || 0) + 1;");
+    expect(action.body).toContain('fetch("/_jx/data/comments"');
+    expect(action.body).toContain("state._v = (state._v || 0) + 1;");
   });
 
   test("timing: 'compiler' bakes through the normal resolve path (registry class, real sqlite)", async () => {
@@ -320,29 +334,26 @@ describe("prototype-resolver lower", () => {
     rmSync(bakeDir, { force: true, recursive: true });
     try {
       mkdirSync(bakeDir, { recursive: true });
+      const bakeTables = {
+        comments: {
+          connection: "main",
+          permissions: { insert: "public", read: "public" },
+          schema: { properties: { message: { type: "string" } }, type: "object" },
+        },
+      } satisfies Record<string, TableDef>;
       const bakeConfig = {
         connections: { main: { provider: "sqlite" } },
-        data: {
-          comments: {
-            connection: "main",
-            permissions: { insert: "public", read: "public" },
-            schema: { properties: { message: { type: "string" } }, type: "object" },
-          },
-        },
+        data: bakeTables,
         extensions: ["@jxsuite/parser", "@jxsuite/connector"],
         name: "Bake",
-      };
+      } satisfies ProjectConfig;
       writeFileSync(resolve(bakeDir, "project.json"), JSON.stringify(bakeConfig), "utf8");
-      const bakeRegistry = await buildProjectExtensionRegistry(bakeDir, bakeConfig as never);
+      const bakeRegistry = await buildProjectExtensionRegistry(bakeDir, bakeConfig);
 
       // Seed a row through the connector's own deploy + data mount machinery.
       const { Sqlite } = await import("@jxsuite/connector/sqlite");
       const env = { JX_PROJECT_ROOT: bakeDir };
-      await Sqlite.deploySchema(
-        bakeConfig.data as never,
-        { $name: "main", provider: "sqlite" },
-        { env },
-      );
+      await Sqlite.deploySchema(bakeTables, { $name: "main", provider: "sqlite" }, { env });
       const { handleDataRequest } = await import("@jxsuite/connector/worker");
       const seeded = await handleDataRequest(
         new Request("http://x/_jx/data/comments", {
@@ -354,26 +365,26 @@ describe("prototype-resolver lower", () => {
           connectors: { sqlite: Sqlite },
           sections: {
             connections: { main: { provider: "sqlite" } },
-            data: bakeConfig.data as never,
+            data: bakeTables,
           },
         },
         {},
       );
       expect(seeded.status).toBe(201);
 
-      const doc = {
+      const doc: JxDocument = {
         state: {
           comments: { $prototype: "TableQuery", table: "comments", timing: "compiler" },
         },
         tagName: "main",
-      } as unknown as JxDocument;
+      };
       await resolvePrototypes(doc, {}, bakeDir, {
-        config: bakeConfig as never,
+        config: bakeConfig,
         registry: bakeRegistry,
       });
-      const baked = doc.state!.comments as unknown as Record<string, unknown>[];
+      const baked = doc.state!.comments;
       expect(Array.isArray(baked)).toBe(true);
-      expect(baked[0]!.message).toBe("baked");
+      expect(baked).toHaveProperty(["0", "message"], "baked");
     } finally {
       rmSync(bakeDir, { force: true, recursive: true });
     }
@@ -381,29 +392,29 @@ describe("prototype-resolver lower", () => {
 
   test("unreachable databases bake to [] with a warning, never a failed build", async () => {
     // D1 with no binding and no CLOUDFLARE_API_TOKEN: the SSG bake degrades to an empty result.
-    const doc = {
+    const doc: JxDocument = {
       state: {
         comments: { $prototype: "TableQuery", table: "comments", timing: "compiler" },
       },
       tagName: "main",
-    } as unknown as JxDocument;
+    };
     const cleanEnv = { ...process.env };
     delete process.env.CLOUDFLARE_API_TOKEN;
     try {
-      await resolvePrototypes(doc, {}, TMP, { config: PROJECT as never, registry });
+      await resolvePrototypes(doc, {}, TMP, { config: PROJECT, registry });
     } finally {
-      process.env = cleanEnv as NodeJS.ProcessEnv;
+      process.env = cleanEnv;
     }
-    expect(doc.state!.comments).toEqual([] as never);
+    expect(doc.state!.comments).toEqual([]);
   });
 
   test("defs without a registry lower capability are left for their pipelines", async () => {
-    const doc = {
+    const doc: JxDocument = {
       state: { thing: { $prototype: "NotRegistered", timing: "client" } },
       tagName: "main",
-    } as unknown as JxDocument;
-    await resolvePrototypes(doc, {}, TMP, { config: PROJECT as never, registry });
-    expect((doc.state!.thing as Record<string, unknown>).$prototype).toBe("NotRegistered");
+    };
+    await resolvePrototypes(doc, {}, TMP, { config: PROJECT, registry });
+    expect(resolvedEntry(doc, "thing").$prototype).toBe("NotRegistered");
   });
 
   test("a lower() capability that throws warns and leaves the def as-is", async () => {
@@ -427,19 +438,19 @@ describe("prototype-resolver lower", () => {
         resolve(boomDir, "ext/boom.js"),
         `export class Boom {\n  static lower() {\n    throw new Error("lower failed");\n  }\n}\n`,
       );
-      const boomConfig = { extensions: ["./ext"], name: "Boom Project" };
-      const boomRegistry = await buildProjectExtensionRegistry(boomDir, boomConfig as never);
+      const boomConfig: ProjectConfig = { extensions: ["./ext"], name: "Boom Project" };
+      const boomRegistry = await buildProjectExtensionRegistry(boomDir, boomConfig);
 
-      const doc = {
+      const doc: JxDocument = {
         state: { result: { $prototype: "Boom", timing: "server" } },
         tagName: "main",
-      } as unknown as JxDocument;
+      };
       await resolvePrototypes(doc, {}, boomDir, {
-        config: boomConfig as never,
+        config: boomConfig,
         registry: boomRegistry,
       });
       // The throw is caught and warned; the def is left exactly as it was.
-      expect((doc.state!.result as Record<string, unknown>).$prototype).toBe("Boom");
+      expect(resolvedEntry(doc, "result").$prototype).toBe("Boom");
     } finally {
       rmSync(boomDir, { force: true, recursive: true });
     }
@@ -452,11 +463,14 @@ describe("dbPush", () => {
   test("dry-run compiles statements through the D1 HTTP dialect without applying", async () => {
     const sqls: string[] = [];
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { sql: string };
+    globalThis.fetch = fetchDouble(async (_input, init) => {
+      const body: JsonValue = JSON.parse(String(init?.body));
+      if (!isJsonObject(body) || !isString(body.sql)) {
+        throw new Error("Expected a D1 HTTP query body carrying `sql`");
+      }
       sqls.push(body.sql);
       return Response.json({ result: [{ meta: {}, results: [], success: true }], success: true });
-    }) as typeof globalThis.fetch;
+    });
     try {
       writeFile(".dev.vars", 'CLOUDFLARE_API_TOKEN="tok"\nCLOUDFLARE_ACCOUNT_ID=acct\n# comment\n');
       const { results, bindingsPatched } = await dbPush(TMP, { dryRun: true });
@@ -476,11 +490,12 @@ describe("dbPush", () => {
 
   test("apply patches wrangler.jsonc with the connector's binding fragments", async () => {
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
+    globalThis.fetch = fetchDouble(async () =>
       Response.json({
         result: [{ meta: {}, results: [], success: true }],
         success: true,
-      })) as unknown as typeof globalThis.fetch;
+      }),
+    );
     try {
       writeFile(
         "wrangler.jsonc",
@@ -491,9 +506,9 @@ describe("dbPush", () => {
       });
       expect(results[0]!.applied).toBe(true);
       expect(bindingsPatched).toBe(true);
-      const wrangler = JSON.parse(readFileSync(wranglerPath!, "utf8")) as Record<string, unknown>;
-      expect(wrangler.name).toBe("site");
-      expect(wrangler.d1_databases).toEqual([
+      const wrangler: JsonValue = JSON.parse(readFileSync(wranglerPath!, "utf8"));
+      expect(wrangler).toHaveProperty("name", "site");
+      expect(wrangler).toHaveProperty("d1_databases", [
         { binding: "DB", database_id: "d1-uuid", database_name: "main" },
       ]);
     } finally {
@@ -585,16 +600,20 @@ describe("schemas.fields plumbing", () => {
       );
 
       const { projectSchemaPath } = await writeProjectSchemas(dir);
-      const schema = JSON.parse(readFileSync(projectSchemaPath, "utf8")) as {
-        $defs: Record<string, unknown> & { Fields: { anyOf: { $ref: string }[] } };
-        allOf: { $ref: string }[];
-      };
-      const refs = schema.$defs.Fields.anyOf.map((r) => r.$ref);
-      expect(refs).toContain("#/$defs/fields-v1/$defs/ColumnExtra");
+      const schema: JsonValue = JSON.parse(readFileSync(projectSchemaPath, "utf8"));
+      expect(schema).toHaveProperty(
+        ["$defs", "Fields", "anyOf"],
+        expect.arrayContaining([
+          expect.objectContaining({ $ref: "#/$defs/fields-v1/$defs/ColumnExtra" }),
+        ]),
+      );
       /* The fragment joins the allOf and its resource embeds under $defs, both addressed by root
          pointer — committed entry documents are bundled AND flattened to one resource. */
-      expect(schema.allOf.some((r) => r.$ref === "#/$defs/fields-v1")).toBe(true);
-      expect(schema.$defs["fields-v1"]).toBeDefined();
+      expect(schema).toHaveProperty(
+        "allOf",
+        expect.arrayContaining([expect.objectContaining({ $ref: "#/$defs/fields-v1" })]),
+      );
+      expect(schema).toHaveProperty(["$defs", "fields-v1"]);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

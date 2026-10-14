@@ -22,6 +22,7 @@
  */
 import "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { getNestedStyle } from "@jxsuite/schema/guards";
 import { themeCSS, themeTokens } from "@jxsuite/ui";
 
 /** What `applyChromeTheme` asked Monaco to paint, in call order. */
@@ -56,8 +57,11 @@ const { applyChromeTheme, CHROME_THEMES, monacoTheme, setChromeTheme, shell } =
  * what ships: happy-dom resolves neither `light-dark()` nor a cascaded `color-scheme`, so a
  * computed-style assertion here would agree with every possible answer.
  */
-function schemeFor(name: string): string | null {
-  const rule = themeTokens[`&[data-theme="${name}"]`] as Record<string, unknown> | undefined;
+function schemeFor(name: string | undefined): string | null {
+  if (name === undefined) {
+    return null;
+  }
+  const rule = getNestedStyle(themeTokens, `&[data-theme="${name}"]`);
   const scheme = rule?.["colorScheme"] ?? rule?.["color-scheme"];
   return scheme === undefined ? null : String(scheme);
 }
@@ -164,7 +168,7 @@ describe("applyChromeTheme projects the record", () => {
     for (const name of CHROME_THEMES) {
       setChromeTheme(name);
       applyChromeTheme();
-      expect(schemeFor(document.documentElement.dataset.theme as string)).not.toBeNull();
+      expect(schemeFor(document.documentElement.dataset.theme)).not.toBeNull();
     }
   });
 

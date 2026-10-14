@@ -35,6 +35,21 @@ describe("extractUpstreamErrorMessage", () => {
       JSON.stringify({ errors: [] }),
       JSON.stringify({ errors: [] }),
     ],
+    [
+      "a truthy non-string error message is shown as text",
+      JSON.stringify({ error: { message: 42 }, errors: [{ message: "from errors" }] }),
+      "42",
+    ],
+    [
+      "a truthy non-string errors message is shown as text",
+      JSON.stringify({ errors: [{ message: true }] }),
+      "true",
+    ],
+    [
+      "an empty error message falls through to errors",
+      JSON.stringify({ error: { message: "" }, errors: [{ message: "from errors" }] }),
+      "from errors",
+    ],
     ["JSON with neither member is the raw body", '{"ok":false}', '{"ok":false}'],
     ["a body that is not JSON is the raw body", "upstream exploded", "upstream exploded"],
   ])("%s", (_label, body, message) => {

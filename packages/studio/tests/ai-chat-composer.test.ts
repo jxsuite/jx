@@ -26,6 +26,7 @@ import { createComposer } from "../src/panels/ai-chat/composer";
 import { ATTACHED_CONTEXT_DELIMITER } from "../src/panels/ai-chat/attached-context";
 import { resetModelCache } from "../src/services/ai-models";
 import { clearLayerSlot, initLayers } from "../src/ui/layers";
+import { isFunction } from "@jxsuite/schema/guards";
 import type { ComposerOptions } from "../src/panels/ai-chat/composer";
 
 installMockPlatform();
@@ -39,8 +40,11 @@ initLayers();
 
 let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
   Response.json({ models: [] }, { status: 200 });
-(globalThis as Record<string, unknown>).fetch = (url: string, init?: RequestInit) =>
-  fetchImpl(url, init);
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`; the model listing passes a string URL.
+globalThis.fetch = Object.assign(
+  (resource: RequestInfo | URL, init?: RequestInit) => fetchImpl(String(resource), init),
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
 
@@ -56,7 +60,10 @@ afterEach(() => {
      test's own menu down with it. In the app the attach button is a toggle and two attach menus
      never coexist, so this is a fixture's state rather than a defect's. */
   for (const el of document.querySelectorAll("#layer-popover jx-menu")) {
-    (el as HTMLElement & { hidePopover?: () => void }).hidePopover?.();
+    // Happy DOM has no Popover API, whatever the DOM types declare, so the method is probed.
+    if (el instanceof HTMLElement && isFunction(el.hidePopover)) {
+      el.hidePopover();
+    }
   }
   clearLayerSlot("popover", "assistant-attach");
 });
@@ -93,7 +100,9 @@ function makeComposer(extra: Partial<ComposerOptions> = {}) {
 
 /** The kit menu the attach button opens, wherever the popover layer put it. */
 function attachRows(): HTMLElement[] {
-  return [...document.querySelectorAll("#layer-popover jx-menu-item")] as HTMLElement[];
+  return [...document.querySelectorAll("#layer-popover jx-menu-item")].filter(
+    (row) => row instanceof HTMLElement,
+  );
 }
 
 beforeEach(() => {
@@ -239,7 +248,7 @@ describe("context attach", () => {
 
     c.composer.edit("make the heading bigger");
     c.composer.send();
-    const sent = (c.onSend.mock.calls[0] as string[])[0]!;
+    const [sent] = c.onSend.mock.calls[0]!;
     expect(sent).toContain("make the heading bigger");
     expect(sent).toContain(ATTACHED_CONTEXT_DELIMITER);
     expect(sent).toContain("Page: pages/index.json");
@@ -300,8 +309,10 @@ describe("context attach", () => {
     stubRect(anchor, { height: 24, left: 120, top: 400, width: 24 });
     c.composer.openAttachMenu(anchor);
     await flush(5);
-    const panel = document.querySelector("#layer-popover jx-menu") as HTMLElement;
-    expect(panel).not.toBeNull();
+    const panel = document.querySelector("#layer-popover jx-menu");
+    if (!(panel instanceof HTMLElement)) {
+      throw new Error("the attach menu never reached the popover layer");
+    }
     expect(panel.style.getPropertyValue("--jx-r0-0") || panel.getAttribute("style")).toContain(
       "px",
     );

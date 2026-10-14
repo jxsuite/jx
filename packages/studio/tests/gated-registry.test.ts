@@ -24,7 +24,13 @@ function tool(name: string) {
 function llmNames(registry: ReturnType<typeof createGatedToolRegistry>): string[] {
   return registry
     .listForLLM()
-    .map((t) => (t as { function: { name: string } }).function.name)
+    .map((t) => {
+      /* SAFETY: every registry here wraps createToolRegistry(), whose listForLLM() maps each tool
+         to OpenAI form `{ type: "function", function: { name, … } }`; the ToolRegistry interface
+         only types the entries as `object`. */
+      const entry = t as { function: { name: string } };
+      return entry.function.name;
+    })
     .toSorted();
 }
 

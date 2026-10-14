@@ -9,22 +9,17 @@
 
 import { extname } from "node:path";
 import { readFile } from "node:fs/promises";
-import type { FormatRegistry } from "@jxsuite/schema/format-registry";
+import type { FormatRegistry, ValueEdit } from "@jxsuite/schema/format-registry";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** Normalise a path to forward slashes (Windows `path` returns backslashes). */
 export const fwd = (p: string) => p.replaceAll("\\", "/");
 
-/** One authored value to replace in a document's own source text. */
-export interface ValueEdit {
-  from: string;
-  to: string;
-}
-
 /** A parsed document and the two ways it might be written back. */
 export interface LoadedDoc {
-  doc: unknown;
+  doc: JsonValue;
   /** Round-trips the whole document. Null when the format declares no `serialize`. */
-  serialize: ((doc: unknown) => Promise<string>) | null;
+  serialize: ((doc: JsonValue) => Promise<string>) | null;
   /**
    * Replaces authored values in the file's own bytes, changing nothing else. Null when the format
    * declares no `rewrite`.
@@ -84,7 +79,8 @@ export async function loadDoc(fp: string, registry: FormatRegistry): Promise<Loa
   if (isJsonPath(fp)) {
     const trailingNewline = raw.endsWith("\n");
     return {
-      doc: JSON.parse(raw) as unknown,
+      // SAFETY: JSON.parse without a reviver only ever yields a JSON value; its `any` says no more.
+      doc: JSON.parse(raw) as JsonValue,
       rewrite: null,
       serialize: (doc) =>
         Promise.resolve(JSON.stringify(doc, null, 2) + (trailingNewline ? "\n" : "")),
@@ -95,22 +91,20 @@ export async function loadDoc(fp: string, registry: FormatRegistry): Promise<Loa
   if (!parseEntry) {
     throw new Error(`No parser for "${ext}"`);
   }
-  const doc = await parseEntry.call("parse", raw);
+  /* SAFETY: read as a JSON tree. A `parse` answer is a JxDocument or a ContentLoaderEntry[]
+     (specs/extensions.md §8), both JSON trees but for leaves such as a frontmatter Date. Every walk
+     over it in refs.ts re-checks each node with Array.isArray / isJsonObject / isString before
+     reading it, so such a leaf is skipped rather than misread. */
+  const doc = (await parseEntry.call("parse", raw)) as JsonValue;
   const serializeEntry = registry.byExtension(ext, "serialize");
   const rewriteEntry = registry.byExtension(ext, "rewrite");
   return {
     doc,
     rewrite: rewriteEntry
-      ? async (edits) => {
-          const out = await rewriteEntry.call("rewrite", raw, edits);
-          return typeof out === "string" ? out : String(out);
-        }
+      ? async (edits) => String(await rewriteEntry.call("rewrite", raw, edits))
       : null,
     serialize: serializeEntry
-      ? async (d) => {
-          const out = await serializeEntry.call("serialize", d);
-          return typeof out === "string" ? out : String(out);
-        }
+      ? async (d) => String(await serializeEntry.call("serialize", d))
       : null,
   };
 }

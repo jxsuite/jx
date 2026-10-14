@@ -78,9 +78,7 @@ const _editWidths = new Map<string, EditWidthRecord>();
 
 /** The size breakpoints and base width a tab renders against, site context included. */
 function mediaEntriesOfTab(tab: Tab) {
-  return parseMediaEntries(
-    getEffectiveMedia(tab.doc.document?.$media as Record<string, string> | undefined),
-  );
+  return parseMediaEntries(getEffectiveMedia(tab.doc.document.$media));
 }
 
 /**

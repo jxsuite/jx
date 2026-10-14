@@ -17,13 +17,14 @@ export type { FormulaCatalogEntry } from "./catalog.ts";
 
 /** The catalog as named-formula state entries, keyed by formula name. */
 export function formulaEntries(): Record<string, JxExpressionDef> {
-  const entries: Record<string, JxExpressionDef> = {};
-  for (const formula of catalog) {
-    entries[formula.name] = {
-      $description: formula.description,
-      $expression: formula.expression,
-      parameters: formula.parameters,
-    };
-  }
-  return entries;
+  return Object.fromEntries(
+    catalog.map((formula): [string, JxExpressionDef] => [
+      formula.name,
+      {
+        $description: formula.description,
+        $expression: formula.expression,
+        parameters: formula.parameters,
+      },
+    ]),
+  );
 }

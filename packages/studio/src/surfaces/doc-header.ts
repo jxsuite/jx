@@ -27,16 +27,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import docHeaderDoc from "./doc-header.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("doc-header", docHeaderDoc as unknown as JxDocument);
-
-/** One choice in a row's picker. The shape `jx-select` reads. */
-export interface DocHeaderChoice {
-  value: string;
-  label: string;
-}
+registerSurface("doc-header", docHeaderDoc);
 
 /**
  * One row of the card, as the document reads it.
@@ -45,7 +38,7 @@ export interface DocHeaderChoice {
  * `$switch` chooses on one: a row that omitted `options` would leave the picker case reading an
  * absent path.
  */
-export interface DocHeaderRow extends Record<string, unknown> {
+export interface DocHeaderRow {
   /** The row's identity: the repeater's key, and the argument every action is given. */
   key: string;
   /** The name on `data-prop` — what a reader, a screenshot region and the inspector call it. */
@@ -68,7 +61,7 @@ export interface DocHeaderRow extends Record<string, unknown> {
   /** A text row's placeholder. Empty draws none. */
   placeholder: string;
   /** A picker's rows, in the order they are offered. Empty on every other kind. */
-  options: DocHeaderChoice[];
+  options: SurfaceOption[];
   /** A sentence under the control — an empty collection, or a listing that failed. */
   note: string;
   /** Whether {@link DocHeaderRow.note} has anything in it; `$switch` is the document's conditional. */
@@ -80,7 +73,7 @@ export interface DocHeaderRow extends Record<string, unknown> {
 }
 
 /** One `$head` entry the disclosure lists, read-only. */
-export interface DocHeaderRawEntry extends Record<string, unknown> {
+export interface DocHeaderRawEntry {
   /** Unique within one document — the repeater's key. */
   key: string;
   /** The entry as markup, e.g. `<meta name="author">`. */
@@ -134,7 +127,7 @@ export interface DocHeaderActions {
   /** Open the OS file picker for a media row and assign what comes back. */
   upload: (key: string) => void;
   /** Open the media browser under the button that was pressed. */
-  browse: (key: string, anchor: unknown) => void;
+  browse: (key: string, anchor: EventTarget | null) => void;
   /** Run the `document.openSeo` command — the door to Search appearance. */
   openSeo: () => void;
   /** Remember that the Raw head tags disclosure was opened or closed. */
@@ -153,7 +146,7 @@ export interface DocHeaderSurface {
 }
 
 /** The scope the document reads: the view plus the actions, flat. */
-interface DocHeaderScope extends Record<string, unknown>, DocHeaderView, DocHeaderActions {}
+interface DocHeaderScope extends DocHeaderView, DocHeaderActions {}
 
 /** Write a whole view into the scope. Assignment only — the mount is never rebuilt for a repaint. */
 function project(scope: DocHeaderScope, view: DocHeaderView): void {
@@ -184,7 +177,7 @@ export function mountDocHeaderSurface(
   view: DocHeaderView,
   actions: DocHeaderActions,
 ): DocHeaderSurface {
-  const scope = reactive<DocHeaderScope>({
+  const scope: DocHeaderScope = reactive<DocHeaderScope>({
     ...actions,
     collection: "Document",
     expanded: true,
@@ -195,7 +188,7 @@ export function mountDocHeaderSurface(
     region: "",
     route: "",
     rows: [],
-  }) as DocHeaderScope;
+  });
   project(scope, view);
 
   host.replaceChildren();
@@ -218,9 +211,7 @@ export function mountDocHeaderSurface(
        stage that redrew took the card's root away without telling anyone. */
     connected: () =>
       !disposed &&
-      (mounted === null
-        ? host.childNodes.length === 0
-        : (mounted.root as Node).parentNode === host),
+      (mounted === null ? host.childNodes.length === 0 : mounted.root.parentNode === host),
     dispose() {
       disposed = true;
       mounted?.dispose();

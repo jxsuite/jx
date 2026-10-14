@@ -91,10 +91,10 @@ const { handleSlashTrigger, isEditing, setSlashController, startEditing, stopEdi
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 const setPan = mock((_x: number, _y: number) => {});
 const applyTransform = mock(() => {});
@@ -102,7 +102,9 @@ const pointerContext = { applyTransform, canvasMode: "design", panX: 0, panY: 0,
 const pointer = () => pointerContext;
 
 const saveDocument = mock(() => {});
-const openProject = mock(async (_target: ProjectOpenTarget) => "opened" as ProjectOpenOutcome);
+const openProject = mock(
+  async (_target: ProjectOpenTarget): Promise<ProjectOpenOutcome> => "opened",
+);
 const openInBrowser = mock(() => {});
 
 /** How many times the refusal probe's `run` actually ran — 0 is what a refusal looks like. */
@@ -136,11 +138,23 @@ function canvasRecord(id: string): AnyCommand {
 
 /** Run a record directly — `when` is the registry's gate, and these cases are behind it. */
 function runRecord(record: AnyCommand): void {
+  /* SAFETY: a registered record is an AnyCommand, whose argument type is erased to `never`. Every
+     record handed here (the selection verbs and canvas.zoomIn) declares no `args` and its `run`
+     never reads the argument, so `undefined` stands for the absent record. */
   void record.run(ctx, undefined as never);
 }
 
+/** The open document's children, which `freshDoc` seeds as a plain array. */
+function documentChildren(): (JxMutableNode | string)[] {
+  const { children } = activeTab.value!.doc.document;
+  if (!Array.isArray(children)) {
+    throw new TypeError("the document's children are not a plain array");
+  }
+  return children;
+}
+
 function childCount(): number {
-  return (activeTab.value!.doc.document.children as unknown[]).length;
+  return documentChildren().length;
 }
 
 function pressDoc(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -284,7 +298,7 @@ describe("selection verbs with no open document", () => {
     tab.session.selection = [["children", 0]];
     runRecord(canvasRecord("selection.insertSibling"));
     expect(childCount()).toBe(4);
-    expect((tab.doc.document.children as unknown[])[1]).toEqual({ tagName: "p", textContent: "" });
+    expect(documentChildren()[1]).toEqual({ tagName: "p", textContent: "" });
     expect(tab.session.selection).toEqual([["children", 1]]);
 
     // The document element has no sibling slot to insert into.
@@ -327,6 +341,8 @@ describe("newWindow", () => {
     installMockPlatform({ newWindow });
     await studioDeps!.newWindow();
     expect(newWindow).toHaveBeenCalledTimes(1);
+    // A bare request: the dependency forwards nothing of its own caller's to the platform.
+    expect(newWindow).toHaveBeenCalledWith();
   });
 
   test("a host with one window is a no-op, not a crash", () => {
@@ -409,8 +425,8 @@ describe("dispatcher", () => {
        exists and ran, which is what claiming means, and the browser must not act on the key as
        well. */
     const seen: string[] = [];
-    const onError = (event: Event) => {
-      seen.push((event as ErrorEvent).message);
+    const onError = (event: ErrorEvent) => {
+      seen.push(event.message);
     };
     window.addEventListener("error", onError);
     notified.length = 0;

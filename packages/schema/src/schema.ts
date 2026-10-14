@@ -1,28 +1,34 @@
 /**
  * Jx-schema.ts — Jx JSON Schema 2020-12 meta-schema generator
- * @version 2.0.0
- * @license MIT
  *
- * Generates comprehensive JSON Schema 2020-12 documents that validate Jx source files.
- * Individual schema definitions live in ../defs/ as the single source of truth.
- * This module composes them and injects web standards data derived at generation time from:
+ * Generates comprehensive JSON Schema 2020-12 documents that validate Jx source files. Individual
+ * schema definitions live in ../defs/ as the single source of truth. This module composes them and
+ * injects web standards data derived at generation time from:
  *
- *   webref/elements — HTML element tag names
- *   webref/css      — CSS property names (camelCase CSSOM)
- *   webref/idl      — DOM EventHandler attribute names
+ * - `webref/elements`: HTML element tag names
+ * - `webref/css`: CSS property names (camelCase CSSOM)
+ * - `webref/idl`: DOM EventHandler attribute names
  *
  * Usage:
- *   import { generateSchema } from './schema.js';
- *   const schema = await generateSchema();
- *   fs.writeFileSync('schema.json', JSON.stringify(schema, null, 2));
+ *
+ * ```ts
+ * import { generateSchema } from "./schema.js";
+ * const schema = await generateSchema();
+ * fs.writeFileSync("schema.json", JSON.stringify(schema, null, 2));
+ * ```
  *
  * CLI:
- *   bun run schema.ts [output-path]
+ *
+ * ```sh
+ * bun run schema.ts [output-path]
+ * ```
  *
  * @module jx-schema
+ * @license MIT
+ * @version 2.0.0
  */
 
-import { listAll as listElements } from "@webref/elements";
+import { listAll } from "@webref/elements";
 import css from "@webref/css";
 import idl from "@webref/idl";
 
@@ -110,6 +116,8 @@ import {
 } from "../defs/field-schema.schema";
 import { imageConfigSchema } from "../defs/image-config.schema";
 import { projectConfigSchema } from "../defs/project-config.schema";
+import type { JsonObject, JsonValue } from "../types";
+import type { ReadonlyJsonObject } from "./project-schemas";
 
 // ─── Web standards data loader ────────────────────────────────────────────────
 
@@ -132,7 +140,7 @@ function loadWebData() {
 
 async function computeWebData() {
   const [elementsData, cssData, idlData] = await Promise.all([
-    listElements(),
+    listAll(),
     css.listAll(),
     idl.parseAll(),
   ]);
@@ -168,8 +176,7 @@ async function computeWebData() {
         if (
           member.type === "attribute" &&
           member.name?.startsWith("on") &&
-          typeof member.idlType?.idlType === "string" &&
-          member.idlType.idlType === "EventHandler"
+          member.idlType?.idlType === "EventHandler"
         ) {
           handlerSet.add(member.name);
         }
@@ -183,8 +190,8 @@ async function computeWebData() {
 
 // ─── Injection helpers ─────────────────────────────────────────────────────────
 
-function buildEventHandlerProperties(eventHandlers: string[]) {
-  const properties: Record<string, unknown> = {};
+function buildEventHandlerProperties(eventHandlers: string[]): JsonObject {
+  const properties: JsonObject = {};
   for (const name of eventHandlers) {
     properties[name] = {
       description: `Event handler for the "${name.slice(2)}" event.`,
@@ -198,11 +205,11 @@ function buildEventHandlerProperties(eventHandlers: string[]) {
   return properties;
 }
 
-function buildCssProperties(cssProps: string[]) {
+function buildCssProperties(cssProps: string[]): JsonObject {
   /* The authored `properties` come first so a `$`-prefixed metadata key survives: this function
      REPLACES the block's properties rather than adding to them, so anything the hand-written schema
      declared there was silently dropped — which is how `$description` validated as a number. */
-  const properties: Record<string, unknown> = { ...styleObjectSchema.properties };
+  const properties: JsonObject = { ...styleObjectSchema.properties };
   for (const name of cssProps) {
     /* A `{ $ref }` is a reactive VALUE, which the runtime has always resolved (spec.md §9.6) and
        only the validator refused: `style: { fontFamily: { $ref: "$map/item/face" } }` reported
@@ -718,11 +725,11 @@ export async function generateSchemaString() {
 // Minimal structural types for the optional `ajv` / `ajv-formats` peer deps
 // (no direct dependency, and shipping no types usable from here).
 interface AjvValidateFn {
-  (doc: unknown): boolean;
+  (doc: JsonValue): boolean;
   errors?: unknown[] | null;
 }
 interface AjvInstance {
-  compile: (schema: unknown) => AjvValidateFn;
+  compile: (schema: ReadonlyJsonObject) => AjvValidateFn;
 }
 type AjvCtor = new (opts: {
   allErrors: boolean;
@@ -736,20 +743,24 @@ type AddFormatsFn = (ajv: AjvInstance) => void;
  * document.schema.json from `jx schema`). The schema must be self-contained — external refs are not
  * resolved here.
  *
- * @param {Record<string, unknown>} doc - The document to validate
- * @param {Record<string, unknown>} schema - A self-contained 2020-12 schema
+ * @param {JsonValue} doc - The document to validate
+ * @param {ReadonlyJsonObject} schema - A self-contained 2020-12 schema
  * @returns {Promise<{ errors: unknown[] | null; valid: boolean }>}
  */
-export async function validateWithSchema(
-  doc: Record<string, unknown>,
-  schema: Record<string, unknown>,
-) {
+export async function validateWithSchema(doc: JsonValue, schema: ReadonlyJsonObject) {
   let Ajv: AjvCtor;
   let addFormats: AddFormatsFn;
   try {
-    // The generated schema is JSON Schema 2020-12, so use the matching Ajv build
-    // (the default `ajv` export is draft-07 and can't compile a 2020-12 schema).
+    /*
+     * The generated schema is JSON Schema 2020-12, so use the matching Ajv build (the default
+     * `ajv` export is draft-07 and can't compile a 2020-12 schema).
+     * SAFETY: the default export of `ajv/dist/2020` is the Ajv2020 class. AjvCtor restates, in
+     * JSON terms, only the three constructor options, `compile` and the validate function's call
+     * and `errors` used below; ajv reports a schema value it cannot use as a thrown error.
+     */
     ({ default: Ajv } = (await import("ajv/dist/2020")) as { default: AjvCtor });
+    /* SAFETY: ajv-formats' default export is `addFormats(ajv, options?)`, which only registers
+       format validators on the instance it is given; this call passes the Ajv2020 built above. */
     // @ts-expect-error — optional peer dependency
     ({ default: addFormats } = (await import("ajv-formats")) as { default: AddFormatsFn });
   } catch {
@@ -765,22 +776,22 @@ export async function validateWithSchema(
   return { errors: validate.errors ?? null, valid };
 }
 
-export async function validateDocument(doc: Record<string, unknown>) {
-  return validateWithSchema(doc, (await generateSchema()) as Record<string, unknown>);
+export async function validateDocument(doc: JsonValue) {
+  return validateWithSchema(doc, await generateSchema());
 }
 
 /** Validate a .class.json class definition against the generated class schema. */
-export async function validateClass(doc: Record<string, unknown>) {
-  return validateWithSchema(doc, generateClassSchema() as Record<string, unknown>);
+export async function validateClass(doc: JsonValue) {
+  return validateWithSchema(doc, generateClassSchema());
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
-async function runSchemaCli() {
+async function runSchemaCli(scriptPath: string) {
   const { mkdirSync, writeFileSync } = await import("node:fs");
   const { resolve, dirname } = await import("node:path");
 
-  const schemaDir = dirname(resolve(process.argv[1] as string, ".."));
+  const schemaDir = dirname(resolve(scriptPath, ".."));
 
   const componentSchema = await generateSchema();
   const projectSchema = generateProjectSchema();
@@ -837,7 +848,7 @@ async function runSchemaCli() {
       const detail =
         fmt.stderr.toString() ||
         fmt.stdout.toString() ||
-        `exit ${fmt.exitCode ?? "null"}${fmt.signalCode ? `, signal ${fmt.signalCode}` : ""}`;
+        `exit ${fmt.exitCode}${fmt.signalCode ? `, signal ${fmt.signalCode}` : ""}`;
       console.error(`Warning: skipped oxfmt reformat of generated schemas (${detail})`);
     }
     console.error("Generated:");
@@ -854,5 +865,6 @@ async function runSchemaCli() {
 // Runs when invoked as a script or driven by a test that stages argv[1]. The build lives in an async
 // Function rather than a top-level await: Bun's test runtime drops a dynamically-imported module's
 // Top-level-await continuation on Windows. `ready` lets tests await the same sequence.
+const [, scriptPath] = process.argv;
 // oxlint-disable-next-line unicorn/prefer-top-level-await
-export const ready = process.argv[1]?.endsWith("schema.ts") ? runSchemaCli() : undefined;
+export const ready = scriptPath?.endsWith("schema.ts") ? runSchemaCli(scriptPath) : undefined;

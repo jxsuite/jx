@@ -17,7 +17,10 @@
  *   it are exercised against hand-built manifests.
  */
 import { afterEach, beforeAll, afterAll, describe, expect, spyOn, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { BunFile } from "bun";
 
 import {
   CONTRACT_BUDGET,
@@ -28,23 +31,31 @@ import {
   readManifest,
   validateArgs,
 } from "../../../scripts/check-shot-contract";
-import type { CommandTable, ContractCounts } from "../../../scripts/check-shot-contract";
+import type {
+  CommandRecord,
+  CommandTable,
+  ContractCounts,
+} from "../../../scripts/check-shot-contract";
+import { FIXTURES } from "./shared-fixtures";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
-const FIXTURES = "scripts/screenshots/fixtures/contract";
 
 /** Same hand-built projection the sibling file uses, so the pure rules never import the studio. */
-function table(entries: { id: string; args?: object; scriptable?: boolean }[] = []): CommandTable {
+function table(
+  entries: { id: string; args?: CommandRecord["args"]; scriptable?: boolean }[] = [],
+): CommandTable {
   return new Map(
-    entries.map((entry) => [
-      entry.id,
-      {
+    entries.map((entry): [string, CommandRecord] => {
+      const record: CommandRecord = {
         id: entry.id,
         scriptable: entry.scriptable !== false,
         source: "fixture",
-        ...(entry.args ? { args: entry.args } : {}),
-      },
-    ]),
+      };
+      if (entry.args) {
+        record.args = entry.args;
+      }
+      return [entry.id, record];
+    }),
   );
 }
 
@@ -249,6 +260,8 @@ describe("the ratchet tail", () => {
   });
 
   /** Every counter the shot-contract check still budgets above zero, in CONTRACT_BUDGET's order. */
+  /* SAFETY: CONTRACT_BUDGET is an `as const` literal and ContractCounts is keyed by exactly its
+     keys, so every own key `Object.keys` returns is one of them. */
   const budgeted = (Object.keys(CONTRACT_BUDGET) as (keyof ContractCounts)[]).filter(
     (key) => CONTRACT_BUDGET[key] > 0,
   );
@@ -259,19 +272,22 @@ describe("the ratchet tail", () => {
     // The line an author is meant to act on — the counters themselves are read from the budget, so
     // This stays true the next time one of them is lowered.
     const onDisk = join(REPO_ROOT, DEFAULT_MANIFEST);
-    const realFile = Bun.file;
-    const file = spyOn(Bun, "file").mockImplementation(((path: unknown, options?: unknown) =>
-      path === onDisk
-        ? { json: () => Promise.resolve({ contract: 1, shots: [] }) }
-        : (realFile as (a: unknown, b?: unknown) => unknown)(
-            path,
-            options,
-          )) as unknown as typeof Bun.file);
+    const scratch = mkdtempSync(join(tmpdir(), "shot-contract-"));
+    const underBudget = join(scratch, "manifest.json");
+    writeFileSync(underBudget, JSON.stringify({ contract: 1, shots: [] }));
+    const realFile: (path: string | URL, options?: BlobPropertyBag) => BunFile = Bun.file;
+    /* SAFETY: main() only ever opens files by resolved string path, which is the one overload this
+       stand-in implements; the committed manifest's path is redirected to the under-budget copy
+       and every other path goes to the real Bun.file unchanged. */
+    const redirect = ((path: string | URL, options?: BlobPropertyBag) =>
+      realFile(path === onDisk ? underBudget : path, options)) as typeof Bun.file;
+    const file = spyOn(Bun, "file").mockImplementation(redirect);
     let code: number;
     try {
       code = await main(["--manifest", DEFAULT_MANIFEST, "--commands", `${FIXTURES}/commands.ts`]);
     } finally {
       file.mockRestore();
+      rmSync(scratch, { force: true, recursive: true });
     }
     expect(code).toBe(0);
     expect(out.filter((line) => line.startsWith("  ratchet: "))).toEqual(

@@ -4,9 +4,8 @@
  *
  * The assistant over the reactive document-assistant session: a view-state machine (sessions list ↔
  * chat), the transcript, the sticky composer, and the six `Assistant:` records that are the only
- * definition of what it can do. It is a Jx document over the kit now
- * (`surfaces/ai-chat.json` + `surfaces/ai-chat.ts`); this module is the flow, and everything below
- * decides rather than draws.
+ * definition of what it can do. It is a Jx document over the kit now (`surfaces/ai-chat.json` +
+ * `surfaces/ai-chat.ts`); this module is the flow, and everything below decides rather than draws.
  *
  * Credentials are NOT a state of this panel. A provider key is a roaming APPLICATION setting
  * configured once, so it lives in Preferences › Assistant (⌘,) — not in a dialog reachable only
@@ -23,8 +22,8 @@
  * nothing else — the composer is never re-rendered, so there is nothing to guard against and
  * nothing to coalesce. One `effect()` recomputes the projection; the surface follows.
  *
- * @docs studio/ai/chat
  * @license MIT
+ * @docs studio/ai/chat
  */
 
 import { effect, effectScope } from "../reactivity";
@@ -64,7 +63,7 @@ import type { AiChatSurface, AiChatView } from "../surfaces/ai-chat";
 import type { AnyCommand } from "../commands/registry";
 import type { CommandContext } from "../commands/context";
 import type { EffectScope } from "@vue/reactivity";
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 
 // ─── State (module-level, persists across tab switches) ─────────────────────
 
@@ -73,9 +72,14 @@ let mounted = false;
 /** Which pane the panel shows. */
 let view: "chat" | "sessions" = "chat";
 
+declare global {
+  /** The live assistant session, for inspection from a devtools console. */
+  var assistant: ReturnType<typeof createDocumentAssistant> | undefined;
+}
+
 /** Document AST assistant session — created lazily, persists across tab switches. */
 const assistant = createDocumentAssistant();
-(globalThis as Record<string, unknown>).assistant = assistant;
+globalThis.assistant = assistant;
 let assistantScope: EffectScope | null = null;
 
 // ─── The surface ────────────────────────────────────────────────────────────
@@ -224,10 +228,10 @@ function watchAssistant() {
  * The assistant message the tool replies at the end of the transcript answer: the one whose chips a
  * running tool's result is about to change.
  *
- * @param {readonly Message[]} messages
- * @returns {Message | undefined}
+ * @param {readonly LiveMessage[]} messages
+ * @returns {LiveMessage | undefined}
  */
-function latestRequest(messages: readonly Message[]): Message | undefined {
+function latestRequest(messages: readonly LiveMessage[]): LiveMessage | undefined {
   for (let index = messages.length - 1; index >= 0; index--) {
     if (messages[index]!.role !== "tool") {
       return messages[index];
@@ -463,21 +467,20 @@ export function seedAssistantMessages(messages: SeededAssistantMessage[]): void 
   for (const msg of messages) {
     seededCount += 1;
     const seq = seededCount;
-    assistant.chatState.messages.push({
+    const message: LiveMessage = {
       content: msg.content,
       id: `seeded_${seq}`,
       role: msg.role,
       timestamp: seq,
-      ...(msg.toolCalls
-        ? {
-            toolCalls: msg.toolCalls.map((tc, i) => ({
-              arguments: tc.arguments,
-              id: `seeded_${seq}_tc${i}`,
-              name: tc.name,
-            })),
-          }
-        : {}),
-    });
+    };
+    if (msg.toolCalls) {
+      message.toolCalls = msg.toolCalls.map((tc, i) => ({
+        arguments: tc.arguments,
+        id: `seeded_${seq}_tc${i}`,
+        name: tc.name,
+      }));
+    }
+    assistant.chatState.messages.push(message);
   }
   renderAiPanel();
 }

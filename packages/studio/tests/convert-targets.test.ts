@@ -136,8 +136,8 @@ describe("getConvertTargets", () => {
         expect(target).toHaveProperty("label");
         expect(target).toHaveProperty("tag");
         expect(target).toHaveProperty("description");
-        expect(typeof target.label).toBe("string");
-        expect(typeof target.tag).toBe("string");
+        expect(target.label).toBeString();
+        expect(target.tag).toBeString();
         expect(target.label.length).toBeGreaterThan(0);
       }
     });

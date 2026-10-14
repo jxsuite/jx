@@ -53,13 +53,10 @@ export function parseLog(stdout: string): { sha: string; message: string }[] {
 
 /** The commits in `log` whose changelog-bound text carries an angle-bracket tag. */
 export function findUnsafeCommits(commits: { sha: string; message: string }[]): UnsafeCommit[] {
-  return commits
-    .map((c) => ({
-      sha: c.sha,
-      subject: c.message.split("\n")[0] ?? "",
-      parts: findChangelogUnsafeParts(c.message),
-    }))
-    .filter((c) => c.parts.length > 0);
+  return commits.flatMap((c) => {
+    const parts = findChangelogUnsafeParts(c.message);
+    return parts.length > 0 ? [{ sha: c.sha, subject: c.message.split("\n")[0] ?? "", parts }] : [];
+  });
 }
 
 export function report(unsafe: UnsafeCommit[]): string {

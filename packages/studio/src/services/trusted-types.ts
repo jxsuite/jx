@@ -22,6 +22,20 @@
  * @docs studio/interface/problems-and-progress
  */
 
+/**
+ * A W3C `TrustedHTML`: opaque to script, accepted by an injection sink, and stringifying to the
+ * markup it wraps. This TypeScript's `lib.dom` does not declare it, so it is declared here with the
+ * one member a reader can rely on.
+ */
+export interface TrustedHtml {
+  toString: () => string;
+}
+
+/** The policy object `createPolicy` answers with, narrowed to the one factory the shell calls. */
+export interface StudioPolicy {
+  createHTML: (input: string) => TrustedHtml;
+}
+
 /** The subset of the Trusted Types API this module uses — typed here so no DOM lib is required. */
 interface TrustedTypesApi {
   createPolicy: (
@@ -31,7 +45,7 @@ interface TrustedTypesApi {
       createScript?: (input: string) => string;
       createScriptURL?: (input: string) => string;
     },
-  ) => { createHTML: (input: string) => unknown };
+  ) => StudioPolicy;
 }
 
 /** The policy name, which a CSP `trusted-types` directive would have to allow. */
@@ -75,18 +89,21 @@ export function assertSanitized(value: string): string {
 }
 
 /** Created once. A second `createPolicy` with the same name throws when policies are restricted. */
-let policy: { createHTML: (input: string) => unknown } | null = null;
+let policy: StudioPolicy | null = null;
 
 /**
  * The shell's Trusted Types policy, or null where the API does not exist.
  *
- * @returns {{ createHTML: (input: string) => unknown } | null}
+ * @returns {StudioPolicy | null}
  */
-export function studioPolicy(): { createHTML: (input: string) => unknown } | null {
+export function studioPolicy(): StudioPolicy | null {
   if (policy) {
     return policy;
   }
-  const api = (globalThis as unknown as { trustedTypes?: TrustedTypesApi }).trustedTypes;
+  /* SAFETY: `trustedTypes` is the member Trusted Types adds to the global scope, which this
+     `lib.dom` predates; the intersection only names it, typed as possibly absent, and an absent
+     member (a browser without Trusted Types, and the tests) is the `undefined` handled below. */
+  const api = (globalThis as typeof globalThis & { trustedTypes?: TrustedTypesApi }).trustedTypes;
   if (!api) {
     return null;
   }
@@ -110,9 +127,9 @@ export function studioPolicy(): { createHTML: (input: string) => unknown } | nul
  * guard that only fires under Trusted Types would be a guard that never fires in the tests.
  *
  * @param {string} value Markup from `markdownToHtml`.
- * @returns {unknown} A `TrustedHTML`, or the asserted string.
+ * @returns {TrustedHtml | string} A `TrustedHTML`, or the asserted string.
  */
-export function trustedHtml(value: string): unknown {
+export function trustedHtml(value: string): TrustedHtml | string {
   const active = studioPolicy();
   return active ? active.createHTML(value) : assertSanitized(value);
 }

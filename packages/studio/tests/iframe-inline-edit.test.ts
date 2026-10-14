@@ -16,6 +16,8 @@ import {
 import { caretInto } from "./harness";
 import type { SlashCommand } from "../src/editor/inline-edit";
 import { serializeJxPath } from "../src/canvas/path-mapping";
+import type { IframeChannel } from "../src/canvas/iframe-channel";
+import type { JsonValue, JxAttributeValue, JxMutableNode } from "@jxsuite/schema/types";
 import type {
   ApplyFormatIntent,
   IframeToParent,
@@ -26,7 +28,7 @@ import type {
 function fakeChannel() {
   const posts: IframeToParent[] = [];
   let handler: ((m: ParentToIframe) => void) | null = null;
-  const channel = {
+  const channel: IframeChannel<IframeToParent, ParentToIframe> = {
     dispose() {
       // Unused by these tests.
     },
@@ -39,8 +41,37 @@ function fakeChannel() {
     post(m: IframeToParent) {
       posts.push(m);
     },
-  } as never;
+  };
   return { channel, deliver: (m: ParentToIframe) => handler?.(m), posts };
+}
+
+/** The arguments the editing engine passes to `document.execCommand`. */
+type ExecCommandArgs = (string | boolean)[];
+
+/**
+ * Install a recording `document.execCommand` (happy-dom has none) as an own property of the
+ * document, and return the function that removes it again.
+ */
+function stubExecCommand(calls: ExecCommandArgs[]): () => void {
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    enumerable: true,
+    value: (...args: ExecCommandArgs) => {
+      calls.push(args);
+      return true;
+    },
+    writable: true,
+  });
+  return () => {
+    Reflect.deleteProperty(document, "execCommand");
+  };
+}
+
+/** The CSS Custom Highlight stand-ins one test installs, and the function that removes them. */
+interface HighlightStub {
+  map: Map<string, object>;
+  built: Range[];
+  restore: () => void;
 }
 
 function editableContainer(tag = "p") {
@@ -85,7 +116,7 @@ function caretAtEnd(node: Node) {
 
 /** The last selectionChanged snapshot posted, if any. */
 function lastSnapshot(posts: IframeToParent[]): SelectionSnapshot | undefined {
-  return posts.findLast((p) => p.kind === "selectionChanged") as SelectionSnapshot | undefined;
+  return posts.findLast((p): p is SelectionSnapshot => p.kind === "selectionChanged");
 }
 
 /**
@@ -612,15 +643,12 @@ describe("selection snapshot + applyFormat", () => {
     selectContents(el.firstChild!);
     document.dispatchEvent(new Event("selectionchange"));
 
-    const calls: unknown[][] = [];
-    (document as unknown as Record<string, unknown>).execCommand = (...args: unknown[]) => {
-      calls.push(args);
-      return true;
-    };
+    const calls: ExecCommandArgs[] = [];
+    const unstub = stubExecCommand(calls);
     deliver({ intent: { command: "link", href: "https://made" }, kind: "applyFormat" });
     // Stub-level: createLink wiring (happy-dom has no execCommand, so no real <a> is created).
     expect(calls).toEqual([["createLink", false, "https://made"]]);
-    delete (document as unknown as Record<string, unknown>).execCommand;
+    unstub();
 
     // Now with an existing <a>, href:null unwraps it (real DOM).
     el.innerHTML = `<a href="https://x">link</a>`;
@@ -641,14 +669,11 @@ describe("selection snapshot + applyFormat", () => {
     caretAtEnd(el.firstChild!);
     document.dispatchEvent(new Event("selectionchange"));
 
-    const calls: unknown[][] = [];
-    (document as unknown as Record<string, unknown>).execCommand = (...args: unknown[]) => {
-      calls.push(args);
-      return true;
-    };
+    const calls: ExecCommandArgs[] = [];
+    const unstub = stubExecCommand(calls);
     deliver({ intent: { command: "insertData", token: "state.title" }, kind: "applyFormat" });
     expect(calls).toEqual([["insertText", false, "${state.title}"]]);
-    delete (document as unknown as Record<string, unknown>).execCommand;
+    unstub();
     stop();
   });
 
@@ -662,20 +687,20 @@ describe("selection snapshot + applyFormat", () => {
    * Install stubs for the CSS Custom Highlight API and return the highlights map plus a restore fn.
    * `globalThis.CSS` is read-only under happy-dom, so override it via defineProperty.
    */
-  function installHighlightStub(): {
-    map: Map<string, unknown>;
-    built: Range[];
-    restore: () => void;
-  } {
-    const g = globalThis as unknown as { Highlight?: unknown; CSS?: unknown };
+  function installHighlightStub(): HighlightStub {
     const built: Range[] = [];
-    const map = new Map<string, unknown>();
+    const map = new Map<string, object>();
     const prevCss = Object.getOwnPropertyDescriptor(globalThis, "CSS");
-    g.Highlight = class {
-      constructor(range: Range) {
-        built.push(range);
-      }
-    };
+    Object.defineProperty(globalThis, "Highlight", {
+      configurable: true,
+      enumerable: true,
+      value: class {
+        constructor(range: Range) {
+          built.push(range);
+        }
+      },
+      writable: true,
+    });
     Object.defineProperty(globalThis, "CSS", {
       configurable: true,
       value: { highlights: map },
@@ -685,11 +710,11 @@ describe("selection snapshot + applyFormat", () => {
       built,
       map,
       restore: () => {
-        delete g.Highlight;
+        Reflect.deleteProperty(globalThis, "Highlight");
         if (prevCss) {
           Object.defineProperty(globalThis, "CSS", prevCss);
         } else {
-          delete g.CSS;
+          Reflect.deleteProperty(globalThis, "CSS");
         }
       },
     };
@@ -755,11 +780,11 @@ describe("selection snapshot + applyFormat", () => {
  * runtime-marked prop-bound h3 (`data-jx-bound-prop`), plus the matching raw shadow doc.
  */
 function propBoundContainer(
-  rawProps?: Record<string, unknown>,
-  rawAttrs?: Record<string, unknown>,
+  rawProps?: Record<string, JsonValue>,
+  rawAttrs?: Record<string, JxAttributeValue>,
   // Keys written at the TOP LEVEL of the instance node — the property-first interface addressed
   // Straight at the element, which `applyProperties` turns into the JS properties the bridge reads.
-  rawTop?: Record<string, unknown>,
+  rawTop?: JxMutableNode,
   prop = "title",
 ) {
   const container = document.createElement("div");
@@ -773,18 +798,14 @@ function propBoundContainer(
   host.append(wrap);
   container.append(host);
   document.body.append(container);
-  const shadowDoc = {
-    children: [
-      { tagName: "p" },
-      {
-        tagName: "x-card",
-        ...rawTop,
-        ...(rawProps ? { $props: rawProps } : {}),
-        ...(rawAttrs ? { attributes: rawAttrs } : {}),
-      },
-    ],
-    tagName: "main",
-  } as never;
+  const instance: JxMutableNode = { tagName: "x-card", ...rawTop };
+  if (rawProps) {
+    instance.$props = rawProps;
+  }
+  if (rawAttrs) {
+    instance.attributes = rawAttrs;
+  }
+  const shadowDoc: JxMutableNode = { children: [{ tagName: "p" }, instance], tagName: "main" };
   return { container, h3, host, shadowDoc };
 }
 
@@ -1106,7 +1127,7 @@ describe("prop-bound inline editing", () => {
        `${count * 2}` is `"33"`. Objects were already excluded; the scalars a component actually
        declares were not. They stay editable in the properties panel, which knows their type. */
     const { channel, posts } = fakeChannel();
-    const { container, h3, shadowDoc } = propBoundContainer({ title: 3 as unknown as string });
+    const { container, h3, shadowDoc } = propBoundContainer({ title: 3 });
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
     clickInto(h3);
@@ -1116,7 +1137,7 @@ describe("prop-bound inline editing", () => {
 
   test("a BOOLEAN prop is refused for the same reason", () => {
     const { channel, posts } = fakeChannel();
-    const { container, h3, shadowDoc } = propBoundContainer({ title: true as unknown as string });
+    const { container, h3, shadowDoc } = propBoundContainer({ title: true });
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
     clickInto(h3);
@@ -1247,10 +1268,16 @@ describe("prop-bound inline editing", () => {
  * symptom as "the slash controller does not respond to a synthetic keydown"; the truth was that
  * nothing responded to a real one either.
  */
+/** What the recording slash controller was asked to show. */
+interface ShownSlash {
+  filter: string;
+  showFilter?: boolean;
+}
+
 describe("the slash menu", () => {
   /** Boot a frame with a live caret and a controller that records what it is shown. */
   function bootWithCaret() {
-    const shows: { filter: string; showFilter?: boolean }[] = [];
+    const shows: ShownSlash[] = [];
     let open = false;
     setSlashController({
       dismiss: () => {
@@ -1259,10 +1286,11 @@ describe("the slash menu", () => {
       isOpen: () => open,
       show: (_el, filter, cbs) => {
         open = true;
-        shows.push({
-          filter,
-          ...(cbs.showFilter === undefined ? {} : { showFilter: cbs.showFilter }),
-        });
+        const shown: ShownSlash = { filter };
+        if (cbs.showFilter !== undefined) {
+          shown.showFilter = cbs.showFilter;
+        }
+        shows.push(shown);
       },
     });
     const { channel, deliver, posts } = fakeChannel();
@@ -1346,9 +1374,11 @@ describe("the slash menu", () => {
     const stopBridge = startIframeSlashBridge(bridge.channel, container.ownerDocument);
     openSlashMenu({ anchored: false });
     await Promise.resolve();
-    const show = bridge.posts.find((p) => p.kind === "slashShow");
+    const show = bridge.posts.find(
+      (p): p is Extract<IframeToParent, { kind: "slashShow" }> => p.kind === "slashShow",
+    );
     expect(show).toBeDefined();
-    expect((show as { showFilter?: boolean }).showFilter).toBe(true);
+    expect(show?.showFilter).toBe(true);
     stopBridge();
     stop();
     expect(posts.length).toBeGreaterThanOrEqual(0);

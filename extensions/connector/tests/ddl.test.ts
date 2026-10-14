@@ -17,7 +17,7 @@ function makeDb(): Kysely<DynamicDatabase> {
   });
 }
 
-const COMMENTS: Record<string, TableDef> = {
+const COMMENTS = {
   comments: {
     connection: "main",
     indexes: ["views"],
@@ -31,7 +31,7 @@ const COMMENTS: Record<string, TableDef> = {
       type: "object",
     },
   },
-};
+} satisfies Record<string, TableDef>;
 
 describe("syncTables", () => {
   test("creates tables with id, timestamps, columns, and indexes", async () => {
@@ -79,7 +79,7 @@ describe("syncTables", () => {
     await syncTables(db, COMMENTS, { dialect: "sqlite" });
     // Simulate drift: an extra column and a wrong-typed schema change.
     await sql`alter table comments add column legacy text`.execute(db);
-    const evolved: Record<string, TableDef> = {
+    const evolved = {
       comments: {
         connection: "main",
         schema: {
@@ -91,7 +91,7 @@ describe("syncTables", () => {
           type: "object",
         },
       },
-    };
+    } satisfies Record<string, TableDef>;
     const result = await syncTables(db, evolved, { dialect: "sqlite" });
     expect(result.statements).toEqual(['alter table "comments" add column "rating" real']);
     expect(result.warnings.some((w) => w.includes("comments.message: type drift"))).toBe(true);
@@ -108,17 +108,17 @@ describe("syncTables", () => {
 
   test("turning timestamps on for an existing table adds the two columns additively", async () => {
     const db = makeDb();
-    const noStamps: Record<string, TableDef> = {
+    const noStamps = {
       posts: {
         connection: "main",
         schema: { properties: { title: { type: "string" } }, type: "object" },
         timestamps: false,
       },
-    };
+    } satisfies Record<string, TableDef>;
     await syncTables(db, noStamps, { dialect: "sqlite" });
-    const withStamps: Record<string, TableDef> = {
-      posts: { ...noStamps.posts!, timestamps: true },
-    };
+    const withStamps = {
+      posts: { ...noStamps.posts, timestamps: true },
+    } satisfies Record<string, TableDef>;
     const result = await syncTables(db, withStamps, { dialect: "sqlite" });
     expect(result.statements.toSorted()).toEqual([
       'alter table "posts" add column "created_at" text',
@@ -133,14 +133,14 @@ describe("syncTables", () => {
 
   test("integer id tables get autoincrement primary keys on sqlite", async () => {
     const db = makeDb();
-    const tables: Record<string, TableDef> = {
+    const tables = {
       posts: {
         connection: "main",
         id: "integer",
         schema: { properties: { title: { type: "string" } }, type: "object" },
         timestamps: false,
       },
-    };
+    } satisfies Record<string, TableDef>;
     const result = await syncTables(db, tables, { dialect: "sqlite" });
     expect(result.statements[0]).toContain("autoincrement");
     await db.insertInto("posts").values({ title: "a" }).execute();
@@ -152,7 +152,7 @@ describe("syncTables", () => {
 
   test("materializes junction tables with composite PK and target index", async () => {
     const db = makeDb();
-    const tables: Record<string, TableDef> = {
+    const tables = {
       posts: {
         connection: "main",
         schema: {
@@ -167,7 +167,7 @@ describe("syncTables", () => {
         connection: "main",
         schema: { properties: { name: { type: "string" } }, type: "object" },
       },
-    };
+    } satisfies Record<string, TableDef>;
     const result = await syncTables(db, tables, { dialect: "sqlite" });
     expect(
       result.statements.some(
@@ -190,13 +190,13 @@ describe("syncTables", () => {
     const db = makeDb();
     await sql`create table posts (id text primary key)`.execute(db);
     await sql`create table posts_oldtags (posts_id text, tags_id text)`.execute(db);
-    const tables: Record<string, TableDef> = {
+    const tables = {
       posts: {
         connection: "main",
         schema: { properties: { title: { type: "string" } }, type: "object" },
         timestamps: false,
       },
-    };
+    } satisfies Record<string, TableDef>;
     const result = await syncTables(db, tables, { dialect: "sqlite" });
     expect(result.warnings.some((w) => w.includes("posts_oldtags") && w.includes("orphaned"))).toBe(
       true,
@@ -209,7 +209,7 @@ describe("syncTables", () => {
 
   test("postgres flavor compiles identity ids and pg types in dry-run", async () => {
     const db = makeDb();
-    const tables: Record<string, TableDef> = {
+    const tables = {
       metrics: {
         connection: "main",
         id: "integer",
@@ -219,7 +219,7 @@ describe("syncTables", () => {
         },
         timestamps: false,
       },
-    };
+    } satisfies Record<string, TableDef>;
     const result = await syncTables(db, tables, { dialect: "postgres", dryRun: true });
     const [create] = result.statements;
     expect(create).toContain("generated always as identity");

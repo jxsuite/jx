@@ -15,10 +15,16 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const schema = JSON.parse(readFileSync(join(import.meta.dir, "../schema.json"), "utf8")) as Record<
-  string,
-  unknown
->;
+import { isJsonObject } from "../src/guards";
+import type { JsonObject, JsonValue } from "../types";
+
+const parsedSchema: JsonValue = JSON.parse(
+  readFileSync(join(import.meta.dir, "../schema.json"), "utf8"),
+);
+if (!isJsonObject(parsedSchema)) {
+  throw new Error("schema.json must hold a JSON Schema object");
+}
+const schema = parsedSchema;
 
 /*
  * COMPILED ONCE. Compiling this schema costs the better part of a second, and a per-call compile
@@ -30,18 +36,21 @@ const compiled = new Ajv2020({ allErrors: true, strict: false, validateFormats: 
 );
 
 /** Validate a document fragment against the core document schema. */
-function validate(doc: unknown): { ok: boolean; errors: string } {
-  const ok = compiled(doc) as boolean;
+function validate(fragment: JsonValue) {
+  const ok = compiled(fragment);
   const errors = (compiled.errors ?? []).map((e) => `${e.instancePath} ${e.message}`).join("; ");
   return { errors, ok };
 }
 
 /** The smallest thing the document schema accepts, as a carrier for the fragment under test. */
-const doc = (children: unknown, state?: unknown) => ({
-  tagName: "x-card",
-  ...(state === undefined ? {} : { state }),
-  children,
-});
+function doc(children: JsonValue, state?: JsonValue): JsonObject {
+  const carrier: JsonObject = { tagName: "x-card" };
+  if (state !== undefined) {
+    carrier.state = state;
+  }
+  carrier.children = children;
+  return carrier;
+}
 
 describe("a tagName is a name, never an expression", () => {
   /*
@@ -114,7 +123,7 @@ describe("an extension class's own filter", () => {
    * both declare `filter` as a rule ARRAY, so correct use of a documented parameter was rejected
    * with "must be object".
    */
-  const state = (filter: unknown) => ({
+  const state = (filter: JsonValue) => ({
     projects: {
       $prototype: "ContentCollection",
       $src: "@jxsuite/parser/ContentCollection.class.json",

@@ -1,12 +1,12 @@
 /**
  * Md-html — browser-safe markdown → sanitized HTML string
  *
- * Small display pipeline for rendering untrusted markdown (e.g. LLM chat output) as
- * HTML: remark-parse + remark-gfm → remark-rehype (raw HTML disabled) → rehype-sanitize
- * (default schema: strips scripts, event handlers, javascript:/data: URLs) → stringify.
+ * Small display pipeline for rendering untrusted markdown (e.g. LLM chat output) as HTML:
+ * remark-parse + remark-gfm → remark-rehype (raw HTML disabled) → rehype-sanitize (default schema:
+ * strips scripts, event handlers, javascript:/data: URLs) → stringify.
  *
- * Like everything in @jxsuite/markup this module has no node-only imports, so it is safe
- * for the studio bundle. It intentionally produces an HTML *string*, not Jx nodes — use
+ * Like everything in @jxsuite/markup this module has no node-only imports, so it is safe for the
+ * studio bundle. It intentionally produces an HTML _string_, not Jx nodes — use
  * `@jxsuite/parser/markdown` for markdown → Jx document transpilation.
  *
  * @module @jxsuite/markup/md-html
@@ -21,21 +21,34 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
 /**
+ * A unified attacher: called with `this` bound to the processor and the plugin's optional settings.
+ * Its result (a parser, compiler or transformer) is consumed by unified, never by us.
+ */
+type UnifiedPlugin = (...settings: never[]) => void;
+
+/**
  * Minimal structural surface of the unified processor used here — same rationale as
  * `UnifiedProcessor` in @jxsuite/parser's types (oxlint sees the ESM-only unified types as `any`),
  * plus `processSync` which that shared type doesn't carry.
  */
 interface MdHtmlProcessor {
-  use: (plugin: unknown, ...options: unknown[]) => MdHtmlProcessor;
+  use: (plugin: UnifiedPlugin) => MdHtmlProcessor;
   processSync: (source: string) => { toString: () => string };
 }
 
-const processor = (unified as unknown as () => MdHtmlProcessor)()
-  .use(remarkParse)
+/* SAFETY: `unified`, `remark-parse`, `remark-rehype` and `rehype-stringify` are shorthand
+   `declare module` entries in the root types.d.ts, so their imports are `any` here. unified@11
+   exports `unified` as a callable Processor whose call returns a fresh Processor; that Processor's
+   `use(plugin)` returns itself and `processSync(string)` returns a VFile whose toString() yields
+   the compiled HTML, which is exactly the MdHtmlProcessor surface. Each of the three plugin
+   packages default-exports a unified attacher function taking optional settings, which is the
+   UnifiedPlugin shape. */
+const processor = (unified as () => MdHtmlProcessor)()
+  .use(remarkParse as UnifiedPlugin)
   .use(remarkGfm)
-  .use(remarkRehype)
+  .use(remarkRehype as UnifiedPlugin)
   .use(rehypeSanitize)
-  .use(rehypeStringify);
+  .use(rehypeStringify as UnifiedPlugin);
 
 /**
  * Convert markdown source to a sanitized HTML string (GFM tables/strikethrough/task lists

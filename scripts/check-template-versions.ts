@@ -34,6 +34,8 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { isString } from "@jxsuite/schema/guards";
+
 import { readWorkspaces } from "./lib/workspaces.ts";
 import type { Workspace } from "./lib/workspaces.ts";
 
@@ -161,13 +163,16 @@ export async function survey(root: string, versions: Map<string, string>): Promi
         if (!(await file.exists())) {
           continue;
         }
+        /* SAFETY: each sites/<starter>/package.json is a manifest bun installs from, so it is a JSON
+         * object, and npm's manifest contract makes a dependency section a name → range map;
+         * every range read below is still checked to be a string before it is used. */
         const parsed = (await file.json()) as Record<string, Record<string, string> | undefined>;
         let changed = false;
 
         for (const { name, section } of surface.required) {
           const bag = parsed[section];
           const range = bag?.[name];
-          if (typeof range !== "string") {
+          if (bag === undefined || !isString(range)) {
             problems.push({
               kind: "missing",
               file: rel,
@@ -179,16 +184,13 @@ export async function survey(root: string, versions: Map<string, string>): Promi
           }
           const want = checkRange(rel, name, range, versions.get(name)!, problems);
           if (want) {
-            // `bag` cannot be undefined here: `range` came from `bag?.[name]` and just passed a
-            // `typeof range === "string"` check, which optional chaining only produces when the
-            // Object it read from is defined.
-            bag![name] = want;
+            bag[name] = want;
             changed = true;
           }
         }
 
         // Any other @jxsuite range the template happens to declare is held to the same rule.
-        for (const section of ["dependencies", "devDependencies"] as Section[]) {
+        for (const section of ["dependencies", "devDependencies"] as const) {
           const bag = parsed[section];
           if (!bag) {
             continue;
@@ -218,12 +220,15 @@ export async function survey(root: string, versions: Map<string, string>): Promi
 
     const rel = surface.path;
     const file = Bun.file(join(root, rel));
+    /* SAFETY: template-versions.json is the committed flat map of unscoped package name → range
+     * that generate.ts reads; a missing file starts empty, and every value read below is checked
+     * to be a string before it is used. */
     const parsed = ((await file.exists()) ? await file.json() : {}) as Record<string, string>;
     let changed = false;
     for (const { name } of surface.required) {
       const key = unscoped(name);
       const range = parsed[key];
-      if (typeof range !== "string") {
+      if (!isString(range)) {
         problems.push({
           kind: "missing",
           file: rel,
@@ -254,9 +259,8 @@ if (import.meta.main) {
   const workspaces = await readWorkspaces();
   const versions = versionIndex(workspaces);
 
-  const unknown = SURFACES.flatMap((s) => s.required)
-    .map((r) => r.name)
-    .filter((name, i, all) => all.indexOf(name) === i && !versions.has(name));
+  const required = SURFACES.flatMap((s) => s.required.map((r) => r.name));
+  const unknown = required.filter((name, i) => required.indexOf(name) === i && !versions.has(name));
   if (unknown.length > 0) {
     console.error(
       `check-template-versions: SURFACES requires ${unknown.join(", ")}, which is not a workspace ` +

@@ -20,23 +20,40 @@ import type {
   WireMessage,
 } from "./types.ts";
 
+/**
+ * True when an unchecked value (a v1 field, a `tools` listing's member) is a string. A v1 field
+ * that is anything else is absent (see {@link blocksFromFields}).
+ */
+export function isText(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+/**
+ * A v1 tool call as a restored session may hold it: never checked, so any member may be missing or
+ * hold anything.
+ */
+interface StoredToolCall {
+  readonly id?: unknown;
+  readonly name?: unknown;
+  readonly arguments?: unknown;
+}
+
+/**
+ * True when an unchecked value (a stored tool call, a parsed tool reply, a `tools` listing's
+ * member) is an object whose members may be read; null and every primitive are not.
+ */
+export function isMemberBag(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
 /** Whether a tool reply's content is a result that failed. Unparseable content is not. */
 function isErrorContent(content: string): boolean {
   try {
-    const parsed = JSON.parse(content) as unknown;
-    return (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as { success?: unknown }).success === false
-    );
+    const parsed: unknown = JSON.parse(content);
+    return isMemberBag(parsed) && "success" in parsed && parsed.success === false;
   } catch {
     return false;
   }
-}
-
-/** A v1 value read as text: a string is itself, and anything else is absent. */
-function asText(value: unknown): string {
-  return typeof value === "string" ? value : "";
 }
 
 /**
@@ -48,46 +65,81 @@ function asText(value: unknown): string {
  */
 function blocksFromFields(message: LiveMessage): Block[] {
   if (message.role === "tool") {
-    const content = asText(message.content);
+    const content = isText(message.content) ? message.content : "";
     return [
       {
         type: "tool_result",
-        callId: asText(message.toolCallId),
+        callId: isText(message.toolCallId) ? message.toolCallId : "",
         isError: isErrorContent(content),
         content,
       },
     ];
   }
   const blocks: Block[] = [];
-  if (message.role === "assistant" && typeof message.reasoningContent === "string") {
+  if (message.role === "assistant" && isText(message.reasoningContent)) {
     blocks.push({ type: "reasoning", text: message.reasoningContent });
   }
-  if (asText(message.content)) {
+  if (isText(message.content) && message.content) {
     blocks.push({ type: "text", text: message.content });
   }
   if (message.role === "assistant" && Array.isArray(message.toolCalls)) {
-    for (const call of message.toolCalls as unknown[]) {
-      if (typeof call !== "object" || call === null) {
+    // A restored session's calls are unchecked, so each is read as what it may really be.
+    const stored: readonly unknown[] = message.toolCalls;
+    for (const call of stored) {
+      if (!isMemberBag(call)) {
         continue;
       }
-      const { id, name, arguments: args } = call as Record<string, unknown>;
+      // Every member of StoredToolCall is optional and `unknown`, so any object is one.
+      const { id, name, arguments: args }: StoredToolCall = call;
       blocks.push({
         type: "tool_call",
-        id: asText(id),
-        name: asText(name),
-        argumentsText: asText(args),
+        id: isText(id) ? id : "",
+        name: isText(name) ? name : "",
+        argumentsText: isText(args) ? args : "",
       });
     }
   }
   return blocks;
 }
 
+/**
+ * A value {@link sameJson} walks: JSON, in which an object member may also be `undefined` (an
+ * optional member left unset), which counts as absent.
+ */
+type Walked = null | boolean | number | string | Walked[] | WalkedObject;
+
+/** An object {@link sameJson} walks. */
+interface WalkedObject {
+  readonly [member: string]: Walked | undefined;
+}
+
+/** True when a walked value is an array or an object rather than a primitive or `null`. */
+function isComposite(value: Walked | undefined): value is Walked[] | WalkedObject {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * A block as the JSON {@link sameJson} walks: a shallow copy, which carries every member (an
+ * undefined one included) and so compares exactly as the block itself would. A reasoning block's
+ * `provenance` is copied too, since it is the one member that is itself an object.
+ *
+ * @param {Block} block
+ * @returns {WalkedObject}
+ */
+function walkedBlock(block: Block): WalkedObject {
+  if (block.type !== "reasoning") {
+    return { ...block };
+  }
+  const { provenance, ...rest } = block;
+  return provenance === undefined ? rest : { ...rest, provenance: { ...provenance } };
+}
+
 /** Whether two JSON values are equal, member order aside. */
-function sameJson(a: unknown, b: unknown): boolean {
+function sameJson(a: Walked | undefined, b: Walked | undefined): boolean {
   if (Object.is(a, b)) {
     return true;
   }
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+  if (!isComposite(a) || !isComposite(b)) {
     return false;
   }
   if (Array.isArray(a) || Array.isArray(b)) {
@@ -100,10 +152,7 @@ function sameJson(a: unknown, b: unknown): boolean {
   }
   const left = Object.entries(a).filter(([, value]) => value !== undefined);
   const right = Object.entries(b).filter(([, value]) => value !== undefined);
-  return (
-    left.length === right.length &&
-    left.every(([key, value]) => sameJson(value, (b as Record<string, unknown>)[key]))
-  );
+  return left.length === right.length && left.every(([key, value]) => sameJson(value, b[key]));
 }
 
 /** The concatenated text of a message's blocks of one kind. */
@@ -131,6 +180,7 @@ export function isEmptyAssistant(message: ChatMessage | LiveMessage): boolean {
   if (message.role !== "assistant") {
     return false;
   }
+  // SAFETY: a ChatMessage always carries `blocks`, so a message without them is a LiveMessage.
   const blocks = message.blocks ?? blocksFromFields(message as LiveMessage);
   return !blocks.some(
     (block) => block.type === "tool_call" || (block.type === "text" && block.text !== ""),
@@ -145,13 +195,12 @@ export function isEmptyAssistant(message: ChatMessage | LiveMessage): boolean {
  * @returns {ChatMessage[]}
  */
 export function toChatMessages(live: readonly LiveMessage[]): ChatMessage[] {
-  return live.map((message) => ({
-    id: message.id,
-    role: message.role,
-    blocks: message.blocks ? [...message.blocks] : blocksFromFields(message),
-    timestamp: message.timestamp,
-    ...(message.meta ? { meta: message.meta } : {}),
-  }));
+  return live.map((message): ChatMessage => {
+    const { id, role, timestamp, meta } = message;
+    const blocks = message.blocks ? [...message.blocks] : blocksFromFields(message);
+    const chat: ChatMessage = { id, role, blocks, timestamp };
+    return meta ? { ...chat, meta } : chat;
+  });
 }
 
 /**
@@ -192,7 +241,13 @@ export function toLiveMessages(messages: readonly ChatMessage[]): LiveMessage[] 
         }));
       }
     }
-    if (!sameJson(blocksFromFields(live), message.blocks)) {
+    const rebuilt = blocksFromFields(live).map((block) => walkedBlock(block));
+    if (
+      !sameJson(
+        rebuilt,
+        message.blocks.map((block) => walkedBlock(block)),
+      )
+    ) {
       live.blocks = [...message.blocks];
     }
     if (message.meta) {
@@ -210,7 +265,7 @@ export function toLiveMessages(messages: readonly ChatMessage[]): LiveMessage[] 
  * @returns {WireMessage[]}
  */
 export function toWireMessages(messages: readonly ChatMessage[]): WireMessage[] {
-  return messages
-    .filter((message) => !isEmptyAssistant(message))
-    .map((message) => ({ role: message.role, blocks: message.blocks }));
+  return messages.flatMap((message): WireMessage[] =>
+    isEmptyAssistant(message) ? [] : [{ role: message.role, blocks: message.blocks }],
+  );
 }

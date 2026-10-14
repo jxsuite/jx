@@ -47,7 +47,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./harness`, imported first, registers happy-dom's GlobalRegistrator, which copies the
+   window's members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
 /**
@@ -145,15 +149,15 @@ describe("uniqueness with two stages standing", () => {
     exportFile: () => {},
     parseMediaEntries: () => ({ baseWidth: 1280, featureQueries: [], sizeBreakpoints: [] }),
     setCanvasMode: () => {},
-  } as unknown as Parameters<typeof paneContext.mount>[1];
+  };
 
   /** A tab with enough head material that the Document Header card draws its SEO block. */
   function openDocTab(id: string, path: string) {
     return openTab({
       document: {
         $head: [
-          { attributes: { href: "/favicon.png", rel: "icon" }, tag: "link" },
-          { attributes: { content: "/og.png", property: "og:image" }, tag: "meta" },
+          { attributes: { href: "/favicon.png", rel: "icon" }, tagName: "link" },
+          { attributes: { content: "/og.png", property: "og:image" }, tagName: "meta" },
         ],
         children: [],
         tagName: "div",
@@ -274,7 +278,10 @@ describe("uniqueness with two stages standing", () => {
 
   test("`inspector/field:<prop>/browse` is DERIVED, and finds the Inspector's own control", async () => {
     await twoRealPanes();
-    const inspector = document.querySelector("#right-panel") as HTMLElement;
+    const inspector = document.querySelector("#right-panel");
+    if (!inspector) {
+      throw new Error("the shell drew no #right-panel");
+    }
     /* THE ROW IS WRITTEN OUT HERE, and that is a statement rather than a shortcut. It used to be
        built by `ui/field-row.ts`'s `renderFieldRow`, which is gone: the Inspector's rows are
        `surfaces/properties-panel.json` and `surfaces/style-panel.json` now, so there is no shared
@@ -758,8 +765,9 @@ describe("the singleton guard", () => {
     }
     // The failure NAMES the file and points at where the state belongs — a checker that only said
     // "failed" would send the next reader back to the source to find out what it meant.
-    expect(errors.join("\n")).toContain("src/view.ts: 1 per-stage");
-    expect(errors.join("\n")).toContain("src/canvas/surface-registry.ts");
+    const failure = errors.join("\n");
+    expect(failure).toContain("src/view.ts: 1 per-stage");
+    expect(failure).toContain("src/canvas/surface-registry.ts");
   });
 
   test("the detail is appended to the failure line, not printed beside it", () => {

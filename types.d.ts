@@ -3,11 +3,9 @@ declare module "@webref/elements" {
   interface WebrefElement {
     name: string;
     obsolete?: boolean;
-    [key: string]: unknown;
   }
   interface WebrefElementsSpec {
     elements: WebrefElement[];
-    [key: string]: unknown;
   }
   export function listAll(options?: {
     folder?: string;
@@ -18,11 +16,9 @@ declare module "@webref/css" {
   interface CssProperty {
     name: string;
     styleDeclaration?: string[];
-    [key: string]: unknown;
   }
   interface CssData {
     properties: CssProperty[];
-    [key: string]: unknown;
   }
   const css: {
     listAll: () => Promise<CssData>;
@@ -33,23 +29,28 @@ declare module "@webref/css" {
 declare module "@webref/idl" {
   interface IdlType {
     idlType?: string | IdlType | IdlType[];
-    [key: string]: unknown;
   }
   interface IdlMember {
     type: string;
     name?: string;
     idlType?: IdlType;
-    [key: string]: unknown;
   }
   interface IdlDefinition {
     type: string;
     name?: string;
     members?: IdlMember[];
-    [key: string]: unknown;
+  }
+  /** One `.idl` file in the package folder, keyed by its shortname in `listAll()`'s result. */
+  interface IdlFile {
+    filename: string;
+    shortname: string;
+    path: string;
+    text: () => Promise<string>;
+    parse: () => Promise<IdlDefinition[]>;
   }
   const idl: {
     parseAll: (options?: { folder?: string }) => Promise<Record<string, IdlDefinition[]>>;
-    listAll: (options?: { folder?: string }) => Promise<Record<string, unknown>>;
+    listAll: (options?: { folder?: string }) => Promise<Record<string, IdlFile>>;
   };
   export default idl;
 }

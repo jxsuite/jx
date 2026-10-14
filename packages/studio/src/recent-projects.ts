@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { getPlatform, hasPlatform } from "./platform";
 import { now } from "./services/clock";
-import type { RecentProjectEntry } from "./types";
+import type { RecentProjectEntry, StudioPlatform } from "./types";
 
 interface RecentFile {
   path: string;
@@ -33,14 +33,17 @@ function backend(): StudioRecentStore | null {
     return null;
   }
   const platform = getPlatform();
-  return platform.getRecentProjects && platform.saveRecentProjects
-    ? (platform as StudioRecentStore)
-    : null;
+  return isRecentStore(platform) ? platform : null;
 }
 
 interface StudioRecentStore {
   getRecentProjects: () => Promise<RecentProjectEntry[]>;
   saveRecentProjects: (projects: RecentProjectEntry[]) => Promise<void>;
+}
+
+/** True when the platform implements both halves of the optional recent-projects store. */
+function isRecentStore(platform: StudioPlatform): platform is StudioPlatform & StudioRecentStore {
+  return Boolean(platform.getRecentProjects && platform.saveRecentProjects);
 }
 
 function loadFromLocalStorage(): RecentProjectEntry[] {
@@ -49,8 +52,10 @@ function loadFromLocalStorage(): RecentProjectEntry[] {
     if (!raw) {
       return [];
     }
-    const parsed = JSON.parse(raw) as RecentProjectEntry[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(raw);
+    /* SAFETY: STORAGE_KEY is written only by this module, as JSON.stringify of a
+       RecentProjectEntry[]; the Array.isArray check discards any other value found under it. */
+    return Array.isArray(parsed) ? (parsed as RecentProjectEntry[]) : [];
   } catch {
     return [];
   }
@@ -132,8 +137,10 @@ function loadRecentFiles(): RecentFile[] {
     if (!raw) {
       return [];
     }
-    const parsed = JSON.parse(raw) as RecentFile[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(raw);
+    /* SAFETY: FILES_STORAGE_KEY is written only by trackRecentFile below, as JSON.stringify of a
+       RecentFile[]; the Array.isArray check discards any other value found under it. */
+    return Array.isArray(parsed) ? (parsed as RecentFile[]) : [];
   } catch {
     return [];
   }

@@ -17,10 +17,27 @@ import {
 import { undo } from "../src/tabs/transact";
 import type { SlashCommand } from "../src/editor/inline-edit";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 
 let tab: Tab;
 const freshDoc = () => ({ children: [{ tagName: "p", textContent: "Hello" }], tagName: "div" });
-const kids = () => tab.doc.document.children as Record<string, unknown>[];
+
+/** The element children of `node`, failing the test on a repeater or a bare text child. */
+function nodesOf(node: JxMutableNode): JxMutableNode[] {
+  const { children } = node;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected a static children array");
+  }
+  return children.map((child) => {
+    if (isString(child)) {
+      throw new Error(`expected an element child, got the text "${child}"`);
+    }
+    return child;
+  });
+}
+
+const kids = () => nodesOf(tab.doc.document);
 
 beforeEach(() => {
   resetStudioState();
@@ -378,7 +395,7 @@ describe("applyInlineSplit", () => {
 });
 
 describe("applyInlineInsert", () => {
-  const h2: SlashCommand = { tag: "h2" } as unknown as SlashCommand;
+  const h2: SlashCommand = { description: "", label: "Heading 2", tag: "h2" };
 
   test("swaps the tag in place when the node is empty (returns the same path)", () => {
     applyInlineCommit(tab, ["children", 0], null, ""); // Make it empty first.
@@ -410,18 +427,18 @@ describe("applyInlinePropCommit", () => {
 
   test("writes the value into the instance's $props", () => {
     applyInlinePropCommit(tab, ["children", 1], "title", "Regional");
-    expect((kids()[1]!.$props as { title?: string }).title).toBe("Regional");
+    expect(kids()[1]!.$props?.["title"]).toBe("Regional");
     expect(tab.doc.dirty).toBe(true);
   });
 
   test("adds an unset prop (overriding the definition default)", () => {
     applyInlinePropCommit(tab, ["children", 1], "description", "Body text");
-    expect((kids()[1]!.$props as { description?: string }).description).toBe("Body text");
+    expect(kids()[1]!.$props?.["description"]).toBe("Body text");
   });
 
   test("deletes the prop on an empty value (reverting to the definition default)", () => {
     applyInlinePropCommit(tab, ["children", 1], "title", "");
-    expect((kids()[1]!.$props as { title?: string } | undefined)?.title).toBeUndefined();
+    expect(kids()[1]!.$props?.["title"]).toBeUndefined();
   });
 
   test("no-ops when the value is unchanged (load-bearing: Escape/disturb re-commits)", () => {
@@ -441,7 +458,7 @@ describe("applyInlinePropCommit", () => {
   test("no-ops on a null tab or a missing node", () => {
     applyInlinePropCommit(null, ["children", 1], "title", "ghost");
     applyInlinePropCommit(tab, ["children", 9], "title", "ghost");
-    expect((kids()[1]!.$props as { title?: string }).title).toBe("Local");
+    expect(kids()[1]!.$props?.["title"]).toBe("Local");
   });
 });
 
@@ -463,20 +480,15 @@ describe("explicit-tab routing", () => {
     expect(splitPath).toEqual(["children", 1]);
     expect(kids()).toHaveLength(1);
 
-    const insertPath = applyInlineInsert(
-      null,
-      ["children", 0],
-      { tag: "h2" } as unknown as SlashCommand,
-      { textContent: "Hello" },
-    );
+    const h2: SlashCommand = { description: "", label: "Heading 2", tag: "h2" };
+    const insertPath = applyInlineInsert(null, ["children", 0], h2, { textContent: "Hello" });
     expect(insertPath).toEqual(["children", 1]);
     expect(kids()).toHaveLength(1);
     // The empty-content branch also no-ops on a null tab.
-    expect(
-      applyInlineInsert(null, ["children", 0], { tag: "h2" } as unknown as SlashCommand, {
-        textContent: "",
-      }),
-    ).toEqual(["children", 0]);
+    expect(applyInlineInsert(null, ["children", 0], h2, { textContent: "" })).toEqual([
+      "children",
+      0,
+    ]);
     expect(kids()[0]!.tagName).toBe("p");
   });
 
@@ -495,7 +507,7 @@ describe("explicit-tab routing", () => {
       { textContent: "He" },
       { textContent: "llo" },
     );
-    const originalKids = original.doc.document.children as Record<string, unknown>[];
+    const originalKids = nodesOf(original.doc.document);
     expect(newPath).toEqual(["children", 1]);
     expect(originalKids).toHaveLength(2);
     expect(original.session.selection).toEqual([["children", 0]]);

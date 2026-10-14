@@ -17,11 +17,11 @@ import {
   evaluateStaticTemplate,
   srcImportBinding,
 } from "../src/shared";
+import { isFunction } from "@jxsuite/schema/guards";
 import type { JxStateDefinition } from "@jxsuite/schema/types";
 
-/** @param {Record<string, unknown>} defs */
-const scopeOf = (defs: Record<string, unknown>) =>
-  buildInitialScope(defs as Record<string, JxStateDefinition>);
+/** @param {Record<string, JxStateDefinition>} defs */
+const scopeOf = (defs: Record<string, JxStateDefinition>) => buildInitialScope(defs);
 
 // ── Runtime-only reads are refused, not baked (issue #112) ───────────────────
 
@@ -32,7 +32,7 @@ describe("evaluateStaticTemplate — runtime-only state", () => {
     });
 
     // The scope really does hold a callable placeholder — that is what used to get stringified.
-    expect(typeof scope.followups).toBe("function");
+    expect(isFunction(scope.followups)).toBe(true);
     expect(evaluateStaticTemplate("followups due: ${state.followups}", scope)).toBeNull();
   });
 
@@ -79,7 +79,7 @@ describe("evaluateStaticTemplate — runtime-only state", () => {
       },
     });
 
-    expect(typeof scope.lineTotal).toBe("function");
+    expect(isFunction(scope.lineTotal)).toBe(true);
     expect(evaluateStaticTemplate("total: ${state.lineTotal(3, 4)}", scope)).toBe("total: 12");
     expect(evaluateStaticTemplate("${state.lineTotal(5)}", scope)).toBe(5);
     // …but the same formula read bare is still a function, so it is refused.
@@ -104,7 +104,7 @@ describe("evaluateStaticTemplate — runtime-only state", () => {
 
   test("a nested scope inherits its parent's runtime-only marks", () => {
     const parent = scopeOf({ leads: { $prototype: "Request", url: "/api/leads" } });
-    const child = buildInitialScope({ own: 1 } as Record<string, JxStateDefinition>, parent);
+    const child = buildInitialScope({ own: 1 }, parent);
 
     expect(evaluateStaticTemplate("c: ${state.leads}", child)).toBeNull();
     expect(evaluateStaticTemplate("o: ${state.own}", child)).toBe("o: 1");
@@ -113,14 +113,15 @@ describe("evaluateStaticTemplate — runtime-only state", () => {
   test("tolerates a missing scope", () => {
     // ResolveStaticValue reaches evaluateStaticTemplate through a non-null assertion, so the guard
     // Has to survive a null scope rather than throwing while probing it for marks.
-    expect(evaluateStaticTemplate("${state.x}", null as never)).toBeNull();
+    expect(evaluateStaticTemplate("${state.x}", null)).toBeNull();
   });
 
   test("the runtime-only marker stays out of enumeration", () => {
     const scope = scopeOf({ leads: { $prototype: "Request", url: "/api/x" }, n: 1 });
 
-    expect(Object.keys(scope)).not.toContain("leads");
-    expect(Object.keys(scope)).toEqual(["n"]);
+    const keys = Object.keys(scope);
+    expect(keys).not.toContain("leads");
+    expect(keys).toEqual(["n"]);
   });
 });
 
@@ -224,7 +225,7 @@ describe("emitRequestFetch", () => {
  * over one replaces it in the emitted output, and the element is dead for the life of the page.
  */
 describe("buildInitialScope — entries a handler writes to", () => {
-  const withHandler = (body: string, extra: Record<string, unknown> = {}) =>
+  const withHandler = (body: string, extra: Record<string, JxStateDefinition> = {}) =>
     scopeOf({
       count: { default: 0, type: "number" },
       list: { default: [], type: "array" },

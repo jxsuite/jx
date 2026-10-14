@@ -9,18 +9,20 @@ import { join } from "node:path";
 import type { FsEventPayload } from "../src/refactor/fs-events";
 
 type AllListener = (eventType: string, changedPath: string) => void;
-type ErrorListener = (error: unknown) => void;
+/** What chokidar's `error` event can carry here: an Error, or the non-Error a test throws. */
+type WatchFailure = Error | string;
+type ErrorListener = (error: WatchFailure) => void;
 
 class FakeWatcher {
   closed = false;
   private listeners: AllListener[] = [];
   private errorListeners: ErrorListener[] = [];
 
-  on(event: "all" | "error", listener: AllListener | ErrorListener): this {
-    if (event === "error") {
-      this.errorListeners.push(listener as ErrorListener);
+  on(...subscription: ["all", AllListener] | ["error", ErrorListener]): this {
+    if (subscription[0] === "error") {
+      this.errorListeners.push(subscription[1]);
     } else {
-      this.listeners.push(listener as AllListener);
+      this.listeners.push(subscription[1]);
     }
     return this;
   }
@@ -32,7 +34,7 @@ class FakeWatcher {
   }
 
   /** Chokidar's `error` event. An EventEmitter with no listener for it THROWS instead of logging. */
-  emitError(error: unknown): void {
+  emitError(error: WatchFailure): void {
     if (this.errorListeners.length === 0) {
       throw error;
     }

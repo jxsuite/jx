@@ -1,7 +1,10 @@
 import "../../tests/with-dom.ts";
 import { describe, expect, test } from "bun:test";
+import type { OpenAIMessage } from "@jxsuite/ai/messages";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { StudioPlatform } from "../../src/types";
 import { projectToolDeps, runTrial, runTask } from "../runner.js";
 
 /**
@@ -22,13 +25,34 @@ function fakeClient(rounds: StreamEvent[][]): StreamingClient & { calls: () => n
   };
 }
 
-function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
+function toolCallRound(id: string, name: string, args: JsonObject): StreamEvent[] {
   return [
     { type: "tool_call_start", id, name },
     { type: "tool_call_delta", id, args: JSON.stringify(args) },
     { type: "tool_call_end", id },
     { type: "done", stopReason: "tool_calls" },
   ];
+}
+
+/** The text of the tool reply answering call `id`; a transcript without one fails the test. */
+function toolReply(transcript: OpenAIMessage[], id: string): string {
+  for (const message of transcript) {
+    if (message.role === "tool" && message.tool_call_id === id) {
+      return message.content;
+    }
+  }
+  throw new Error(`no tool reply to ${id} in the transcript`);
+}
+
+/** Whether a tool entry carries the OpenAI wire shape's `function.name`, the name the model sees. */
+function isNamedTool(tool: unknown): tool is { function: { name: string } } {
+  return (
+    isNonNullObject(tool) &&
+    "function" in tool &&
+    isNonNullObject(tool.function) &&
+    "name" in tool.function &&
+    isString(tool.function.name)
+  );
 }
 
 const TASK = {
@@ -51,10 +75,8 @@ describe("eval runner", () => {
 
     const trial = await runTrial(TASK, { client });
 
-    // Produced document was mutated by the real ai-tools path.
-    const children = (trial.finalDoc as JxMutableNode).children as (JxMutableNode | string)[];
-    expect(children).toHaveLength(2);
-    expect((children[1] as JxMutableNode).tagName).toBe("span");
+    // Produced document was mutated by the real ai-tools path: the span lands after the paragraph.
+    expect(trial.finalDoc).toMatchObject({ children: [{ tagName: "p" }, { tagName: "span" }] });
     // Graders ran; clean span renders fine.
     expect(trial.render.pass).toBe(true);
     expect(trial.pass).toBe(true);
@@ -151,13 +173,17 @@ describe("eval runner — token accounting and the prompt-cache key", () => {
   test("the real client is keyed per task and trial, so a trial's rounds share one cache", async () => {
     const env = { base: process.env.OPENAI_BASE_URL, key: process.env.OPENAI_API_KEY };
     const realFetch = globalThis.fetch;
-    const bodies: Record<string, unknown>[] = [];
+    const cacheKeys: (JsonValue | undefined)[] = [];
     process.env.OPENAI_BASE_URL = "https://api.openai.com/v1";
     process.env.OPENAI_API_KEY = "sk-test";
-    globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+    const stub = async (_url: string | URL | Request, init?: RequestInit) => {
+      const body: JsonValue = JSON.parse(String(init?.body));
+      if (isJsonObject(body)) {
+        cacheKeys.push(body.prompt_cache_key);
+      }
       return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
-    }) as unknown as typeof fetch;
+    };
+    globalThis.fetch = Object.assign(stub, { preconnect: realFetch.preconnect });
     try {
       await runTask(TASK, { k: 2 });
     } finally {
@@ -173,10 +199,7 @@ describe("eval runner — token accounting and the prompt-cache key", () => {
         }
       }
     }
-    expect(bodies.map((b) => b.prompt_cache_key)).toEqual([
-      "eval-unit-add-span-1",
-      "eval-unit-add-span-2",
-    ]);
+    expect(cacheKeys).toEqual(["eval-unit-add-span-1", "eval-unit-add-span-2"]);
   });
 });
 
@@ -192,7 +215,14 @@ describe("eval runner — a task with no document open", () => {
     const offered: string[][] = [];
     const client: StreamingClient = {
       async *streamChat(_messages, tools, systemPrompt) {
-        offered.push(tools.map((t) => String((t as { function: { name: string } }).function.name)));
+        offered.push(
+          tools.map((t) => {
+            if (!isNamedTool(t)) {
+              throw new Error("a tool was offered without a function name");
+            }
+            return t.function.name;
+          }),
+        );
         expect(systemPrompt).toContain("no document is on the canvas");
         yield { type: "done", stopReason: "stop" };
       },
@@ -218,10 +248,7 @@ describe("eval runner — a task with no document open", () => {
     });
     expect(written.pass).toBe(true);
     expect(written.finalDoc).toEqual({ tagName: "main", children: [{ tagName: "h1" }] });
-    const search = written.transcript.find(
-      (m) => (m as { tool_call_id?: string }).tool_call_id === "w1",
-    ) as { content: string };
-    expect(search.content).toContain("pages/index.json");
+    expect(toolReply(written.transcript, "w1")).toContain("pages/index.json");
 
     const missing = await runTrial(PROJECT_TASK, { client: fakeClient([]) });
     expect(missing.pass).toBe(false);
@@ -253,11 +280,12 @@ describe("eval runner — a task with no document open", () => {
         ]),
       },
     );
-    const paths = (id: string) => {
-      const reply = trial.transcript.find(
-        (m) => (m as { tool_call_id?: string }).tool_call_id === id,
-      ) as { content: string };
-      return (JSON.parse(reply.content) as { data: { paths: string[] } }).data.paths;
+    const paths = (id: string): JsonValue[] => {
+      const reply: JsonValue = JSON.parse(toolReply(trial.transcript, id));
+      if (isJsonObject(reply) && isJsonObject(reply.data) && Array.isArray(reply.data.paths)) {
+        return reply.data.paths;
+      }
+      throw new Error(`the reply to ${id} carries no data.paths`);
     };
     // Content and directory names are not file names, so neither finds anything.
     expect(paths("s1")).toEqual([]);
@@ -318,26 +346,31 @@ describe("eval runner — a task with no document open", () => {
     const deps = projectToolDeps(new Map());
     expect(deps.findOpenTab()).toBeNull();
     expect(deps.getTab()).toBeNull();
-    const refusal = (pending: Promise<void>) =>
-      pending.then(
-        () => "resolved",
-        (error: unknown) => (error as Error).message,
-      );
+    const refusal = async (pending: Promise<void>): Promise<string> => {
+      try {
+        await pending;
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+      return "resolved";
+    };
     expect(await refusal(deps.reloadTab("pages/a.json"))).toContain("has none to reload");
     expect(await refusal(deps.adoptProject("/elsewhere"))).toContain("cannot adopt");
   });
 
   test("puts back the platform it replaced, and an absent one stays absent", async () => {
     const { getPlatform, hasPlatform, registerPlatform } = await import("../../src/platform");
-    const host = globalThis as { __jxPlatform?: unknown };
+    /* SAFETY: this names the one slot registerPlatform writes, globalThis.__jxPlatform, so the test
+       can clear it; the slot is optional because it is absent until a platform registers. */
+    const host = globalThis as { __jxPlatform?: StudioPlatform };
     delete host.__jxPlatform;
     await runTrial(PROJECT_TASK, { client: fakeClient([]) });
     expect(hasPlatform()).toBe(false);
 
-    const sentinel = { readFile: async () => "sentinel" } as unknown as Parameters<
-      typeof registerPlatform
-    >[0];
-    registerPlatform(sentinel);
+    const sentinel: Partial<StudioPlatform> = { readFile: async () => "sentinel" };
+    /* SAFETY: the sentinel is only registered, put back by runTrial, and read through
+       getPlatform().readFile, which it defines; no other platform member is called on it. */
+    registerPlatform(sentinel as StudioPlatform);
     try {
       await runTrial(PROJECT_TASK, { client: fakeClient([]) });
       expect(await getPlatform().readFile("x")).toBe("sentinel");
@@ -357,14 +390,9 @@ describe("eval runner — a task with no document open", () => {
         ]),
       },
     );
-    const reply = (id: string) =>
-      (
-        trial.transcript.find((m) => (m as { tool_call_id?: string }).tool_call_id === id) as {
-          content: string;
-        }
-      ).content;
-    expect(reply("d1")).toContain('"path":"pages/a"');
-    expect(reply("d1")).toContain('"path":"pages/a/b.json"');
-    expect(reply("d2")).toContain("no such file: pages/missing.json");
+    const listing = toolReply(trial.transcript, "d1");
+    expect(listing).toContain('"path":"pages/a"');
+    expect(listing).toContain('"path":"pages/a/b.json"');
+    expect(toolReply(trial.transcript, "d2")).toContain("no such file: pages/missing.json");
   });
 });

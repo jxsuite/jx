@@ -3,6 +3,8 @@ import { handleStudioApi, parseGitStatus } from "../src/studio-api";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import type { GitStatusResult } from "@jxsuite/protocol";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 // ── parseGitStatus unit tests ───────────────────────────────────────────────
 
@@ -137,10 +139,10 @@ describe("parseGitStatus", () => {
 /**
  * @param {string} path
  * @param {string} [method]
- * @param {Record<string, unknown>} [body]
+ * @param {JsonObject} [body]
  * @returns {Promise<Response>}
  */
-async function studioGitReq(path: string, method = "GET", body?: Record<string, unknown>) {
+async function studioGitReq(path: string, method = "GET", body?: JsonObject) {
   const urlStr = `http://localhost${path}`;
   const init: RequestInit = { method };
   if (body !== undefined) {
@@ -200,9 +202,7 @@ describe("git endpoints", () => {
   test("GET status shows untracked file", async () => {
     writeFileSync(join(GIT_FIXTURE, "new.txt"), "new");
     const res = await studioGitReq("/__studio/git/status");
-    const data = (await res.json()) as {
-      files: { path: string; status: string; staged: boolean }[];
-    };
+    const data: GitStatusResult = await res.json();
     const untracked = data.files.find((f) => f.path === "new.txt");
     expect(untracked).toBeTruthy();
     expect(untracked?.status).toBe("U");
@@ -217,9 +217,7 @@ describe("git endpoints", () => {
     expect(stageData.ok).toBe(true);
 
     const statusRes = await studioGitReq("/__studio/git/status");
-    const data = (await statusRes.json()) as {
-      files: { path: string; status: string; staged: boolean }[];
-    };
+    const data: GitStatusResult = await statusRes.json();
     const staged = data.files.find((f) => f.path === "new.txt" && f.staged);
     expect(staged).toBeTruthy();
     expect(staged?.status).toBe("A");
@@ -228,9 +226,7 @@ describe("git endpoints", () => {
   test("POST unstage removes file from index", async () => {
     await studioGitReq("/__studio/git/unstage", "POST", { files: ["new.txt"] });
     const res = await studioGitReq("/__studio/git/status");
-    const data = (await res.json()) as {
-      files: { path: string; status: string; staged: boolean }[];
-    };
+    const data: GitStatusResult = await res.json();
     const file = data.files.find((f) => f.path === "new.txt");
     expect(file?.staged).toBe(false);
   });
@@ -325,7 +321,7 @@ describe("git endpoints", () => {
       files: ["hello.txt"],
     });
     const res = await studioGitReq("/__studio/git/status");
-    const data = (await res.json()) as { files: { path: string }[] };
+    const data: GitStatusResult = await res.json();
     const modified = data.files.find((f) => f.path === "hello.txt");
     expect(modified).toBeUndefined();
   });
@@ -333,14 +329,14 @@ describe("git endpoints", () => {
   test("POST push fails without remote (500)", async () => {
     const res = await studioGitReq("/__studio/git/push", "POST");
     expect(res.status).toBe(500);
-    const data = (await res.json()) as any;
+    const data = await res.json();
     expect(data.error).toBeTruthy();
   });
 
   test("POST pull fails without remote (500)", async () => {
     const res = await studioGitReq("/__studio/git/pull", "POST");
     expect(res.status).toBe(500);
-    const data = (await res.json()) as any;
+    const data = await res.json();
     expect(data.error).toBeTruthy();
   });
 
@@ -348,7 +344,7 @@ describe("git endpoints", () => {
     // Git fetch exits 0 when there are no remotes configured — it is a silent no-op
     const res = await studioGitReq("/__studio/git/fetch", "POST");
     expect(res.status).toBe(200);
-    const data = (await res.json()) as any;
+    const data = await res.json();
     expect(data.ok).toBe(true);
   });
 

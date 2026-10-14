@@ -13,6 +13,7 @@
  * @license MIT
  */
 
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { PROBLEM_TYPE_BASE } from "./problem.ts";
 import type { ProblemDetails } from "./problem.ts";
 
@@ -33,12 +34,13 @@ const problem = (
   status: number,
   title: string,
   extensions?: readonly string[],
-): ProblemType => ({
-  status,
-  title,
-  type: `${PROBLEM_TYPE_BASE}${slug}`,
-  ...(extensions === undefined ? {} : { extensions }),
-});
+): ProblemType => {
+  const declared: ProblemType = { status, title, type: `${PROBLEM_TYPE_BASE}${slug}` };
+  if (extensions !== undefined) {
+    declared.extensions = extensions;
+  }
+  return declared;
+};
 
 /**
  * Every problem type a Jx backend may answer with, keyed by a stable name.
@@ -112,28 +114,39 @@ export type ProblemTypeName = keyof typeof PROBLEM_TYPES;
  *
  * @param {ProblemTypeName} name - A declared type
  * @param {string} [detail] - What happened THIS time
- * @param {Record<string, unknown>} [extensions] - Extension members this type documents
+ * @param {JsonObject} [extensions] - Extension members this type documents
  * @returns {ProblemDetails}
  */
 export function problemDetails(
   name: ProblemTypeName,
   detail?: string,
-  extensions: Record<string, unknown> = {},
+  extensions: JsonObject = {},
 ): ProblemDetails {
   const declared = PROBLEM_TYPES[name];
-  return {
+  const body: ProblemDetails = {
     ...extensions,
     status: declared.status,
     title: declared.title,
     type: declared.type,
-    ...(detail === undefined || detail === "" ? {} : { detail, error: detail }),
   };
+  if (detail !== undefined && detail !== "") {
+    /*
+     * The one place the deprecated `error` alias is written (see ProblemDetails.error). Its
+     * deprecation addresses readers; the writer owes it to every unmigrated client for one release,
+     * and deleting the alias is deleting `error: detail` here.
+     */
+    Object.assign(body, { detail, error: detail });
+  }
+  return body;
 }
 
-/** The declared type a `type` URI names, or null when it is not one of ours. */
-export function problemTypeByUri(type: unknown): ProblemType | null {
-  if (typeof type !== "string") {
-    return null;
-  }
+/**
+ * The declared type a `type` URI names, or null when it is not one of ours.
+ *
+ * @param {JsonValue | undefined} type - A body's `type` member, as parsed off the wire
+ * @returns {ProblemType | null}
+ */
+export function problemTypeByUri(type: JsonValue | undefined): ProblemType | null {
+  // Every declared `type` is a string, so a non-string member matches nothing and answers null.
   return Object.values(PROBLEM_TYPES).find((declared) => declared.type === type) ?? null;
 }

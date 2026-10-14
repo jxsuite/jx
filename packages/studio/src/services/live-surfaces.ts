@@ -173,12 +173,15 @@ export interface LiveSurfaceDeps {
   redefineOnCanvases: (doc: JxDocument, base: string) => number;
 }
 
-/** The sentence a result is said in. Exported so the wording is tested, not only the branch. */
-export function liveSaveNotice(result: LiveSurfaceResult): {
+/** How a save's result is announced: the toast key it replaces, its level and its sentence. */
+export interface LiveSaveNotice {
   key: string;
   level: "info" | "warn";
   message: string;
-} {
+}
+
+/** The sentence a result is said in. Exported so the wording is tested, not only the branch. */
+export function liveSaveNotice(result: LiveSurfaceResult): LiveSaveNotice {
   const what =
     result.target.kind === "surface" ? `surface ${result.target.name}` : result.target.tag;
   const key = `live-chrome:${what}`;

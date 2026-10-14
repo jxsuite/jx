@@ -42,6 +42,24 @@ import { handleImportApi } from "./import-api.ts";
 import { mediaTypeForPath } from "@jxsuite/schema/media-type";
 import { existsSync, readFileSync } from "node:fs";
 import { problem } from "./problem.ts";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
+/**
+ * Read `key` off a parsed `package.json` value, or `undefined` when the value is not an object.
+ *
+ * Every lookup below reads through this one, so a manifest of the wrong shape (an `exports` that is
+ * a string, a `main` that is an array) yields "absent" rather than a member of something else.
+ */
+function manifestField(value: JsonValue | undefined, key: string): JsonValue | undefined {
+  return isJsonObject(value) ? value[key] : undefined;
+}
+
+/** Read and parse a package's `package.json`. Throws when the file is not JSON. */
+function readManifest(pkgJsonPath: string): JsonValue {
+  // SAFETY: JSON.parse without a reviver only ever yields a JSON value; its `any` says no more.
+  return JSON.parse(readFileSync(pkgJsonPath, "utf8")) as JsonValue;
+}
 
 /**
  * Resolve an npm-style bare specifier from a URL path via node_modules. Handles scoped packages
@@ -52,14 +70,6 @@ import { problem } from "./problem.ts";
  * @param {string} urlPath - URL pathname (e.g. "/pages/@jxsuite/parser/Foo.class.json")
  * @returns {string | null} Absolute file path or null
  */
-interface PackageJson {
-  exports?: Record<string, string | { import?: string; default?: string }>;
-  customElements?: string;
-  module?: string;
-  main?: string;
-  [key: string]: unknown;
-}
-
 function resolveNpmPath(rootDir: string, urlPath: string) {
   let root = rootDir;
   let segments = urlPath.split("/").filter(Boolean);
@@ -121,10 +131,9 @@ function resolveNpmPath(rootDir: string, urlPath: string) {
   // If there's a subpath, check package.json exports first
   if (subpath) {
     try {
-      const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as PackageJson;
-      const exportKey = `./${subpath}`;
-      const exportVal = pkgJson.exports?.[exportKey];
-      if (typeof exportVal === "string") {
+      const pkgJson = readManifest(pkgJsonPath);
+      const exportVal = manifestField(manifestField(pkgJson, "exports"), `./${subpath}`);
+      if (isString(exportVal)) {
         const mapped = join(pkgDir, exportVal);
         if (existsSync(mapped)) {
           return mapped;
@@ -138,9 +147,9 @@ function resolveNpmPath(rootDir: string, urlPath: string) {
     }
     // CEM-relative: subpath may be relative to the custom elements manifest directory
     try {
-      const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as PackageJson;
-      if (pkgJson.customElements) {
-        const cemDir = pkgJson.customElements.replace(/\/[^/]+$/, "");
+      const customElements = manifestField(readManifest(pkgJsonPath), "customElements");
+      if (isString(customElements) && customElements) {
+        const cemDir = customElements.replace(/\/[^/]+$/, "");
         const cemRelative = join(pkgDir, cemDir, subpath);
         if (existsSync(cemRelative)) {
           return cemRelative;
@@ -151,16 +160,20 @@ function resolveNpmPath(rootDir: string, urlPath: string) {
 
   // Bare package (no subpath): resolve entry point
   try {
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as PackageJson;
-    const exp = pkgJson.exports?.["."];
-    const entry =
-      (typeof exp === "object" ? (exp.import ?? exp.default) : exp) ??
-      pkgJson.module ??
-      pkgJson.main;
-    if (entry && typeof entry === "string") {
-      const resolved = join(pkgDir, entry);
-      if (existsSync(resolved)) {
-        return resolved;
+    const pkgJson = readManifest(pkgJsonPath);
+    const exp = manifestField(manifestField(pkgJson, "exports"), ".");
+    // An explicit `null` entry declines the package's entry point outright: no `module`/`main`.
+    if (exp !== null) {
+      const conditional = isNonNullObject(exp)
+        ? (manifestField(exp, "import") ?? manifestField(exp, "default"))
+        : exp;
+      const entry =
+        conditional ?? manifestField(pkgJson, "module") ?? manifestField(pkgJson, "main");
+      if (isString(entry) && entry) {
+        const resolved = join(pkgDir, entry);
+        if (existsSync(resolved)) {
+          return resolved;
+        }
       }
     }
   } catch {}
@@ -169,6 +182,9 @@ function resolveNpmPath(rootDir: string, urlPath: string) {
 }
 
 export { resolveNpmPath };
+
+/** The watcher options `createDevServer` passes through when `watch` is an object. */
+type DevWatchOptions = NonNullable<Parameters<typeof createWatcher>[2]>;
 
 /**
  * Create and start a Jx development server.
@@ -209,7 +225,7 @@ export async function createDevServer(options: {
     match?: ((path: string) => boolean) | RegExp;
     label?: string;
   }[];
-  watch?: boolean | object;
+  watch?: boolean | DevWatchOptions;
   studio?: boolean;
   middleware?: (req: Request, url: URL) => Response | null | Promise<Response | null>;
 }) {
@@ -248,7 +264,7 @@ export async function createDevServer(options: {
   let handleSSE = null;
   let fsWatcher: ReturnType<typeof createWatcher>["watcher"] | null = null;
   if (watch !== false) {
-    const watchOpts = typeof watch === "object" ? watch : {};
+    const watchOpts = watch === true ? {} : watch;
     const watcher = createWatcher(absRoot, builds, watchOpts);
     ({ handleSSE } = watcher);
     fsWatcher = watcher.watcher;
@@ -388,6 +404,10 @@ export async function createDevServer(options: {
         // (`isOwnedProjectDir`), so a hostile activate cannot widen the filesystem API to arbitrary
         // Directories.
         if (path === "/__studio/activate" && req.method === "POST") {
+          /* SAFETY: trust boundary. The body parsed as JSON, and this route's caller is Studio's
+             project activation, which posts `{ root }` with a path or nothing. A body of another
+             shape throws in this handler (resolve() refuses a non-string root, and a `null` body
+             has no members), which Bun answers with a 500, as it always has. */
           const body = (await req.json()) as { root?: string };
           const raw = body.root || null;
           if (!raw) {

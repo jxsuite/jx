@@ -71,7 +71,9 @@ import { diffShowsCode } from "../canvas/diff-view";
 import { canRenderComparison } from "./git-diff-open";
 import { shell } from "../shell";
 import { paneRegion } from "../ui/regions";
+import { isNumber, isString } from "@jxsuite/schema/guards";
 import {
+  CANVAS_VIEWS,
   fitToScreen,
   getFit,
   resetZoom,
@@ -95,8 +97,8 @@ import { componentPropEntries, isComponentDoc } from "../component-props";
 import { mediaDisplayName } from "./shared";
 import type { CanvasView, FitMode } from "../canvas/canvas-utils";
 import { EDITOR_KIND_LABELS } from "../commands/context";
-import type { EditorKind } from "../commands/context";
 import type { ParamValues } from "../page-params";
+import type { CommandArgValues } from "../commands/command-args";
 import type { Tab } from "../tabs/tab";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type { JsonValue } from "../types";
@@ -257,7 +259,7 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         }
         // Read reactive properties to establish tracking — mirrors the toolbar's subset.
         void tab.doc.document;
-        void tab.doc.document?.$layout;
+        void tab.doc.document.$layout;
         void tab.doc.mode;
         void tab.documentPath;
         void tab.capabilities.modes;
@@ -360,13 +362,13 @@ function renderPane(paneId: string, host: HTMLElement) {
   }
   try {
     const tab = tabOfPane(paneId);
-    const show = Boolean(tab) && wantsContextBar(tab as Tab);
+    const show = tab !== null && wantsContextBar(tab);
     if (!show) {
       disposePane(paneId);
       applyPaneContextOffset(0, host);
       return;
     }
-    const view = viewFor(tab as Tab, paneId, _ctx);
+    const view = viewFor(tab, paneId, _ctx);
     let surface = _surfaces.get(paneId);
     if (!surface || !surface.connected()) {
       disposePane(paneId);
@@ -458,12 +460,11 @@ function openPresetMenu(paneId: string, anchor: HTMLElement): void {
  * `check-lens-mutants.ts` said so, by surviving.
  */
 function menuRow(row: PresetRow): MenuRowProjection {
-  return {
+  const projection: MenuRowProjection = {
     destructive: false,
     disabled: row.disabled !== null,
     dividerAbove: false,
     id: rowId(row),
-    ...(row.disabled === null ? {} : { requires: row.disabled }),
     run: () => {
       /* THE PANE THE MENU IS ABOUT, before the verb that resolves the focus runs.
          See {@link PresetRow.pane}: all three of these commands take the focused pane as their
@@ -476,6 +477,10 @@ function menuRow(row: PresetRow): MenuRowProjection {
     },
     title: row.label,
   };
+  if (row.disabled !== null) {
+    projection.requires = row.disabled;
+  }
+  return projection;
 }
 
 /**
@@ -487,7 +492,7 @@ function rowId(row: PresetRow): string {
   const parts = [row.command];
   for (const key of ["preset", "media", "locale"] as const) {
     const value = row.args[key];
-    if (typeof value === "string") {
+    if (isString(value)) {
       parts.push(value);
     }
   }
@@ -498,7 +503,7 @@ function rowId(row: PresetRow): string {
 export interface PresetRow {
   label: string;
   command: string;
-  args: Record<string, unknown>;
+  args: CommandArgValues;
   /**
    * The pane this row is ABOUT — the one whose ⟲ opened the menu.
    *
@@ -824,12 +829,12 @@ function localeOf(tab: Tab | null): PaneLocale | null {
 function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<PaneContextView> {
   const { ui } = tab.session;
   const { featureQueries, sizeBreakpoints } = ctx.parseMediaEntries(
-    getEffectiveMedia(tab.doc.document?.$media as Record<string, string> | undefined),
+    getEffectiveMedia(tab.doc.document.$media),
   );
   const schemeQueries = featureQueries.filter(({ query }) => isSchemeQuery(query));
   const plainQueries = featureQueries.filter(({ query }) => !isSchemeQuery(query));
-  const scheme = (ui.previewColorScheme ?? "auto") as string;
-  const activeMedia = (ui.activeMedia ?? null) as string | null;
+  const scheme = ui.previewColorScheme;
+  const { activeMedia } = ui;
   const sizeLabel = activeMedia ? mediaDisplayName(activeMedia) : "Base";
   const schemeLabel = SCHEMES.find(([value]) => value === scheme)?.[1] ?? "Auto";
   const locale = localeOf(tab);
@@ -843,7 +848,7 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
   ]
     .filter((part) => part !== null)
     .join(" · ");
-  const hasLayout = isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document?.$layout));
+  const hasLayout = isPageDoc(tab) && Boolean(getEffectiveLayoutPath(tab.doc.document.$layout));
   const page = isPageDoc(tab);
   const params = page ? paramRows(tab) : [];
   const props = page ? [] : propRows(tab, paneId);
@@ -851,7 +856,7 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
      way the Context trigger says `Base · Auto` — a chevron with no reading is a control you have to
      open in order to learn whether it was worth opening. */
   const resolvingSet = page
-    ? Object.values(ui.previewParams ?? {}).filter((v) => v !== "" && v !== undefined).length
+    ? Object.values(ui.previewParams).filter((v) => v !== "").length
     : Object.keys(ui.previewProps ?? {}).length;
   const hasResolving = page ? params.length > 0 : props.length > 0;
 
@@ -965,7 +970,7 @@ const FIT_CHOICES: readonly { value: string; fit: FitMode; label: string }[] = [
 
 /** Which entry the pod shows as chosen — a numeric fit reads as "actual size" only at 1. */
 function fitChoiceValue(fit: FitMode): string {
-  if (typeof fit === "number") {
+  if (isNumber(fit)) {
     return fit === 1 ? "actual" : "";
   }
   return fit;
@@ -1006,7 +1011,7 @@ function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
      computed from the side pane's own zoom, and its "100%" button reset the primary. */
   const surface = surfaceForPane(paneId);
   if (mode === "edit") {
-    const editZoom = tab.session.ui.editZoom ?? 1;
+    const { editZoom } = tab.session.ui;
     return { podState: "shown", zoomLabel: `${Math.round(editZoom * 100)}%` };
   }
   if (!STAGE_ZOOM_MODES.has(mode)) {
@@ -1041,7 +1046,7 @@ function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
  * `__jxAutomation` had no name for it. Going through the registry makes the control and the verb
  * one thing (one definition site per action, §13) and gets the breakpoint refusal for free.
  */
-function runContextCommand(paneId: string, id: string, args: Record<string, unknown>): void {
+function runContextCommand(paneId: string, id: string, args: CommandArgValues): void {
   // THIS pane, named. The bar is drawn once per pane and the side bar's controls write the side
   // Pane's tab; a verb defaulting to the focused pane would have made the side bar edit the
   // Foreground document the moment its control became a command.
@@ -1063,7 +1068,8 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       if (!tab) {
         return;
       }
-      const mode = modeForEditorKind(tab, kind as EditorKind);
+      const editorKind = editorKindsOf(tab).find((candidate) => candidate === kind);
+      const mode = editorKind && modeForEditorKind(tab, editorKind);
       if (!mode) {
         return;
       }
@@ -1086,8 +1092,9 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
     },
     chooseView: (value) => {
       const tab = tabNow();
-      if (tab) {
-        setCanvasView(tab, value as CanvasView, ctx.setCanvasMode);
+      const view = CANVAS_VIEWS.find((candidate) => candidate === value);
+      if (tab && view) {
+        setCanvasView(tab, view, ctx.setCanvasMode);
       }
     },
     exportFile: ctx.exportFile,
@@ -1285,7 +1292,7 @@ function paramValuesFor(tab: Tab): ParamValues | null {
  * @param {ParamValues} values
  */
 function autoSelectParams(tab: Tab, values: ParamValues) {
-  const current = tab.session.ui.previewParams ?? {};
+  const current = tab.session.ui.previewParams;
   const additions: Record<string, string> = {};
   for (const [name, list] of Object.entries(values)) {
     if (!current[name] && list.length > 0) {
@@ -1314,7 +1321,7 @@ function paramRows(tab: Tab): PaneContextView["params"] {
     label: `Preview value for [${name}]`,
     name,
     options: (values?.[name] ?? []).map((value: string) => ({ label: value, value })),
-    value: previewParams?.[name] ?? "",
+    value: previewParams[name] ?? "",
   }));
 }
 
@@ -1330,6 +1337,8 @@ function paramRows(tab: Tab): PaneContextView["params"] {
  */
 function parsePropValue(raw: string): JsonValue {
   try {
+    // SAFETY: JSON.parse only ever yields null, a boolean, a number, a string, an array or a plain
+    // Object of those, which is exactly the JsonValue union.
     return JSON.parse(raw) as JsonValue;
   } catch {
     return raw;
@@ -1347,7 +1356,7 @@ function propRows(tab: Tab, paneId: string): PaneContextView["props"] {
   }
   const { previewProps } = tab.session.ui;
   const display = (v: JsonValue | undefined) =>
-    v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v);
+    v === undefined ? "" : isString(v) ? v : JSON.stringify(v);
   return componentPropEntries(doc).map(({ name }) => ({
     key: name,
     label: `Test value for ${name}`,

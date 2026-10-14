@@ -329,11 +329,9 @@ describe("package subpaths (site-architecture.md §8.7)", () => {
         join(dir, "assets", "lit-html", "lit-html.js"),
         'export const noChange = Symbol("noChange");\n',
       );
-      const emitted = (await import(
-        join(dir, "assets", "lit-html", "directives", "class-map.js")
-      )) as { classMap?: unknown };
+      const emitted = await import(join(dir, "assets", "lit-html", "directives", "class-map.js"));
 
-      expect(typeof emitted.classMap).toBe("function");
+      expect(emitted.classMap).toBeFunction();
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }

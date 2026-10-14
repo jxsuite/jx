@@ -5,6 +5,7 @@
  * iframe host; exercised here against the real slash/context menus.
  */
 import { flush, resetWorkspaceWithTab } from "./harness";
+import { isNumber } from "@jxsuite/schema/guards";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { canvasSlashHandler } from "../src/editor/canvas-slash-bridge";
 import { makeCanvasContextMenuHandler } from "../src/editor/canvas-context-menu";
@@ -34,6 +35,18 @@ const slashRows = () => [
 /** Which slash row is active, as an index; the panel marks it rather than focusing it. */
 const activeSlashRow = () =>
   slashRows().findIndex((el) => el.getAttribute("aria-selected") === "true");
+
+/**
+ * One coordinate a placed kit overlay (`jx-popover`, `jx-menu`) carries as a property, if numeric.
+ * An element without both `x` and `y` properties is not a placed overlay and has no coordinate.
+ */
+function coordinateOf(el: Element | null, axis: "x" | "y"): number | undefined {
+  if (!el || !("x" in el) || !("y" in el)) {
+    return undefined;
+  }
+  const value = el[axis];
+  return isNumber(value) ? value : undefined;
+}
 
 beforeEach(() => {
   resetWorkspaceWithTab({
@@ -68,12 +81,9 @@ describe("canvasSlashHandler", () => {
     expect(isSlashMenuOpen()).toBe(true);
     // The panel is placed by coordinate, not by a style string a test has to parse: the gap
     // Between the anchor and the panel is the `--jx-popover-offset` token the element applies.
-    const popover = document.querySelector("#layer-popover jx-popover") as HTMLElement & {
-      x: number;
-      y: number;
-    };
-    expect(popover.x).toBe(RECT.left);
-    expect(popover.y).toBe(RECT.bottom);
+    const popover = document.querySelector("#layer-popover jx-popover");
+    expect(coordinateOf(popover, "x")).toBe(RECT.left);
+    expect(coordinateOf(popover, "y")).toBe(RECT.bottom);
 
     // Enter selects the focused (first) item — dismiss (→ onDismiss) fires BEFORE onSelect.
     canvasSlashHandler.nav("Enter");
@@ -139,13 +149,10 @@ describe("makeCanvasContextMenuHandler", () => {
     handler.show({ clientX: 77, clientY: 88, path: ["children", 0, "children", 0] });
     await flush();
     expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
-    const menu = document.querySelector("#layer-popover jx-menu") as HTMLElement & {
-      x: number;
-      y: number;
-    };
+    const menu = document.querySelector("#layer-popover jx-menu");
     expect(menu).toBeTruthy();
-    expect(menu.x).toBe(77);
-    expect(menu.y).toBe(88);
+    expect(coordinateOf(menu, "x")).toBe(77);
+    expect(coordinateOf(menu, "y")).toBe(88);
   });
 
   test("a null path (empty canvas area) is a no-op", async () => {

@@ -31,6 +31,8 @@ import {
   secretControl,
 } from "../src/ui/form-controls";
 import { mountSchemaForm, resetSchemaForms } from "../src/ui/schema-form";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type {
   SchemaFormContext,
   SchemaFormControlArgs,
@@ -62,9 +64,9 @@ interface BuilderMount {
   host: HTMLElement;
   handle: SchemaFormControlHandle;
   /** Every value the control has committed, in order. */
-  patches: unknown[];
+  patches: (JsonValue | undefined)[];
   /** The value the host is holding — what the control is drawn from after a redraw. */
-  state: { value: unknown };
+  state: { value: JsonValue | undefined };
   /** Let the document catch up after an interaction. */
   settle: () => Promise<void>;
 }
@@ -78,7 +80,7 @@ const hosts: HTMLElement[] = [];
  * and never comes back — so what the cards show after a commit is the commit itself.
  */
 async function mountBuilder(
-  initial: unknown,
+  initial: JsonValue | undefined,
   { ctx = inertCtx, redraws = true }: { ctx?: SchemaFormContext; redraws?: boolean } = {},
 ): Promise<BuilderMount> {
   const builder = schemaBuilderControl;
@@ -86,7 +88,7 @@ async function mountBuilder(
   document.body.append(host);
   hosts.push(host);
   const state = { value: initial };
-  const patches: unknown[] = [];
+  const patches: (JsonValue | undefined)[] = [];
   let handle: SchemaFormControlHandle | null = null;
   const args = (): SchemaFormControlArgs => ({
     ctx,
@@ -115,10 +117,10 @@ async function mountBuilder(
 /** A node the document drew, by the `part` it carries. */
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no [part="${name}"] in the schema builder`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The native control a kit element wraps: the field's input, or the picker's select. */
@@ -157,10 +159,10 @@ function shows(el: Element): string {
 /** One field's card, by the property it edits. */
 function card(m: BuilderMount, field: string): HTMLElement {
   const el = m.host.querySelector(`[data-field="${field}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no field card for "${field}"`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** A field's own row, so a parent object's controls are never mistaken for a child's. */
@@ -181,10 +183,10 @@ function cardPart(m: BuilderMount, field: string, name: string): HTMLElement {
 /** One child of an object field. Its card holds exactly one row, which is that child's. */
 function nested(m: BuilderMount, parent: string, child: string): HTMLElement {
   const el = card(m, parent).querySelector(`[data-nested="${child}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no nested card for "${parent}.${child}"`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** One control of a child's row. */
@@ -194,8 +196,8 @@ function nestedPart(m: BuilderMount, parent: string, child: string, name: string
 
 /** The property keys the builder is drawing, in order. */
 function fieldKeys(m: BuilderMount): string[] {
-  return [...m.host.querySelectorAll("[data-field]")].map(
-    (el) => (el as HTMLElement).dataset.field ?? "",
+  return [...m.host.querySelectorAll("[data-field]")].flatMap((el) =>
+    el instanceof HTMLElement ? [el.dataset.field ?? ""] : [],
   );
 }
 
@@ -206,21 +208,28 @@ function options(el: Element): string[] {
   );
 }
 
+/** An object schema's `properties` and `required`, as the builder writes them. */
+interface ObjectSchema {
+  properties: JsonObject;
+  required: JsonValue | undefined;
+}
+
+/** Read a value as an object schema; the test fails if it carries no `properties` object. */
+function objectSchema(value: JsonValue | undefined): ObjectSchema {
+  if (!isJsonObject(value) || !isJsonObject(value.properties)) {
+    throw new Error(`not an object schema: ${JSON.stringify(value)}`);
+  }
+  return { properties: value.properties, required: value.required };
+}
+
 /** The schema as the host now holds it. */
-function schemaOf(m: BuilderMount): {
-  properties: Record<string, Record<string, any>>;
-  required: string[];
-  type?: string;
-} {
-  return m.state.value as never;
+function schemaOf(m: BuilderMount): ObjectSchema {
+  return objectSchema(m.state.value);
 }
 
 /** The last value the control committed. */
-function lastPatch(m: BuilderMount): {
-  properties: Record<string, Record<string, any>>;
-  required: string[];
-} {
-  return m.patches.at(-1) as never;
+function lastPatch(m: BuilderMount): ObjectSchema {
+  return objectSchema(m.patches.at(-1));
 }
 
 beforeEach(() => {
@@ -533,8 +542,7 @@ describe("nested fields", () => {
     type: "object",
   });
 
-  const meta = (m: BuilderMount) =>
-    schemaOf(m).properties.meta as { properties: Record<string, unknown>; required: string[] };
+  const meta = (m: BuilderMount) => objectSchema(schemaOf(m).properties.meta);
 
   test("the add row keeps its draft in the control's own state, not in the DOM", async () => {
     const m = await mountBuilder(initial());
@@ -656,20 +664,19 @@ describe("stale cards", () => {
 
   /** Three cards, then the object they were drawn from loses all three IN PLACE. */
   async function stale(): Promise<Stale> {
-    const value: { properties: Record<string, unknown>; required: string[]; type: string } = {
-      properties: {
-        ghost: { type: "string" },
-        meta: {
-          properties: { child: { type: "string" } },
-          required: ["child"],
-          type: "object",
-        },
-        target: { $ref: "#/content/page" },
+    const properties: JsonObject = {
+      ghost: { type: "string" },
+      meta: {
+        properties: { child: { type: "string" } },
+        required: ["child"],
+        type: "object",
       },
-      required: [],
-      type: "object",
+      target: { $ref: "#/content/page" },
     };
-    const m = await mountBuilder(value, { ctx: contentTypesCtx });
+    const m = await mountBuilder(
+      { properties, required: [], type: "object" },
+      { ctx: contentTypesCtx },
+    );
     const held = {
       addButton: cardPart(m, "meta", "nested-add-button"),
       addName: cardPart(m, "meta", "nested-add-name"),
@@ -678,9 +685,9 @@ describe("stale cards", () => {
       m,
       target: cardPart(m, "target", "ref-target-select"),
     };
-    delete value.properties.ghost;
-    delete value.properties.meta;
-    delete value.properties.target;
+    delete properties.ghost;
+    delete properties.meta;
+    delete properties.target;
     return held;
   }
 
@@ -872,15 +879,18 @@ describe("secret control", () => {
     /** Every value committed to the secret store, as `[key, value]`. */
     commits: [string, string][];
     /** Every value the control asked the host to persist. */
-    changes: unknown[];
+    changes: (JsonValue | undefined)[];
     /** Redraw the control the way a host's repaint does. */
-    repaint: (value: unknown) => Promise<void>;
+    repaint: (value: JsonValue | undefined) => Promise<void>;
   }
 
   async function mountSecret(
     ctx: SchemaFormContext,
-    value?: unknown,
-    { commits = [], changes = [] }: { commits?: [string, string][]; changes?: unknown[] } = {},
+    value?: JsonValue,
+    {
+      commits = [],
+      changes = [],
+    }: { commits?: [string, string][]; changes?: (JsonValue | undefined)[] } = {},
   ): Promise<SecretMount> {
     const host = document.createElement("div");
     document.body.append(host);
@@ -998,7 +1008,7 @@ describe("secret control", () => {
 
   test("an asynchronous secret store is awaited, and the field is emptied before it answers", async () => {
     let answer: ((name: string) => void) | null = null;
-    const changes: unknown[] = [];
+    const changes: (JsonValue | undefined)[] = [];
     const m = await mountSecret(
       {
         commitSecret: async () =>

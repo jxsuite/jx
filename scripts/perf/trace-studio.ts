@@ -9,7 +9,9 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { resolve as resolvePath } from "node:path";
+import { resolve } from "node:path";
+
+import type { JsonObject } from "@jxsuite/schema/types";
 
 import { mapSources } from "./sources.ts";
 
@@ -19,7 +21,7 @@ import type { Analysis } from "./analysis";
 /* Resolved from THIS file's own location rather than a fixed home-directory path, so the same
  * default works on any checkout — a contributor's machine, a fresh clone, or CI's container,
  * where neither the checkout path nor `$HOME` match a developer's local layout. */
-const DEFAULT_PROJECT = resolvePath(import.meta.dir, "../../sites/jxsuite.com/project.json");
+const DEFAULT_PROJECT = resolve(import.meta.dir, "../../sites/jxsuite.com/project.json");
 const DEFAULT_URL = `http://127.0.0.1:3000/packages/studio/index.html?project=${encodeURIComponent(DEFAULT_PROJECT)}&automation=1`;
 
 /* The binary is overridable via `--chrome` or `CHROME_BIN`: CI hands the container Chrome for
@@ -28,7 +30,7 @@ const DEFAULT_URL = `http://127.0.0.1:3000/packages/studio/index.html?project=${
 const CHROME_BIN = (() => {
   const argvIdx = Bun.argv.indexOf("--chrome");
   if (argvIdx !== -1) {
-    return Bun.argv[argvIdx + 1]! as string;
+    return Bun.argv[argvIdx + 1]!;
   }
   return process.env.CHROME_BIN ?? "google-chrome-stable";
 })();
@@ -57,14 +59,17 @@ const CATEGORIES = [
  */
 const MIN_BASELINE_MS = 5;
 
+/** One metric's printed `--compare` cell, and whether it counts as a regression. */
+export interface MetricComparison {
+  cell: string;
+  regressed: boolean;
+}
+
 /**
  * One metric's baseline-vs-fresh comparison: the printed cell, and whether it counts as a
  * regression. Exported so a test can hand it values without launching Chrome.
  */
-export function compareMetric(
-  oldValue: number,
-  freshValue: number,
-): { cell: string; regressed: boolean } {
+export function compareMetric(oldValue: number, freshValue: number): MetricComparison {
   if (!oldValue) {
     return { cell: `n/a → ${freshValue}`, regressed: false };
   }
@@ -82,13 +87,13 @@ export function compareMetric(
  * scripting, the only scripting number the baseline records or the gate judges.
  */
 export function attributeHarness(r: Analysis, mapped: { file: string; totalMs: number }[]): void {
-  r.harnessMs = Number(
-    mapped
-      .filter((f) => f.file.includes("/services/idle.ts"))
-      .map((f) => f.totalMs)
-      .reduce((a, b) => a + b, 0)
-      .toFixed(1),
-  );
+  let harness = 0;
+  for (const f of mapped) {
+    if (f.file.includes("/services/idle.ts")) {
+      harness += f.totalMs;
+    }
+  }
+  r.harnessMs = Number(harness.toFixed(1));
   r.breakdown.scripting = Number(Math.max(0, r.breakdown.scripting - r.harnessMs).toFixed(1));
 }
 
@@ -107,6 +112,12 @@ export interface BaselineScenario {
   gcMs: number;
 }
 
+/** The `baseline.json` file `--write-baseline` writes and `--compare` reads back. */
+interface Baseline {
+  updatedAt: string;
+  scenarios: BaselineScenario[];
+}
+
 /** The row `--write-baseline` records for an analysis {@link attributeHarness} has already seen. */
 export function baselineScenario(r: Analysis): BaselineScenario {
   return {
@@ -121,6 +132,12 @@ export function baselineScenario(r: Analysis): BaselineScenario {
   };
 }
 
+/** One scenario's printed `--compare` cells, and whether any of its metrics regressed. */
+export interface ScenarioComparison {
+  cells: string[];
+  regressed: boolean;
+}
+
 /**
  * One scenario's `--compare` row: its printed cells, and whether any metric regressed.
  *
@@ -133,20 +150,28 @@ export function baselineScenario(r: Analysis): BaselineScenario {
 export function compareScenario(
   base: Pick<BaselineScenario, "wallMs" | "scriptingMs" | "styleRecalcMs" | "layoutMs">,
   now: Analysis,
-): { cells: string[]; regressed: boolean } {
+): ScenarioComparison {
   let regressed = false;
   const cells: string[] = [];
-  for (const [oldValue, freshValue] of [
+  const pairs: [number, number][] = [
     [base.wallMs, now.wallMs],
     [base.scriptingMs, now.breakdown.scripting],
     [base.styleRecalcMs, now.styleRecalc.time],
     [base.layoutMs, now.layout.time],
-  ] as [number, number][]) {
+  ];
+  for (const [oldValue, freshValue] of pairs) {
     const metric = compareMetric(oldValue, freshValue);
     regressed ||= metric.regressed;
     cells.push(metric.cell);
   }
   return { cells, regressed };
+}
+
+/** One debuggable target from Chrome's `/json/list` DevTools HTTP endpoint. */
+interface CdpTarget {
+  type: string;
+  url: string;
+  webSocketDebuggerUrl: string;
 }
 
 class Cdp {
@@ -159,7 +184,7 @@ class Cdp {
   private constructor(ws: WebSocket) {
     this.ws = ws;
     ws.addEventListener("message", (m) => {
-      const msg = JSON.parse(String(m.data)) as any;
+      const msg = JSON.parse(String(m.data));
       if (msg.id != null) {
         const p = this.pending.get(msg.id);
         if (p) {
@@ -185,7 +210,10 @@ class Cdp {
 
   static async connect(port: number) {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-    const list = (await response.json()) as any[];
+    /* SAFETY: `/json/list` is Chrome's DevTools HTTP endpoint on the port this script launched it
+     * with; it answers an array of target descriptors, each carrying `type`, `url` and
+     * `webSocketDebuggerUrl`. */
+    const list = (await response.json()) as CdpTarget[];
     const page =
       list.find((target) => target.type === "page" && target.url === "about:blank") ??
       list.find((target) => target.type === "page");
@@ -209,11 +237,11 @@ class Cdp {
     return cdp;
   }
 
-  send<T = any>(method: string, params?: Record<string, unknown>): Promise<T> {
+  send<T = any>(method: string, params?: JsonObject): Promise<T> {
     const id = this.nextId;
     this.nextId += 1;
-    return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+    return new Promise<T>((onResult, onError) => {
+      this.pending.set(id, { resolve: onResult, reject: onError });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -291,9 +319,7 @@ async function launchChrome(userDataDir: string, port: number) {
   throw new Error(`Chrome did not come up${stderr ? `:\n${stderr.slice(-2000)}` : ""}`);
 }
 
-type CdpLike = Cdp;
-
-async function evalJs(cdp: CdpLike, expression: string, awaitPromise = false): Promise<any> {
+async function evalJs(cdp: Cdp, expression: string, awaitPromise = false): Promise<any> {
   const r: any = await cdp.send("Runtime.evaluate", {
     expression,
     awaitPromise,
@@ -311,7 +337,7 @@ async function evalJs(cdp: CdpLike, expression: string, awaitPromise = false): P
   return r.result.value;
 }
 
-async function waitFor(cdp: CdpLike, expression: string, timeoutMs = 90_000) {
+async function waitFor(cdp: Cdp, expression: string, timeoutMs = 90_000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     try {
@@ -326,18 +352,18 @@ async function waitFor(cdp: CdpLike, expression: string, timeoutMs = 90_000) {
   throw new Error(`waitFor timed out: ${expression}`);
 }
 
-async function idle(cdp: CdpLike) {
+async function idle(cdp: Cdp) {
   await evalJs(cdp, "__jxAutomation.probe.idle().then(true)").catch(() => {});
 }
 
-async function runCommand(cdp: CdpLike, id: string, args: Record<string, unknown> = {}) {
+async function runCommand(cdp: Cdp, id: string, args: JsonObject = {}) {
   await evalJs(cdp, `__jxAutomation.run(${JSON.stringify(id)}, ${JSON.stringify(args)})`, true);
   await idle(cdp);
 }
 
 // ─── Trace capture ───────────────────────────────────────────────────────────
 
-async function capture(cdp: CdpLike, name: string, interactions: () => Promise<void>) {
+async function capture(cdp: Cdp, name: string, interactions: () => Promise<void>) {
   cdp.drain();
   await cdp.send("Tracing.start", { traceConfig: { includedCategories: CATEGORIES } });
   const t0 = performance.now();
@@ -363,7 +389,7 @@ const SCENARIOS: {
   name: string;
   describe: string;
   url?: string;
-  interactions: (cdp: CdpLike) => Promise<void>;
+  interactions: (cdp: Cdp) => Promise<void>;
 }[] = [
   {
     name: "boot",
@@ -545,7 +571,7 @@ async function main() {
   BOOT_URL = url;
   try {
     await Bun.sleep(400);
-    const cdp: CdpLike = await Cdp.connect(port);
+    const cdp: Cdp = await Cdp.connect(port);
 
     const outDir =
       flag("out", "") === ""
@@ -646,7 +672,7 @@ async function main() {
                 flag("baseline-out", "./baseline.json"),
                 `file://${new URL(".", import.meta.url).pathname}`,
               ).pathname;
-      const baseline = {
+      const baseline: Baseline = {
         updatedAt: new Date().toISOString(),
         scenarios: results.map((r) => baselineScenario(r)),
       };
@@ -656,9 +682,9 @@ async function main() {
 
     const comparePath = flag("compare", "");
     if (comparePath) {
-      const baseline = JSON.parse(await Bun.file(comparePath).text()) as {
-        scenarios: BaselineScenario[];
-      };
+      /* SAFETY: `--compare` reads a baseline `--write-baseline` produced (studio-perf.yml passes the
+       * tracked scripts/perf/baseline.json), and that branch serialises a `Baseline` literal. */
+      const baseline = JSON.parse(await Bun.file(comparePath).text()) as Baseline;
       let regression = false;
       console.log(`\n== compare vs ${comparePath} ==`);
       console.log("scenario | wall | scripting | styleRecalc | layout");

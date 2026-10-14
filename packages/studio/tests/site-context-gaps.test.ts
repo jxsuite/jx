@@ -13,6 +13,8 @@ beforeEach(() => {
 
 describe("distributePageIntoLayout", () => {
   test("fills default/named/fallback slots and merges page-level config", () => {
+    /* SAFETY: The leading null child stands in for hand-edited JSON, which fillSlots skips through
+       its isNonNullObject guard; every other member is a well-formed JxMutableNode. */
     const layoutDoc = {
       attributes: { lang: "en" },
       $media: { "--m": "x" },
@@ -30,9 +32,9 @@ describe("distributePageIntoLayout", () => {
       state: { a: 1 },
       style: { color: "red" },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    } as JxMutableNode;
 
-    const pageDoc = {
+    const pageDoc: JxMutableNode = {
       attributes: { dir: "ltr" },
       $media: { "--n": "y" },
       children: [
@@ -42,9 +44,9 @@ describe("distributePageIntoLayout", () => {
       state: { b: 2 },
       style: { margin: "0" },
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
 
-    const merged = distributePageIntoLayout(layoutDoc, pageDoc) as Record<string, any>;
+    const merged = distributePageIntoLayout(layoutDoc, pageDoc);
 
     // Page-level blocks merged onto the layout.
     expect(merged.state).toEqual({ a: 1, b: 2 });

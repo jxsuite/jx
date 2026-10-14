@@ -13,7 +13,7 @@
  * @license MIT
  */
 
-import type { ToolContext, ToolDefinition, ToolRegistry } from "@jxsuite/ai/tools";
+import type { ToolArguments, ToolContext, ToolDefinition, ToolRegistry } from "@jxsuite/ai/tools";
 
 export interface ToolAvailability {
   /** Whether the tool is currently advertised/executable. */
@@ -48,17 +48,21 @@ export function createGatedToolRegistry(
     },
     listForLLM() {
       const available = new Set(this.list().map((t) => t.name));
-      return inner
-        .listForLLM()
-        .filter((t) => available.has((t as { function?: { name?: string } }).function?.name ?? ""));
+      return inner.listForLLM().filter((t) => {
+        /* SAFETY: a @jxsuite/ai registry lists each tool in OpenAI function-calling form,
+           `{ type: "function", function: { name, … } }`; the registry interface types the entries
+           as bare objects, and the optional chain still answers "" for any other shape. */
+        const tool = t as { function?: { name?: string } };
+        return available.has(tool.function?.name ?? "");
+      });
     },
     getDefinition(toolName: string) {
       return inner.getDefinition(toolName);
     },
-    validate(toolName: string, args: object) {
+    validate(toolName: string, args: ToolArguments) {
       return inner.validate(toolName, args);
     },
-    async execute(toolName: string, args: object, ctx?: ToolContext) {
+    async execute(toolName: string, args: ToolArguments, ctx?: ToolContext) {
       if (inner.getDefinition(toolName) && !isAvailable(toolName)) {
         const gate = availability.get(toolName);
         return {

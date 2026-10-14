@@ -16,8 +16,8 @@ import {
   takeToastNotices,
 } from "../src/account-status";
 import { installUrlOf, platformErrorInfo } from "../src/platform-errors";
-
-const INSTALL_URL = "https://github.com/apps/jx-suite/installations/new";
+import type { AccountStatus } from "../src/types";
+import { INSTALL_URL } from "./shared-fixtures";
 
 beforeEach(() => {
   resetAccountStatus();
@@ -149,7 +149,7 @@ describe("the platform's rows and notices", () => {
   const BANNER = { id: "b", message: "Read the new policy.", title: "Policy" };
   const TOAST = { display: "toast" as const, id: "t", message: "You joined.", title: "Joined" };
 
-  async function withStatus(extra: Record<string, unknown> = {}): Promise<void> {
+  async function withStatus(extra: Omit<AccountStatus, "installations"> = {}): Promise<void> {
     installMockPlatform({
       getAccountStatus: () => Promise.resolve({ installations: [], ...extra }),
     });

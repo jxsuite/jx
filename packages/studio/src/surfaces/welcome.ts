@@ -24,16 +24,15 @@ import { runOfferedAction } from "../account/action-flow";
 import { platformSupportsAddRepo } from "../new-project/add-repo-modal";
 import { getProjectList } from "../project-list";
 import { reactive } from "../reactivity";
-import { now } from "../services/clock";
+import { MINUTE, now } from "../services/clock";
 import { clearRecentProjects, getRecentProjects, removeRecentProject } from "../recent-projects";
 import { platformSupportsClone } from "../panels/git-panel";
 import { mountSurface, registerSurface } from "../ui/surface";
 import welcomeDoc from "./welcome.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 import type { AccountNotice, OfferedAction } from "../types";
 
-registerSurface("welcome", welcomeDoc as unknown as JxDocument);
+registerSurface("welcome", welcomeDoc);
 
 interface WelcomeCtx {
   openProject: () => void;
@@ -122,7 +121,6 @@ export function recentLocations(
   return labels;
 }
 
-const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
@@ -195,7 +193,7 @@ interface CatalogueRow {
   detail: string;
 }
 
-interface WelcomeScope extends Record<string, unknown> {
+interface WelcomeScope {
   actions: StartAction[];
   installNeeded: boolean;
   installUrl: string;
@@ -292,7 +290,7 @@ function noticeAction(key: string): OfferedAction | null {
 
 /** The reactive scope the surface reads, made once. */
 function state(): WelcomeScope {
-  _state ??= reactive({
+  _state ??= reactive<WelcomeScope>({
     actions: [],
     catalogue: [],
     clear: () => {
@@ -342,7 +340,7 @@ function state(): WelcomeScope {
         }
       }
     },
-  }) as WelcomeScope;
+  });
   return _state;
 }
 

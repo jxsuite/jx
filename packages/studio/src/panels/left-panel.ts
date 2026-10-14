@@ -27,7 +27,7 @@
  */
 
 import { render as litRender } from "lit-html";
-import { leftPanel } from "../store";
+import { leftPanel, requireShellRef } from "../store";
 import { effect, effectScope } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
@@ -72,7 +72,7 @@ export function mount(deps: NavigatorPanelDeps) {
   _deps = deps;
   registerNavigatorPanels();
   _dock = mountNavigatorDock(
-    leftPanel,
+    requireShellRef(leftPanel, "left-panel"),
     { panels: [panelView()] },
     {
       onContent: (panelId, host) => {
@@ -180,7 +180,7 @@ function navigatorDocument(): NavigatorDocument | null {
     return null;
   }
   return {
-    canvas: aTab.session.canvas as Record<string, unknown> | null,
+    canvas: aTab.session.canvas,
     content: aTab.doc.content,
     document: aTab.doc.document,
     documentPath: aTab.documentPath,

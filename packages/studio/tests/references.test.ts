@@ -52,8 +52,12 @@ const threeFiles = result({
 });
 
 /** Install a platform with (or deliberately without) the usage query. */
-function install(findReferences: StudioPlatform["findReferences"] | null) {
-  const platform = (findReferences === null ? {} : { findReferences }) as unknown as StudioPlatform;
+function install(findReferences: NonNullable<StudioPlatform["findReferences"]> | null) {
+  const members: Partial<StudioPlatform> = findReferences === null ? {} : { findReferences };
+  /* SAFETY: a deliberately partial platform. `services/references.ts` reads only
+     `findReferences`, and only through an `isFunction` presence check, so every other member being
+     absent is what a host without the usage query looks like to it. */
+  const platform = members as StudioPlatform;
   registerPlatform(platform);
   return platform;
 }

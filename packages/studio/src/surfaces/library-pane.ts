@@ -28,15 +28,16 @@
  * @docs studio/projects/browse
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { placeholderBrokenImages } from "../utils/edit-display";
 import libraryDoc from "./library-pane.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("library-pane", libraryDoc as unknown as JxDocument);
+registerSurface("library-pane", libraryDoc);
 
 /**
  * Which of nine things the body draws.
@@ -118,12 +119,6 @@ export interface LibraryChip {
   checked: "true" | "false";
 }
 
-/** One row of the language facet. */
-export interface LibraryOption {
-  value: string;
-  label: string;
-}
-
 /** Everything the document draws, as one value. */
 export interface LibraryView {
   /** The region id stamped on the root, so the screenshot pipeline can address the Library. */
@@ -140,7 +135,7 @@ export interface LibraryView {
    * chrome that says nothing.
    */
   localeState: "hidden" | "shown";
-  localeOptions: LibraryOption[];
+  localeOptions: SurfaceOption[];
   localeValue: string;
   query: string;
   /** Where an upload lands, as the label's tooltip says it — before the files are chosen. */
@@ -211,7 +206,7 @@ export interface LibrarySurfaceHandle {
 }
 
 /** The scope the document reads: {@link LibraryView} plus the actions its controls call. */
-interface LibraryScope extends Record<string, unknown>, LibraryView, LibraryActions {}
+interface LibraryScope extends LibraryView, LibraryActions {}
 
 /** Write a projection into the scope. */
 function project(scope: LibraryScope, view: LibraryView): void {
@@ -243,15 +238,16 @@ function project(scope: LibraryScope, view: LibraryView): void {
 
 /** The `part` a node's definition carries, or "" for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The path of the mapped row a node was rendered inside, or "" when it was not in one. */
 function rowPath(state: JxScope | undefined): string {
-  const map = state?.["$map"] as { item?: { path?: unknown } } | undefined;
-  const path = map?.item?.path;
-  return typeof path === "string" ? path : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const path = isJsonObject(item) ? item["path"] : undefined;
+  return isString(path) ? path : "";
 }
 
 /**
@@ -272,7 +268,7 @@ export function mountLibrarySurface(
   // Than the browser's broken-image glyph.
   const listening = new AbortController();
   placeholderBrokenImages(host, listening.signal);
-  const scope = reactive<LibraryScope>({
+  const scope: LibraryScope = reactive<LibraryScope>({
     bannerState: "hidden",
     bannerText: "",
     categories: [],
@@ -313,7 +309,7 @@ export function mountLibrarySurface(
     uploadAccept: "",
     uploadHint: "",
     view: "loading",
-  }) as LibraryScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;
@@ -340,12 +336,15 @@ export function mountLibrarySurface(
       }
     },
   }).then((surface) => {
+    /* SAFETY: `library-pane.json`'s root definition is a `div` element, so the runtime mounts an
+       HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

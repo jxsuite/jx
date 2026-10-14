@@ -23,7 +23,7 @@ function badge(text: string, extra: Partial<JxDocument> = {}): JxDocument {
     state: { label: "x" },
     textContent: `${text} \${state.label}`,
     ...extra,
-  } as JxDocument;
+  };
 }
 
 afterEach(() => {
@@ -62,16 +62,10 @@ describe("redefineElement", () => {
   });
 
   test("a tag not yet defined is defined, and a base is kept with the definition", async () => {
-    await redefineElement(
-      { tagName: "rd-fresh", textContent: "fresh" } as JxDocument,
-      "jx-test:/x/",
-    );
+    await redefineElement({ tagName: "rd-fresh", textContent: "fresh" }, "jx-test:/x/");
     expect(customElements.get("rd-fresh")).toBeDefined();
     expect(elementDefinition("rd-fresh")?.base).toBe("jx-test:/x/");
-    await redefineElement(
-      { tagName: "rd-fresh", textContent: "fresher" } as JxDocument,
-      "jx-test:/y/",
-    );
+    await redefineElement({ tagName: "rd-fresh", textContent: "fresher" }, "jx-test:/y/");
     expect(elementDefinition("rd-fresh")?.base).toBe("jx-test:/y/");
     const el = document.createElement("rd-fresh");
     document.body.append(el);
@@ -84,11 +78,11 @@ describe("redefineElement", () => {
     // Registers a document's `$elements` on the way in; a redefinition reaches the registry without
     // It, so the dependency must be defined here, against the redefinition's own base, or the fresh
     // Instance renders `<rd-dep>` as an unknown element with nothing inside.
-    await defineElement({ tagName: "rd-host", textContent: "v1" } as JxDocument);
+    await defineElement({ tagName: "rd-host", textContent: "v1" });
     preloadDocument("jx-test:/deps/rd-dep.json", {
       tagName: "rd-dep",
       textContent: "dep",
-    } as JxDocument);
+    });
     expect(customElements.get("rd-dep")).toBeUndefined();
 
     await redefineElement(
@@ -96,7 +90,7 @@ describe("redefineElement", () => {
         tagName: "rd-host",
         $elements: [{ $ref: "rd-dep.json" }],
         children: [{ tagName: "rd-dep" }],
-      } as JxDocument,
+      },
       "jx-test:/deps/",
     );
     expect(customElements.get("rd-dep")).toBeDefined();
@@ -125,9 +119,11 @@ describe("redefineElement", () => {
   test("a tag without a hyphen is refused", async () => {
     let message = "";
     try {
-      await redefineElement({ tagName: "plain", textContent: "" } as JxDocument);
+      await redefineElement({ tagName: "plain", textContent: "" });
     } catch (error) {
-      ({ message } = error as Error);
+      if (error instanceof Error) {
+        ({ message } = error);
+      }
     }
     expect(message).toContain("must contain a hyphen");
   });

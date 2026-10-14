@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { compileClient } from "../src/targets/compile-client";
 import type { JxDocument } from "@jxsuite/schema/types";
 
-const asDoc = (d: unknown) => d as JxDocument;
-const compile = (doc: unknown) => compileClient(asDoc(doc), { title: "Test" }).files[0]!.content;
+const compile = (doc: JxDocument) => compileClient(doc, { title: "Test" }).files[0]!.content;
 
 describe("compileClient — $expression state entries", () => {
   test("mutating $expression becomes an `on` handler, pure becomes a computed", () => {
@@ -153,7 +152,7 @@ describe("compileClient — structured statement bodies (spec §20)", () => {
 
   test("inline event handler with a statement-array body compiles into the handler table", () => {
     const out = compileClient(
-      asDoc({
+      {
         children: [
           {
             onclick: {
@@ -166,7 +165,7 @@ describe("compileClient — structured statement bodies (spec §20)", () => {
         ],
         state: { count: 10 },
         tagName: "div",
-      }),
+      },
       { title: "Test" },
     );
     // The bind attribute lands in the HTML tree; the compiled body in the JS handler table.
@@ -243,21 +242,21 @@ describe("compileClient — binding merge and scheme pre-paint", () => {
 
   test("a forced-scheme $media query injects the pre-paint script", () => {
     const withScheme = compileClient(
-      asDoc({
+      {
         $media: { "--dark": "(prefers-color-scheme: dark)" },
         children: [{ tagName: "p", textContent: "hi" }],
         state: { count: 0 },
         tagName: "div",
-      }),
+      },
       { title: "Test" },
     );
     const without = compileClient(
-      asDoc({
+      {
         $media: { "--md": "(max-width: 768px)" },
         children: [{ tagName: "p", textContent: "hi" }],
         state: { count: 0 },
         tagName: "div",
-      }),
+      },
       { title: "Test" },
     );
     expect(withScheme.html).toContain("<script>");

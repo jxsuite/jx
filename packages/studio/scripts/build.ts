@@ -22,7 +22,7 @@ import pkg from "../package.json" with { type: "json" };
 
 const outdir = join(STUDIO_DIR, "dist");
 
-const { version } = pkg as { version: string };
+const { version } = pkg;
 const buildDate = new Date().toISOString();
 
 // Dist is generated, never curated: wipe it so a renamed entrypoint or a one-off `bun build` cannot

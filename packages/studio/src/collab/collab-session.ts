@@ -39,9 +39,13 @@ import type { TransactionRecord } from "../tabs/patch-ops";
 import type { Tab } from "../tabs/tab";
 import type { JxDocOp } from "@jxsuite/schema/doc-ops";
 import type { CollabHandle } from "@jxsuite/collab/provider";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import type * as CollabNS from "@jxsuite/collab";
+import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
+import type { DocumentRecord } from "@jxsuite/collab/schema";
+import type * as Y from "yjs";
 import { collabState, registerCollabPath, unregisterCollabPath } from "./collab-state";
+import type { PeerPresence } from "./collab-state";
 import { notify } from "../services/notify";
 
 type CollabModule = typeof CollabNS;
@@ -89,7 +93,7 @@ export function configureCollabSerializer(fn: ((tab: Tab) => Promise<string>) | 
 export type CollabParser = (
   tab: Tab,
   text: string,
-) => Promise<{ document: JxMutableNode; frontmatter?: Record<string, unknown> }>;
+) => Promise<{ document: JxMutableNode; frontmatter?: DocumentRecord }>;
 
 let _parse: CollabParser | null = null;
 
@@ -158,11 +162,43 @@ interface TabRuntime {
   optedOut: { value: boolean };
 }
 
+/**
+ * What a session's undo manager hands its stack listeners. A stack item's `meta` is Yjs's scratch
+ * map for whoever owns the manager, and the two listeners in createSession are its only users: the
+ * one key they write is the selection snapshot.
+ */
+interface StackItemEvent {
+  stackItem: { meta: Map<"selection", JxPath[]> };
+}
+
 const runtimes = new WeakMap<Tab, TabRuntime>();
 
 /** Callers hold either the raw tab or a reactive proxy of it; key runtimes by the raw object. */
 function rawTab(tab: Tab): Tab {
-  return toRaw(tab as unknown as object) as Tab;
+  return toRaw(tab);
+}
+
+/**
+ * The document's shared frontmatter map, at the value type its writers keep.
+ *
+ * `frontmatterMap` hands back an untyped `Y.Map`, but only three writers ever touch it: the first
+ * client's `seedStructure` (a {@link DocumentRecord}) and the two mirrors in this module, which copy
+ * entries of a {@link DocumentRecord}. A key a parser left cleared may hold `undefined`, as
+ * DocumentRecord itself allows.
+ */
+function sharedFrontmatterOf(collab: CollabModule, doc: Y.Doc): Y.Map<JxDocumentValue | undefined> {
+  // SAFETY: every write to this map is a DocumentRecord entry (see the doc comment above).
+  return collab.frontmatterMap(doc) as Y.Map<JxDocumentValue | undefined>;
+}
+
+/**
+ * Whether the session is still synced, read fresh.
+ *
+ * A detach flips `synced` while an awaited parse or serialization is in flight; the narrowing
+ * TypeScript carries over from a check made before the `await` cannot see that.
+ */
+function stillSynced(session: ActiveSession): boolean {
+  return session.synced;
 }
 
 function runtimeOf(tab: Tab): TabRuntime | undefined {
@@ -238,7 +274,7 @@ function onTransact(tab: Tab, record: TransactionRecord, origin: TransactOrigin)
   if (!session || !session.synced) {
     return;
   }
-  session.lastSeenRef = toRaw(tab.doc.document) as object;
+  session.lastSeenRef = toRaw(tab.doc.document);
   if (origin === "remote") {
     // The reconciler keeps source text fresh regardless of WHO edited the structure. The tab's
     // Dirty state is driven by the server's room-level `doc-dirty` broadcast (see onDirty in
@@ -307,7 +343,7 @@ function publishRecord(session: ActiveSession, record: TransactionRecord): void 
 function publishDiff(session: ActiveSession): void {
   const { collab, handle, tab } = session;
   const before = collab.yDocToJson(handle.doc);
-  const after = jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+  const after = jsonClone(toRaw(tab.doc.document));
   const ops = collab.diffDocs(before, after);
   if (ops === null) {
     collab.replaceYStructure(handle.doc, after, collab.LOCAL_ORIGIN);
@@ -326,7 +362,7 @@ function reconcileTabFromY(session: ActiveSession): void {
   transactDoc(
     session.tab,
     (t) => {
-      const target = t.doc.document as Record<string, unknown>;
+      const target = t.doc.document;
       for (const key of Object.keys(target)) {
         if (!(key in next)) {
           delete target[key];
@@ -348,7 +384,7 @@ function isReconciler(session: ActiveSession): boolean {
   const { awareness } = session.handle;
   let lowest = awareness.clientID;
   for (const [clientId, state] of awareness.getStates()) {
-    if ((state as { canWrite?: boolean }).canWrite !== false && clientId < lowest) {
+    if (state["canWrite"] !== false && clientId < lowest) {
       lowest = clientId;
     }
   }
@@ -416,7 +452,7 @@ async function sourceParseNow(session: ActiveSession): Promise<void> {
     // Unparseable source: keep the last good structure (the preview goes stale, not wrong).
     return;
   }
-  if (!session.synced || collab.canonicalRevOf(handle.doc) !== rev) {
+  if (!stillSynced(session) || collab.canonicalRevOf(handle.doc) !== rev) {
     // The lock flipped while parsing; this mirror was computed against a dead representation.
     return;
   }
@@ -430,7 +466,7 @@ async function sourceParseNow(session: ActiveSession): Promise<void> {
       collab.replaceYStructure(handle.doc, parsed.document, collab.MIRROR_ORIGIN);
     }
   }
-  const frontmatter = collab.frontmatterMap(handle.doc);
+  const frontmatter = sharedFrontmatterOf(collab, handle.doc);
   const next = parsed.frontmatter ?? {};
   handle.doc.transact(() => {
     // Detached copy: keys are deleted while iterating.
@@ -541,12 +577,7 @@ export function collabSourceContext(tab: Tab): {
          reason: a client that cannot write cannot be the one holding a write. */
       const others = collab
         .otherSourceEditors(handle.awareness, session.path, handle.awareness.clientID)
-        .filter((clientId) => {
-          const peer = handle.awareness.getStates().get(clientId) as
-            | { canWrite?: boolean }
-            | undefined;
-          return peer?.canWrite !== false;
-        });
+        .filter((clientId) => handle.awareness.getStates().get(clientId)?.["canWrite"] !== false);
       if (others.length === 0) {
         // Freshen the structure mirror once more, then hand the lock back.
         void sourceParseNow(session).then(() => {
@@ -729,16 +760,15 @@ async function attachSession(tab: Tab): Promise<void> {
         handle.destroy();
         return;
       }
-      let timer: ReturnType<typeof setTimeout> | null = null;
+      // Assigned synchronously: a Promise executor runs before its constructor returns.
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error("collab-sync-timeout")), SYNC_TIMEOUT_MS);
       });
       try {
         await Promise.race([handle.whenSynced, timeout]);
       } finally {
-        if (timer) {
-          clearTimeout(timer);
-        }
+        clearTimeout(timer);
       }
       if (runtime.generation !== generation) {
         handle.destroy();
@@ -804,7 +834,7 @@ function detachSession(tab: Tab): void {
   // Re-base the op-log history on the current document for solo editing.
   tab.history.snapshots = [
     {
-      document: jsonClone(toRaw(tab.doc.document)) as Record<string, unknown>,
+      document: jsonClone(toRaw(tab.doc.document)),
       selection: cloneSelection(tab.session.selection),
     },
   ];
@@ -828,7 +858,7 @@ function createSession(
     collab,
     disposers: [],
     handle,
-    lastSeenRef: toRaw(tab.doc.document) as object,
+    lastSeenRef: toRaw(tab.doc.document),
     mirrorTimer: null,
     path,
     sourceLockOwner: null,
@@ -843,7 +873,7 @@ function createSession(
   const meta = collab.metaMap(handle.doc);
   if (meta.get("structureSeeded") === true) {
     const yJson = collab.yDocToJson(handle.doc);
-    const tabJson = jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+    const tabJson = jsonClone(toRaw(tab.doc.document));
     if (!collab.deepEqual(yJson, tabJson)) {
       const ops = collab.diffDocs(tabJson, yJson);
       if (ops === null) {
@@ -855,19 +885,21 @@ function createSession(
       }
     }
     session.applyingRemoteFrontmatter = true;
-    const sharedFrontmatter = collab.frontmatterMap(handle.doc);
+    const sharedFrontmatter = sharedFrontmatterOf(collab, handle.doc);
     for (const [key, value] of sharedFrontmatter.entries()) {
-      tab.doc.content.frontmatter[key] = value as never;
+      tab.doc.content.frontmatter[key] = value;
     }
     session.applyingRemoteFrontmatter = false;
   } else if (session.canWrite) {
-    collab.seedStructure(handle.doc, jsonClone(toRaw(tab.doc.document)) as JxMutableNode, {
-      frontmatter: jsonClone(toRaw(tab.doc.content.frontmatter)),
+    collab.seedStructure(handle.doc, jsonClone(toRaw(tab.doc.document)), {
+      /* SAFETY: frontmatter is parsed YAML/JSON held as plain values, and jsonClone round-trips it
+       * through JSON, so every value is JSON data, which JxDocumentValue includes. */
+      frontmatter: jsonClone(toRaw(tab.doc.content.frontmatter)) as DocumentRecord,
       origin: collab.SEED_ORIGIN,
       sourceFormat: tab.doc.sourceFormat,
     });
   }
-  session.lastSeenRef = toRaw(tab.doc.document) as object;
+  session.lastSeenRef = toRaw(tab.doc.document);
 
   // The server owns the room-level unsaved state: `onDirty` fires synchronously with the current
   // Value on subscribe (delivered during the open handshake), so attaching to a clean room clears
@@ -902,11 +934,11 @@ function createSession(
     { trackedOrigins: new Set([collab.LOCAL_ORIGIN]) },
   );
   session.undoManager = undoManager;
-  const onStackAdd = ({ stackItem }: { stackItem: { meta: Map<unknown, unknown> } }) => {
+  const onStackAdd = ({ stackItem }: StackItemEvent) => {
     stackItem.meta.set("selection", cloneSelection(tab.session.selection));
   };
-  const onStackPop = ({ stackItem }: { stackItem: { meta: Map<unknown, unknown> } }) => {
-    const selection = stackItem.meta.get("selection") as (string | number)[][] | undefined;
+  const onStackPop = ({ stackItem }: StackItemEvent) => {
+    const selection = stackItem.meta.get("selection");
     tab.session.selection = cloneSelection(selection ?? []);
   };
   undoManager.on("stack-item-added", onStackAdd);
@@ -928,11 +960,14 @@ function createSession(
 
   // Inbound: remote structure transactions → JxDocOps → the surgical pipeline.
   const structure = collab.structureMap(handle.doc);
-  const structureObserver = (events: unknown, transaction: { origin: unknown }) => {
+  const structureObserver = (
+    events: Y.YEvent<Y.AbstractType<unknown>>[],
+    transaction: { origin: unknown },
+  ) => {
     if (transaction.origin === collab.LOCAL_ORIGIN || !session.synced) {
       return;
     }
-    const ops = collab.yEventsToDocOps(events as never);
+    const ops = collab.yEventsToDocOps(events);
     if (ops === null) {
       reconcileTabFromY(session);
       return;
@@ -963,7 +998,7 @@ function createSession(
   // The source reconciler (lowest write clientID in source mode) parses Y.Text back into the
   // Structure tree on a debounce, so every client's canvas previews source edits live.
   const source = collab.sourceText(handle.doc);
-  const sourceObserver = (_event: unknown, transaction: { origin: unknown }) => {
+  const sourceObserver = (_event: Y.YTextEvent, transaction: { origin: unknown }) => {
     if (transaction.origin === collab.MIRROR_ORIGIN || !session.synced) {
       return;
     }
@@ -981,13 +1016,13 @@ function createSession(
       void sourceParseNow(session);
     }, 600);
   };
-  source.observe(sourceObserver as never);
-  session.disposers.push(() => source.unobserve(sourceObserver as never));
+  source.observe(sourceObserver);
+  session.disposers.push(() => source.unobserve(sourceObserver));
 
   // Inbound frontmatter (per-field).
-  const frontmatter = collab.frontmatterMap(handle.doc);
+  const frontmatter = sharedFrontmatterOf(collab, handle.doc);
   const frontmatterObserver = (
-    event: { changes: { keys: Map<string, { action: string }> }; target: unknown },
+    event: Y.YMapEvent<JxDocumentValue | undefined>,
     transaction: { origin: unknown },
   ) => {
     if (transaction.origin === collab.LOCAL_ORIGIN || !session.synced) {
@@ -999,15 +1034,15 @@ function createSession(
         if (change.action === "delete") {
           delete tab.doc.content.frontmatter[key];
         } else {
-          tab.doc.content.frontmatter[key] = frontmatter.get(key) as never;
+          tab.doc.content.frontmatter[key] = frontmatter.get(key);
         }
       }
     } finally {
       session.applyingRemoteFrontmatter = false;
     }
   };
-  frontmatter.observe(frontmatterObserver as never);
-  session.disposers.push(() => frontmatter.unobserve(frontmatterObserver as never));
+  frontmatter.observe(frontmatterObserver);
+  session.disposers.push(() => frontmatter.unobserve(frontmatterObserver));
 
   // Outbound frontmatter: mutateUpdateFrontmatter bypasses transactDoc, so watch the map deeply.
   tab.scope.run(() => {
@@ -1021,7 +1056,8 @@ function createSession(
       if (session.applyingRemoteFrontmatter || !session.synced || !session.canWrite) {
         return;
       }
-      const local = JSON.parse(json) as Record<string, unknown>;
+      // SAFETY: `json` is JSON.stringify of the frontmatter record above, so it parses to one.
+      const local = JSON.parse(json) as DocumentRecord;
       handle.doc.transact(() => {
         // Detached copy: keys are deleted while iterating.
         const sharedKeys = [...frontmatter.keys()];
@@ -1060,13 +1096,13 @@ function createSession(
     // Flush) reconciles by diff. Deferred one microtask so the transact observer marks its own
     // Refs first (the assignment happens mid-transaction, before the observer runs).
     effect(() => {
-      const ref = toRaw(tab.doc.document) as object;
+      const ref = toRaw(tab.doc.document);
       queueMicrotask(() => {
         const current = runtimeOf(tab)?.session;
         if (current !== session || !session.synced || !session.canWrite) {
           return;
         }
-        const nowRef = toRaw(tab.doc.document) as object;
+        const nowRef = toRaw(tab.doc.document);
         if (nowRef !== ref || nowRef === session.lastSeenRef) {
           return;
         }
@@ -1081,10 +1117,13 @@ function createSession(
   // Presence roster + status.
   const state = collabState(tab);
   const awarenessObserver = () => {
-    const peers: { clientId: number; state: never }[] = [];
+    const peers: PeerPresence[] = [];
     for (const [clientId, peerState] of handle.awareness.getStates()) {
       if (clientId !== handle.awareness.clientID && peerState["user"]) {
-        peers.push({ clientId, state: peerState as never });
+        /* SAFETY: every Studio client publishes its state through the setLocalState call in
+         * createSession above, which writes a CollabAwarenessState; a state with no `user` (a
+         * client mid-handshake) was skipped by the check above. */
+        peers.push({ clientId, state: peerState as CollabAwarenessState });
       }
     }
     state.peers = peers;

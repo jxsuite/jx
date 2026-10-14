@@ -30,6 +30,7 @@
  * @docs framework/site/content-collections
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import { routeHref } from "./content-routes.ts";
 import type { ContentNodes } from "./inert.ts";
@@ -102,8 +103,15 @@ function fragmentFor(raw: string): string {
   }
 }
 
+/** The three parts of an href; `query` and `hash` keep their delimiter and are `""` when absent. */
+interface HrefParts {
+  path: string;
+  query: string;
+  hash: string;
+}
+
 /** Split `path?query#fragment` into its three parts (query and fragment keep their delimiter). */
-function splitHref(href: string): { path: string; query: string; hash: string } {
+function splitHref(href: string): HrefParts {
   const hashAt = href.indexOf("#");
   const beforeHash = hashAt === -1 ? href : href.slice(0, hashAt);
   const hash = hashAt === -1 ? "" : href.slice(hashAt);
@@ -288,13 +296,13 @@ function resolveHref(href: string, from: string, index: LinkIndex): Resolution {
 /** What a removed anchor leaves behind: its own content, as inline nodes. */
 function contentOf(anchor: JxElement): ContentNodes {
   if (Array.isArray(anchor.children)) {
-    return anchor.children as ContentNodes;
+    return anchor.children;
   }
-  if (typeof anchor.innerHTML === "string") {
+  if (anchor.innerHTML !== undefined) {
     // Text that holds `${` was made inert as escaped `innerHTML` (inert.ts); it keeps that form.
     return [{ innerHTML: anchor.innerHTML, tagName: "span" }];
   }
-  return typeof anchor.textContent === "string" ? [anchor.textContent] : [];
+  return isString(anchor.textContent) ? [anchor.textContent] : [];
 }
 
 /**
@@ -318,11 +326,11 @@ export function rewriteLinks(
       rewriteLinks(node, from, index, report);
       continue;
     }
-    if (typeof node !== "object" || node === null) {
+    if (!isNonNullObject(node)) {
       continue;
     }
     const href = node.tagName === "a" ? node.attributes?.href : undefined;
-    if (typeof href === "string") {
+    if (isString(href)) {
       const resolution = resolveHref(href, from, index);
       if ("problem" in resolution) {
         report({ href, reason: resolution.problem });
@@ -337,7 +345,7 @@ export function rewriteLinks(
       }
     }
     if (Array.isArray(node.children)) {
-      rewriteLinks(node.children as ContentNodes, from, index, report);
+      rewriteLinks(node.children, from, index, report);
     }
   }
 }

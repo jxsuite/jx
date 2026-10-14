@@ -9,11 +9,22 @@ import { renderComponentPreview } from "../src/panels/component-preview";
 import { setProjectState } from "../src/store";
 import type { ProjectState } from "../src/types";
 
-beforeEach(() => {
-  setProjectState({
+/** An open project with no config and nothing expanded; `projectRoot` empty unless given. */
+function emptyProject(projectRoot = ""): ProjectState {
+  return {
+    dirs: new Map(),
     expanded: new Set(),
+    isSiteProject: false,
+    name: "",
     projectConfig: null,
-  } as unknown as ProjectState);
+    projectRoot,
+    searchQuery: "",
+    selectedPath: null,
+  };
+}
+
+beforeEach(() => {
+  setProjectState(emptyProject());
 });
 
 describe("renderComponentPreview", () => {
@@ -38,7 +49,7 @@ describe("renderComponentPreview", () => {
       ],
       source: "npm",
       tagName: "x-preview-registered",
-    } as never);
+    });
     expect(el.tagName.toLowerCase()).toBe("x-preview-registered");
     expect(el.getAttribute("name")).toBe("Jane");
     expect(el.hasAttribute("compact")).toBe(false);
@@ -74,11 +85,7 @@ describe("renderComponentPreview", () => {
   });
 
   test("local component with invalid path → returns fallback (no unhandled error)", async () => {
-    setProjectState({
-      expanded: new Set(),
-      projectConfig: null,
-      projectRoot: "test-project",
-    } as never);
+    setProjectState(emptyProject("test-project"));
     const el = await renderComponentPreview({
       path: "components/nonexistent.json",
       source: "local",

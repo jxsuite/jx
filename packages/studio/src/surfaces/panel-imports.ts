@@ -33,10 +33,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import importsDoc from "./panel-imports.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("panel-imports", importsDoc as unknown as JxDocument);
+registerSurface("panel-imports", importsDoc);
 
 /** One imported module: the name a document refers to it by, and the path it is loaded from. */
 export interface ModuleRow {
@@ -70,12 +69,6 @@ export interface PackageRow {
   components: ComponentRow[];
 }
 
-/** One row of the component picker: a project component this document has not imported yet. */
-export interface PickerOption {
-  value: string;
-  label: string;
-}
-
 /** What the panel shows — the flow's projection of the project and the open document. */
 export interface ImportsView {
   /**
@@ -94,7 +87,7 @@ export interface ImportsView {
   /** What the component picker currently shows. `""` is its own empty row, never a component. */
   pickerValue: string;
   /** The components this document could still import. Empty when there are none to offer. */
-  pickerOptions: PickerOption[];
+  pickerOptions: SurfaceOption[];
   /**
    * The sentence drawn where the `$ref` list would be. The flow chooses it: "pick one below" and
    * "this project has none yet" are two different absences, and only the flow knows which it is
@@ -135,7 +128,7 @@ interface ImportsFlags {
   hasOptions: boolean;
 }
 
-interface ImportsScope extends Record<string, unknown>, ImportsView, ImportsActions, ImportsFlags {}
+interface ImportsScope extends ImportsView, ImportsActions, ImportsFlags {}
 
 interface Mounted {
   scope: ImportsScope;
@@ -152,7 +145,7 @@ const mounts = new WeakMap<HTMLElement, Mounted>();
  * control lies about what it holds — and the row is what the closed control reads as, which is why
  * it is worded as the invitation rather than as a blank.
  */
-const PICK_NOTHING: PickerOption = { label: "Add component…", value: "" };
+const PICK_NOTHING: SurfaceOption = { label: "Add component…", value: "" };
 
 /** The view plus the flags the document switches on. */
 function derive(view: ImportsView): ImportsView & ImportsFlags {
@@ -191,7 +184,7 @@ export function renderImportsSurface(
   }
   existing?.handle?.dispose();
   host.textContent = "";
-  const scope = reactive({ ...derive(view), ...actions }) as ImportsScope;
+  const scope: ImportsScope = reactive<ImportsScope>({ ...derive(view), ...actions });
   const record: Mounted = { handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a redraw arriving while this is in flight takes the branch above — a

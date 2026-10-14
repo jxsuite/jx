@@ -78,11 +78,11 @@ function sheet(): HTMLElement | null {
 }
 
 function d<T extends Element = HTMLElement>(sel: string): T | null {
-  return document.querySelector(`#layer-dialog ${sel}`) as T | null;
+  return document.querySelector<T>(`#layer-dialog ${sel}`);
 }
 
 function dAll(sel: string): HTMLElement[] {
-  return [...document.querySelectorAll(`#layer-dialog ${sel}`)] as HTMLElement[];
+  return [...document.querySelectorAll<HTMLElement>(`#layer-dialog ${sel}`)];
 }
 
 function part<T extends Element = HTMLElement>(name: string): T | null {
@@ -95,8 +95,10 @@ function navItem(id: string): HTMLElement {
 
 /** The section the focused nav item names, or `""` when the focus is not on one. */
 function focusedSection(): string {
-  const active = document.activeElement as HTMLElement | null;
-  return active?.getAttribute("part") === "nav-item" ? (active.dataset["section"] ?? "") : "";
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.getAttribute("part") === "nav-item"
+    ? (active.dataset["section"] ?? "")
+    : "";
 }
 
 /**
@@ -106,6 +108,8 @@ function focusedSection(): string {
  * that can only be read from the document is still read from somewhere.
  */
 function sheetRule(selector: string): Record<string, string> {
+  /* SAFETY: preferences.json is a committed surface document, and a surface's `style` block maps
+     each selector to a declaration block whose property values are CSS strings. */
   const doc = JSON.parse(
     readFileSync(resolve(import.meta.dir, "../src/surfaces/preferences.json"), "utf8"),
   ) as { style: Record<string, Record<string, string>> };
@@ -192,15 +196,19 @@ function keyRow(id: string): HTMLElement {
 
 /** The verbs one row offers, in the order it offers them. */
 function rowButtons(id: string): string[] {
-  return [...keyRow(id).querySelectorAll('[part="change"], [part="reset"]')].map(
-    (el) => el.textContent?.trim() ?? "",
+  return [...keyRow(id).querySelectorAll('[part="change"], [part="reset"]')].map((el) =>
+    el.textContent.trim(),
   );
 }
 
 function rowButton(id: string, label: string): HTMLElement {
-  return [...keyRow(id).querySelectorAll('[part="change"], [part="reset"]')].find(
-    (el) => el.textContent?.trim() === label,
-  ) as HTMLElement;
+  const found = [
+    ...keyRow(id).querySelectorAll<HTMLElement>('[part="change"], [part="reset"]'),
+  ].find((el) => el.textContent.trim() === label);
+  if (!found) {
+    throw new Error(`row "${id}" offers no "${label}" button`);
+  }
+  return found;
 }
 
 /** Whether a kit button is drawing its pressed state, which it reflects as `data-selected`. */
@@ -338,7 +346,7 @@ describe("opening and closing", () => {
   test("the nav names every section, in sheet order", async () => {
     void openPreferences();
     await flush(3);
-    expect(dAll('[part="nav-item"]').map((el) => el.textContent?.trim())).toEqual(
+    expect(dAll('[part="nav-item"]').map((el) => el.textContent.trim())).toEqual(
       PREFERENCES_SECTIONS.map((section) => section.title),
     );
   });
@@ -403,7 +411,7 @@ describe("Assistant", () => {
        form, so the selector cannot reach it. (The matcher in surface-part-names.test.ts is what
        proves the rule itself; this is the shape of the tree it relies on.) */
     const title = d('[part="ai-creds-form"] [part="title"]')!;
-    expect((title.parentElement as HTMLElement).getAttribute("part")).toBe("ai-creds-form");
+    expect(title.parentElement?.getAttribute("part")).toBe("ai-creds-form");
     // And the form's own title is no longer centred over a column that starts at the inline edge.
     expect(getComputedStyle(title).alignSelf).not.toBe("center");
   });
@@ -699,7 +707,7 @@ describe("Keyboard — rebinding", () => {
     void openPreferences("keyboard");
     await flush(3);
     const seen: string[] = [];
-    const listener = (event: Event) => seen.push((event as KeyboardEvent).key);
+    const listener = (event: KeyboardEvent) => seen.push(event.key);
     document.addEventListener("keydown", listener);
     pointer(rowButton("file.save", "Change"), "click");
     await flush(3);

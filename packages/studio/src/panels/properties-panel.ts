@@ -43,8 +43,15 @@
 
 import { getNodeAtPath } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
-import { displayTagName, isRef, isTagExpression } from "@jxsuite/schema/guards";
-import type { DirEntry, JsonValue } from "../types";
+import {
+  displayTagName,
+  isJsonObject,
+  isNonNullObject,
+  isRef,
+  isString,
+  isTagExpression,
+} from "@jxsuite/schema/guards";
+import type { JsonValue } from "../types";
 import {
   mutateUpdateAttribute,
   mutateUpdateDef,
@@ -63,7 +70,7 @@ import {
   stringArg,
   stringProperty,
 } from "../commands/command-args";
-import type { LayoutSelection } from "../shell";
+import type { LayoutHit } from "../canvas/iframe-protocol";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { activeRegistry } from "../commands/active-registry";
 import { componentRegistry } from "../files/components";
@@ -108,6 +115,7 @@ import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-
 import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { mountExpressionEditor } from "../ui/expression-editor";
+import type { ExpressionEditorOpts } from "../ui/expression-editor";
 import {
   loadUsages,
   peekUsages,
@@ -115,6 +123,7 @@ import {
   usageFiles,
   usageHeadline,
 } from "../services/references";
+import type { UsageQuery } from "../services/references";
 import { getPlatform } from "../platform";
 import htmlMeta from "../../data/html-meta.json";
 import { popoverIdsIn } from "@jxsuite/schema/overlays";
@@ -123,7 +132,6 @@ import { showPromptDialog } from "../ui/layers";
 import { emptyContentView, mountContentSurface } from "../surfaces/properties-panel";
 
 import type {
-  ContentOption,
   ContentPanelActions,
   ContentPanelSurface,
   ContentPanelView,
@@ -132,21 +140,19 @@ import type {
 } from "../surfaces/properties-panel";
 import type {
   JxAttributeValue,
-  JxElement,
+  JxDocumentValue,
   JxMutableNode,
-  JxPrototypeDef,
   JxStateDefinition,
-  JxStateObject,
 } from "@jxsuite/schema/types";
-import type { SignalOption } from "../ui/dynamic-slot";
 import type { JxPath } from "../state";
 import type { EffectScope } from "@vue/reactivity";
+import type { SurfaceOption } from "../ui/surface";
 
 /** The picker's escape hatch: a popover declared in another file, typed by hand. */
 const POPOVER_TARGET_OTHER = "jx:other";
 
 /** The empty row a picker offers so a value can be taken away with the same control that set it. */
-const CLEAR_OPTION: ContentOption = { label: "—", value: "" };
+const CLEAR_OPTION: SurfaceOption = { label: "—", value: "" };
 
 interface HtmlMetaEntry {
   $section: string;
@@ -157,7 +163,20 @@ interface HtmlMetaEntry {
   $input?: string;
   $shorthand?: boolean;
   type?: string;
-  [key: string]: unknown;
+  enum?: string[];
+  /** Every value in `data/html-meta.json` is a string, a number, a boolean or a list of names. */
+  [key: string]: string | number | boolean | string[] | undefined;
+}
+
+/** Every attribute `data/html-meta.json` describes, by its `$defs` key. */
+const HTML_META_DEFS: ReadonlyMap<string, HtmlMetaEntry> = new Map(Object.entries(htmlMeta.$defs));
+
+/**
+ * The node at `path`, typed as what `getNodeAtPath` really returns: `undefined` once the path walks
+ * off the tree, which a stale selection (or a sibling's path in a multi-selection) does.
+ */
+function nodeAtPath(doc: JxMutableNode, path: JxPath): JxMutableNode | undefined {
+  return getNodeAtPath(doc, path);
 }
 
 // ─── The binding vocabulary, shared with the Logic tab ───────────────────────
@@ -171,7 +190,7 @@ interface HtmlMetaEntry {
  * Exported because Content and Logic both offer them and there is one right answer: a `$switch`
  * inside a `$map` can read `$map/item`, and so can the `alt` attribute two nodes below it.
  */
-export function mapSignalsFor(path: JxPath): SignalOption[] | null {
+export function mapSignalsFor(path: JxPath): SurfaceOption[] | null {
   return path.includes("map")
     ? [
         { label: "$map/item", value: "$map/item" },
@@ -182,13 +201,9 @@ export function mapSignalsFor(path: JxPath): SignalOption[] | null {
 
 /** State keys a value position may bind to — handlers and Functions are not values. */
 export function bindableSignalNames(doc: JxMutableNode): string[] {
-  return Object.entries(doc.state || {})
-    .filter(
-      ([, d]) =>
-        !(d as Record<string, unknown>)?.$handler &&
-        (d as JxPrototypeDef)?.$prototype !== "Function",
-    )
-    .map(([defName]) => defName);
+  return Object.entries(doc.state || {}).flatMap(([defName, d]) =>
+    isJsonObject(d) && (d.$handler || d.$prototype === "Function") ? [] : [defName],
+  );
 }
 
 /**
@@ -198,23 +213,24 @@ export function bindableSignalNames(doc: JxMutableNode): string[] {
  * @returns {string}
  */
 export function defaultAsString(def: JxStateDefinition | undefined) {
-  if (!def || typeof def !== "object" || Array.isArray(def)) {
+  if (!isJsonObject(def)) {
     return "";
   }
-  const dv = (def as JxStateObject).default;
+  const dv = def.default;
   if (dv === undefined) {
     return "";
   }
-  return typeof dv === "object" ? JSON.stringify(dv) : String(dv);
+  // `null` prints as "null" either way, so only a structure needs JSON.
+  return isNonNullObject(dv) ? JSON.stringify(dv) : String(dv);
 }
 
 /** Who a bound value comes from, in the fewest words that are true — the chip's donor text. */
-function bindingDonor(value: unknown): string {
+function bindingDonor(value: JxDocumentValue | undefined): string {
   if (isRef(value)) {
     const ref = value.$ref;
     return ref.startsWith("#/state/") ? ref.slice(8) : ref || "nothing yet";
   }
-  return typeof value === "string" ? "a template" : "a formula";
+  return isString(value) ? "a template" : "a formula";
 }
 
 /**
@@ -227,12 +243,12 @@ function bindingDonor(value: unknown): string {
  * `templateSignalOf`, because both spellings of a template (`${x}` and `${state.x}`) name the same
  * entry.
  */
-function boundSignalOf(value: unknown): string | null {
+function boundSignalOf(value: JxDocumentValue | undefined): string | null {
   if (isRef(value)) {
     const ref = value.$ref;
     return ref.startsWith("#/state/") ? (ref.slice(8).split("/")[0] ?? null) : null;
   }
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return null;
   }
   return /\$\{\s*(?:state\.)?([A-Za-z_$][\w$]*)/.exec(value)?.[1] ?? null;
@@ -257,18 +273,17 @@ function revealSignal(name: string): void {
  * provenance functions differ in everything else, and the question "does this document define
  * `title`?" has one answer that neither of them should have to be handed.
  */
-function boundProvenance(value: unknown, title: string): FieldProvenance {
+function boundProvenance(value: JxDocumentValue | undefined, title: string): FieldProvenance {
   const signal = boundSignalOf(value);
   const document = activeTab.value?.doc.document;
   const known = signal && document ? bindableSignalNames(document).includes(signal) : false;
-  return {
-    donor: bindingDonor(value),
-    state: "bound",
-    title,
-    // Only when the document actually defines it: a chip that jumps to a row that is not there
-    // Would be a worse answer than a chip that does not jump.
-    ...(known && signal ? { onClick: () => revealSignal(signal) } : {}),
-  };
+  const provenance: FieldProvenance = { donor: bindingDonor(value), state: "bound", title };
+  // Only when the document actually defines it: a chip that jumps to a row that is not there
+  // Would be a worse answer than a chip that does not jump.
+  if (known && signal) {
+    provenance.onClick = () => revealSignal(signal);
+  }
+  return provenance;
 }
 
 /**
@@ -294,7 +309,7 @@ export function isComponentDefinitionOpen(node: JxMutableNode): boolean {
  */
 function componentPropProvenance(
   prop: { name: string; default?: unknown; description?: string },
-  rawValue: unknown,
+  rawValue: JxDocumentValue | undefined,
   hasVal: boolean,
   actions: {
     onClear: () => void;
@@ -313,12 +328,15 @@ function componentPropProvenance(
      unset field means this component ships no default for that setting — which is `default`, the
      state that draws nothing, not a badge pointing at itself. */
   if (prop.default !== undefined && !actions.isDefinition) {
-    return {
+    const inherited: FieldProvenance = {
       donor: "the component default",
       state: "inherited",
       title: `Not set here — the component's default (${String(prop.default)}) applies`,
-      ...(actions.openDefinition ? { onClick: actions.openDefinition } : {}),
     };
+    if (actions.openDefinition) {
+      inherited.onClick = actions.openDefinition;
+    }
+    return inherited;
   }
   return { state: "default" };
 }
@@ -326,7 +344,7 @@ function componentPropProvenance(
 /** Which of §6.7's states an HTML-attribute row is in. Attributes have no third cascade layer. */
 function attributeProvenance(
   attr: string,
-  value: unknown,
+  value: JxAttributeValue | undefined,
   hasVal: boolean,
   onClear: () => void,
   mixedCount = 0,
@@ -337,7 +355,7 @@ function attributeProvenance(
   if (mixedCount > 0) {
     return { donor: String(mixedCount), onClick: onClear, state: "mixed" };
   }
-  if (hasVal && (isRef(value) || (typeof value === "string" && value.includes("${")))) {
+  if (hasVal && (isRef(value) || (isString(value) && value.includes("${")))) {
     return boundProvenance(value, `Bound — ${attr}`);
   }
   return hasVal ? { onClick: onClear, state: "set", title: `Clear ${attr}` } : { state: "default" };
@@ -353,12 +371,12 @@ function attributeProvenance(
 export function mixedAcrossSelection(
   doc: JxMutableNode,
   targets: readonly JxPath[],
-  read: (node: JxMutableNode | undefined) => unknown,
+  read: (node: JxMutableNode | undefined) => JxDocumentValue | undefined,
 ): number {
   if (targets.length < 2) {
     return 0;
   }
-  const values = targets.map((path) => read(getNodeAtPath(doc, path) as JxMutableNode | undefined));
+  const values = targets.map((path) => read(nodeAtPath(doc, path)));
   return unifyValues(values).mixed ? targets.length : 0;
 }
 
@@ -366,8 +384,8 @@ export function mixedAcrossSelection(
  * True when an attribute value is a binding (a `$ref` object or a template string containing
  * `${…}`), so the Link-target special-case must fall back to the raw widget to keep it editable.
  */
-function isBoundAttrValue(value: unknown): boolean {
-  return isRef(value) || (typeof value === "string" && value.includes("${"));
+function isBoundAttrValue(value: JxAttributeValue | undefined): boolean {
+  return isRef(value) || (isString(value) && value.includes("${"));
 }
 
 // ─── Page-route enumeration (for the Link-target Internal picker) ─────────────
@@ -401,6 +419,16 @@ function routeForPagePath(relPath: string): string {
 }
 
 /**
+ * What the route walk reads from a listing entry. `path` is optional because the cloud adapter
+ * hands back its response body unvalidated, so an entry without one is addressed under its parent.
+ */
+interface ListedEntry {
+  name: string;
+  path?: string;
+  type: string;
+}
+
+/**
  * Recursively walk the pages/ tree and populate {@link pageRouteEntries} with derived routes.
  *
  * The in-flight flag is released in a `finally` rather than after the walk: the projection starts
@@ -415,7 +443,7 @@ async function loadPageRouteEntries() {
   try {
     const platform = getPlatform();
     const walk = async (dir: string, rel: string): Promise<void> => {
-      let listing: DirEntry[];
+      let listing: readonly ListedEntry[];
       try {
         listing = await platform.listDirectory(dir);
       } catch {
@@ -519,7 +547,7 @@ interface LadderPlan {
   mode: SlotMode;
   offered: SlotMode[];
   /** Every pointer the From data… rung offers, state entries and repeater signals alike. */
-  sources: SignalOption[];
+  sources: SurfaceOption[];
   /**
    * The state entries alone, kept apart from {@link sources} because `slotModeSeed` reads them
    * differently: a fresh Mixed text rung seeds `${state.<first>}` from a state entry and `${}` from
@@ -527,7 +555,7 @@ interface LadderPlan {
    * template instead of naming the signal it had just left.
    */
   stateDefs: string[];
-  extraSignals: SignalOption[];
+  extraSignals: SurfaceOption[];
   value: JsonValue | undefined;
   onChange: (v?: JsonValue) => void;
   literalDefault: JsonValue | undefined;
@@ -577,6 +605,12 @@ interface RowPlan {
   control?: ((host: HTMLElement) => void) | undefined;
 }
 
+/** A row and the plan that reads its gestures back, before {@link withPlan} files the plan. */
+interface PlannedRow {
+  row: ContentRowView;
+  plan: RowPlan;
+}
+
 /** A row view with every field filled in, before the caller narrows it. */
 function blankRow(key: string, prop: string, label: string): ContentRowView {
   return {
@@ -601,7 +635,6 @@ function blankRow(key: string, prop: string, label: string): ContentRowView {
     prop,
     removeLabel: "",
     resolved: "",
-    shape: "field",
     source: "fixed",
     sourceLabel: "",
     sourceLocked: false,
@@ -610,6 +643,7 @@ function blankRow(key: string, prop: string, label: string): ContentRowView {
     title: "",
     tokens: [],
     value: "",
+    variant: "field",
   };
 }
 
@@ -898,7 +932,7 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
     opener: anchor,
     region: "value-source",
     rows: offered.map((rung) => ({
-      checked: (rung === mode ? "true" : "false") as "true" | "false",
+      checked: rung === mode ? ("true" as const) : ("false" as const),
       destructive: false,
       disabled: false,
       dividerAbove: false,
@@ -906,8 +940,9 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
       title: VALUE_SOURCE_LABELS[rung],
     })),
     run: (id) => {
-      const next = id as SlotMode;
-      if (next === mode) {
+      // The rows ARE `offered`, so a picked id is always one of its rungs.
+      const next = offered.find((rung) => rung === id);
+      if (next === undefined || next === mode) {
         return;
       }
       /* Leaving From data… seeds an empty Fixed value stash with the signal's declared default, so
@@ -978,10 +1013,10 @@ function applyChip(
 interface LadderOpts {
   fieldKey: string;
   caps: SlotCapsSource;
-  value: unknown;
+  value: JxDocumentValue | undefined;
   onChange: (v?: JsonValue) => void;
   stateDefs: string[];
-  extraSignals?: SignalOption[] | null;
+  extraSignals?: SurfaceOption[] | null;
   literalDefault?: JsonValue | undefined;
   seedFor?: ((mode: SlotMode) => JsonValue | undefined) | undefined;
   /** The operators this position's grammar admits, when it admits fewer than all of them. */
@@ -998,7 +1033,7 @@ interface LadderOpts {
 function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void {
   const caps = slotCaps(opts.caps);
   const mode = effectiveSlotMode(opts.fieldKey, opts.value);
-  const sources: SignalOption[] = [
+  const sources: SurfaceOption[] = [
     ...opts.stateDefs.map((name) => ({ label: name, value: `#/state/${name}` })),
     ...(opts.extraSignals ?? []),
   ];
@@ -1026,6 +1061,9 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
     seedFor: opts.seedFor,
     sources,
     stateDefs: opts.stateDefs,
+    /* SAFETY: a ladder position's value was read out of the JSON document (an attribute, a prop, a
+       `tagName`), so it is JSON; `JxRef` and the expression shapes are interfaces, which TypeScript
+       will not match against `JsonObject`'s index signature. */
     value: cloneValue(opts.value as JsonValue | undefined),
   };
   if (mode === "ref") {
@@ -1046,7 +1084,7 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
     row.kind = "text";
     row.mono = true;
     row.placeholder = "${state.…}";
-    row.value = getFieldValue(templateDraft, typeof opts.value === "string" ? opts.value : "");
+    row.value = getFieldValue(templateDraft, isString(opts.value) ? opts.value : "");
     plan.commit = (raw) => opts.onChange(raw);
     plan.debounceMs = LIVE_PREVIEW;
     plan.draft = templateDraft;
@@ -1054,22 +1092,26 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
     return;
   }
   if (mode === "expression") {
-    const node = (opts.value as { $expression?: unknown } | undefined)?.$expression;
+    const node = isJsonObject(opts.value) ? opts.value.$expression : undefined;
     row.kind = "control";
     plan.commit = undefined;
     plan.draft = undefined;
+    const editorOpts: ExpressionEditorOpts = {
+      allowEventRef: false,
+      preview: null,
+      stateDefs: opts.stateDefs,
+      stateEntries: null,
+    };
+    if (opts.operators) {
+      editorOpts.operators = opts.operators;
+    }
     plan.control = (host) =>
       mountExpressionEditor(
         host,
         node,
+        // SAFETY: the expression editor hands back the JSON expression node it built from `node`.
         (next) => opts.onChange({ $expression: next } as JsonValue),
-        {
-          allowEventRef: false,
-          ...(opts.operators ? { operators: opts.operators } : {}),
-          preview: null,
-          stateDefs: opts.stateDefs,
-          stateEntries: null,
-        },
+        editorOpts,
       );
   }
 }
@@ -1083,7 +1125,7 @@ function textRow(opts: {
   value: string;
   placeholder?: string;
   commit: (raw: string) => void;
-}): { row: ContentRowView; plan: RowPlan } {
+}): PlannedRow {
   const row = blankRow(opts.key, opts.prop, opts.label);
   row.kind = "text";
   row.value = getFieldValue(opts.draft, opts.value);
@@ -1130,7 +1172,7 @@ function projectPanel(): ContentPanelView {
   // Layout chrome first: it is mutually exclusive with a document selection, and it is the one
   // Target whose name has to say where it came FROM.
   if (shell.layoutSelection) {
-    return layoutView(shell.layoutSelection as LayoutSelection);
+    return layoutView(shell.layoutSelection);
   }
 
   const selected = primarySelection(tab.session.selection);
@@ -1138,7 +1180,7 @@ function projectPanel(): ContentPanelView {
     return emptyView(clickAnythingTo("edit its content"), "", []);
   }
   const path: JxPath = selected;
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = nodeAtPath(tab.doc.document, path);
   if (!node) {
     return emptyView(staleSelectionMessage(), "", []);
   }
@@ -1161,7 +1203,7 @@ function projectPanel(): ContentPanelView {
 }
 
 /** The Layout-element card — what the inspector says when you click page chrome. */
-function layoutView(selection: LayoutSelection): ContentPanelView {
+function layoutView(selection: LayoutHit): ContentPanelView {
   const displayPath = selection.layoutFile || "layout";
   return {
     ...emptyContentView(),
@@ -1192,26 +1234,26 @@ function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
   const bindableSignals = bindableSignalNames(doc);
 
   // ── Which attributes this tag has, by section ──
-  const applicableAttrs = {} as Record<string, HtmlMetaEntry>;
-  for (const [attr, entry] of Object.entries(htmlMeta.$defs) as [string, HtmlMetaEntry][]) {
+  const applicableAttrs = new Map<string, HtmlMetaEntry>();
+  for (const [attr, entry] of HTML_META_DEFS) {
     if (!entry.$elements || entry.$elements.includes(displayTagName(tagName))) {
       // The $attr field aliases a $defs key to a different attribute name, so the same attribute
       // (e.g. "name") can carry per-element metadata.
-      applicableAttrs[entry.$attr ?? attr] = entry;
+      applicableAttrs.set(entry.$attr ?? attr, entry);
     }
   }
   const attrSections: Record<string, { name: string; entry: HtmlMetaEntry }[]> = {};
   for (const sec of htmlMeta.$sections) {
     attrSections[sec.key] = [];
   }
-  for (const [attr, entry] of Object.entries(applicableAttrs)) {
+  for (const [attr, entry] of applicableAttrs) {
     attrSections[entry.$section]?.push({ entry, name: attr });
   }
   for (const sec of htmlMeta.$sections) {
     attrSections[sec.key]!.sort((a, b) => a.entry.$order - b.entry.$order);
   }
 
-  const knownAttrNames = new Set(Object.keys(applicableAttrs));
+  const knownAttrNames = new Set(applicableAttrs.keys());
   if (isCustomInstance) {
     const comp = componentRegistry.find((c) => c.tagName === node.tagName);
     for (const p of comp?.props ?? []) {
@@ -1222,7 +1264,7 @@ function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
 
   const autoOpen = new Set<string>();
   for (const attr of Object.keys(attrs)) {
-    const entry = applicableAttrs[attr];
+    const entry = applicableAttrs.get(attr);
     if (entry) {
       autoOpen.add(entry.$section);
     }
@@ -1328,7 +1370,7 @@ function elementRows(
   node: JxMutableNode,
   path: JxPath,
   tagName: string,
-  mapSignals: SignalOption[] | null,
+  mapSignals: SurfaceOption[] | null,
   bindableSignals: string[],
 ): ContentRowView[] {
   const chosenTag = isTagExpression(node.tagName) ? node.tagName.$expression : null;
@@ -1385,7 +1427,7 @@ function elementRows(
         ? { $expression: { initial: tagName, operator: "?:", target: null, value: tagName } }
         : undefined,
     stateDefs: bindableSignals,
-    value: node.tagName as JsonValue | undefined,
+    value: node.tagName,
   });
   void chosenTag;
   rows.push(withPlan(tag.row, tag.plan));
@@ -1420,10 +1462,7 @@ function elementRows(
     const textDraft = draft(draftKey(path, "textContent"));
     const text = blankRow("prop|textContent", "textContent", "Text Content");
     text.kind = "textarea";
-    text.value = getFieldValue(
-      textDraft,
-      typeof node.textContent === "string" ? node.textContent : "",
-    );
+    text.value = getFieldValue(textDraft, isString(node.textContent) ? node.textContent : "");
     const plan: RowPlan = {
       commit: writeProperty("textContent"),
       debounceMs: LIVE_PREVIEW,
@@ -1475,7 +1514,7 @@ function elementRows(
 function componentPropRows(
   node: JxMutableNode,
   path: JxPath,
-  mapSignals: SignalOption[] | null,
+  mapSignals: SurfaceOption[] | null,
   definitionOfThis: boolean,
 ): ContentRowView[] {
   const tab = activeTab.value!;
@@ -1491,9 +1530,14 @@ function componentPropRows(
   const isNpm = comp.source === "npm";
   /* In the definition the "value" of a setting is its DECLARED DEFAULT — the state entry's
      `default` — not a per-instance override, so the row reads and writes there instead. */
-  const stateEntries = (tab.doc.document.state ?? {}) as Record<string, { default?: JsonValue }>;
-  const currentVals: Record<string, unknown> = definitionOfThis
-    ? Object.fromEntries(comp.props.map((prop) => [prop.name, stateEntries[prop.name]?.default]))
+  const stateEntries = tab.doc.document.state ?? {};
+  const currentVals: Readonly<Record<string, JxDocumentValue | undefined>> = definitionOfThis
+    ? Object.fromEntries(
+        comp.props.map((prop) => {
+          const entry = stateEntries[prop.name];
+          return [prop.name, isJsonObject(entry) ? entry.default : undefined];
+        }),
+      )
     : isNpm
       ? node.attributes || {}
       : node.$props || {};
@@ -1507,6 +1551,8 @@ function componentPropRows(
               t,
               path,
               name,
+              /* SAFETY: `componentProp` offers the literal, ref and template rungs only, so what
+                 reaches here is a control's string or `true`, a `{ $ref }`, or a template string. */
               v === "" ? undefined : (v as JxAttributeValue | undefined),
             ),
           )
@@ -1566,6 +1612,8 @@ function componentPropRows(
       row.value = staticVal;
       row.options = [
         CLEAR_OPTION,
+        /* SAFETY: `parseCemType` returns kind "combobox" only with `options` read from the capture
+           group of `'([^']*)'`, which takes part in every match, so each option is a string. */
         ...(parsed.options as string[]).map((o) => ({ label: camelToLabel(o), value: o })),
       ];
       plan.commit = (raw) => onChange(raw || undefined);
@@ -1599,7 +1647,7 @@ function componentPropRows(
         // "→ the component definition" would open the document already in front of you.
         isDefinition: definitionOfThis,
         onClear: () => updateFn(prop.name),
-        ...(openDefinition ? { openDefinition } : {}),
+        openDefinition,
       }),
     );
     rows.push(withPlan(row, plan));
@@ -1633,14 +1681,14 @@ interface AttrCtx {
   doc: JxMutableNode;
   targets: JxPath[];
   tagName: string;
-  mapSignals: SignalOption[] | null;
+  mapSignals: SurfaceOption[] | null;
   bindableSignals: string[];
 }
 
 function attributeRow(
   attr: string,
   entry: HtmlMetaEntry,
-  value: unknown,
+  value: JxAttributeValue | undefined,
   ctx: AttrCtx,
 ): ContentRowView {
   const { doc, node, path, tagName, targets } = ctx;
@@ -1652,6 +1700,8 @@ function attributeRow(
   const commitAttr = (v?: JsonValue) =>
     transactDoc(activeTab.value!, (t) => {
       for (const target of targets) {
+        /* SAFETY: `attribute` offers the literal, ref and template rungs only, so what reaches here
+           is a control's string, a `{ $ref }`, or a template string. */
         mutateUpdateAttribute(t, target, attr, v as JxAttributeValue | undefined);
       }
     });
@@ -1680,14 +1730,8 @@ function attributeRow(
     if (attr === "target") {
       const row = blankRow(key, attr, label);
       row.kind = "select";
-      row.value = typeof node.attributes?.target === "string" ? node.attributes.target : "";
-      row.options = [
-        CLEAR_OPTION,
-        ...(Array.isArray(entry.enum) ? (entry.enum as string[]) : []).map((o) => ({
-          label: o,
-          value: o,
-        })),
-      ];
+      row.value = isString(node.attributes?.target) ? node.attributes.target : "";
+      row.options = [CLEAR_OPTION, ...(entry.enum ?? []).map((o) => ({ label: o, value: o }))];
       const plan: RowPlan = { commit: (raw) => commitAttr(raw || undefined), debounceMs: 0 };
       applyChip(row, plan, attr, chip());
       return withPlan(row, plan);
@@ -1699,10 +1743,10 @@ function attributeRow(
   if (entry.$input === "popover-target" && !isBoundAttrValue(value)) {
     const row = blankRow(key, attr, label);
     row.kind = "select";
-    row.value = typeof value === "string" ? value : "";
+    row.value = isString(value) ? value : "";
     row.options = [
       CLEAR_OPTION,
-      ...popoverIdsIn((activeTab.value?.doc.document ?? {}) as JxElement, {
+      ...popoverIdsIn(activeTab.value?.doc.document ?? {}, {
         popoverTags: POPOVER_TAGS,
       }).map((id) => ({ label: id, value: id })),
       { label: "Type an id…", value: POPOVER_TARGET_OTHER },
@@ -1744,13 +1788,7 @@ function attributeRow(
   } else if (type === "select") {
     row.kind = "select";
     row.value = isRef(value) ? "" : String(value || "");
-    row.options = [
-      CLEAR_OPTION,
-      ...(Array.isArray(entry.enum) ? (entry.enum as string[]) : []).map((o) => ({
-        label: o,
-        value: o,
-      })),
-    ];
+    row.options = [CLEAR_OPTION, ...(entry.enum ?? []).map((o) => ({ label: o, value: o }))];
     plan.commit = (raw) => commitAttr(raw || undefined);
     plan.debounceMs = 0;
   } else {
@@ -1772,6 +1810,15 @@ function attributeRow(
   return withPlan(row, plan);
 }
 
+/** The Link row's kinds, in the order its picker lists them. */
+const LINK_KIND_OPTIONS = [
+  { label: "Internal Page", value: "internal" },
+  { label: "External URL", value: "external" },
+  { label: "Anchor", value: "anchor" },
+  { label: "Email", value: "mailto" },
+  { label: "Phone", value: "tel" },
+] as const satisfies readonly { label: string; value: LinkKind }[];
+
 /**
  * The Link target: a kind and a value over one `href`.
  *
@@ -1780,7 +1827,7 @@ function attributeRow(
  * `mailto:a@b.com`. Internal targets offer the routes enumerated from the `pages/` tree.
  */
 function linkRow(key: string, label: string, node: JxMutableNode, path: JxPath): ContentRowView {
-  const raw = typeof node.attributes?.href === "string" ? node.attributes.href : "";
+  const raw = isString(node.attributes?.href) ? node.attributes.href : "";
   const { kind, value } = classifyHref(raw);
   const commit = (nextKind: LinkKind, nextValue: string) => {
     const composed = composeHref(nextKind, nextValue);
@@ -1792,16 +1839,16 @@ function linkRow(key: string, label: string, node: JxMutableNode, path: JxPath):
   const row = blankRow(key, "href", label);
   row.kind = "link";
   row.linkKind = kind;
-  row.kindOptions = [
-    { label: "Internal Page", value: "internal" },
-    { label: "External URL", value: "external" },
-    { label: "Anchor", value: "anchor" },
-    { label: "Email", value: "mailto" },
-    { label: "Phone", value: "tel" },
-  ];
+  row.kindOptions = LINK_KIND_OPTIONS.map((option) => ({ ...option }));
   const plan: RowPlan = {
     commit: (next) => commit(kind, next),
-    commitKind: (nextKind) => commit(nextKind as LinkKind, value),
+    commitKind: (nextKind) => {
+      // The picker's options ARE `LINK_KIND_OPTIONS`, so a picked kind is always one of them.
+      const picked = LINK_KIND_OPTIONS.find((option) => option.value === nextKind);
+      if (picked) {
+        commit(picked.value, value);
+      }
+    },
     debounceMs: INPUT_DEBOUNCE,
   };
 
@@ -1854,7 +1901,7 @@ function customRows(path: JxPath, customAttrs: [string, unknown][]): ContentRowV
     const nameKey = draft(`kvname:${path.join("/")}:${attr}`);
     const valueKey = draft(`kvval:${path.join("/")}:${attr}`);
     const row = blankRow(key, attr, `${attr} value`);
-    row.shape = "kv";
+    row.variant = "kv";
     row.name = getFieldValue(nameKey, attr);
     row.value = getFieldValue(valueKey, String(val));
     row.removeLabel = `Remove ${attr}`;
@@ -1890,6 +1937,15 @@ function customRows(path: JxPath, customAttrs: [string, unknown][]): ContentRowV
 
 // ─── Usage (§9.1.1) ──────────────────────────────────────────────────────────
 
+/** The usage question for a component: its tag, and its definition file when the library knows it. */
+function usageQueryFor(tagName: string, componentPath: string | null): UsageQuery {
+  const query: UsageQuery = { tagName };
+  if (componentPath) {
+    query.path = componentPath;
+  }
+  return query;
+}
+
 /**
  * The component instance's usage line — "Used on 7 pages →", expanding to the files.
  *
@@ -1901,7 +1957,7 @@ function customRows(path: JxPath, customAttrs: [string, unknown][]): ContentRowV
  * check" and "nothing uses this" are the two answers a user must never confuse.
  */
 function usagesSection(tagName: string, componentPath: string | null): ContentSectionView | null {
-  const query = { tagName, ...(componentPath ? { path: componentPath } : {}) };
+  const query = usageQueryFor(tagName, componentPath);
   const state = peekUsages(query);
   // ONE gate, and it is the peek itself: a host with no `findReferences` answers "unsupported"
   // Synchronously, and the section does not exist.
@@ -1936,7 +1992,7 @@ function usagesSection(tagName: string, componentPath: string | null): ContentSe
     } else {
       for (const file of files) {
         const row = blankRow(`usage|${file.path}`, file.path, file.path);
-        row.shape = "file";
+        row.variant = "file";
         row.text = file.path;
         row.detail = String(file.count);
         row.title = file.refs.map((r) => `${r.refType} ${r.ref} ×${r.count}`).join(", ");
@@ -1957,7 +2013,7 @@ function usagesSection(tagName: string, componentPath: string | null): ContentSe
 
 function noteRow(key: string, text: string): ContentRowView {
   const row = blankRow(key, key, "");
-  row.shape = "note";
+  row.variant = "note";
   row.text = text;
   plans.set(key, { debounceMs: 0 });
   return row;
@@ -1965,7 +2021,7 @@ function noteRow(key: string, text: string): ContentRowView {
 
 function actionRow(key: string, prop: string, text: string, run: () => void): ContentRowView {
   const row = blankRow(key, prop, text);
-  row.shape = "action";
+  row.variant = "action";
   row.text = text;
   return withPlan(row, { action: run, debounceMs: 0 });
 }
@@ -2030,9 +2086,7 @@ export function inspectorCommands(): AnyCommand[] {
         }
         const componentPath = componentRegistry.find((c) => c.tagName === tagName)?.path ?? null;
         setInspectorSection(USAGES_SECTION, true);
-        void loadUsages({ tagName, ...(componentPath ? { path: componentPath } : {}) }).then(() =>
-          renderPropertiesPanel(),
-        );
+        void loadUsages(usageQueryFor(tagName, componentPath)).then(() => renderPropertiesPanel());
       },
       title: "Find Usages",
     },
@@ -2053,8 +2107,8 @@ function componentSelectionTag(): string | null {
   if (!tab || !selection) {
     return null;
   }
-  const node = getNodeAtPath(tab.doc.document, selection);
-  const tagName = typeof node?.tagName === "string" ? node.tagName : "";
+  const node = nodeAtPath(tab.doc.document, selection);
+  const tagName = isString(node?.tagName) ? node.tagName : "";
   return tagName.includes("-") ? tagName : null;
 }
 
