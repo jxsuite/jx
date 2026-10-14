@@ -18,10 +18,16 @@ import {
   popoverIdsIn,
   popoverModeOf,
 } from "../src/overlays";
-import type { JxElement, JxStyle } from "../types";
+import type { JsonObject, JxAttributeValue, JxElement, JxStyle } from "../types";
+
+/** A drawer whose attribute bag and style block are always present, for a test to perturb. */
+interface Panel extends JxElement {
+  attributes: Record<string, JxAttributeValue>;
+  style: JxStyle;
+}
 
 /** A conforming drawer, so a test can perturb exactly one thing and see exactly one finding. */
-function goodPanel(id = "menu"): JxElement {
+function goodPanel(id = "menu"): Panel {
   return {
     attributes: { "aria-label": "Site menu", popover: "auto" },
     id,
@@ -37,6 +43,16 @@ function goodPanel(id = "menu"): JxElement {
 
 function trigger(target = "menu"): JxElement {
   return { attributes: { popovertarget: target, type: "button" }, tagName: "button" };
+}
+
+/**
+ * A node as a parsed document delivers it, including shapes the type refuses (a `null` attribute
+ * bag), because the rules read documents straight off disk and must not throw on one.
+ */
+function parsedNode(fields: JsonObject): JxElement {
+  /* SAFETY: the fixture is JSON, which is what a document parses to, and the popover rules read
+     `attributes` through `attrs()`, whose `isJsonObject` guard turns any other value into `{}`. */
+  return fields as JxElement;
 }
 
 /** Wrap nodes in a document root. */
@@ -92,7 +108,7 @@ describe("popoverModeOf / isPopover", () => {
 
   test("a missing or non-object attributes bag is not a popover", () => {
     expect(isPopover({ tagName: "div" })).toBe(false);
-    expect(isPopover({ attributes: null as never, tagName: "div" })).toBe(false);
+    expect(isPopover(parsedNode({ attributes: null, tagName: "div" }))).toBe(false);
   });
 });
 
@@ -112,7 +128,7 @@ describe("popoverIdsIn", () => {
         { $switch: "#/state/x", cases: { one: goodPanel("in-case") }, tagName: "div" },
         { $prototype: "Array", items: [], map: goodPanel("in-map"), tagName: "div" },
         {
-          children: { $prototype: "Array", items: [], map: goodPanel("legacy") } as never,
+          children: { $prototype: "Array", items: [], map: goodPanel("legacy") },
           tagName: "ul",
         },
       ],
@@ -247,7 +263,7 @@ describe("link-does-not-dismiss — the two cases navigation cannot cover", () =
 
   test("href written as a top-level key is read too", () => {
     const panel = goodPanel();
-    panel.children = [{ href: "/#services", tagName: "a" } as JxElement];
+    panel.children = [{ href: "/#services", tagName: "a" }];
     expect(rulesFor(panel)).toContain("link-does-not-dismiss");
   });
 
@@ -262,7 +278,7 @@ describe("link-does-not-dismiss — the two cases navigation cannot cover", () =
 describe("invalid-mode", () => {
   test("a keyword that is not one of the three", () => {
     const panel = goodPanel();
-    (panel.attributes as Record<string, unknown>).popover = "modal";
+    panel.attributes.popover = "modal";
     const f = findRule(panel, "invalid-mode");
     expect(f?.severity).toBe("error");
     expect(f?.fix).toBe("mode");
@@ -270,7 +286,7 @@ describe("invalid-mode", () => {
 
   test('a boolean, which two compiler emitters turn into popover="true" = manual', () => {
     const panel = goodPanel();
-    (panel.attributes as Record<string, unknown>).popover = true;
+    panel.attributes.popover = true;
     const f = findRule(panel, "invalid-mode");
     expect(f?.message).toContain("boolean");
     expect(f?.fix).toBe("mode");
@@ -279,7 +295,7 @@ describe("invalid-mode", () => {
   test('"" and the three keywords are all accepted', () => {
     for (const mode of ["", ...POPOVER_MODES]) {
       const panel = goodPanel();
-      (panel.attributes as Record<string, unknown>).popover = mode;
+      panel.attributes.popover = mode;
       expect(rulesFor(panel)).not.toContain("invalid-mode");
     }
   });
@@ -288,7 +304,7 @@ describe("invalid-mode", () => {
 describe("base-display — the defect that shipped twice", () => {
   test("display in the base rule is an error with a repair", () => {
     const panel = goodPanel();
-    (panel.style as JxStyle).display = "flex";
+    panel.style.display = "flex";
     const f = findRule(panel, "base-display");
     expect(f?.severity).toBe("error");
     expect(f?.fix).toBe("display");
@@ -297,7 +313,7 @@ describe("base-display — the defect that shipped twice", () => {
 
   test("display inside a breakpoint is the same defect through another door", () => {
     const panel = goodPanel();
-    (panel.style as JxStyle)["@--md"] = { display: "flex" };
+    panel.style["@--md"] = { display: "flex" };
     const f = defectsFor(panel).find((x) => x.rule === "breakpoint-display");
     expect(f?.message).toContain("@--md");
     expect(f?.fix).toBe("display");
@@ -305,7 +321,7 @@ describe("base-display — the defect that shipped twice", () => {
 
   test("visibility is the ad-hoc second mechanism Burntrock added", () => {
     const panel = goodPanel();
-    (panel.style as JxStyle).visibility = "hidden";
+    panel.style.visibility = "hidden";
     const f = findRule(panel, "base-visibility");
     expect(f?.severity).toBe("warn");
     expect(f?.fix).toBe("display");
@@ -351,7 +367,7 @@ describe("no-open-rule", () => {
 
   test("a scalar under a selector-looking key is not a rule", () => {
     const panel = goodPanel();
-    panel.style = { ":popover-open": "nonsense" as never };
+    panel.style = { ":popover-open": "nonsense" };
     expect(rulesFor(panel)).toContain("no-open-rule");
   });
 });
@@ -390,21 +406,21 @@ describe("no-open-display — flex declared, display never turned on", () => {
 describe("cut-exit", () => {
   test("transitioning display without overlay cuts the exit animation", () => {
     const panel = goodPanel();
-    (panel.style as JxStyle).transition = "transform 0.3s, display 0.3s allow-discrete";
+    panel.style.transition = "transform 0.3s, display 0.3s allow-discrete";
     const f = findRule(panel, "cut-exit");
     expect(f?.severity).toBe("warn");
   });
 
   test("it looks inside at-rule blocks too, and reports once", () => {
     const panel = goodPanel();
-    (panel.style as JxStyle).transition = "transform 0.3s, display 0.3s allow-discrete";
-    (panel.style as JxStyle)["@--md"] = { transition: "opacity 0.2s, display 0.2s allow-discrete" };
+    panel.style.transition = "transform 0.3s, display 0.3s allow-discrete";
+    panel.style["@--md"] = { transition: "opacity 0.2s, display 0.2s allow-discrete" };
     expect(defectsFor(panel).filter((f) => f.rule === "cut-exit")).toHaveLength(1);
   });
 
   test("a transition that mentions neither is fine", () => {
     const panel = goodPanel();
-    (panel.style as JxStyle).transition = "transform 0.3s";
+    panel.style.transition = "transform 0.3s";
     expect(rulesFor(panel)).not.toContain("cut-exit");
   });
 });
@@ -412,7 +428,7 @@ describe("cut-exit", () => {
 describe("unsafe-anchor — Burntrock's services dropdown", () => {
   test("position-anchor with no fallback", () => {
     const panel = goodPanel();
-    Object.assign(panel.style as JxStyle, {
+    Object.assign(panel.style, {
       inset: "unset",
       positionAnchor: "--btn",
       top: "anchor(bottom)",
@@ -423,7 +439,7 @@ describe("unsafe-anchor — Burntrock's services dropdown", () => {
 
   test("an anchor() inset alone is enough to trip it", () => {
     const panel = goodPanel();
-    Object.assign(panel.style as JxStyle, { top: "anchor(bottom)" });
+    Object.assign(panel.style, { top: "anchor(bottom)" });
     expect(rulesFor(panel)).toContain("unsafe-anchor");
   });
 
@@ -434,14 +450,14 @@ describe("unsafe-anchor — Burntrock's services dropdown", () => {
       { "@supports not (position-area: block-end)": { top: "5rem" } },
     ]) {
       const panel = goodPanel();
-      Object.assign(panel.style as JxStyle, { positionAnchor: "--btn" }, fallback);
+      Object.assign(panel.style, { positionAnchor: "--btn" }, fallback);
       expect(rulesFor(panel)).not.toContain("unsafe-anchor");
     }
   });
 
   test("the kebab spellings are read as well as the camel ones", () => {
     const panel = goodPanel();
-    Object.assign(panel.style as JxStyle, {
+    Object.assign(panel.style, {
       "position-anchor": "--btn",
       "position-area": "block-end",
     });
@@ -527,7 +543,7 @@ describe("documentHasPopover", () => {
       $switch: "#/state/x",
       cases: { one: goodPanel() },
       tagName: "div",
-    } as JxElement);
+    });
     expect(documentHasPopover(inCase)).toBe(true);
   });
 
@@ -543,12 +559,11 @@ describe("a custom element whose DEFINITION declares popover", () => {
      at it was a target mismatch, `documentHasPopover` was false, so Studio's "reveal the popover
      you selected" never fired and the open command refused. The tags come in from the caller. */
   const scope = { popoverTags: new Set(["jx-popover"]) };
-  const consumer = (): JxElement =>
-    ({
-      attributes: { id: "p1" },
-      children: [{ tagName: "p" }],
-      tagName: "jx-popover",
-    }) as JxElement;
+  const consumer = (): JxElement => ({
+    attributes: { id: "p1" },
+    children: [{ tagName: "p" }],
+    tagName: "jx-popover",
+  });
 
   test("is invisible without the scope, and is a popover with it", () => {
     const page = doc(consumer());
@@ -568,8 +583,12 @@ describe("a custom element whose DEFINITION declares popover", () => {
   });
 
   test("a panel that declares popover ITSELF is still judged, scope or no scope", () => {
-    const bad = { attributes: { popover: "auto" }, style: { display: "flex" }, tagName: "div" };
-    const found = findPopoverDefects(doc(bad as JxElement), scope);
+    const bad: JxElement = {
+      attributes: { popover: "auto" },
+      style: { display: "flex" },
+      tagName: "div",
+    };
+    const found = findPopoverDefects(doc(bad), scope);
     expect(found.map((d) => d.rule)).toContain("base-display");
   });
 
@@ -585,16 +604,16 @@ describe("a custom element that forwards the invoker attributes", () => {
      own inner <button>, so the natural spelling is correct and the rule fired on it anyway. */
   const scope = { invokerTags: new Set(["jx-button"]), popoverTags: new Set(["jx-popover"]) };
   const page = (invoker: JxElement): JxElement =>
-    doc(invoker, { attributes: { id: "p1" }, tagName: "jx-popover" } as JxElement);
+    doc(invoker, { attributes: { id: "p1" }, tagName: "jx-popover" });
 
   test("is an invoker with the scope, and a defect without it", () => {
-    const node = { attributes: { popovertarget: "p1" }, tagName: "jx-button" } as JxElement;
+    const node: JxElement = { attributes: { popovertarget: "p1" }, tagName: "jx-button" };
     expect(findPopoverDefects(page(node)).map((d) => d.rule)).toEqual(["invoker-not-button"]);
     expect(findPopoverDefects(page(node), scope)).toEqual([]);
   });
 
   test("a tag that forwards nothing is still refused, scope or no scope", () => {
-    const node = { attributes: { href: "#", popovertarget: "p1" }, tagName: "a" } as JxElement;
+    const node: JxElement = { attributes: { href: "#", popovertarget: "p1" }, tagName: "a" };
     expect(findPopoverDefects(page(node), scope).map((d) => d.rule)).toContain(
       "invoker-not-button",
     );
@@ -608,13 +627,12 @@ describe("display: revert is the one base display that is not a defect", () => {
      closed computes `none`, open computes the `:popover-open` value. It is also what an author
      must write when the interpreter would otherwise inject a default `display` on a custom
      element, so refusing it would refuse the fix for this very defect. */
-  const panel = (display: string): JxElement =>
-    ({
-      attributes: { "aria-label": "Menu", popover: "auto" },
-      id: "menu",
-      style: { display, flexDirection: "column", ":popover-open": { display: "flex" } },
-      tagName: "div",
-    }) as JxElement;
+  const panel = (display: string): JxElement => ({
+    attributes: { "aria-label": "Menu", popover: "auto" },
+    id: "menu",
+    style: { display, flexDirection: "column", ":popover-open": { display: "flex" } },
+    tagName: "div",
+  });
 
   test("accepts revert and revert-layer", () => {
     const plain = doc(trigger(), panel("revert"));

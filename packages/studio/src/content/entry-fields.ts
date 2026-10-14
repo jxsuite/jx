@@ -32,8 +32,15 @@ import { cloneValue } from "@jxsuite/schema/doc-ops";
 import { notePreviewOverlayEdit } from "../preview/preview-overlay";
 import { recordDocOp } from "../tabs/patch-ops";
 import { mutateUpdateFrontmatter, transactDoc } from "../tabs/transact";
+import type { JxDocumentValue } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type { JsonValue } from "../types";
+
+/**
+ * An entry's fields, whichever record holds them: a frontmatter block's keys, or a JSON entry's own
+ * document keys. `undefined` is a key an editor has cleared.
+ */
+export type EntryFields = Record<string, JxDocumentValue | undefined>;
 
 /**
  * Whether this tab's entry fields are the document itself rather than a frontmatter block.
@@ -56,10 +63,8 @@ function fieldsAreDocument(tab: Tab): boolean {
  * reactive tab, and a copy would break that. It is also the identity a caller can compare against
  * `tab.doc.document` to see which store answered.
  */
-export function entryFields(tab: Tab): Record<string, unknown> {
-  return fieldsAreDocument(tab)
-    ? (tab.doc.document as unknown as Record<string, unknown>)
-    : (tab.doc.content?.frontmatter ?? {});
+export function entryFields(tab: Tab): EntryFields {
+  return fieldsAreDocument(tab) ? tab.doc.document : tab.doc.content.frontmatter;
 }
 
 /**
@@ -72,7 +77,7 @@ export function entryFields(tab: Tab): Record<string, unknown> {
  * is already the "not surgically patchable, fall back" signal `transactDoc` reads.
  */
 function mutateDocumentField(tab: Tab, field: string, value?: JsonValue): void {
-  const doc = tab.doc.document as unknown as Record<string, unknown>;
+  const doc = tab.doc.document;
   const before = Object.hasOwn(doc, field) ? cloneValue(doc[field]) : undefined;
   const deletes = value === undefined || value === null || value === "";
   if (deletes) {
@@ -113,10 +118,10 @@ export function mutateEntryField(tab: Tab, field: string, value?: JsonValue): vo
  * `renderForm` emits single-key patches today, but committing per key would put a multi-key patch
  * on the undo stack as several steps — and an author who changed one thing expects one ⌘Z.
  */
-export function commitEntryFields(tab: Tab, patch: Record<string, unknown>): void {
+export function commitEntryFields(tab: Tab, patch: Record<string, JsonValue | undefined>): void {
   transactDoc(tab, (t) => {
     for (const [field, value] of Object.entries(patch)) {
-      mutateEntryField(t, field, value as JsonValue);
+      mutateEntryField(t, field, value);
     }
   });
 }

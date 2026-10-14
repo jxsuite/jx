@@ -16,8 +16,13 @@ import {
 } from "../src/locale.ts";
 import type { ProjectConfig } from "../types.ts";
 
-const project = (i18n?: ProjectConfig["i18n"]): ProjectConfig =>
-  ({ name: "Test", ...(i18n === undefined ? {} : { i18n }) }) as ProjectConfig;
+function project(i18n?: ProjectConfig["i18n"]): ProjectConfig {
+  const config: ProjectConfig = { name: "Test" };
+  if (i18n !== undefined) {
+    config.i18n = i18n;
+  }
+  return config;
+}
 
 describe("resolveI18n", () => {
   test("a project without i18n resolves to null, not to a default", () => {
@@ -259,7 +264,8 @@ describe("canonicalizeLocale", () => {
     for (const tag of ["en_US", "en--US", "e", "en-US-", "", "   ", 42, null]) {
       expect(canonicalizeLocale(tag)).toBeNull();
     }
-    expect(canonicalizeLocale(({} as { lang?: string }).lang)).toBeNull();
+    // An optional `lang` the author left out.
+    expect(canonicalizeLocale(project().defaults?.lang)).toBeNull();
   });
 
   /*
@@ -312,7 +318,8 @@ describe("localeDirection", () => {
   // Called while rendering, after validation has already run. Guessing ltr is what a browser does.
   test("a malformed tag is left to right rather than an error", () => {
     expect(localeDirection("not_a_tag")).toBe("ltr");
-    expect(localeDirection(({} as { lang?: string }).lang)).toBe("ltr");
+    // An optional `lang` the author left out.
+    expect(localeDirection(project().defaults?.lang)).toBe("ltr");
   });
 });
 

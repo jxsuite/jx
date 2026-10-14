@@ -24,10 +24,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import i18nDoc from "./panel-i18n.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-i18n", i18nDoc as unknown as JxDocument);
+registerSurface("panel-i18n", i18nDoc);
 
 /** Which of the three bodies the panel is showing. */
 export type I18nMode =
@@ -105,7 +104,7 @@ export interface I18nSurfaceHandle {
  * Each `has*` is the flattening of a presence test: a document switches on a VALUE, so "is there a
  * failure to report" has to arrive as a boolean rather than as a string the markup could measure.
  */
-interface I18nScope extends Record<string, unknown> {
+interface I18nScope {
   mode: I18nMode;
   settingsDisabled: boolean;
   summary: string;
@@ -166,7 +165,7 @@ export function mountI18nSurface(
   values: I18nValues,
   actions: I18nActions,
 ): I18nSurfaceHandle {
-  const scope = reactive<I18nScope>({
+  const scope: I18nScope = reactive<I18nScope>({
     hasIncomplete: false,
     hasRows: false,
     hasTruncated: false,
@@ -180,7 +179,7 @@ export function mountI18nSurface(
     settingsDisabled: false,
     summary: "",
     truncated: "",
-  }) as I18nScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -201,8 +200,7 @@ export function mountI18nSurface(
     /* In flight the answer is yes: nothing has landed yet, so there is nothing that could have been
        taken away. Once mounted the question is simply whether the root is still in the container —
        a panel that was switched away from had its document cleared out from under it by lit. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

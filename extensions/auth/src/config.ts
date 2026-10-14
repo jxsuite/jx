@@ -4,11 +4,15 @@
  * The section carries identifiers and env-var NAMES only (specs/extensions.md §13): the signing
  * secret comes from `env[secretEnv]` (default BETTER_AUTH_SECRET), social-provider credentials from
  * their `clientIdEnv`/`clientSecretEnv` vars (defaults <ID>_CLIENT_ID / <ID>_CLIENT_SECRET). This
- * module is pure and dependency-free so browser bundles (session store, actions) can share the
- * section types and the SessionInfo mapping without pulling the Better Auth server in.
+ * module is pure (its only runtime import is the schema guards) so browser bundles (session store,
+ * actions) can share the section types and the SessionInfo mapping without pulling the Better Auth
+ * server in.
  */
 
-import type { SessionInfo } from "@jxsuite/connector/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { Dialect } from "kysely";
+import type { HostEnv } from "@jxsuite/connector/provider-utils";
+import type { AuthRecord, ConnectionDef, SessionInfo } from "@jxsuite/connector/types";
 
 /** The Better Auth route subtree (specs/extensions.md §11: the auth mount's basePath). */
 export const AUTH_BASE_PATH = "/_jx/auth";
@@ -46,12 +50,12 @@ const COOKIE_IDS = ["session_token", "session_data", "dont_remember", "account_d
  * genuinely serves auth over plain HTTP is the local dev server, and it pins `BETTER_AUTH_URL` to
  * its own origin so this reads `http:` there rather than guessing.
  *
- * @param {Env} env
+ * @param {HostEnv} env
  * @returns {boolean}
  */
-export function cookiesAreSecure(env: Env): boolean {
+export function cookiesAreSecure(env: HostEnv): boolean {
   const baseURL = env["BETTER_AUTH_URL"];
-  if (typeof baseURL === "string" && baseURL !== "") {
+  if (isString(baseURL) && baseURL !== "") {
     return !baseURL.startsWith("http://");
   }
   return true;
@@ -78,14 +82,14 @@ export function cookiesAreSecure(env: Env): boolean {
  * whenever the embedding page changed.
  *
  * @param {boolean} secure
- * @returns {Record<string, unknown>}
+ * @returns {AuthAdvancedOptions}
  */
-function advancedCookieOptions(secure: boolean): Record<string, unknown> {
+function advancedCookieOptions(secure: boolean): AuthAdvancedOptions {
   if (!secure) {
     // Plain-HTTP dev origin: a prefixed cookie without `Secure` is rejected outright.
     return { cookiePrefix: COOKIE_PREFIX, useSecureCookies: false };
   }
-  const cookies: Record<string, { name: string }> = {};
+  const cookies: AuthCookieNames = {};
   for (const id of COOKIE_IDS) {
     cookies[id] = { name: `__Host-${COOKIE_PREFIX}.${id}` };
   }
@@ -95,6 +99,17 @@ function advancedCookieOptions(secure: boolean): Record<string, unknown> {
     defaultCookieAttributes: { secure: true },
     useSecureCookies: false,
   };
+}
+
+/** Cookie names keyed by Better Auth cookie id (`session_token`, …). */
+export type AuthCookieNames = Record<string, { name: string }>;
+
+/** The `advanced` block of BetterAuthOptions this module sets (cookie names and attributes). */
+export interface AuthAdvancedOptions {
+  cookiePrefix: string;
+  cookies?: AuthCookieNames;
+  defaultCookieAttributes?: { secure: boolean };
+  useSecureCookies: boolean;
 }
 
 /** One social provider entry: env-var NAMES for the OAuth credentials, never values. */
@@ -113,17 +128,13 @@ export interface AuthSection {
   redirects?: { afterSignIn?: string; afterSignOut?: string };
   roles?: string[];
   trustedOrigins?: string[];
-  [key: string]: unknown;
 }
 
 /** The `connections`-bearing slice of a project config (the connector owns the full type). */
 export interface AuthProjectConfig {
-  connections?: Record<string, { provider: string; [key: string]: unknown }>;
+  connections?: Record<string, ConnectionDef>;
   auth?: AuthSection;
-  [key: string]: unknown;
 }
-
-type Env = Record<string, unknown>;
 
 /** The connection name the auth tables live on: declared, else the first-declared connection. */
 export function resolveAuthConnectionName(
@@ -141,10 +152,10 @@ export function resolveAuthConnectionName(
 }
 
 /** The signing secret from `env[secretEnv]`, failing closed with the env-var name when unset. */
-export function resolveAuthSecret(section: AuthSection, env: Env): string {
+export function resolveAuthSecret(section: AuthSection, env: HostEnv): string {
   const name = section.secretEnv ?? DEFAULT_SECRET_ENV;
   const value = env[name];
-  if (typeof value !== "string" || value === "") {
+  if (!isString(value) || value === "") {
     throw new Error(
       `Auth is not configured: set the ${name} secret (in .dev.vars locally, ` +
         `or \`wrangler secret put ${name}\` in production)`,
@@ -158,48 +169,77 @@ function defaultProviderEnv(providerId: string, suffix: "CLIENT_ID" | "CLIENT_SE
   return `${providerId.toUpperCase().replaceAll(/[^A-Z0-9]+/g, "_")}_${suffix}`;
 }
 
+/** Resolved OAuth credentials per social provider id (Better Auth's `socialProviders` shape). */
+export type AuthSocialProviders = Record<string, { clientId: string; clientSecret: string }>;
+
 /**
  * Social providers with resolvable credentials, in Better Auth's `socialProviders` shape. Providers
  * whose env vars are unset are omitted (fail-closed: no half-configured OAuth).
  */
-export function resolveSocialProviders(
-  section: AuthSection,
-  env: Env,
-): Record<string, { clientId: string; clientSecret: string }> {
-  const out: Record<string, { clientId: string; clientSecret: string }> = {};
+export function resolveSocialProviders(section: AuthSection, env: HostEnv) {
+  const out: AuthSocialProviders = {};
   for (const [id, def] of Object.entries(section.providers ?? {})) {
     const clientId = env[def.clientIdEnv ?? defaultProviderEnv(id, "CLIENT_ID")];
     const clientSecret = env[def.clientSecretEnv ?? defaultProviderEnv(id, "CLIENT_SECRET")];
-    if (typeof clientId === "string" && clientId !== "" && typeof clientSecret === "string") {
+    if (isString(clientId) && clientId !== "" && isString(clientSecret)) {
       out[id] = { clientId, clientSecret };
     }
   }
   return out;
 }
 
+/** Better Auth's Kysely database config: the connection's dialect and its SQL family. */
+export interface AuthDatabaseConfig {
+  dialect: Dialect;
+  type: "sqlite" | "postgres";
+}
+
 /**
- * Map the auth section + env onto BetterAuthOptions (typed structurally — the exact
- * BetterAuthOptions type lives in better-auth, which this pure module never imports).
+ * The BetterAuthOptions this module produces (typed structurally — the exact BetterAuthOptions type
+ * lives in better-auth, which this pure module never imports).
+ */
+export interface JxAuthOptions {
+  baseURL?: string;
+  advanced: AuthAdvancedOptions;
+  basePath: string;
+  emailAndPassword: { enabled: boolean };
+  rateLimit: { enabled: boolean; max: number; window: number };
+  session: { expiresIn: number; updateAge: number };
+  socialProviders?: AuthSocialProviders;
+  user?: {
+    additionalFields: { role: { input: boolean; required: boolean; type: "string" } };
+  };
+  trustedOrigins?: string[];
+  database?: AuthDatabaseConfig;
+  secret?: string;
+}
+
+/**
+ * Map the auth section + env onto BetterAuthOptions. Optional keys are present only when set.
  *
  * @param {AuthSection} section
- * @param {Env} env
+ * @param {HostEnv} env
  * @param {object} [extras]
- * @param {unknown} [extras.database] - Better Auth database config ({ dialect, type })
+ * @param {AuthDatabaseConfig} [extras.database] - Better Auth database config ({ dialect, type })
  * @param {string} [extras.secret] - Signing secret (omit for secret-free uses like migrations)
- * @returns {Record<string, unknown>} Options for `betterAuth()` / `getMigrations()`
+ * @returns {JxAuthOptions} Options for `betterAuth()` / `getMigrations()`
  */
 export function buildAuthOptions(
   section: AuthSection,
-  env: Env,
-  extras: { database?: unknown; secret?: string } = {},
-): Record<string, unknown> {
+  env: HostEnv,
+  extras: { database?: AuthDatabaseConfig; secret?: string } = {},
+): JxAuthOptions {
   const socialProviders = resolveSocialProviders(section, env);
   const roles = section.roles ?? [];
   const baseURL = env["BETTER_AUTH_URL"];
-  return {
-    // Without BETTER_AUTH_URL Better Auth derives the origin from each incoming request, which
-    // Is correct for same-origin /_jx/auth mounts; setting it pins callbacks for OAuth flows.
-    ...(typeof baseURL === "string" && baseURL !== "" ? { baseURL } : {}),
+  const pinned: Pick<JxAuthOptions, "baseURL"> = {};
+  // Without BETTER_AUTH_URL Better Auth derives the origin from each incoming request, which
+  // Is correct for same-origin /_jx/auth mounts; setting it pins callbacks for OAuth flows.
+  if (isString(baseURL) && baseURL !== "") {
+    pinned.baseURL = baseURL;
+  }
+  const options: JxAuthOptions = {
+    ...pinned,
     advanced: advancedCookieOptions(cookiesAreSecure(env)),
     basePath: AUTH_BASE_PATH,
     emailAndPassword: { enabled: section.methods?.emailPassword ?? true },
@@ -213,43 +253,61 @@ export function buildAuthOptions(
      */
     rateLimit: { enabled: true, max: RATE_LIMIT_MAX, window: RATE_LIMIT_WINDOW_SECONDS },
     session: { expiresIn: SESSION_EXPIRES_SECONDS, updateAge: SESSION_UPDATE_SECONDS },
-    ...(Object.keys(socialProviders).length > 0 ? { socialProviders } : {}),
-    ...(roles.length > 0
-      ? {
-          user: {
-            additionalFields: {
-              // Roles are assigned via the data grid, never by sign-up input.
-              role: { input: false, required: false, type: "string" },
-            },
-          },
-        }
-      : {}),
-    ...(section.trustedOrigins && section.trustedOrigins.length > 0
-      ? { trustedOrigins: section.trustedOrigins }
-      : {}),
-    ...(extras.database === undefined ? {} : { database: extras.database }),
-    ...(extras.secret === undefined ? {} : { secret: extras.secret }),
   };
+  if (Object.keys(socialProviders).length > 0) {
+    options.socialProviders = socialProviders;
+  }
+  if (roles.length > 0) {
+    options.user = {
+      additionalFields: {
+        // Roles are assigned via the data grid, never by sign-up input.
+        role: { input: false, required: false, type: "string" },
+      },
+    };
+  }
+  if (section.trustedOrigins && section.trustedOrigins.length > 0) {
+    options.trustedOrigins = section.trustedOrigins;
+  }
+  if (extras.database !== undefined) {
+    options.database = extras.database;
+  }
+  if (extras.secret !== undefined) {
+    options.secret = extras.secret;
+  }
+  return options;
+}
+
+/**
+ * A Better Auth session payload: `auth.api.getSession`'s result on the server (records carry `Date`
+ * fields), or the client's parsed `getSession().data` (dates revived from ISO strings).
+ */
+export interface AuthSessionPayload {
+  user?: AuthRecord | null;
+  session?: AuthRecord | null;
 }
 
 /**
  * Map a Better Auth session payload ({ user, session }) onto the connector's SessionInfo shape.
  *
- * @param {unknown} data - `auth.api.getSession` result or the client's `getSession().data`
+ * @param {AuthSessionPayload | null | undefined} data - `auth.api.getSession` result or the
+ *   client's `getSession().data`
  * @returns {SessionInfo | null}
  */
-export function toSessionInfo(data: unknown): SessionInfo | null {
-  if (!data || typeof data !== "object") {
+export function toSessionInfo(data: AuthSessionPayload | null | undefined): SessionInfo | null {
+  if (!data) {
     return null;
   }
-  const { user, session } = data as { user?: Record<string, unknown>; session?: unknown };
-  if (!user || typeof user.id !== "string") {
+  const { user, session } = data;
+  if (!user || !isString(user.id)) {
     return null;
   }
-  return {
-    userId: user.id,
-    ...(typeof user.role === "string" && user.role !== "" ? { role: user.role } : {}),
-    user,
-    ...(session === undefined ? {} : { session }),
-  };
+  const info: SessionInfo = { userId: user.id };
+  if (isString(user.role) && user.role !== "") {
+    info.role = user.role;
+  }
+  info.user = user;
+  if (session !== undefined) {
+    info.session = session;
+  }
+  return info;
 }

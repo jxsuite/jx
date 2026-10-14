@@ -6,6 +6,8 @@
 import { describe, expect, test } from "bun:test";
 import { injectContext, nodeImportRebaser } from "../src/site/context-injection";
 import { resolvePrototypes } from "../src/site/prototype-resolver";
+import type { ProjectSections } from "../src/site/project-sections";
+import type { JxDocument } from "@jxsuite/schema/types";
 import type { SiteRoute } from "@jxsuite/site/context";
 
 describe("nodeImportRebaser", () => {
@@ -21,15 +23,15 @@ describe("nodeImportRebaser", () => {
   });
 
   test("injectContext wires the rebaser when given a project root", () => {
-    const doc: Record<string, any> = {};
-    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } } as any, route, "/site");
-    expect(doc.imports.helpers).toBe("./../../lib/helpers.ts");
+    const doc: JxDocument = {};
+    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } }, route, "/site");
+    expect(doc.imports?.helpers).toBe("./../../lib/helpers.ts");
   });
 
   test("no project root leaves the authored path alone", () => {
-    const doc: Record<string, any> = {};
-    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } } as any, route);
-    expect(doc.imports.helpers).toBe("./lib/helpers.ts");
+    const doc: JxDocument = {};
+    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } }, route);
+    expect(doc.imports?.helpers).toBe("./lib/helpers.ts");
   });
 });
 
@@ -38,7 +40,7 @@ describe("injectContext with the prototype resolver", () => {
   const baseRoute: SiteRoute = { urlPattern: "/about" };
 
   test("resolves ContentEntry with missing content type gracefully", async () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       imports: {
         ContentEntry: "@jxsuite/parser/ContentEntry.class.json",
       },
@@ -50,12 +52,14 @@ describe("injectContext with the prototype resolver", () => {
         },
       },
     };
-    const sections = { content: new Map([["posts", [{ data: {}, id: "x" }]]]) } as any;
+    const sections: ProjectSections = {
+      content: new Map([["posts", [{ body: null, data: {}, id: "x" }]]]),
+    };
     injectContext(doc, baseProject, baseRoute);
     await resolvePrototypes(doc, baseRoute, import.meta.dir, {
       config: baseProject,
       sections,
     });
-    expect(doc.state.post).toBeNull();
+    expect(doc.state?.post).toBeNull();
   });
 });

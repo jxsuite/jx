@@ -7,12 +7,15 @@
  * resolves to the registered format names instead of a project.json key.
  */
 
+import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+
 /** Options for {@link resolveContextPointer}. */
 export interface ResolveContextOptions {
   /** The project configuration object the pointer walks over. */
-  projectConfig: Record<string, unknown>;
+  projectConfig: ProjectConfig;
   /** Scope record supplying `{@param}` substitutions (e.g. the enclosing form value). */
-  scope?: Record<string, unknown> | undefined;
+  scope?: JsonObject | undefined;
   /** Registered formats backing the `$formats` virtual root. */
   formats?: { name: string }[] | undefined;
 }
@@ -30,9 +33,13 @@ const PARAM_SEGMENT = /^\{@(\w+)\}$/;
  *
  * @param {string} pointer
  * @param {ResolveContextOptions} opts
- * @returns {unknown} The resolved value, or `undefined` when the pointer does not resolve.
+ * @returns {JsonValue | undefined} The resolved value, or `undefined` when the pointer does not
+ *   resolve.
  */
-export function resolveContextPointer(pointer: string, opts: ResolveContextOptions): unknown {
+export function resolveContextPointer(
+  pointer: string,
+  opts: ResolveContextOptions,
+): JsonValue | undefined {
   if (!pointer.startsWith("#/$context/")) {
     return undefined;
   }
@@ -42,7 +49,7 @@ export function resolveContextPointer(pointer: string, opts: ResolveContextOptio
     const match = raw.match(PARAM_SEGMENT);
     if (match) {
       const value = opts.scope?.[match[1]!];
-      if (typeof value !== "string" && typeof value !== "number") {
+      if (!isString(value) && !isNumber(value)) {
         return undefined;
       }
       const substituted = String(value);
@@ -62,12 +69,17 @@ export function resolveContextPointer(pointer: string, opts: ResolveContextOptio
     return (opts.formats ?? []).map((format) => format.name);
   }
 
-  let node: unknown = opts.projectConfig;
+  /* SAFETY: the project config is parsed project.json, so every value under it is JSON;
+     ProjectConfig is the typed reading of that same object. */
+  let node: JsonValue | undefined = opts.projectConfig as JsonObject;
   for (const segment of segments) {
-    if (node === null || typeof node !== "object") {
+    if (!isNonNullObject(node)) {
       return undefined;
     }
-    node = (node as Record<string, unknown>)[segment];
+    /* SAFETY: node is a JSON object or array, and a pointer segment reads an array by its own
+       Index (and `length`) keys exactly as it reads an object's members, so the object view of
+       an array addresses the same values. */
+    node = (node as JsonObject)[segment];
   }
   return node;
 }

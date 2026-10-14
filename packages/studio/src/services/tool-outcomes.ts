@@ -26,23 +26,43 @@
  * @docs studio/ai/chat
  */
 
-import { isSealContent } from "@jxsuite/ai/messages";
+import { SEAL_RELOADED, isSealContent } from "@jxsuite/ai/messages";
 import type { ToolResult } from "@jxsuite/ai/tools";
+import { isBoolean, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { PersistedMessage } from "./ai-session-store";
-import { UNANSWERED_TOOL_RESULT } from "./context-manager";
 
 /** The tool that suspends a turn on the author (services/ai-ask.ts). */
-const ASK_TOOL = "ask_user";
+export const ASK_TOOL = "ask_user";
 
-/** The outcome of an ordinary call that never ran to completion — the seal's own words. */
-const NEVER_COMPLETED = JSON.parse(UNANSWERED_TOOL_RESULT) as ToolResult;
+/**
+ * The outcome of an ordinary call that never ran to completion — the seal's own words: the object
+ * `context-manager.ts`'s `UNANSWERED_TOOL_RESULT` serializes, built from the same sentence.
+ */
+const NEVER_COMPLETED: ToolResult = { success: false, error: SEAL_RELOADED };
 
-/** A tool-call record as persisted: `id` and `name` are what pairing and the chip read. */
+/**
+ * A tool-call record as persisted: `id` and `name` are what pairing and the chip read. Every member
+ * is optional and unchecked, because the records come back out of storage; each is narrowed where
+ * it is read.
+ */
 interface PersistedToolCall {
   id?: unknown;
   name?: unknown;
   result?: unknown;
-  [key: string]: unknown;
+}
+
+/**
+ * Whether a persisted `toolCalls` entry is a record at all. Any object qualifies — every member of
+ * {@link PersistedToolCall} is optional — and a primitive (a corrupt or foreign payload) is passed
+ * through untouched by both directions.
+ */
+function isToolCallRecord(value: unknown): value is PersistedToolCall {
+  return isNonNullObject(value);
+}
+
+/** Whether a parsed tool message is a `ToolResult`: an object whose `success` is a boolean. */
+function isToolResult(value: unknown): value is ToolResult {
+  return isNonNullObject(value) && "success" in value && isBoolean(value.success);
 }
 
 /**
@@ -61,28 +81,29 @@ export function stripToolResults(messages: readonly PersistedMessage[]): Persist
     return {
       ...message,
       toolCalls: message.toolCalls.map((call) => {
-        if (!call || typeof call !== "object") {
+        if (!isToolCallRecord(call)) {
           return call;
         }
-        const { result: _result, ...rest } = call as PersistedToolCall;
+        const { result: _result, ...rest } = call;
         return rest;
       }),
     };
   });
 }
 
-/** A tool message's content as a `ToolResult`, or null when it is not one. */
-function parseToolResult(content: unknown): ToolResult | null {
-  if (typeof content !== "string") {
+/**
+ * A tool message's content as a `ToolResult`, or null when it is not one.
+ *
+ * The content is re-checked as a string although {@link PersistedMessage} declares one: the message
+ * came back out of storage, where a corrupt or foreign payload can hold anything.
+ */
+function parseToolResult(content: string): ToolResult | null {
+  if (!isString(content)) {
     return null;
   }
   try {
-    const parsed = JSON.parse(content) as unknown;
-    return parsed &&
-      typeof parsed === "object" &&
-      typeof (parsed as ToolResult).success === "boolean"
-      ? (parsed as ToolResult)
-      : null;
+    const parsed: unknown = JSON.parse(content);
+    return isToolResult(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -114,7 +135,7 @@ export function backfillToolResults(messages: readonly PersistedMessage[]): Pers
         break;
       }
       const result = parseToolResult(reply.content);
-      if (typeof reply.toolCallId === "string" && result && !replies.has(reply.toolCallId)) {
+      if (isString(reply.toolCallId) && result && !replies.has(reply.toolCallId)) {
         replies.set(reply.toolCallId, result);
         if (isSealContent(reply.content)) {
           sealed.add(reply.toolCallId);
@@ -123,12 +144,11 @@ export function backfillToolResults(messages: readonly PersistedMessage[]): Pers
     }
     return {
       ...message,
-      toolCalls: message.toolCalls.map((call) => {
-        if (!call || typeof call !== "object") {
-          return call;
+      toolCalls: message.toolCalls.map((record) => {
+        if (!isToolCallRecord(record)) {
+          return record;
         }
-        const record = call as PersistedToolCall;
-        const id = typeof record.id === "string" ? record.id : undefined;
+        const id = isString(record.id) ? record.id : undefined;
         const answered = id === undefined ? undefined : replies.get(id);
         if (record.name === ASK_TOOL) {
           /* A question's only outcomes are an answer or none: a seal is not an answer, and a

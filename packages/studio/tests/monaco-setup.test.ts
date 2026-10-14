@@ -6,39 +6,68 @@
  */
 import "./harness";
 import { describe, expect, mock, test } from "bun:test";
+import { flattenSchema } from "@jxsuite/schema/project-schemas";
+import jxSchema from "@jxsuite/schema/schema.json";
+import { isNonNullObject } from "@jxsuite/schema/guards";
+import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
 import { installMonacoSetupMocks, MONACO_SETUP_ENTRIES } from "./monaco-setup-mocks";
 
-const setDiagnosticsOptions = mock((_opts: unknown) => {});
+const setDiagnosticsOptions = mock((_opts: DiagnosticsOptions) => {});
 
 installMonacoSetupMocks({ jsonDefaults: { setDiagnosticsOptions } });
 
 class FakeWorker {
   url: string;
-  options: unknown;
-  constructor(url: string, options?: unknown) {
+  options: WorkerOptions | undefined;
+  constructor(url: string, options?: WorkerOptions) {
     this.url = url;
     this.options = options;
   }
 }
-(globalThis as any).Worker = FakeWorker;
-(globalThis as any).self ??= globalThis;
+// Plain assignment semantics, as `globalThis.Worker = …` would be: a recording stand-in.
+Object.assign(globalThis, { Worker: FakeWorker });
+if (typeof self === "undefined") {
+  Object.assign(globalThis, { self: globalThis });
+}
 
 const { applyProjectSchemas, modelUriFor, resetProjectSchemas } =
   await import("../src/services/monaco-setup");
 
-function diagnosticsArg(): any {
+/** One entry of a `setDiagnosticsOptions` payload's `schemas` list. */
+type SchemaRegistration = NonNullable<DiagnosticsOptions["schemas"]>[number];
+
+/** The `schemas` list of a payload; every registration monaco-setup makes carries one. */
+function registrations(opts: DiagnosticsOptions): readonly SchemaRegistration[] {
+  if (!opts.schemas) {
+    throw new Error("setDiagnosticsOptions was called without a schemas list");
+  }
+  return opts.schemas;
+}
+
+/** The registration at `index`, failing loudly rather than reading through `undefined`. */
+function registrationAt(opts: DiagnosticsOptions, index: number): SchemaRegistration {
+  const entry = registrations(opts)[index];
+  if (!entry) {
+    throw new Error(`no schema registration at index ${index}`);
+  }
+  return entry;
+}
+
+function diagnosticsArg(): DiagnosticsOptions {
   const [opts] = setDiagnosticsOptions.mock.calls[0]!;
   return opts;
 }
 
-function latestDiagnosticsArg(): any {
+function latestDiagnosticsArg(): DiagnosticsOptions {
   const call = setDiagnosticsOptions.mock.calls.at(-1)!;
   return call[0];
 }
 
 describe("monaco-setup — JSON diagnostics registration", () => {
   test("registers the bundled fallback once at import", () => {
-    expect(setDiagnosticsOptions).toHaveBeenCalledTimes(1);
+    expect(setDiagnosticsOptions.mock.calls).toHaveLength(1);
+    // The one registration is the shipped core schema, flattened for offline resolution.
+    expect(registrationAt(diagnosticsArg(), 0).schema).toEqual(flattenSchema(jxSchema));
   });
 
   test("registers validation with comments disallowed", () => {
@@ -49,10 +78,10 @@ describe("monaco-setup — JSON diagnostics registration", () => {
   });
 
   test("registers the JX document schema for document folders", () => {
-    const [jx] = diagnosticsArg().schemas;
+    const jx = registrationAt(diagnosticsArg(), 0);
     expect(jx.uri).toBe("https://jxsuite.com/schema/v1");
     expect(jx.schema).toBeTruthy();
-    expect(typeof jx.schema).toBe("object");
+    expect(isNonNullObject(jx.schema)).toBe(true);
     for (const pattern of [
       "pages/*.json",
       "pages/**/*.json",
@@ -68,7 +97,7 @@ describe("monaco-setup — JSON diagnostics registration", () => {
   });
 
   test("registers the project schema for project.json", () => {
-    const [, project] = diagnosticsArg().schemas;
+    const project = registrationAt(diagnosticsArg(), 1);
     expect(project.uri).toBe("https://jxsuite.com/schema/project/v1");
     expect(project.fileMatch).toEqual(["project.json"]);
     expect(project.schema).toBeTruthy();
@@ -82,8 +111,11 @@ describe("monaco-setup — JSON diagnostics registration", () => {
      `enableSchemaRequest` being off turns that into "No schema request service available", and the
      file validates against an empty schema. */
   test("registers the same schemas under the entry-document file:// ids", () => {
-    const [documentByPattern, projectByPattern, projectById, documentById] =
-      diagnosticsArg().schemas;
+    const opts = diagnosticsArg();
+    const documentByPattern = registrationAt(opts, 0);
+    const projectByPattern = registrationAt(opts, 1);
+    const projectById = registrationAt(opts, 2);
+    const documentById = registrationAt(opts, 3);
     expect(projectById.uri).toBe("file:///project.schema.json");
     expect(projectById.schema).toBe(projectByPattern.schema);
     expect(documentById.uri).toBe("file:///document.schema.json");
@@ -91,9 +123,7 @@ describe("monaco-setup — JSON diagnostics registration", () => {
   });
 
   test("the file:// registrations carry no fileMatch — they resolve by id only", () => {
-    const byId = diagnosticsArg().schemas.filter((s: { uri: string }) =>
-      s.uri.startsWith("file:///"),
-    );
+    const byId = registrations(diagnosticsArg()).filter((s) => s.uri.startsWith("file:///"));
     expect(byId).toHaveLength(2);
     for (const entry of byId) {
       expect(entry.fileMatch).toBeUndefined();
@@ -102,8 +132,13 @@ describe("monaco-setup — JSON diagnostics registration", () => {
 });
 
 describe("monaco-setup — MonacoEnvironment workers", () => {
-  const getWorker = (label: string): FakeWorker =>
-    (self as any).MonacoEnvironment.getWorker(undefined, label);
+  const getWorker = (label: string): FakeWorker => {
+    const worker = self.MonacoEnvironment?.getWorker?.("", label);
+    if (!(worker instanceof FakeWorker)) {
+      throw new Error(`MonacoEnvironment.getWorker(${label}) did not construct a Worker`);
+    }
+    return worker;
+  };
 
   /**
    * Workers resolve against the ENTRY, which `tests/with-dom.ts` anchors at the url the repo dev
@@ -156,8 +191,8 @@ describe("monaco-setup — MonacoEnvironment workers", () => {
 });
 
 describe("monaco-setup — applyProjectSchemas", () => {
-  const bundledDocumentSchema = diagnosticsArg().schemas[0].schema;
-  const bundledProjectSchema = diagnosticsArg().schemas[1].schema;
+  const bundledDocumentSchema = registrationAt(diagnosticsArg(), 0).schema;
+  const bundledProjectSchema = registrationAt(diagnosticsArg(), 1).schema;
 
   test("a null or empty payload leaves the bundled registration untouched", () => {
     const before = setDiagnosticsOptions.mock.calls.length;
@@ -171,16 +206,19 @@ describe("monaco-setup — applyProjectSchemas", () => {
     const documentSchema = { $ref: "https://jxsuite.com/schema/v1" };
     expect(applyProjectSchemas({ document: documentSchema, project })).toBe(true);
     const opts = latestDiagnosticsArg();
-    expect(opts.schemas[0].schema).toBe(documentSchema);
-    expect(opts.schemas[0].uri).toBe("https://jxsuite.com/schema/v1");
-    expect(opts.schemas[0].fileMatch).toContain("pages/**/*.json");
-    expect(opts.schemas[1].schema).toBe(project);
-    expect(opts.schemas[1].uri).toBe("https://jxsuite.com/schema/project/v1");
-    expect(opts.schemas[1].fileMatch).toEqual(["project.json"]);
+    expect(registrationAt(opts, 0).schema).toBe(documentSchema);
+    expect(registrationAt(opts, 0).uri).toBe("https://jxsuite.com/schema/v1");
+    expect(registrationAt(opts, 0).fileMatch).toContain("pages/**/*.json");
+    expect(registrationAt(opts, 1).schema).toBe(project);
+    expect(registrationAt(opts, 1).uri).toBe("https://jxsuite.com/schema/project/v1");
+    expect(registrationAt(opts, 1).fileMatch).toEqual(["project.json"]);
     // The per-project pair must ALSO reach the ids the committed entry documents bind by,
     // Otherwise the `$schema` pointer keeps resolving to the core fallback.
-    expect(opts.schemas[2]).toEqual({ schema: project, uri: "file:///project.schema.json" });
-    expect(opts.schemas[3]).toEqual({
+    expect(registrationAt(opts, 2)).toEqual({
+      schema: project,
+      uri: "file:///project.schema.json",
+    });
+    expect(registrationAt(opts, 3)).toEqual({
       schema: documentSchema,
       uri: "file:///document.schema.json",
     });
@@ -190,9 +228,9 @@ describe("monaco-setup — applyProjectSchemas", () => {
     const project = { type: "object" };
     expect(applyProjectSchemas({ project })).toBe(true);
     const opts = latestDiagnosticsArg();
-    expect(opts.schemas[0].schema).toBe(bundledDocumentSchema);
-    expect(opts.schemas[1].schema).toBe(project);
-    expect(opts.schemas[3].schema).toBe(bundledDocumentSchema);
+    expect(registrationAt(opts, 0).schema).toBe(bundledDocumentSchema);
+    expect(registrationAt(opts, 1).schema).toBe(project);
+    expect(registrationAt(opts, 3).schema).toBe(bundledDocumentSchema);
   });
 
   /* Monaco's JSON adapter calls resetSchema(model.uri) when a model is disposed, which drops the
@@ -200,9 +238,9 @@ describe("monaco-setup — applyProjectSchemas", () => {
      documents at their natural path would mean opening project.schema.json in the source view and
      closing it silently un-registers the project schema for the rest of the session. */
   test("the generated entry documents mount off the registered ids", () => {
-    const ids = diagnosticsArg()
-      .schemas.map((s: { uri: string }) => s.uri)
-      .filter((uri: string) => uri.startsWith("file:///"));
+    const ids = registrations(diagnosticsArg())
+      .map((s) => s.uri)
+      .filter((uri) => uri.startsWith("file:///"));
     for (const name of ["project.schema.json", "document.schema.json"]) {
       expect(modelUriFor(name)).toBe(`file:///.jx/generated/${name}`);
       expect(ids).not.toContain(modelUriFor(name));
@@ -223,8 +261,8 @@ describe("monaco-setup — applyProjectSchemas", () => {
   test("resetProjectSchemas restores the bundled pair", () => {
     resetProjectSchemas();
     const opts = latestDiagnosticsArg();
-    expect(opts.schemas[0].schema).toBe(bundledDocumentSchema);
-    expect(opts.schemas[1].schema).toBe(bundledProjectSchema);
+    expect(registrationAt(opts, 0).schema).toBe(bundledDocumentSchema);
+    expect(registrationAt(opts, 1).schema).toBe(bundledProjectSchema);
   });
 });
 

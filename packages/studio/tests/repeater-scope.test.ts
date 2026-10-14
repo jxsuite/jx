@@ -6,23 +6,41 @@
  * resolveRepeaterItemFields turns the repeater's `items` binding into `item`/`index`/field tokens.
  */
 import { describe, expect, test } from "bun:test";
+import { isMappedArray } from "@jxsuite/schema/guards";
 import { findEnclosingRepeater, resolveRepeaterItemFields } from "../src/editor/repeater-scope";
 
 import type { JxPath } from "../src/state";
-import type { JxMappedArray, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  Bindable,
+  JsonValue,
+  JxMappedArray,
+  JxMutableNode,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 
-/** A minimal repeater node bound to `items`. */
-function repeater(items: unknown, map?: unknown): JxMappedArray {
-  return { $prototype: "Array", items, map: map ?? { tagName: "li" } } as unknown as JxMappedArray;
+/**
+ * A minimal repeater node bound to `items`. It is typed as both a document node (so it can sit in a
+ * `children` array) and a mapped array (so it can be handed to the resolver), which is exactly what
+ * the editor's working document holds for a repeater member.
+ */
+function repeater(
+  items: Bindable<JsonValue[]>,
+  map?: JxMutableNode,
+): JxMutableNode & JxMappedArray {
+  const node: JxMutableNode = { $prototype: "Array", items, map: map ?? { tagName: "li" } };
+  if (!isMappedArray(node)) {
+    throw new Error('repeater fixture must carry $prototype: "Array"');
+  }
+  return node;
 }
 
 describe("findEnclosingRepeater", () => {
   test("finds the Array node at the prefix before the last `map`", () => {
     const arr = repeater({ $ref: "#/state/rows" });
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ children: [arr], tagName: "ul" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     // Path to the <li> template's text: [...,"map","children",0]
     const path = ["children", 0, "children", 0, "map", "children", 0];
     expect(findEnclosingRepeater(doc, path)).toBe(arr);
@@ -31,7 +49,7 @@ describe("findEnclosingRepeater", () => {
   test("nested repeaters — the last `map` picks the innermost Array", () => {
     const inner = repeater({ $ref: "#/state/inner" });
     const outer = repeater({ $ref: "#/state/outer" }, { children: [inner], tagName: "ul" });
-    const doc = { children: [outer], tagName: "div" } as unknown as JxMutableNode;
+    const doc: JxMutableNode = { children: [outer], tagName: "div" };
     // Outer at ["children",0]; its map template holds inner at ["map","children",0].
     // Inner element path: [...,"map","children",0,"map","children",0]
     const path = ["children", 0, "map", "children", 0, "map", "children", 0];
@@ -39,26 +57,28 @@ describe("findEnclosingRepeater", () => {
   });
 
   test("returns null when the path contains no `map` segment", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ tagName: "p" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     expect(findEnclosingRepeater(doc, ["children", 0])).toBeNull();
   });
 
   test("returns null when the node before `map` is not an Array", () => {
     // A `map` key that is not the repeater map: the prefix node is a plain element.
-    const doc = {
+    const doc: JxMutableNode = {
       children: [{ map: { tagName: "span" }, tagName: "div" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const path = ["children", 0, "map", "tagName"];
     expect(findEnclosingRepeater(doc, path)).toBeNull();
   });
 
   test("returns null for empty / null / short paths", () => {
-    const doc = { tagName: "div" } as unknown as JxMutableNode;
-    const missing = undefined as JxPath | undefined;
+    const doc: JxMutableNode = { tagName: "div" };
+    // The first path of an empty multi-selection: there is none, so it reads as `undefined`.
+    const selectedPaths: JxPath[] = [];
+    const missing = selectedPaths.at(0);
     expect(findEnclosingRepeater(doc, [])).toBeNull();
     expect(findEnclosingRepeater(doc, null)).toBeNull();
     expect(findEnclosingRepeater(doc, missing)).toBeNull();
@@ -71,11 +91,11 @@ describe("resolveRepeaterItemFields", () => {
   test("(a) content collection → item.id / item.body / item.data.<field>", () => {
     const arr = repeater({ $ref: "#/state/$docs" });
     const state = { $docs: { $prototype: "ContentCollection", contentType: "docs" } };
-    const projectConfig = {
+    const projectConfig: ProjectConfig = {
       content: {
         docs: { schema: { properties: { order: { type: "number" }, title: { type: "string" } } } },
       },
-    } as unknown as ProjectConfig;
+    };
 
     const tokens = resolveRepeaterItemFields(arr, state, projectConfig);
     expect(tokens).toEqual([
@@ -92,9 +112,9 @@ describe("resolveRepeaterItemFields", () => {
     const arr = repeater({ $ref: "#/state/$posts" });
     // Import-aliased prototype name — detection is on the `contentType` string, not `$prototype`.
     const state = { $posts: { $prototype: "Coll", contentType: "blog" } };
-    const projectConfig = {
+    const projectConfig: ProjectConfig = {
       content: { blog: { schema: { properties: { slug: { type: "string" } } } } },
-    } as unknown as ProjectConfig;
+    };
 
     expect(resolveRepeaterItemFields(arr, state, projectConfig)).toEqual([
       "item",
@@ -164,7 +184,7 @@ describe("resolveRepeaterItemFields", () => {
       resolveRepeaterItemFields(
         repeater({ $ref: "#/state/c" }),
         { c: { contentType: "missing" } },
-        { content: {} } as unknown as ProjectConfig,
+        { content: {} } satisfies ProjectConfig,
       ),
     ).toEqual(["item", "index", "item.id", "item.body"]);
     // Inline array of primitives → no fields.

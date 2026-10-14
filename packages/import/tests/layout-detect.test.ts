@@ -132,17 +132,12 @@ describe("detectLayout", () => {
     expect(result).not.toBeNull();
 
     // Layout should have: header + slot
-    const layoutChildren = result.layout.children as JxElement[];
-    expect(layoutChildren.length).toBe(2); // Header + slot
-    expect(layoutChildren[0]!.tagName).toBe("nav");
-    expect(layoutChildren[1]!.tagName).toBe("slot");
+    expect(result.layout.children).toMatchObject([{ tagName: "nav" }, { tagName: "slot" }]);
 
     // Stripped pages should only have the unique content
     const indexStripped = result.strippedPages.get("pages/index.json")!;
-    const indexChildren = indexStripped.children as JxElement[];
-    expect(indexChildren.length).toBe(1);
-    expect(indexChildren[0]!.textContent).toBe("Welcome");
-    expect((indexStripped as any).$layout).toBe("layouts/base.json");
+    expect(indexStripped.children).toMatchObject([{ textContent: "Welcome" }]);
+    expect(indexStripped.$layout).toBe("layouts/base.json");
   });
 
   test("detects shared header AND footer", () => {
@@ -184,17 +179,15 @@ describe("detectLayout", () => {
     expect(result).not.toBeNull();
 
     // Layout: header + slot + footer
-    const layoutChildren = result.layout.children as JxElement[];
-    expect(layoutChildren.length).toBe(3);
-    expect(layoutChildren[0]!.tagName).toBe("nav");
-    expect(layoutChildren[1]!.tagName).toBe("slot");
-    expect(layoutChildren[2]!.tagName).toBe("footer");
+    expect(result.layout.children).toMatchObject([
+      { tagName: "nav" },
+      { tagName: "slot" },
+      { tagName: "footer" },
+    ]);
 
     // Each page should only have its main content
     for (const [, stripped] of result.strippedPages) {
-      const children = stripped.children as JxElement[];
-      expect(children.length).toBe(1);
-      expect(children[0]!.tagName).toBe("main");
+      expect(stripped.children).toMatchObject([{ tagName: "main" }]);
     }
   });
 

@@ -32,13 +32,16 @@ import {
   setAuthorizationHost,
 } from "./github-signin";
 import { studioDir } from "./canvas-runtime";
-import type { ProjectServerHandle } from "@jxsuite/server/project-server";
+import type { ProjectServerHandle, ProjectServerSession } from "@jxsuite/server/project-server";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 import type { ProjectSession } from "./project-session";
-import type { SiteConfig, StudioRPC } from "./rpc-schema";
+import type { StudioRPC } from "./rpc-schema";
 
-interface WindowEntry {
-  win: BrowserWindow;
-  rpc: ReturnType<typeof buildWindowRpc>;
+/**
+ * A window's state apart from the window and its RPC — what exists before either is constructed,
+ * and what the RPC handlers read and write.
+ */
+interface WindowState {
   session: ProjectSession;
   projectRoot: string | null;
   /**
@@ -51,6 +54,11 @@ interface WindowEntry {
     maximized: boolean;
     restoreFrame: { x: number; y: number; width: number; height: number };
   };
+}
+
+interface WindowEntry extends WindowState {
+  win: BrowserWindow;
+  rpc: ReturnType<typeof buildWindowRpc>;
 }
 
 const windows = new Map<number, WindowEntry>();
@@ -95,7 +103,7 @@ function titleFor(root: string | null): string {
   return `${name} — Jx Studio`;
 }
 
-function findWindowByRoot(root: string, except?: WindowEntry): WindowEntry | null {
+function findWindowByRoot(root: string, except?: WindowState): WindowEntry | null {
   const key = normalizeRoot(root);
   for (const entry of windows.values()) {
     if (entry === except) {
@@ -180,30 +188,31 @@ export function openProjectWindow(projectRoot: string | null): BrowserWindow {
   }
 
   const session = createProjectSession(projectRoot);
-  const entry: WindowEntry = {
-    win: undefined as unknown as BrowserWindow,
-    rpc: undefined as unknown as ReturnType<typeof buildWindowRpc>,
+  const state: WindowState = {
     session,
     projectRoot,
     maximize: { maximized: false, restoreFrame: { height: 900, width: 1400, x: 0, y: 0 } },
   };
 
-  // The window is constructed after its rpc, so handlers read entry.win lazily via getWin().
-  entry.rpc = buildWindowRpc(entry, () => entry.win);
+  // The window is constructed after its rpc, so handlers read the window lazily via getWin().
+  const rpc = buildWindowRpc(state, () => win);
   // Push filesystem changes to the webview so the sidebar stays live (mirrors the dev server's SSE).
   session.setFileEventSink((events) => {
     try {
-      entry.rpc.send.onFileEvents({ events });
+      rpc.send.onFileEvents({ events });
     } catch {}
   });
-  entry.win = new BrowserWindow({
+  const win = new BrowserWindow({
     frame: { height: 900, width: 1400, x: 0, y: 0 },
     navigationRules: "^*,views://*,http://127.0.0.1:*",
-    rpc: entry.rpc,
+    rpc,
     title: titleFor(projectRoot),
     titleBarStyle: "hidden",
     url: "views://studio/index.html",
   });
+  /* The same object, completed: what the RPC handlers write through `state` (the project root, the
+     maximize toggle) is what the window map holds, and `findWindowByRoot(…, state)` skips it. */
+  const entry: WindowEntry = Object.assign(state, { rpc, win });
 
   windows.set(entry.win.id, entry);
   // Stand up THIS window's own loopback project server (the cross-origin canvas path). Its single
@@ -220,20 +229,28 @@ export function openProjectWindow(projectRoot: string | null): BrowserWindow {
     resolveSession: () => windowSession,
     studioDir: studioDir(),
   });
-  /*
-   * The OAuth redirect lands on THIS window's loopback server, so the newest window owns the
-   * redirect. That is the right answer for a flow the user starts from a window and finishes in a
-   * browser seconds later; a sign-in outstanding when another window opens is abandoned, and says
-   * so, rather than silently redirecting to a port nobody is listening on.
-   */
-  if (entry.server) {
-    setAuthorizationHost({
-      authorizer: entry.server.authorizer,
-      port: entry.server.server.port ?? 0,
-    });
-  }
+  claimAuthorizationRedirect(entry);
   entry.win.on("close", () => disposeWindow(entry.win.id));
   return entry.win;
+}
+
+/**
+ * Point the OAuth redirect at this window's loopback server, when it has one.
+ *
+ * The redirect lands on THIS window's server, so the newest window owns it. That is the right
+ * answer for a flow the user starts from a window and finishes in a browser seconds later; a
+ * sign-in outstanding when another window opens is abandoned, and says so, rather than silently
+ * redirecting to a port nobody is listening on. A window whose server did not stand up (`server` is
+ * optional on the entry, as `getCanvasUrl` also honours) leaves the current owner in place.
+ */
+function claimAuthorizationRedirect(entry: WindowState): void {
+  const { server } = entry;
+  if (server) {
+    setAuthorizationHost({
+      authorizer: server.authorizer,
+      port: server.server.port ?? 0,
+    });
+  }
 }
 
 /**
@@ -241,17 +258,19 @@ export function openProjectWindow(projectRoot: string | null): BrowserWindow {
  * jxServerFunction (the canvas live-render path) plus the read paths. Window controls, git,
  * dialogs, and writes stay ONLY on the Electroview RPC (never exposed on the loopback surface).
  */
-function buildWsHandlers(
-  entry: WindowEntry,
-): Record<string, (params: unknown) => Promise<unknown>> {
+function buildWsHandlers(entry: WindowEntry) {
   const { session } = entry;
+  /* SAFETY: the socket's upgrade is gated on this server's per-window token and a loopback Origin,
+     so its only client is this window's canvas transport, which sends each of these four methods
+     the params StudioRPC declares for it. The params are not decoded: a malformed frame fails inside
+     the session handler, and project-server's dispatch answers that throw with an error frame. */
   return {
     jxResolve: (params) => session.jxResolve(params as { body: string }),
     jxServerFunction: (params) => session.jxServerFunction(params as { body: string }),
     readFile: (params) => session.handleReadFile(params as { path: string }),
     resolveSiteContext: (params) =>
       session.handleResolveSiteContext(params as { filePath: string }),
-  };
+  } satisfies ProjectServerSession["handlers"];
 }
 
 function disposeWindow(id: number) {
@@ -266,7 +285,7 @@ function disposeWindow(id: number) {
 
 // ─── Per-window RPC ─────────────────────────────────────────────────────────────
 
-function buildWindowRpc(entry: WindowEntry, getWin: () => BrowserWindow) {
+function buildWindowRpc(entry: WindowState, getWin: () => BrowserWindow) {
   const { session } = entry;
   const git = createGitOps(session);
   const pkg = createPackageOps(session);
@@ -462,11 +481,13 @@ function buildWindowRpc(entry: WindowEntry, getWin: () => BrowserWindow) {
           try {
             getWin().setTitle(titleFor(params.root));
           } catch {}
-          let config: SiteConfig | null = null;
+          let config: ProjectConfig | null = null;
           try {
+            /* SAFETY: project.json is this project's config by definition, and every ProjectConfig
+               member is optional; a file that does not parse leaves `config` null. */
             config = JSON.parse(
               await session.handleReadFile({ path: "project.json" }),
-            ) as SiteConfig;
+            ) as ProjectConfig;
           } catch {}
           return { config, deduped: false };
         },

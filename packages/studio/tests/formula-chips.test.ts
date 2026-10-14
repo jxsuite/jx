@@ -14,6 +14,8 @@ import { flush, pointer } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
 import { chipSummary, formulaChipStrip } from "../src/ui/formula-chips";
 import { mountExpressionEditor } from "../src/ui/expression-editor";
+import type { ExpressionEditorOpts } from "../src/ui/expression-editor";
+import type { ExpressionValue } from "../src/ui/formula-chips";
 
 const hosts: HTMLElement[] = [];
 
@@ -34,7 +36,10 @@ interface MountedStrip {
  * The strip is the editor's depth-0 header, so the whole editor is what draws it — which is also
  * what makes these tests the drawing's real contract rather than a helper's.
  */
-async function mount(node: unknown, opts: Record<string, unknown> = {}): Promise<MountedStrip> {
+async function mount(
+  node: ExpressionValue,
+  opts: Partial<ExpressionEditorOpts> = {},
+): Promise<MountedStrip> {
   const picks: (string | number)[][] = [];
   const container = document.createElement("div");
   document.body.append(container);
@@ -44,29 +49,36 @@ async function mount(node: unknown, opts: Record<string, unknown> = {}): Promise
     onChipSelect: (p: (string | number)[]) => picks.push(p),
     stateDefs: ["count", "factor", "status", "busy", "flag", "n", "lineTotal"],
     ...opts,
-  } as never);
+  });
   await flush(6);
   return { container, picks };
 }
 
 /** The model's answer for a node, as `label@path` pairs — the whole strip in one comparison. */
-function strip(node: unknown, opts: Record<string, unknown> = {}): string[] {
-  return formulaChipStrip(node, opts as never).map((c) => `${c.label}@${c.key}`);
+function strip(node: ExpressionValue): string[] {
+  return formulaChipStrip(node).map((c) => `${c.label}@${c.key}`);
+}
+
+/** The first element under `root` matching `selector`; the test fails if the drawing lacks it. */
+function drawn(root: ParentNode, selector: string): HTMLElement {
+  const el = root.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`the expression editor draws no ${selector}`);
+  }
+  return el;
 }
 
 function chips(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll('[part="chip"]')] as HTMLElement[];
+  return [...container.querySelectorAll('[part="chip"]')].filter((el) => el instanceof HTMLElement);
 }
 
 function chipLabels(container: HTMLElement): string[] {
-  return chips(container).map(
-    (c) => (c.querySelector('[part="chip-label"]') as HTMLElement).textContent!,
-  );
+  return chips(container).map((c) => drawn(c, '[part="chip-label"]').textContent);
 }
 
 /** The one chip drawn as a branch off the chain rather than a link of it. */
 function groupChip(container: HTMLElement): HTMLElement {
-  return container.querySelector('[part="chip"][data-group="true"]') as HTMLElement;
+  return drawn(container, '[part="chip"][data-group="true"]');
 }
 
 const CHAIN_NODE = {

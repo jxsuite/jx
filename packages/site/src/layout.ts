@@ -18,7 +18,8 @@
  * only thing this module asks for is a {@link LayoutLoader}, and everything else is pure.
  */
 
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JxAttributeValue, JxDocument, JxElement, ProjectConfig } from "@jxsuite/schema/types";
 
 /**
  * Read one layout document by the `$layout` reference that named it.
@@ -32,25 +33,24 @@ export type LayoutLoader = (layoutRef: string) => Promise<JxDocument> | JxDocume
  * Resolve a page's layout, wrapping the page content in the layout structure.
  *
  * @param {JxDocument} pageDoc - The raw page JSON document
- * @param {Record<string, unknown>} projectConfig - Site configuration (for defaults.layout)
+ * @param {ProjectConfig} projectConfig - Site configuration (for defaults.layout)
  * @param {LayoutLoader} load - Reads a layout document by its `$layout` reference
  * @returns {Promise<JxDocument>} The merged document (layout wrapping page content)
  */
 export async function resolveLayout(
   pageDoc: JxDocument,
-  projectConfig: Record<string, unknown>,
+  projectConfig: ProjectConfig,
   load: LayoutLoader,
 ): Promise<JxDocument> {
   // Determine which layout to use
-  const layoutRef =
-    pageDoc.$layout ?? (projectConfig.defaults as Record<string, unknown>)?.layout ?? null;
+  const layoutRef = pageDoc.$layout ?? projectConfig.defaults?.layout ?? null;
 
   if (!layoutRef) {
     // No layout — return page as-is
     return pageDoc;
   }
 
-  let layoutDoc = await load(layoutRef as string);
+  let layoutDoc = await load(layoutRef);
 
   // Check for nested layouts (layout inheriting from another layout)
   if (layoutDoc.$layout) {
@@ -59,12 +59,13 @@ export async function resolveLayout(
 
   // Distribute page children into layout slots
   const rawChildren = pageDoc.children ?? [];
-  const pageChildren =
-    typeof rawChildren === "string"
-      ? [rawChildren]
-      : Array.isArray(rawChildren)
-        ? rawChildren
-        : ([] as (JxElement | string)[]);
+  /* The declared type has no string form, but an authored page can still write `"children": "Hi"`
+     and the parser does not reject it, so the bare string is kept as the one child it means. */
+  const pageChildren: (JxElement | string)[] = isString(rawChildren)
+    ? [rawChildren]
+    : Array.isArray(rawChildren)
+      ? rawChildren
+      : [];
   const merged = deepClone(layoutDoc);
 
   distributeSlots(merged, pageChildren);
@@ -119,24 +120,20 @@ export async function resolveLayout(
  * @param {(JxElement | string)[]} children - Page children to distribute
  */
 function distributeSlots(node: JxElement, children: (JxElement | string)[]) {
-  if (!node || typeof node !== "object") {
-    return;
-  }
-  if (!Array.isArray(node.children)) {
-    return;
-  }
-
-  // Collect named and default children
-  const named = new Map<string, (JxElement | string)[]>(); // Slot name → children[]
+  /* Collect named and default children. A layout with no children array has no slots, and
+     `fillSlots` returns before reading either collection, so collecting first changes nothing. */
+  const named = new Map<JxAttributeValue, (JxElement | string)[]>(); // Slot name → children[]
   const defaults: (JxElement | string)[] = []; // Children without a slot target
 
   for (const child of children) {
-    if (child && typeof child === "object" && child.attributes?.slot) {
-      const slotName = child.attributes.slot as string;
-      if (!named.has(slotName)) {
-        named.set(slotName, []);
+    const slotName = isNonNullObject(child) ? child.attributes?.slot : undefined;
+    if (slotName) {
+      let bucket = named.get(slotName);
+      if (!bucket) {
+        bucket = [];
+        named.set(slotName, bucket);
       }
-      (named.get(slotName) as (JxElement | string)[]).push(child);
+      bucket.push(child);
     } else {
       defaults.push(child);
     }
@@ -149,16 +146,16 @@ function distributeSlots(node: JxElement, children: (JxElement | string)[]) {
 /**
  * Recursively walk the tree and replace <slot> elements with distributed content.
  *
- * @param {JxElement} node
- * @param {Map<string, (JxElement | string)[]>} named
+ * @param {JxElement | string} node - A text child is passed through and ignored
+ * @param {Map<JxAttributeValue, (JxElement | string)[]>} named
  * @param {(JxElement | string)[]} defaults
  */
 function fillSlots(
-  node: JxElement,
-  named: Map<string, (JxElement | string)[]>,
+  node: JxElement | string,
+  named: Map<JxAttributeValue, (JxElement | string)[]>,
   defaults: (JxElement | string)[],
 ) {
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return;
   }
   if (!Array.isArray(node.children)) {
@@ -168,13 +165,14 @@ function fillSlots(
   const newChildren: (JxElement | string)[] = [];
 
   for (const child of node.children) {
-    if (child && typeof child === "object" && child.tagName === "slot") {
+    if (isNonNullObject(child) && child.tagName === "slot") {
       const slotName = child.attributes?.name;
+      const slotted = slotName ? named.get(slotName) : undefined;
 
-      if (slotName && named.has(slotName as string)) {
+      if (slotName && slotted) {
         // Named slot — replace with matching children
-        newChildren.push(...(named.get(slotName as string) as (JxElement | string)[]));
-        named.delete(slotName as string); // Consumed
+        newChildren.push(...slotted);
+        named.delete(slotName); // Consumed
       } else if (!slotName && defaults.length > 0) {
         // Default slot — replace with unassigned children
         newChildren.push(...defaults);
@@ -188,7 +186,7 @@ function fillSlots(
       }
     } else {
       // Not a slot — recurse into it
-      fillSlots(child as JxElement, named, defaults);
+      fillSlots(child, named, defaults);
       newChildren.push(child);
     }
   }

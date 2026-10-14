@@ -23,11 +23,14 @@ describe("perfLog", () => {
     }
   });
 
-  test("stays silent when debug mode is off", () => {
+  test("stays silent when debug mode is off, reading the flag on every call", () => {
     const debug = spyOn(console, "debug").mockImplementation(() => {});
     try {
       perfLog("quiet-event");
-      expect(debug).not.toHaveBeenCalled();
+      localStorage.setItem("jx-canvas-debug", "1");
+      perfLog("loud-event");
+      // Only the event logged after the flag flipped reaches the console.
+      expect(debug.mock.calls).toEqual([["[jx-canvas] loud-event", ""]]);
     } finally {
       debug.mockRestore();
     }

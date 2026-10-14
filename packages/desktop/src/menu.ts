@@ -8,11 +8,31 @@
  * a macOS user looks for them; it does not keep a second claim on the keyboard.
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { ApplicationMenu } from "electrobun/main";
 import type { ApplicationMenuItemConfig } from "electrobun/main";
 import { dirname } from "node:path";
 import { openFileDialog } from "./utils";
 import { openProjectWindow } from "./window-manager";
+
+/** An application-menu click whose item declared an `action`. */
+interface MenuActionEvent {
+  readonly data: { readonly action: string };
+}
+
+/**
+ * Electrobun hands `application-menu-clicked` handlers an untyped event; the item's `action` rides
+ * on `event.data`. A click on a role item (Close Window) carries no action and fails this check.
+ */
+function isMenuActionEvent(event: unknown): event is MenuActionEvent {
+  return (
+    isNonNullObject(event) &&
+    "data" in event &&
+    isNonNullObject(event.data) &&
+    "action" in event.data &&
+    isString(event.data.action)
+  );
+}
 
 export function installApplicationMenu() {
   const menu: ApplicationMenuItemConfig[] = [
@@ -30,7 +50,7 @@ export function installApplicationMenu() {
   ApplicationMenu.setApplicationMenu(menu);
 
   ApplicationMenu.on("application-menu-clicked", async (event) => {
-    const action = (event as { data?: { action?: string } })?.data?.action;
+    const action = isMenuActionEvent(event) ? event.data.action : undefined;
     if (action === "new-window") {
       openProjectWindow(null);
     } else if (action === "open-project") {

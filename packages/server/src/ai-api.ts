@@ -39,6 +39,7 @@ import {
   AI_SESSION_HEADER,
   affinityKey,
   createChatHandler,
+  DEFAULT_UPSTREAM_BASE_URL,
   extractUpstreamErrorMessage,
   isAiSessionId,
   modelsResponse,
@@ -46,11 +47,10 @@ import {
 } from "@jxsuite/ai/gateway";
 import type { GatewayRefusal, Upstream } from "@jxsuite/ai/gateway";
 import { problemDetails } from "@jxsuite/protocol";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { problemTypeForStatus } from "./problem.ts";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 /** The model a chat request that names none is forwarded with. */
 const DEFAULT_MODEL = "gpt-4o";
@@ -120,7 +120,7 @@ function getConfig(req: Request): AiConfig {
   }
 
   const baseFromHeader = Boolean(baseUrlHeader);
-  const baseUrl = baseUrlHeader || process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL;
+  const baseUrl = baseUrlHeader || process.env.OPENAI_BASE_URL || DEFAULT_UPSTREAM_BASE_URL;
 
   if (isBlockedHost(baseUrl)) {
     return {
@@ -261,6 +261,10 @@ export async function handleModels(req: Request): Promise<Response> {
       });
     }
 
+    /* SAFETY: an OpenAI-compatible `/models` answers either the `{ object: "list", data }`
+       envelope or a bare array of model entries. Both arrays are confirmed with Array.isArray
+       below before use, and a body outside the contract (e.g. `null`) throws into the catch below,
+       which answers with the default models. */
     const data = (await upstreamResp.json()) as { data?: ModelEntry[] } | ModelEntry[];
     // OpenAI /models returns { object: "list", data: [{ id, ... }] }
     // Map to our simpler format.
@@ -285,7 +289,7 @@ export async function handleModels(req: Request): Promise<Response> {
       configured: true,
       managed: false,
       upstreamError: "network",
-      upstreamMessage: (error as Error).message,
+      upstreamMessage: errorMessage(error),
     });
   }
 }

@@ -36,6 +36,7 @@
  * @docs framework/site/jx-markdown
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
 /**
@@ -68,7 +69,7 @@ export function neutralizeTemplateAttribute(value: string): string {
  */
 export function makeTemplatesInert(nodes: ContentNodes): void {
   for (const [i, node] of nodes.entries()) {
-    if (typeof node === "string") {
+    if (isString(node)) {
       if (node.includes("${")) {
         nodes[i] = { innerHTML: escapeTemplateText(node), tagName: "span" };
       }
@@ -78,10 +79,11 @@ export function makeTemplatesInert(nodes: ContentNodes): void {
       makeTemplatesInert(node);
       continue;
     }
-    if (typeof node !== "object" || node === null) {
+    // A hole in a hand-built tree (`null`) is skipped, not walked into.
+    if (!isNonNullObject(node)) {
       continue;
     }
-    if (typeof node.textContent === "string" && node.textContent.includes("${")) {
+    if (isString(node.textContent) && node.textContent.includes("${")) {
       node.innerHTML = escapeTemplateText(node.textContent);
       delete node.textContent;
     }
@@ -89,13 +91,13 @@ export function makeTemplatesInert(nodes: ContentNodes): void {
     if (attributes) {
       for (const name of PROSE_ATTRIBUTES) {
         const value = attributes[name];
-        if (typeof value === "string" && value.includes("${")) {
+        if (isString(value) && value.includes("${")) {
           attributes[name] = neutralizeTemplateAttribute(value);
         }
       }
     }
     if (Array.isArray(node.children)) {
-      makeTemplatesInert(node.children as ContentNodes);
+      makeTemplatesInert(node.children);
     }
   }
 }

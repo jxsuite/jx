@@ -12,8 +12,8 @@
  *
  * - **A skip is a SUCCESS.** "You decide" is a real answer to a question; only a stopped turn is a
  *   failure. Reporting a skip as an error would make the model apologise for having asked.
- * - **The answer never becomes a user message.** `toMessagesArray` serialises the array verbatim
- *   and a provider requires a `tool` reply to follow its `tool_calls` request; a user turn spliced
+ * - **The answer never becomes a user message.** `toMessagesArray` serialises the array verbatim and
+ *   a provider requires a `tool` reply to follow its `tool_calls` request; a user turn spliced
  *   between them is a 400. The answer travels as the tool result, and the chat view renders it into
  *   the question's own chip.
  *
@@ -24,6 +24,7 @@
  */
 
 import { createToolDefinition, toolError, toolSuccess } from "@jxsuite/ai/tools";
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 
 import type { ToolRegistry } from "@jxsuite/ai/tools";
@@ -212,17 +213,13 @@ export function registerAskTool(
         required: ["question"],
       },
       execute: async (args, ctx) => {
-        /* Everything `unknown`, and every field narrowed by `typeof` rather than by `?.`. The
-           registry's `validate()` is "a lightweight structural check, not a JSON Schema validator",
+        /* Every field is any JSON value, narrowed by a guard rather than by `?.`. The registry's
+           `validate()` is "a lightweight structural check, not a JSON Schema validator",
            `strict: false` skips it entirely, and this tool may be registered into someone else's
            registry — so an argument that is a number is a case, not an impossibility. Optional
            chaining guards null, not type: `context?.trim()` threw on one. */
-        const { question, options, context } = args as {
-          question?: unknown;
-          options?: unknown;
-          context?: unknown;
-        };
-        if (typeof question !== "string" || !question.trim()) {
+        const { question, options, context } = args;
+        if (!isString(question) || !question.trim()) {
           return toolError('Pass "question" — the question to put to the user.');
         }
         if (isAwaitingAnswer()) {
@@ -230,13 +227,13 @@ export function registerAskTool(
         }
         const choices = Array.isArray(options)
           ? options
-              .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+              .filter((o): o is string => isString(o) && o.trim().length > 0)
               .slice(0, MAX_OPTIONS)
           : [];
 
         const answering = askUser(
           {
-            context: typeof context === "string" ? context.trim() : "",
+            context: isString(context) ? context.trim() : "",
             /* The tool-call id, so the chip the transcript draws and the question this registers
                are the same thing. Without it a restored, permanently unanswered question would
                render identically to the live one. */

@@ -60,6 +60,9 @@
 
 import { appendFileSync } from "node:fs";
 
+import { isJsonRecord, isText } from "../lib/json-guards.ts";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /** The subset of a workflow run this script reads. */
 export interface WorkflowRun {
   id: number;
@@ -79,7 +82,7 @@ export type FetchLike = (
 export interface ApiResponse {
   ok: boolean;
   status: number;
-  json: () => Promise<unknown>;
+  json: () => Promise<JsonValue>;
   text: () => Promise<string>;
 }
 
@@ -143,7 +146,7 @@ export async function approveHeldRuns(options: Options): Promise<Outcome> {
     repo,
     sha,
     token,
-    fetch: doFetch = globalThis.fetch as unknown as FetchLike,
+    fetch: doFetch = globalThis.fetch,
     sleep = (ms) =>
       new Promise<void>((resolve) => {
         setTimeout(resolve, ms);
@@ -199,6 +202,9 @@ export async function approveHeldRuns(options: Options): Promise<Outcome> {
           `listing runs for ${sha}: HTTP ${response.status} ${await describeError(response)}`,
         );
       } else {
+        /* SAFETY: this is GitHub's "list workflow runs for a repository" response at the API
+         * version `headersFor()` pins (2022-11-28), whose body is an object carrying
+         * `workflow_runs` as an array of run objects with every `WorkflowRun` member. */
         const body = (await response.json()) as { workflow_runs?: WorkflowRun[] };
         runs = body.workflow_runs ?? [];
         listed = true;
@@ -241,8 +247,12 @@ export async function approveHeldRuns(options: Options): Promise<Outcome> {
 async function describeError(response: Pick<ApiResponse, "text">): Promise<string> {
   try {
     const text = await response.text();
-    const parsed = JSON.parse(text) as { message?: string };
-    return parsed.message ?? text.slice(0, 200);
+    const parsed: JsonValue = JSON.parse(text);
+    if (isJsonRecord(parsed) && isText(parsed.message)) {
+      return parsed.message;
+    }
+    // A JSON `null` body names no message and offers no text worth echoing, as it always has.
+    return parsed === null ? "" : text.slice(0, 200);
   } catch {
     return "";
   }

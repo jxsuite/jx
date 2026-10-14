@@ -62,6 +62,8 @@ import { activeRegistry } from "../commands/active-registry";
 import { runActiveReported, runReported } from "../commands/run-reported";
 import { PRESET_LABELS } from "../workspace/pane-derive";
 import { localeLabel } from "@jxsuite/schema/locale";
+import { isBoolean } from "@jxsuite/schema/guards";
+import type { CommandArgValues } from "../commands/command-args";
 import { tabOfPane } from "../canvas/canvas-surface";
 import { mediaDisplayName } from "./shared";
 import { mountTabStripSurface } from "../surfaces/tab-strip";
@@ -183,8 +185,8 @@ export function mount(host: HTMLElement) {
       }
       _drag =
         source.data.type === "tab"
-          ? { kind: "tab", tabId: source.data.tabId as string }
-          : { kind: "file", path: source.data.path as string };
+          ? { kind: "tab", tabId: source.data.tabId }
+          : { kind: "file", path: source.data.path };
       // The tail target does not exist until a pane with no tabs is asked to grow one (§14.4's
       // "Between panes" row; `project` draws it).
       render();
@@ -198,6 +200,9 @@ export function mount(host: HTMLElement) {
       }
       const [target] = location.current.dropTargets;
       const data = target?.data;
+      /* SAFETY: a `tab-slot` record comes only from this module's own two `getData` closures (a
+         chip's in `adoptChip`, the tail's in `adoptStrip`), and both write a numeric `index` and a
+         string `paneId` beside that type. */
       _over =
         data?.type === "tab-slot"
           ? {
@@ -249,7 +254,7 @@ export function mount(host: HTMLElement) {
         void tab.session.openedFrom;
         // The draft pill is on the chip, so the chip has to repaint when the flag changes — reading
         // The absent key tracks its ADDITION too, which is the transition that matters most.
-        void tab.doc.content?.frontmatter?.[DRAFT_FIELD];
+        void tab.doc.content.frontmatter[DRAFT_FIELD];
       }
       // An edit is a commitment: a preview tab with unsaved changes is no longer disposable, and
       // The dirty flags this effect already tracks are exactly the signal.
@@ -370,8 +375,8 @@ function paint(pane: Pane, host: HTMLElement): void {
        microtask later — so a strip whose one tab has just come back has no tab marked current at
        the instant this runs. The flow already knows which chip it wants; asking the tree instead
        is asking a question we have the answer to, and getting it one tick early. */
-    ([...strip.children] as HTMLElement[])
-      .find((chip) => chip.dataset.tab === pane.activeTabId)
+    [...strip.children]
+      .find((chip) => chip instanceof HTMLElement && chip.dataset.tab === pane.activeTabId)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
@@ -801,8 +806,8 @@ function onWheel(e: WheelEvent) {
   if (e.ctrlKey) {
     return;
   }
-  const el = e.currentTarget as HTMLElement;
-  if (el.scrollWidth <= el.clientWidth) {
+  const el = e.currentTarget;
+  if (!(el instanceof HTMLElement) || el.scrollWidth <= el.clientWidth) {
     return;
   }
   const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
@@ -832,7 +837,9 @@ export function hiddenTabIds(paneId: string = workspace.activePaneId): string[] 
   const left = strip.scrollLeft;
   const right = left + strip.clientWidth;
   const hidden: string[] = [];
-  const chips = [...strip.querySelectorAll('[part="tab"]')] as HTMLElement[];
+  /* Typed, not filtered: a chip's position is what pairs it with `pane.tabOrder[index]`, so dropping
+     a node here would shift every later chip onto the wrong tab id. */
+  const chips = [...strip.querySelectorAll<HTMLElement>('[part="tab"]')];
   for (const [index, chip] of chips.entries()) {
     const id = pane.tabOrder[index];
     if (id && (chip.offsetLeft < left || chip.offsetLeft + chip.offsetWidth > right)) {
@@ -889,8 +896,8 @@ function openOverflowMenu(pane: Pane, labels: Map<string, string>, anchorEl: HTM
     place: (box) => ({ x: Math.max(4, anchor.right - box.width), y: anchor.bottom }),
     placement: "block-end span-inline-start",
     region: "tab-overflow",
-    rows: ids.map((id) => ({
-      checked: (id === pane.activeTabId ? "true" : "false") as "true" | "false",
+    rows: ids.map((id): MenuRowProjection => ({
+      checked: id === pane.activeTabId ? "true" : "false",
       destructive: false,
       disabled: false,
       dividerAbove: false,
@@ -931,8 +938,8 @@ export function dismissTabContextMenu() {
  * where it lands (`content/draft-state.ts` says why), so the row offers the flip of what is true
  * now and {@link statedChecked} reads the current state back out of it for the checkmark.
  */
-function tabRowFacts(tab: Tab): Record<string, unknown> {
-  const facts: Record<string, unknown> = {};
+function tabRowFacts(tab: Tab): CommandArgValues {
+  const facts: CommandArgValues = {};
   if (collectionOfPath(tab.documentPath)) {
     facts.draft = !isDraftEntry(entryFields(tab));
   }
@@ -961,14 +968,14 @@ function tabRowFacts(tab: Tab): Record<string, unknown> {
  * already knows how to announce — and the five rows that carry no state stay plain `menuitem`s,
  * which `selects` on the old menu would have made impossible.
  */
-function statedChecked(args: Record<string, unknown>): "true" | "false" | undefined {
+function statedChecked(args: CommandArgValues): "true" | "false" | undefined {
   const entries = Object.entries(args);
-  const only = entries.length === 1 ? entries[0] : undefined;
-  if (!only || typeof only[1] !== "boolean") {
+  const value = entries.length === 1 ? entries[0]?.[1] : undefined;
+  if (!isBoolean(value)) {
     return undefined;
   }
   // The fact is the state the row would REACH, so the state it is in now is the negation.
-  return only[1] ? "false" : "true";
+  return value ? "false" : "true";
 }
 
 /**
@@ -989,13 +996,11 @@ function placedTabItems(tab: Tab): MenuRowProjection[] {
   const items: MenuRowProjection[] = [];
   let group: string | undefined;
   for (const command of registry.forPlacement("context/tab")) {
-    const schema = command.args as
-      | { properties?: Record<string, unknown>; required?: readonly string[] }
-      | undefined;
+    const schema = command.args;
     if (!(schema?.required ?? []).every((key) => key in facts)) {
       continue;
     }
-    const args: Record<string, unknown> = {};
+    const args: CommandArgValues = {};
     for (const key of Object.keys(schema?.properties ?? {})) {
       if (key in facts) {
         args[key] = facts[key];
@@ -1005,21 +1010,26 @@ function placedTabItems(tab: Tab): MenuRowProjection[] {
     ({ group } = command);
     const reason = registry.disabledReason(command.id);
     const checked = statedChecked(args);
-    items.push({
+    const row: Omit<MenuRowProjection, "disabled"> = {
       destructive: command.destructive === true,
       dividerAbove,
       id: command.id,
       title: command.title,
-      ...(checked === undefined ? {} : { checked }),
-      ...(reason === undefined
+    };
+    if (checked !== undefined) {
+      row.checked = checked;
+    }
+    items.push(
+      reason === undefined
         ? {
+            ...row,
             disabled: false,
             run: () => {
               void runReported(registry, command.id, args, "Tabs");
             },
           }
-        : { disabled: true, requires: reason }),
-    });
+        : { ...row, disabled: true, requires: reason },
+    );
   }
   return items;
 }
@@ -1270,7 +1280,7 @@ export function shouldWarnOnClose(tab: Tab): boolean {
   if (residue) {
     return true;
   }
-  const peersHere = state.peers.filter((p) => p.state?.focusedPath === tab.documentPath);
+  const peersHere = state.peers.filter((p) => p.state.focusedPath === tab.documentPath);
   return peersHere.length === 0;
 }
 

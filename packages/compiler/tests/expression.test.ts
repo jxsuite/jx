@@ -2,6 +2,24 @@ import { describe, expect, test } from "bun:test";
 import { compileExpression } from "@jxsuite/runtime/expression";
 import { compileElement } from "../src/compiler";
 import { buildInitialScope } from "../src/shared";
+import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
+
+/** A lowered state handler, invoked as `(state, event)`; the bodies under test never read the event. */
+type StateHandler = (state: JxScope, event: Event | null) => void;
+/** A lowered named formula, invoked with positional JSON arguments. */
+type NamedFormula = (...args: JsonValue[]) => JsonValue;
+
+/** Fail the test unless the scope entry was lowered to a callable handler. */
+function assertStateHandler(value: unknown): asserts value is StateHandler {
+  expect(typeof value).toBe("function");
+}
+
+/** Fail the test unless the scope entry was lowered to a callable formula. */
+function assertNamedFormula(value: unknown): asserts value is NamedFormula {
+  expect(typeof value).toBe("function");
+}
 
 // ─── compileExpression unit tests ────────────────────────────────────────────
 
@@ -360,8 +378,9 @@ describe("buildInitialScope — $expression", () => {
         },
       },
     });
-    expect(typeof scope.increment).toBe("function");
-    (scope as any).increment(scope, null);
+    const { increment } = scope;
+    assertStateHandler(increment);
+    increment(scope, null);
     expect(scope.count).toBe(1);
   });
 
@@ -376,7 +395,7 @@ describe("buildInitialScope — $expression", () => {
         },
       },
     });
-    expect(typeof scope.toggle).toBe("function");
+    expect(isFunction(scope.toggle)).toBe(true);
   });
 });
 
@@ -425,13 +444,15 @@ describe("named formulas — compiler integration", () => {
         },
       },
     });
-    expect(typeof scope.lineTotal).toBe("function");
+    expect(isFunction(scope.lineTotal)).toBe(true);
     expect(scope.total).toBe(12);
   });
 
   test("buildInitialScope named formula honors parameter defaults", () => {
     const scope = buildInitialScope({ lineTotal });
-    expect((scope.lineTotal as (...a: unknown[]) => unknown)(5)).toBe(5);
+    const { lineTotal: formula } = scope;
+    assertNamedFormula(formula);
+    expect(formula(5)).toBe(5);
   });
 });
 
@@ -478,8 +499,9 @@ describe("structured bodies — buildInitialScope", () => {
         body: [{ operator: "+=", target: { $ref: "#/state/count" }, value: 5 }],
       },
     });
-    expect(typeof scope.bump).toBe("function");
-    (scope as any).bump(scope, null);
+    const { bump } = scope;
+    assertStateHandler(bump);
+    bump(scope, null);
     expect(scope.count).toBe(5);
   });
 });

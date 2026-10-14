@@ -10,6 +10,7 @@
  * @docs extending/ui-kit
  */
 import { buildStyleRules } from "@jxsuite/runtime/css";
+import { getNestedStyle, isFunction } from "@jxsuite/schema/guards";
 import type { JxStyle } from "@jxsuite/schema/types";
 import project from "../project.json";
 
@@ -17,7 +18,7 @@ import project from "../project.json";
 export const THEME_LAYER = "jx-ui";
 
 /** The `style` block as authored: one key, the cascade layer, holding every declaration. */
-const themeStyle = project.style as JxStyle;
+const themeStyle: JxStyle = project.style;
 
 /**
  * The tokens themselves, from inside the layer.
@@ -27,7 +28,7 @@ const themeStyle = project.style as JxStyle;
  * jx-ui` and let it look up a token that is one level down, which returns `undefined` rather than
  * failing.
  */
-export const themeTokens = (themeStyle[`@layer ${THEME_LAYER}`] ?? {}) as JxStyle;
+export const themeTokens: JxStyle = getNestedStyle(themeStyle, `@layer ${THEME_LAYER}`) ?? {};
 
 /**
  * The theme as CSS text: every token on `:root`, inside `@layer jx-ui`.
@@ -67,7 +68,7 @@ export function installTheme(doc: Document = document): void {
     return;
   }
   const css = themeCSS();
-  if (typeof CSSStyleSheet === "function" && "replaceSync" in CSSStyleSheet.prototype) {
+  if (isFunction(globalThis.CSSStyleSheet) && "replaceSync" in CSSStyleSheet.prototype) {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(css);
     doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];

@@ -15,14 +15,28 @@ import {
   serializeJson,
 } from "../src/json-layout.ts";
 import type { JsonLayout } from "../src/json-layout.ts";
+import { isJsonObject } from "../src/guards.ts";
+import type { JsonObject } from "../types.ts";
 
 /** A layout with nothing recorded — what a brand-new document has. */
 function empty(): JsonLayout {
   return { blankAfter: new Set(), escaped: new Map(), inline: new Map() };
 }
 
+/** The document `parseJsonDocument` hands an edit, typed by the parser's own contract. */
+type ParsedDocument = ReturnType<typeof parseJsonDocument>["document"];
+
+/** The object a top-level key of a parsed document holds; every SOURCE key edited here is one. */
+function member(doc: ParsedDocument, key: string): JsonObject {
+  const value = doc[key];
+  if (!isJsonObject(value)) {
+    throw new Error(`expected "${key}" to hold an object`);
+  }
+  return value;
+}
+
 /** Derive, serialize, and hand back the text — the round trip a save performs. */
-function roundTrip(text: string, edit?: (doc: Record<string, unknown>) => void): string {
+function roundTrip(text: string, edit?: (doc: ParsedDocument) => void): string {
   const { document, layout } = parseJsonDocument(text);
   edit?.(document);
   return serializeJson(document, layout);
@@ -123,28 +137,28 @@ describe("serializeJson honours the recorded layout through an edit", () => {
 
   test("an edited value inside an inline object stays inline", () => {
     const out = roundTrip(SOURCE, (doc) => {
-      (doc.attributes as Record<string, unknown>).part = "baz";
+      member(doc, "attributes").part = "baz";
     });
     expect(out).toBe(SOURCE.replace('"part": "bar"', '"part": "baz"'));
   });
 
   test("an inline object grown past the width expands", () => {
     const out = roundTrip(SOURCE, (doc) => {
-      (doc.attributes as Record<string, unknown>).part = "b".repeat(120);
+      member(doc, "attributes").part = "b".repeat(120);
     });
     expect(out).toContain(`"attributes": {\n    "part": "${"b".repeat(120)}"\n  },`);
   });
 
   test("a new scalar key in an inline object stays inline while it fits", () => {
     const out = roundTrip(SOURCE, (doc) => {
-      (doc.attributes as Record<string, unknown>).title = "t";
+      member(doc, "attributes").title = "t";
     });
     expect(out).toContain('"attributes": { "part": "bar", "title": "t" },');
   });
 
   test("a new object inside an inline object takes its parent's answer and stays inline", () => {
     const out = roundTrip(SOURCE, (doc) => {
-      (doc.attributes as Record<string, unknown>).disabled = { $ref: "#/state/off" };
+      member(doc, "attributes").disabled = { $ref: "#/state/off" };
     });
     expect(out).toContain(
       '"attributes": { "part": "bar", "disabled": { "$ref": "#/state/off" } },',
@@ -162,7 +176,7 @@ describe("serializeJson honours the recorded layout through an edit", () => {
 
   test("a removed key leaves its siblings' layout alone, and an emptied object is `{}`", () => {
     const out = roundTrip(SOURCE, (doc) => {
-      delete (doc.style as Record<string, unknown>).display;
+      delete member(doc, "style").display;
       delete doc.children;
     });
     expect(out).toBe(

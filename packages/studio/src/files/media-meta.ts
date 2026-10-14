@@ -23,6 +23,7 @@
  * @docs studio/projects/media
  */
 
+import { isNumber } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { baseName, dirName, normalizeProjectPath } from "./media-paths";
 import { notedListing } from "./asset-versions";
@@ -67,7 +68,7 @@ function metaFrom(path: string, entry: DirEntry | undefined): MediaMeta {
   const name = baseName(path);
   const dims = measured.get(path);
   return {
-    bytes: typeof entry?.size === "number" ? entry.size : null,
+    bytes: isNumber(entry?.size) ? entry.size : null,
     ext: extensionOf(name),
     height: dims?.height ?? null,
     kind: mediaKind({ name }),

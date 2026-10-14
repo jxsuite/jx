@@ -47,7 +47,7 @@ export interface CrawlOptions {
   breakpoints?: BreakpointPolicy | undefined;
   onProgress?: (msg: string) => void;
   /** Abort the crawl between pages; the loop throws before capturing the next page. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 export interface CrawledPage {
@@ -309,7 +309,7 @@ export async function crawlSite(options: CrawlOptions): Promise<CrawlResult> {
               options.breakpoints ?? DEFAULT_BREAKPOINT_POLICY,
             ).keep;
             if (breakpointPlan.length < declared.length) {
-              onProgress?.(
+              onProgress(
                 `  ${declared.length} breakpoints declared, keeping ` +
                   `${breakpointPlan.length}: ${breakpointPlan.map((b) => b.name).join(", ")}\n`,
               );

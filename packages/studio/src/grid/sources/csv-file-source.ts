@@ -84,7 +84,7 @@ function buildModel(text: string, path: string): CsvModel {
 
   // Typed columns when this CSV is a collection source; sniffed kinds otherwise.
   const contentType = findContentTypeSchema(path, projectState?.projectConfig);
-  const schemaProps = contentType?.schema?.properties ?? {};
+  const schemaProps = contentType?.schema.properties ?? {};
   const sampleRows = doc.rows.slice(0, 50).map((row) => {
     const cells: Record<string, GridCellValue> = {};
     for (const [i, field] of fields.entries()) {
@@ -116,7 +116,7 @@ function buildModel(text: string, path: string): CsvModel {
 }
 
 /** Typed cell values for one matrix row. */
-function rowCells(model: CsvModel, rowIndex: number): Record<string, GridCellValue> {
+function rowCells(model: CsvModel, rowIndex: number): GridRow["cells"] {
   const cells: Record<string, GridCellValue> = {};
   const row = model.doc.rows[rowIndex] ?? [];
   for (const [i, field] of model.fields.entries()) {

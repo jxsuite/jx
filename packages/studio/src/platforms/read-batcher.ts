@@ -21,6 +21,7 @@
 
 import { READ_FILES_MAX_PATHS } from "@jxsuite/protocol";
 import type { ReadFilesResult } from "@jxsuite/protocol";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 
 /**
  * What one batch request came back as.
@@ -57,14 +58,20 @@ export interface ReadBatcher {
 
 interface Waiter {
   resolve: (content: string) => void;
-  reject: (error: unknown) => void;
+  /** Rejects with whatever the transport or `fetchOne` rejected with, unchanged. */
+  reject: (cause: unknown) => void;
 }
 
 /** Path → every caller waiting on it. Same-path reads in one window share ONE request and result. */
 type Pending = Map<string, Waiter[]>;
 
-function isObject(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
+/**
+ * A row's outcome as the batcher reads it. Every protocol outcome fits it, but the rows come off
+ * the wire unchecked, so `content` may be any value and either member may be missing.
+ */
+interface WireOutcome {
+  content?: unknown;
+  error?: { message?: string } | undefined;
 }
 
 /**
@@ -108,7 +115,7 @@ export function createReadBatcher(options: ReadBatcherOptions): ReadBatcher {
           waiter.resolve(content);
         }
       },
-      (error: unknown) => {
+      (error) => {
         for (const waiter of waiters) {
           waiter.reject(error);
         }
@@ -182,7 +189,7 @@ export function createReadBatcher(options: ReadBatcherOptions): ReadBatcher {
     }
     /* Anything that is not an object cannot be a ReadFilesResult (a `null` body, a bare string).
        The route did not answer this chunk, so it is served singly — the same as a failed call. */
-    if (answer === "retry-singly" || answer === "unsupported" || !isObject(answer)) {
+    if (answer === "retry-singly" || answer === "unsupported" || !isNonNullObject(answer)) {
       if (answer === "unsupported") {
         batching = false;
       }
@@ -213,14 +220,15 @@ export function createReadBatcher(options: ReadBatcherOptions): ReadBatcher {
       }
       chunk.delete(path);
       answered += 1;
-      if (typeof (outcome as { content?: unknown } | undefined)?.content === "string") {
-        const { content } = outcome as { content: string };
+      const wire: WireOutcome | undefined = outcome;
+      const content = wire?.content;
+      if (isString(content)) {
         for (const waiter of waiters) {
           waiter.resolve(content);
         }
       } else {
         // Per path: one missing file (404), one binary file (415) fails ITS readers and no others.
-        const message = (outcome as { error?: { message?: string } } | undefined)?.error?.message;
+        const message = wire?.error?.message;
         const error = new Error(message || `Failed to read file: ${path}`);
         for (const waiter of waiters) {
           waiter.reject(error);

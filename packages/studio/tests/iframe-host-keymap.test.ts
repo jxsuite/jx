@@ -11,29 +11,35 @@
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { registerPrimaryStage, resetWorkspaceWithTab } from "./harness";
+import type { FakeIframeChannel } from "./harness";
 import { surfaceForPane } from "../src/canvas/surface-registry";
+import type { postMessageChannel } from "../src/canvas/iframe-channel";
+import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
+import type { CanvasPanel } from "../src/types";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js`, imported first, registers happy-dom's GlobalRegistrator, which copies the
+   window's members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
-interface FakeChannel {
-  posts: Record<string, unknown>[];
-  deliver: (m: Record<string, unknown>) => void;
-}
-const channels: FakeChannel[] = [];
+const channels: FakeIframeChannel[] = [];
 
 void mock.module("../src/canvas/iframe-channel", () => ({
-  postMessageChannel: (opts: Record<string, unknown>) => {
-    let handler: ((m: Record<string, unknown>) => void) | null = null;
-    const rec: FakeChannel = { deliver: (m) => handler?.(m), posts: [] };
+  postMessageChannel: (
+    opts: Parameters<typeof postMessageChannel<ParentToIframe, IframeToParent>>[0],
+  ) => {
+    let handler: ((m: IframeToParent) => void) | null = null;
+    const rec: FakeIframeChannel = { deliver: (m) => handler?.(m), posts: [] };
     channels.push(rec);
     return {
       dispose: () => {},
-      onMessage: (h: (m: Record<string, unknown>) => void) => {
+      onMessage: (h: (m: IframeToParent) => void) => {
         handler = h;
         return () => {};
       },
-      post: (m: Record<string, unknown>) => rec.posts.push(m),
+      post: (m: ParentToIframe) => rec.posts.push(m),
       target: opts.target,
     };
   },
@@ -64,18 +70,30 @@ const { mountIframeCanvas, publishKeymap, setKeymapSource } =
 const { initShellRefs } = await import("../src/store");
 
 /** Every `keymap` message a channel received, newest last. */
-function keymapPosts(channel: FakeChannel): Record<string, unknown>[] {
-  return channel.posts.filter((post) => post.kind === "keymap");
+function keymapPosts(channel: FakeIframeChannel): Extract<ParentToIframe, { kind: "keymap" }>[] {
+  return channel.posts.filter(
+    (post): post is Extract<ParentToIframe, { kind: "keymap" }> => post.kind === "keymap",
+  );
+}
+
+/** An artboard record carrying only the members a test names. */
+function artboard(fields: Pick<CanvasPanel, "canvas"> & Partial<CanvasPanel>): CanvasPanel {
+  /* SAFETY: this suite never renders a stage. The host reaches an artboard here only through
+     `panelHostingCanvas`, which matches on `canvas` and hands back the owning surface whose
+     `renderGeneration` gates the render; `ready` is carried for parity with a mounted artboard. The
+     bound DOM members (`element`, `viewport`, `scrollContainer`), `_width` and `renderScope` are read
+     by the stage render and teardown, neither of which runs in this suite. */
+  return fields as CanvasPanel;
 }
 
 /** Mount one host and take it to `ready`, which is when the table is due. */
-async function mountReady(): Promise<FakeChannel> {
+async function mountReady(): Promise<FakeIframeChannel> {
   const canvasEl = document.createElement("div");
   document.body.append(canvasEl);
   const surface = surfaceForPane("primary");
   surface.renderGeneration = 1;
-  surface.panels.push({ canvas: canvasEl, ready: true } as never);
-  await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+  surface.panels.push(artboard({ canvas: canvasEl, ready: true }));
+  await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
   const channel = channels.at(-1)!;
   channel.deliver({ kind: "ready" });
   return channel;
@@ -86,10 +104,20 @@ beforeEach(() => {
   document.body.innerHTML = "";
   initShellRefs();
   registerPrimaryStage();
-  resetWorkspaceWithTab({ tagName: "div" } as never);
+  resetWorkspaceWithTab({ tagName: "div" });
 });
 
 describe("setKeymapSource", () => {
+  /* This case must stay FIRST. The source is module state with no public reset, and every later
+     case installs one, so only before them is the host in the state Studio boots in: no source. */
+  test("publishing with no source posts nothing rather than an empty table", async () => {
+    // An empty table means "forward nothing", so publishing one by accident would make the canvas
+    // Keyboard go silent — worse than not publishing at all.
+    const channel = await mountReady();
+    publishKeymap();
+    expect(keymapPosts(channel)).toEqual([]);
+  });
+
   test("a frame is handed the table the moment it says it is ready", async () => {
     setKeymapSource(() => ({ chords: [{ chord: "mod+s", scope: "global" }], mac: false }));
     const channel = await mountReady();
@@ -116,7 +144,7 @@ describe("setKeymapSource", () => {
   });
 
   test("a keymap change reposts to every live frame — this is what rebinding needs", async () => {
-    let notify: null | (() => void) = null;
+    let notify = (): void => {};
     setKeymapSource(
       () => ({ chords: [{ chord: "mod+b", scope: "caret" }], mac: true }),
       (listener) => {
@@ -126,16 +154,7 @@ describe("setKeymapSource", () => {
     );
     const channel = await mountReady();
     const before = keymapPosts(channel).length;
-    (notify as (() => void) | null)?.();
+    notify();
     expect(keymapPosts(channel).length).toBe(before + 1);
-  });
-
-  test("publishing with no source posts nothing rather than an empty table", async () => {
-    // An empty table means "forward nothing", so publishing one by accident would make the canvas
-    // Keyboard go silent — worse than not publishing at all.
-    setKeymapSource(undefined as never);
-    const channel = await mountReady();
-    publishKeymap();
-    expect(keymapPosts(channel)).toEqual([]);
   });
 });

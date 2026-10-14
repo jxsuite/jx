@@ -1,5 +1,5 @@
 import { installMockPlatform } from "./harness";
-import { createMockCollabHub, settleCollab } from "./collab-mock";
+import { BASE_DOC, childNode, createMockCollabHub, settleCollab } from "./collab-mock";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
@@ -21,27 +21,33 @@ import {
   sourceText,
   updateSourceText,
 } from "@jxsuite/collab";
+import { isNodeObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import * as Y from "yjs";
 import type { Tab } from "../src/tabs/tab";
 import { afterEach, describe, expect, test } from "bun:test";
 
-const DOC: JxMutableNode = { children: [{ tagName: "p", textContent: "Base" }], tagName: "div" };
 const PATH = "pages/source.json";
 
 async function openAttached(hub: ReturnType<typeof createMockCollabHub>) {
   installMockPlatform({ collab: hub.capability });
   configureCollabSerializer((tab) => Promise.resolve(JSON.stringify(toRaw(tab.doc.document))));
-  configureCollabParser((_tab, text) =>
-    Promise.resolve({ document: JSON.parse(text) as JxMutableNode }),
-  );
-  const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+  configureCollabParser((_tab, text) => {
+    const parsed: unknown = JSON.parse(text);
+    if (!isNodeObject(parsed)) {
+      // The session treats a throwing parser as unparseable source, exactly like a JSON syntax error.
+      throw new TypeError("the source text is not a document node");
+    }
+    return Promise.resolve({ document: parsed });
+  });
+  const tab = openTab({ document: structuredClone(BASE_DOC), documentPath: PATH, id: PATH });
   await settleCollab();
   expect(collabState(tab).active).toBe(true);
   return tab;
 }
 
 function tabJson(tab: Tab): JxMutableNode {
-  return jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+  return jsonClone(toRaw(tab.doc.document));
 }
 
 afterEach(() => {
@@ -59,7 +65,7 @@ describe("the canonical source lock", () => {
     await ctx.enter();
     await settleCollab();
     expect(canonicalOf(hub.serverDoc(PATH))).toBe("source");
-    expect(sourceText(hub.serverDoc(PATH)).toString()).toBe(JSON.stringify(DOC));
+    expect(sourceText(hub.serverDoc(PATH)).toString()).toBe(JSON.stringify(BASE_DOC));
 
     ctx.leave();
     await settleCollab();
@@ -74,7 +80,7 @@ describe("the canonical source lock", () => {
 
     // A peer flips the lock remotely.
     const peer = (await hub.capability(PATH))!;
-    acquireSourceCanonical(peer.doc, JSON.stringify(DOC), LOCAL_ORIGIN);
+    acquireSourceCanonical(peer.doc, JSON.stringify(BASE_DOC), LOCAL_ORIGIN);
     await settleCollab();
     expect(collabState(tab).sourceCanonical).toBe(true);
 
@@ -208,7 +214,7 @@ describe("the canonical source lock", () => {
     expect(canonicalOf(hub.serverDoc(PATH))).toBe("structure");
     expect(collabState(tab).sourceCanonical).toBe(false);
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Still mine"));
-    expect((tabJson(tab).children as JxMutableNode[])[0]!.textContent).toBe("Still mine");
+    expect(childNode(tabJson(tab), 0).textContent).toBe("Still mine");
   });
 
   /**
@@ -249,7 +255,7 @@ describe("the canonical source lock", () => {
     expect(collabState(tab).sourceCanonical).toBe(false);
     // And structural editing works again for everybody, which is the whole point of the release.
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Unfrozen"));
-    expect((tabJson(tab).children as JxMutableNode[])[0]!.textContent).toBe("Unfrozen");
+    expect(childNode(tabJson(tab), 0).textContent).toBe("Unfrozen");
     guest.destroy();
   });
 
@@ -286,7 +292,10 @@ describe("the canonical source lock", () => {
 
     // A peer types into the shared text; this client (in source mode) is the reconciler.
     const peer = (await hub.capability(PATH))!;
-    const edited = { children: [{ tagName: "h1", textContent: "From source" }], tagName: "main" };
+    const edited: JxMutableNode = {
+      children: [{ tagName: "h1", textContent: "From source" }],
+      tagName: "main",
+    };
     updateSourceText(peer.doc, JSON.stringify(edited), LOCAL_ORIGIN);
     // The parse mirror is debounced 600ms.
     await new Promise((resolve) => {
@@ -294,7 +303,7 @@ describe("the canonical source lock", () => {
     });
     await settleCollab();
 
-    expect(tabJson(tab)).toEqual(edited as JxMutableNode);
+    expect(tabJson(tab)).toEqual(edited);
     peer.destroy();
   });
 });
@@ -305,7 +314,7 @@ describe("Monaco binding integration surface", () => {
     const tab = await openAttached(hub);
     const ctx = collabSourceContext(tab)!;
     expect(ctx.awareness).toBeDefined();
-    expect(typeof (ctx.text as { toString: () => string }).toString).toBe("function");
+    expect(ctx.text).toBeInstanceOf(Y.Text);
     // The text IS the session doc's shared source (same instance the provider persists).
     updateSourceText(hub.serverDoc(PATH), "shared!", LOCAL_ORIGIN);
     await settleCollab();

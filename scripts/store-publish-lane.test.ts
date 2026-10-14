@@ -18,31 +18,34 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { WorkflowStep } from "./lib/workflow-syntax.ts";
+
 const SOURCE = readFileSync(
   join(import.meta.dir, "../.github/workflows/store-publish.yml"),
   "utf8",
 );
 
-interface Step {
-  name?: string;
-  id?: string;
-  uses?: string;
-  run?: string;
-  if?: string;
-  with?: Record<string, string>;
-  env?: Record<string, string>;
+/** A `workflow_dispatch` input, as GitHub's workflow syntax declares one. */
+interface DispatchInput {
+  description?: string;
+  required?: boolean;
+  type?: string;
+  default?: string | boolean | number;
 }
 interface Workflow {
-  on: { workflow_dispatch: { inputs: Record<string, unknown> } };
+  on: { workflow_dispatch: { inputs: Record<string, DispatchInput> } };
   jobs: Record<
     string,
-    { "runs-on": string; "timeout-minutes"?: number; steps: Step[]; env?: unknown }
+    { "runs-on": string; "timeout-minutes"?: number; steps: WorkflowStep[]; env?: unknown }
   >;
 }
 
+/* SAFETY: SOURCE is the committed store-publish.yml, which GitHub refuses to run unless it is a
+ * workflow with an `on` map and a `jobs` map whose jobs each carry `steps`; a step this suite names
+ * but the file lacks throws by name in `step()` below. */
 const workflow = Bun.YAML.parse(SOURCE) as Workflow;
 const job = workflow.jobs["store-publish"]!;
-const step = (name: string): Step => {
+const step = (name: string): WorkflowStep => {
   const found = job.steps.find((candidate) => candidate.name === name);
   if (!found) {
     throw new Error(`store-publish.yml has no step named "${name}"`);

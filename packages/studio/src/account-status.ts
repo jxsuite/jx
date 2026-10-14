@@ -4,6 +4,7 @@
  * (studio.ts) like the project-list cache; the welcome screen reads it synchronously to prompt
  * "install the GitHub App" when the user has no repository access yet.
  */
+import { isFunction } from "@jxsuite/schema/guards";
 import { getPlatform, hasPlatform } from "./platform";
 import type { AccountEntry, AccountNotice, AccountStatus } from "./types";
 
@@ -11,7 +12,7 @@ let cache: AccountStatus | null = null;
 
 /** Refresh the cache from the platform; null when unsupported, failing, or unknown. */
 export async function hydrateAccountStatus(): Promise<void> {
-  if (!hasPlatform() || typeof getPlatform().getAccountStatus !== "function") {
+  if (!hasPlatform() || !isFunction(getPlatform().getAccountStatus)) {
     cache = null;
     return;
   }
@@ -59,7 +60,11 @@ export function getRepoAccessLinks(): RepoAccessLinks | null {
   if (manage.length === 0 && !cache.appInstallUrl) {
     return null;
   }
-  return { manage, ...(cache.appInstallUrl ? { installUrl: cache.appInstallUrl } : {}) };
+  const links: RepoAccessLinks = { manage };
+  if (cache.appInstallUrl) {
+    links.installUrl = cache.appInstallUrl;
+  }
+  return links;
 }
 
 /** The rows the platform adds to Preferences › Accounts (desktop.md §10.4); none when absent. */

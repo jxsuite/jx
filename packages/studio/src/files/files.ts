@@ -59,6 +59,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import type { ElementDragPayload } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import {
   PRIMARY_PANE,
@@ -99,9 +100,12 @@ import { restoreSession } from "../workspace/session";
 import { cleanupGitPanel } from "../panels/git-panel";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
 import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import { isFunction, isString } from "@jxsuite/schema/guards";
+import type { CommandArgValues } from "../commands/command-args";
+import type { FormatFrontmatter } from "../format/format-host";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { ChoiceOption } from "../ui/layers";
+import type { ChoiceOption, PromptDialogOptions } from "../ui/layers";
 import { emptyFilesPanelValues, mountFilesPanelSurface } from "../surfaces/files-panel";
 import { openMenu } from "../surfaces/menu";
 import type {
@@ -458,35 +462,6 @@ function fileIconName(name: string, type: string, expanded: boolean): string {
       return ext !== undefined && isImage(ext) ? "image" : "file";
     }
   }
-}
-
-/**
- * The Navigator no longer draws this panel with lit.
- *
- * The record below returns `nothing` and mounts `surfaces/files-panel.json` in `afterRender`, so
- * this is a stub: it survives only because `NavigatorPanelDeps` still declares the injection and
- * `studio.ts` still passes it. Both go in the change that deletes this.
- *
- * @deprecated The panel is `surfaces/files-panel.json`; call {@link mountFilesPanel}.
- */
-export function renderFilesTemplate(): typeof nothing {
-  return nothing;
-}
-
-/**
- * Drag-and-drop is registered against the row elements the DOCUMENT creates, as they are created.
- *
- * The pass this replaced ran on a `requestAnimationFrame` after every repaint, found the tree and
- * its rows by class, and re-registered every one of them — which is exactly the acquisition
- * `studio-ui-guidelines.md` §9.4 objects to, and which a WINDOWED list makes wrong rather than
- * merely wasteful: the rows are re-used for different files as the window slides, so a pass that
- * arrives one frame late hands a file's drag source to whichever file is standing in its place.
- * {@link mountFilesPanel} adopts each row through `onNodeCreated` instead.
- *
- * @deprecated Registration is `onNodeCreated`; this exists for the deps entry alone.
- */
-export function registerFileTreeDnD(_ctx: { renderLeftPanel: () => void }): void {
-  // Intentionally nothing: see the note above.
 }
 
 // ─── The row model, and the window onto it ───────────────────────────────────
@@ -1183,10 +1158,9 @@ export function canMoveInto(srcPath: string, targetDir: string): boolean {
 }
 
 /** {@link canMoveInto} for a ROW: only a directory has an inside to move something into. */
-function acceptsDrop(srcPath: unknown, targetPath: string, targetType: string): boolean {
-  return (
-    targetType === "directory" && typeof srcPath === "string" && canMoveInto(srcPath, targetPath)
-  );
+function acceptsDrop(source: ElementDragPayload, targetPath: string, targetType: string): boolean {
+  const srcPath = source.data.path;
+  return targetType === "directory" && isString(srcPath) && canMoveInto(srcPath, targetPath);
 }
 
 /**
@@ -1310,15 +1284,15 @@ function adoptFileRow(element: HTMLElement, path: string, type: string): void {
       },
       element,
       getData({ source }) {
-        return acceptsDrop(source.data.path, path, type)
+        return acceptsDrop(source, path, type)
           ? { targetDir: path, type: "file-tree-target" }
           : { type: "file-tree-refused" };
       },
       onDrag({ source }) {
-        setRowUnderDrag(path, acceptsDrop(source.data.path, path, type));
+        setRowUnderDrag(path, acceptsDrop(source, path, type));
       },
       onDragEnter({ source }) {
-        setRowUnderDrag(path, acceptsDrop(source.data.path, path, type));
+        setRowUnderDrag(path, acceptsDrop(source, path, type));
       },
       onDragLeave() {
         setRowUnderDrag("", false);
@@ -1361,7 +1335,8 @@ function adoptFileTreeElement(element: HTMLElement): void {
      pointer — {@link syncRootDrop} — because the row is what the drop will reach. */
   const rootCleanup = dropTargetForElements({
     canDrop({ source }) {
-      return source.data.type === "file-tree" && canMoveInto(source.data.path as string, ".");
+      const srcPath = source.data.path;
+      return source.data.type === "file-tree" && isString(srcPath) && canMoveInto(srcPath, ".");
     },
     element,
     getData() {
@@ -1393,9 +1368,11 @@ function adoptFileTreeElement(element: HTMLElement): void {
         return;
       }
 
-      const srcPath = source.data.path as string;
-      const targetDirPath = target.data.targetDir as string;
-      if (!canMoveInto(srcPath, targetDirPath)) {
+      // A file-tree row's drag source always carries its string `path`, and an accepting row's
+      // Target its string `targetDir` (see `adoptFileRow`); anything else is not a move.
+      const srcPath = source.data.path;
+      const targetDirPath = target.data.targetDir;
+      if (!isString(srcPath) || !isString(targetDirPath) || !canMoveInto(srcPath, targetDirPath)) {
         return;
       }
       const fileName = srcPath.split("/").pop();
@@ -1520,8 +1497,8 @@ function dismissFileContextMenu(): void {
  * Entry Form" is not offered on it. A command whose required arguments this row cannot answer is
  * skipped — never rendered into a refusal the author cannot act on.
  */
-function fileRowFacts(entry: { path: string; type: string }): Record<string, unknown> {
-  const facts: Record<string, unknown> = {};
+function fileRowFacts(entry: { path: string; type: string }): CommandArgValues {
+  const facts: CommandArgValues = {};
   if (entry.type === "directory") {
     // The collection's own SOURCE ROOT, not any directory beneath it: "Edit Collection in Grid"
     // Opens the whole collection, so offering it on `content/posts/2026` would be a row whose label
@@ -1579,13 +1556,11 @@ function placedFileRows(entry: { path: string; type: string }): MenuRowProjectio
   const facts = fileRowFacts(entry);
   const rows: MenuRowProjection[] = [];
   for (const command of registry.forPlacement("context/file")) {
-    const schema = command.args as
-      | { properties?: Record<string, unknown>; required?: readonly string[] }
-      | undefined;
+    const schema = command.args;
     if (!(schema?.required ?? []).every((key) => key in facts)) {
       continue;
     }
-    const args: Record<string, unknown> = {};
+    const args: CommandArgValues = {};
     for (const key of Object.keys(schema?.properties ?? {})) {
       if (key in facts) {
         args[key] = facts[key];
@@ -1926,27 +1901,28 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
   };
 
   let picked = initialPick;
-  const entered = await showPromptDialog(request.title ?? "New File", {
-    ...(rows === null
-      ? {}
-      : {
-          choice: {
-            initial: initialPick,
-            label: "Format",
-            onChange: (next: string) => {
-              picked = next;
-            },
-            options: () => rows,
-          },
-        }),
+  const promptOptions: PromptDialogOptions = {
     confirmLabel: "Create",
     message: dir === "." ? "Creating in the project root." : `Creating in ${dir}/`,
-    ...(request.suggestedName === undefined ? {} : { placeholder: request.suggestedName }),
     // With a picker there is no extension in the field to preserve, so the whole name is the stem.
     select: rows === null ? "stem" : "all",
     validate,
     value: request.suggestedName ?? "untitled.json",
-  });
+  };
+  if (rows !== null) {
+    promptOptions.choice = {
+      initial: initialPick,
+      label: "Format",
+      onChange: (next: string) => {
+        picked = next;
+      },
+      options: () => rows,
+    };
+  }
+  if (request.suggestedName !== undefined) {
+    promptOptions.placeholder = request.suggestedName;
+  }
+  const entered = await showPromptDialog(request.title ?? "New File", promptOptions);
   if (!entered) {
     return null;
   }
@@ -1955,10 +1931,9 @@ export async function createFileIn(request: NewFileRequest): Promise<string | nu
   const path = dir === "." ? fileName : `${dir}/${fileName}`;
   markLocalMutation(path);
   const format = formatForPath(fileName);
-  const suppliedBody =
-    typeof request.content === "function"
-      ? await request.content(extensionOfName(fileName), fileName)
-      : request.content;
+  const suppliedBody = isFunction(request.content)
+    ? await request.content(extensionOfName(fileName), fileName)
+    : request.content;
   /*
    * What a new file starts as, in precedence order.
    *
@@ -2069,13 +2044,16 @@ async function createNewFile(dirPath: string, renderLeftPanel: () => void) {
  */
 async function showRenameFileDialog(currentName: string, path: string): Promise<string | null> {
   const message = await renamePromptMessage(path);
-  return showPromptDialog("Rename", {
+  const promptOptions: PromptDialogOptions = {
     confirmLabel: "Rename",
-    ...(message === undefined ? {} : { message }),
     select: "stem",
     validate: (v) => (v.trim() ? "" : "Enter a file name."),
     value: currentName,
-  });
+  };
+  if (message !== undefined) {
+    promptOptions.message = message;
+  }
+  return showPromptDialog("Rename", promptOptions);
 }
 
 /** Build the status-bar message for a rename, summarising any reference/tag rewrites. */
@@ -2376,8 +2354,8 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
     }
 
     await loadFormats();
-    let document: Record<string, unknown>;
-    let frontmatter: Record<string, unknown> | undefined;
+    let document: JxMutableNode | JsonObject;
+    let frontmatter: FormatFrontmatter | undefined;
     // The layout the JSON was written in, so a save reproduces it (`json-layout.ts`, issue 308). A
     // Format-class file has none: its serializer owns its layout.
     let layout: JsonLayout | null = null;
@@ -2522,6 +2500,8 @@ export async function reloadFileInTab(path: string, opts: { onlyIfChanged?: bool
           if (opts.onlyIfChanged && deepEqual(parsed.document, tab.doc.document)) {
             return;
           }
+          /* SAFETY: this tab was opened on this `.json` path as a Jx document, and the file's schema
+             Makes its top-level object a node — the object `parseJsonDocument` states it returns. */
           tab.doc.document = parsed.document as JxMutableNode;
         }
         tab.doc.dirty = false;

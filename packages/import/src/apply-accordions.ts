@@ -20,7 +20,8 @@
  * open/closed logic out of attribute values without naming Alpine, Vue or anything else.
  */
 
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxAttributeValue, JxElement } from "@jxsuite/schema/types";
 import { roleOfElement } from "./toggle-algebra.ts";
 import type { ToggleRole } from "./toggle-algebra.ts";
 
@@ -43,11 +44,11 @@ const CONCEALING_STYLE = new Set(["display", "height", "maxHeight", "overflow", 
 /** Names that must survive whatever else is stripped. */
 const PROTECTED_ATTRIBUTES = new Set(["id", "role", "href", "src", "alt", "class", "title"]);
 
-function isDeadDirective(name: string, value: unknown): boolean {
+function isDeadDirective(name: string, value: JxAttributeValue | undefined): boolean {
   if (PROTECTED_ATTRIBUTES.has(name) || name.startsWith("aria-")) {
     return false;
   }
-  if (name.startsWith("on") && typeof value === "string") {
+  if (name.startsWith("on") && isString(value)) {
     return true;
   }
   return DEAD_DIRECTIVE_PREFIXES.some((prefix) => name.startsWith(prefix));
@@ -62,7 +63,7 @@ function isDeadDirective(name: string, value: unknown): boolean {
  * anyway, and returning nothing makes it fall through untouched.
  */
 function childrenOf(node: JxElement): (JxElement | string)[] {
-  return Array.isArray(node.children) ? (node.children as (JxElement | string)[]) : [];
+  return Array.isArray(node.children) ? node.children : [];
 }
 
 /**
@@ -78,17 +79,17 @@ function childrenOf(node: JxElement): (JxElement | string)[] {
 export function countLeaves(node: JxElement | string): string[] {
   const leaves: string[] = [];
   const visit = (current: JxElement | string): void => {
-    if (typeof current === "string") {
+    if (isString(current)) {
       if (current.trim().length > 0) {
         leaves.push(`t:${current.trim()}`);
       }
       return;
     }
-    if (typeof current.textContent === "string" && current.textContent.trim().length > 0) {
+    if (isString(current.textContent) && current.textContent.trim().length > 0) {
       leaves.push(`t:${current.textContent.trim()}`);
     }
-    const source = (current.attributes as Record<string, unknown> | undefined)?.["src"];
-    if (typeof source === "string") {
+    const source = current.attributes?.["src"];
+    if (isString(source)) {
       leaves.push(`m:${source}`);
     }
     for (const child of childrenOf(current)) {
@@ -101,7 +102,7 @@ export function countLeaves(node: JxElement | string): string[] {
 
 /** Remove dead framework directives and concealment from one node, in place. */
 function cleanNode(node: JxElement, unconceal: boolean): void {
-  const attributes = node.attributes as Record<string, unknown> | undefined;
+  const { attributes } = node;
   if (attributes) {
     for (const name of Object.keys(attributes)) {
       if (isDeadDirective(name, attributes[name])) {
@@ -112,7 +113,7 @@ function cleanNode(node: JxElement, unconceal: boolean): void {
     }
   }
   if (unconceal && node.style) {
-    const style = node.style as Record<string, unknown>;
+    const { style } = node;
     for (const property of Object.keys(style)) {
       if (CONCEALING_STYLE.has(property)) {
         delete style[property];
@@ -123,7 +124,7 @@ function cleanNode(node: JxElement, unconceal: boolean): void {
 
 /** Strip directives from a whole subtree; only the row's own body is unconcealed. */
 function cleanSubtree(node: JxElement | string, unconceal: boolean): void {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return;
   }
   cleanNode(node, unconceal);
@@ -139,18 +140,26 @@ interface RowParts {
   key: string;
 }
 
+/** Whether a role is of the kind asked for, narrowing it to that member of the union. */
+function isRoleOfKind<K extends ToggleRole["kind"]>(
+  role: ToggleRole | null,
+  want: K,
+): role is Extract<ToggleRole, { kind: K }> {
+  return role?.kind === want;
+}
+
 /** The first descendant-or-self whose role matches, depth-first, narrowed to the kind asked for. */
 function findRole<K extends ToggleRole["kind"]>(
   node: JxElement,
   idents: ReadonlySet<string>,
   want: K,
 ): { node: JxElement; role: Extract<ToggleRole, { kind: K }> } | null {
-  const role = roleOfElement(node.attributes as Record<string, unknown> | undefined, idents);
-  if (role?.kind === want) {
-    return { node, role: role as Extract<ToggleRole, { kind: K }> };
+  const role = roleOfElement(node.attributes, idents);
+  if (isRoleOfKind(role, want)) {
+    return { node, role };
   }
   for (const child of childrenOf(node)) {
-    if (typeof child === "string") {
+    if (isString(child)) {
       continue;
     }
     const found = findRole(child, idents, want);
@@ -174,13 +183,13 @@ export function readAccordionRows(root: JxElement, idents: ReadonlySet<string>):
   const seenKeys = new Set<string>();
 
   for (const child of childrenOf(root)) {
-    if (typeof child === "string") {
+    if (isString(child)) {
       if (child.trim().length > 0) {
         return null;
       }
       continue;
     }
-    const row = child as JxElement;
+    const row = child;
     const toggle = findRole(row, idents, "assign");
     const predicate = findRole(row, idents, "compare");
     if (!toggle || !predicate) {
@@ -233,15 +242,13 @@ function rewriteRoot(
     cleanSubtree(row, false);
     cleanNode(body, true);
 
-    const summary: JxElement = { children: [title] as JxElement[], tagName: "summary" };
-    const others = childrenOf(row).filter(
-      (child) => child !== title && child !== body,
-    ) as JxElement[];
+    const summary: JxElement = { children: [title], tagName: "summary" };
+    const others = childrenOf(row).filter((child) => child !== title && child !== body);
 
     rewritten.push({
       ...row,
-      attributes: { ...(row.attributes as Record<string, string>), name },
-      children: [summary, body, ...others] as JxElement[],
+      attributes: { ...row.attributes, name },
+      children: [summary, body, ...others],
       tagName: "details",
     });
   }
@@ -281,7 +288,7 @@ export function applyAccordions(root: JxElement): AccordionResult {
   let index = 0;
 
   const visit = (node: JxElement): void => {
-    const role = roleOfElement(node.attributes as Record<string, unknown> | undefined);
+    const role = roleOfElement(node.attributes);
     if (role?.kind === "declare") {
       const idents = new Set(role.idents.keys());
       const rows = readAccordionRows(node, idents);
@@ -293,7 +300,7 @@ export function applyAccordions(root: JxElement): AccordionResult {
       }
     }
     for (const child of childrenOf(node)) {
-      if (typeof child !== "string") {
+      if (!isString(child)) {
         visit(child);
       }
     }

@@ -25,16 +25,9 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import referenceDoc from "./reference-field.json";
 
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("reference-field", referenceDoc as unknown as JxDocument);
-
-/** One row of the picker: an entry id, the empty row, or the value that is not on disk. */
-export interface ReferenceChoice {
-  value: string;
-  label: string;
-}
+registerSurface("reference-field", referenceDoc);
 
 /** What the field says right now. Every field is the flow's, never a state it derives. */
 export interface ReferenceFieldView {
@@ -50,7 +43,7 @@ export interface ReferenceFieldView {
   /** The entry id the field holds, as a string. */
   value: string;
   /** The picker's rows, in the order they are offered. Empty on a text field. */
-  options: ReferenceChoice[];
+  options: SurfaceOption[];
   /** True while the read is in flight: the picker is inert and says so in its one row. */
   disabled: boolean;
   /** A sentence under the control. Empty draws none. */
@@ -82,8 +75,7 @@ export interface ReferenceFieldSurfaceHandle {
   dispose: () => void;
 }
 
-interface ReferenceScope
-  extends Record<string, unknown>, ReferenceFieldView, ReferenceFieldActions {}
+interface ReferenceScope extends ReferenceFieldView, ReferenceFieldActions {}
 
 /** The view a freshly mounted surface starts on: a picker that has not been told anything. */
 function emptyView(): ReferenceFieldView {
@@ -112,7 +104,7 @@ export function mountReferenceFieldSurface(
   actions: ReferenceFieldActions,
 ): ReferenceFieldSurfaceHandle {
   host.textContent = "";
-  const scope = reactive<ReferenceScope>({ ...emptyView(), ...actions }) as ReferenceScope;
+  const scope: ReferenceScope = reactive<ReferenceScope>({ ...emptyView(), ...actions });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;
@@ -121,13 +113,17 @@ export function mountReferenceFieldSurface(
 
   const mount = (): Promise<HTMLElement> =>
     mountSurface("reference-field", scope, host).then((mounted) => {
+      /* SAFETY: `reference-field.json`'s root definition carries `tagName: "div"`, so the runtime
+         mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+         string. */
+      const root = mounted.root as HTMLElement;
       mounting = false;
       if (disposed) {
         mounted.dispose();
-        return mounted.root as HTMLElement;
+        return root;
       }
       handle = mounted;
-      return mounted.root as HTMLElement;
+      return root;
     });
 
   const ready = mount();

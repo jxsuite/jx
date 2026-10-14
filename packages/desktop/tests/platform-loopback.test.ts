@@ -9,9 +9,10 @@
  * cross-observer interference.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { LOOPBACK } from "./_constants";
 
 try {
   GlobalRegistrator.register();
@@ -19,26 +20,26 @@ try {
   /* Already registered */
 }
 
-interface Call {
+/** How many times each RPC method was requested; this file asserts on reach, never on payloads. */
+const requestCounts = new Map<string, number>();
+
+/** What every mocked RPC answers: an ack naming the method, since no handler here reads more. */
+interface RpcAck {
   method: string;
-  args: unknown[];
+  ok: boolean;
 }
 
-const calls: Call[] = [];
-const impls = new Map<string, (...args: unknown[]) => unknown>();
-
-const requestProxy = new Proxy({} as Record<string, (...args: unknown[]) => Promise<unknown>>, {
-  get(_target, prop: string) {
-    return (...args: unknown[]) => {
-      calls.push({ args, method: prop });
-      const impl = impls.get(prop);
-      if (impl) {
-        return (async () => impl(...args))();
-      }
-      return Promise.resolve({ method: prop, ok: true });
-    };
+const requestProxy = new Proxy<Record<string, (...args: unknown[]) => Promise<RpcAck>>>(
+  {},
+  {
+    get(_target, prop: string) {
+      return () => {
+        requestCounts.set(prop, (requestCounts.get(prop) ?? 0) + 1);
+        return Promise.resolve({ method: prop, ok: true });
+      };
+    },
   },
-});
+);
 
 const rpcObject = { request: requestProxy };
 
@@ -50,10 +51,6 @@ void mock.module("electrobun/view", () => ({
   },
 }));
 
-function callsFor(method: string): Call[] {
-  return calls.filter((c) => c.method === method);
-}
-
 async function flush(ms = 25): Promise<void> {
   await new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -61,12 +58,14 @@ async function flush(ms = 25): Promise<void> {
 }
 
 // Stub window.fetch BEFORE the platform wraps it, so passthrough (shim step-aside) is observable.
-const passthroughFetch = mock(async () => new Response("passthrough-body", { status: 299 }));
-(window as unknown as Record<string, unknown>).fetch = passthroughFetch;
+spyOn(window, "fetch").mockImplementation(
+  Object.assign(async () => new Response("passthrough-body", { status: 299 }), {
+    preconnect: () => {},
+  }),
+);
 
 const { createDesktopPlatform } = await import("../src/platform");
 
-const LOOPBACK = "http://127.0.0.1:51999";
 const platform = createDesktopPlatform();
 // Set BEFORE the synchronous mutation batch below so the observer sees loopback as active.
 platform.canvasUrl = `${LOOPBACK}/__studio__/canvas.html`;
@@ -93,10 +92,10 @@ describe("loopback rewrite target (gate-on)", () => {
   test("a views:// URL is NOT intercepted — it passes through to the native fetch", async () => {
     // Loopback-only: there is no views:// read-shim, so a views:// URL falls through to the original
     // Fetch (no readFile RPC).
-    const res = await (window.fetch as typeof fetch)("views://studio/index.html");
+    const res = await window.fetch("views://studio/index.html");
     expect(res.status).toBe(299);
     expect(await res.text()).toBe("passthrough-body");
-    expect(callsFor("readFile")).toHaveLength(0);
+    expect(requestCounts.get("readFile")).toBeUndefined();
   });
 
   test("a non-http canvasUrl yields no loopback origin → the observer no-ops the rewrite", async () => {

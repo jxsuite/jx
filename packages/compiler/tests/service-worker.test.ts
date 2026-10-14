@@ -10,6 +10,7 @@ import {
   SERVICE_WORKER_PATH,
   tombstoneServiceWorker,
 } from "../src/site/service-worker.ts";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /**
  * A service worker is the only output here that is **sticky** — it survives redeploys and the
@@ -35,7 +36,9 @@ describe("normalizeServiceWorker", () => {
    * nothing; `false` means "had one, remove it" and emits a tombstone. They cannot be collapsed.
    */
   test("absent is not the same as false", () => {
-    expect(normalizeServiceWorker(({} as { serviceWorker?: false }).serviceWorker)).toBeNull();
+    // The build reads the key off the project config, so absence is a project that never names it.
+    const neverHadOne: ProjectConfig = { name: "No Worker" };
+    expect(normalizeServiceWorker(neverHadOne.serviceWorker)).toBeNull();
     expect(normalizeServiceWorker(false)).toBe(false);
   });
 

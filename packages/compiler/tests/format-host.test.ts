@@ -5,12 +5,13 @@ import { join } from "node:path";
 import {
   buildExtensionsPayload,
   buildProjectExtensionRegistry,
-  buildProjectFormatRegistry,
   createNodeFormatIO,
   importImplementation,
   probeExtension,
   unknownFormatError,
 } from "../src/site/format-host";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 describe("unknownFormatError", () => {
   test("names the extensions-based fix", () => {
@@ -27,7 +28,7 @@ describe("importImplementation", () => {
       writeFileSync(join(dir, "mod.ts"), "export const hello = 42;\n");
       // Pass the .js path: the first candidate fails, the .ts sibling resolves.
       const mod = await importImplementation(join(dir, "mod.js"));
-      expect(mod.hello).toBe(42);
+      expect(mod).toHaveProperty("hello", 42);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
@@ -39,7 +40,7 @@ describe("importImplementation", () => {
       mkdirSync(join(dir, "dist"));
       writeFileSync(join(dir, "dist", "mod.js"), "export const hello = 7;\n");
       const mod = await importImplementation(join(dir, "src", "mod.js"));
-      expect(mod.hello).toBe(7);
+      expect(mod).toHaveProperty("hello", 7);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
@@ -56,7 +57,7 @@ describe("importImplementation", () => {
       mkdirSync(join(dir, "dist"));
       writeFileSync(join(dir, "dist", "mod.js"), "export const hello = 9;\n");
       const mod = await importImplementation(join(dir, "src", "mod.ts"));
-      expect(mod.hello).toBe(9);
+      expect(mod).toHaveProperty("hello", 9);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
@@ -168,16 +169,13 @@ describe("buildExtensionsPayload", () => {
       const [content] = parser!.contributions;
       expect(content!.className).toBe("Content");
       expect(content!.project).toMatchObject({ key: "content", title: "Content Types" });
-      const studio = content!.studio as { settings: { layout: string; order: number } };
-      expect(studio.settings.layout).toBe("map");
-      expect(studio.settings.order).toBe(50);
+      expect(content!.studio).toMatchObject({ settings: { layout: "map", order: 50 } });
       // The entry schema is properties.content of the shipped project fragment.
-      const entrySchema = content!.entrySchema as {
-        type: string;
-        additionalProperties: { properties: Record<string, unknown> };
-      };
-      expect(entrySchema.type).toBe("object");
-      expect(Object.keys(entrySchema.additionalProperties.properties)).toEqual([
+      const { entrySchema } = content!;
+      expect(entrySchema).toMatchObject({ type: "object" });
+      const additional = isJsonObject(entrySchema) ? entrySchema.additionalProperties : null;
+      const properties = isJsonObject(additional) ? additional.properties : null;
+      expect(isJsonObject(properties) ? Object.keys(properties) : null).toEqual([
         // Studio draws a type's options in this order: the four every type has, then the vault options.
         "$elements",
         "format",
@@ -272,21 +270,6 @@ describe("buildExtensionsPayload", () => {
   });
 });
 
-describe("buildProjectFormatRegistry (deprecated formats view)", () => {
-  test("returns the extension registry's format-dispatch view", async () => {
-    const root = mkdtempSync(join(tmpdir(), "jx-format-view-"));
-    try {
-      const registry = await buildProjectFormatRegistry(root, {
-        extensions: ["@jxsuite/parser"],
-      });
-      expect(registry.byExtension(".md")?.name).toBe("Markdown");
-      expect(registry.byName("Content")).toBeUndefined(); // No format block → not in the view
-    } finally {
-      rmSync(root, { force: true, recursive: true });
-    }
-  });
-});
-
 describe("probeExtension", () => {
   /**
    * A throwaway project with a hand-built node_modules entry. `exports` is written verbatim so a
@@ -299,14 +282,11 @@ describe("probeExtension", () => {
     if (pkg) {
       const dir = join(root, "node_modules", ...pkg.name.split("/"));
       mkdirSync(dir, { recursive: true });
-      writeFileSync(
-        join(dir, "package.json"),
-        JSON.stringify({
-          name: pkg.name,
-          version: "1.0.0",
-          ...(pkg.exports ? { exports: pkg.exports } : {}),
-        }),
-      );
+      const manifest: JsonObject = { name: pkg.name, version: "1.0.0" };
+      if (pkg.exports) {
+        manifest.exports = pkg.exports;
+      }
+      writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
       writeFileSync(join(dir, "jx-extension.json"), JSON.stringify({ name: pkg.name }));
     }
     return root;

@@ -21,10 +21,25 @@
  * @docs framework/site/jx-markdown
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 import type { MdastNode } from "./types.ts";
 
+/**
+ * Default titles by lower-case alert type: GitHub's five are always present, and the renderer looks
+ * up whatever type an author wrote, so a type a project switched on itself reads as absent.
+ */
+export interface AlertTitles extends Readonly<Record<string, string>> {
+  readonly caution: string;
+  readonly important: string;
+  readonly note: string;
+  readonly tip: string;
+  readonly warning: string;
+}
+
 /** The five alert types GitHub defines, and the title each shows by default. */
-export const DEFAULT_ALERT_TITLES: Readonly<Record<string, string>> = {
+export const DEFAULT_ALERT_TITLES: AlertTitles = {
   caution: "Caution",
   important: "Important",
   note: "Note",
@@ -60,7 +75,7 @@ const TAG_NAME = /^[A-Za-z][\w.-]*$/;
  * Throws on a value that is not a tag name so a typo in `project.json` fails the build where it was
  * written rather than rendering a callout as an unknown element.
  */
-export function normalizeAlerts(config?: unknown, where = "alerts"): AlertSettings | null {
+export function normalizeAlerts(config?: JsonValue, where = "alerts"): AlertSettings | null {
   if (config === false) {
     return null;
   }
@@ -71,7 +86,7 @@ export function normalizeAlerts(config?: unknown, where = "alerts"): AlertSettin
   if (config === undefined || config === true) {
     return { disabled, types };
   }
-  if (typeof config !== "object" || config === null || Array.isArray(config)) {
+  if (!isJsonObject(config)) {
     throw new TypeError(
       `${where}: expected an object mapping alert types to element names, or false`,
     );
@@ -86,7 +101,7 @@ export function normalizeAlerts(config?: unknown, where = "alerts"): AlertSettin
       disabled.add(key);
     } else if (element === true) {
       types.set(key, null);
-    } else if (typeof element === "string" && TAG_NAME.test(element)) {
+    } else if (isString(element) && TAG_NAME.test(element)) {
       types.set(key, element);
     } else {
       throw new TypeError(
@@ -114,7 +129,7 @@ const MARKER = /^\[!([A-Za-z][\w-]*)\][+-]?/;
 export function inlineText(nodes: readonly MdastNode[]): string {
   let out = "";
   for (const node of nodes) {
-    if (typeof node.value === "string") {
+    if (node.value !== undefined) {
       out += node.value;
     } else if (node.children) {
       out += inlineText(node.children);
@@ -139,7 +154,7 @@ const LINE_END = /\r?\n/;
  */
 function markerOf(paragraph: MdastNode): { type: string; rest: string } | null {
   const [first] = paragraph.children ?? [];
-  if (first?.type !== "text" || typeof first.value !== "string") {
+  if (first?.type !== "text" || first.value === undefined) {
     return null;
   }
   const match = MARKER.exec(first.value);
@@ -178,7 +193,7 @@ function splitMarker(
   const take = (node: MdastNode) => {
     if (inTitle && node.type === "break") {
       inTitle = false;
-    } else if (inTitle && node.type === "text" && typeof node.value === "string") {
+    } else if (inTitle && node.type === "text" && node.value !== undefined) {
       const lineEnd = LINE_END.exec(node.value);
       if (lineEnd === null) {
         title.push(node);

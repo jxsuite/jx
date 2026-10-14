@@ -8,6 +8,7 @@ import { effect, effectScope } from "../src/reactivity";
 import {
   DOCK_DEFAULT_SIZES,
   DOCK_IDS,
+  DOCK_STORAGE_KEY,
   applyDockLayout,
   mountShell,
   persistDocks,
@@ -25,8 +26,6 @@ import {
   unmountShell,
 } from "../src/shell";
 
-const STORAGE_KEY = "jx-studio-panel-widths";
-
 function mountApp(): HTMLElement {
   const app = document.createElement("div");
   app.id = "app";
@@ -36,7 +35,7 @@ function mountApp(): HTMLElement {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(DOCK_STORAGE_KEY);
   unmountShell();
   shell.leftTab = "layers";
   shell.docks.left = { collapsed: false, size: DOCK_DEFAULT_SIZES.left };
@@ -48,7 +47,7 @@ beforeEach(() => {
 
 afterEach(() => {
   unmountShell();
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(DOCK_STORAGE_KEY);
 });
 
 describe("applyDockLayout", () => {
@@ -106,7 +105,7 @@ describe("dock mutators", () => {
     setDockSize("left", 275);
     setDockCollapsed("right", true);
 
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    const saved = JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) ?? "{}");
     expect(saved.rightCollapsed).toBe(true);
     expect(saved.left).toBe(275);
     expect(saved.leftCollapsed).toBe(false);
@@ -120,7 +119,7 @@ describe("dock mutators", () => {
     setDockSize("right", 400);
     persistDocks();
 
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    const saved = JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) ?? "{}");
     expect(saved.right).toBe(400);
     expect(saved.rightCollapsed).toBe(true);
   });
@@ -130,7 +129,7 @@ describe("dock mutators", () => {
     // Persisted even when the dock was already open. What must not change is the dock itself.
     setDockCollapsed("left", false);
     expect(shell.docks.left.collapsed).toBe(false);
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}").leftCollapsed).toBe(false);
+    expect(JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) ?? "{}").leftCollapsed).toBe(false);
   });
 
   test("toggleDock flips and remembers", () => {
@@ -180,7 +179,7 @@ describe("the Navigator tab", () => {
     // Would forget every selection made while the Navigator was already showing.
     setDockCollapsed("left", false);
     setActivityTab("data");
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}").leftTab).toBe("data");
+    expect(JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) ?? "{}").leftTab).toBe("data");
   });
 });
 
@@ -214,7 +213,7 @@ describe("the Bottom dock is a dock", () => {
     setBottomTab("activity");
     expect(shell.bottomTab).toBe("activity");
     expect(shell.docks.bottom.collapsed).toBe(false);
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    const saved = JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) ?? "{}");
     expect(saved.bottomTab).toBe("activity");
     expect(saved.bottomCollapsed).toBe(false);
   });
@@ -238,7 +237,7 @@ describe("the assistant is not a dock", () => {
 
   test("the persisted record carries no chat keys", () => {
     persistDocks();
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    const saved = JSON.parse(localStorage.getItem(DOCK_STORAGE_KEY) ?? "{}");
     expect(Object.keys(saved).toSorted()).toEqual([
       "bottom",
       "bottomCollapsed",

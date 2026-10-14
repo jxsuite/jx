@@ -23,20 +23,19 @@ async function runEntry(
 ): Promise<{ codes: number[]; out: string }> {
   const codes: number[] = [];
   const said: string[] = [];
-  const mutableProcess = process as unknown as {
-    argv: string[];
-    exit: (code?: number) => never;
-  };
-  const mutableBun = Bun as unknown as { main: string };
+  /* SAFETY: bun-types declares `Bun.main` as a namespace const, but the runtime property is
+     writable, and `import.meta.main` is computed against it on each module evaluation, which is
+     the whole mechanism this harness relies on (see the file header). */
+  const mutableBun = Bun as { main: string };
   const realExit = process.exit;
   const realArgv = process.argv;
   const realMain = Bun.main;
   const realLog = console.log;
-  mutableProcess.exit = (code?: number): never => {
+  process.exit = (code?: number): never => {
     codes.push(code ?? 0);
     throw new Error("process.exit");
   };
-  mutableProcess.argv = [realArgv[0] as string, script, ...argv];
+  process.argv = [...realArgv.slice(0, 1), script, ...argv];
   mutableBun.main = script;
   console.log = (...parts: unknown[]): void => {
     said.push(parts.map(String).join(" "));
@@ -49,8 +48,8 @@ async function runEntry(
     }
   } finally {
     console.log = realLog;
-    mutableProcess.exit = realExit;
-    mutableProcess.argv = realArgv;
+    process.exit = realExit;
+    process.argv = realArgv;
     mutableBun.main = realMain;
   }
   return { codes, out: said.join("\n") };

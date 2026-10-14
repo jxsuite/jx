@@ -19,16 +19,13 @@ import {
   createPagesSource,
 } from "./sources/content-source";
 import { createConnectorSource } from "./sources/connector-source";
-import { makeGridTabId, parseGridTabId } from "./grid-source";
+import { GRID_STUB_DOCUMENT, makeGridTabId, parseGridTabId } from "./grid-source";
 import { libraryTabId } from "../browse/library-source";
 import { argsSchema, optionalStringArg, stringArg, stringProperty } from "../commands/command-args";
 import type { GridSource } from "./grid-source";
 import type { GridOpenSurfaceHandle, GridSourceGroup } from "../surfaces/grid-open";
 import type { Tab } from "../tabs/tab";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-
-/** Placeholder document for grid tabs — the grid never reads it; save routes to the controller. */
-const GRID_STUB_DOCUMENT = { children: [], tagName: "div" };
 
 /**
  * Open (or activate) a `.csv` file as a grid tab.
@@ -187,14 +184,14 @@ function sourceGroups(
       state: "listed",
       title: "Project",
     },
-    ...connections.map((conn) => ({
+    ...connections.map((conn): GridSourceGroup => ({
       emptyMessage: "No tables — push a schema first.",
       key: `data:${conn.name}`,
       rows: conn.tables.map((table) => ({
         id: makeGridTabId({ connection: conn.name, kind: "data", table }),
         label: table,
       })),
-      state: (conn.tables.length === 0 ? "empty" : "listed") as "empty" | "listed",
+      state: conn.tables.length === 0 ? "empty" : "listed",
       title: `Data · ${conn.name}`,
     })),
   ];

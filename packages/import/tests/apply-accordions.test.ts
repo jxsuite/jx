@@ -1,6 +1,37 @@
 import { describe, expect, test } from "bun:test";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElement, JxStyle } from "@jxsuite/schema/types";
 import { applyAccordions, countLeaves, readAccordionRows } from "../src/apply-accordions.ts";
+
+/** A node's child array, failing the test when the slot holds a repeater or nothing. */
+function childrenOf(node: JxElement): (JxElement | string)[] {
+  if (!Array.isArray(node.children)) {
+    throw new TypeError("expected a child array");
+  }
+  return node.children;
+}
+
+/** The element at `index` among a node's children, failing the test on text or a missing child. */
+function elementChild(node: JxElement, index: number): JxElement {
+  const child = childrenOf(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new TypeError(`expected an element at children[${index}]`);
+  }
+  return child;
+}
+
+/** Every child of a node, failing the test if any of them is text. */
+function elementChildren(node: JxElement): JxElement[] {
+  return childrenOf(node).map((_, index) => elementChild(node, index));
+}
+
+/** A node's style object, failing the test when the rewrite dropped it. */
+function styleOf(node: JxElement): JxStyle {
+  if (node.style === undefined) {
+    throw new TypeError("expected a style object");
+  }
+  return node.style;
+}
 
 /**
  * The reference corpus's accordion, as the tree stands when this pass runs: styles applied, classes
@@ -12,7 +43,7 @@ function alpineAccordion(titles: readonly string[]): JxElement {
       "x-data": "{ open_accordion_item: null }",
       class: "accordion-wrapper numbered-accordion-items",
     },
-    children: titles.map((title, index) => ({
+    children: titles.map((title, index): JxElement => ({
       attributes: {
         class: "accordion-item",
         ":class": `{ 'active': open_accordion_item === ${index} }`,
@@ -40,16 +71,16 @@ function alpineAccordion(titles: readonly string[]): JxElement {
           style: { display: "none", height: "0px", overflow: "hidden" },
           tagName: "div",
         },
-      ] as JxElement[],
+      ],
       style: { marginBottom: "32px" },
       tagName: "div",
-    })) as JxElement[],
+    })),
     tagName: "div",
   };
 }
 
 function page(widget: JxElement): JxElement {
-  return { children: [widget] as JxElement[], tagName: "div" };
+  return { children: [widget], tagName: "div" };
 }
 
 describe("applyAccordions", () => {
@@ -59,12 +90,8 @@ describe("applyAccordions", () => {
     const result = applyAccordions(tree);
 
     expect(result).toEqual({ converted: 1, rows: 3 });
-    const root = (tree.children as JxElement[])[0]!;
-    expect((root.children as JxElement[]).map((c) => c.tagName)).toEqual([
-      "details",
-      "details",
-      "details",
-    ]);
+    const root = elementChild(tree, 0);
+    expect(elementChildren(root).map((c) => c.tagName)).toEqual(["details", "details", "details"]);
   });
 
   test("gives every row of one widget the same name, so they stay mutually exclusive", () => {
@@ -74,22 +101,22 @@ describe("applyAccordions", () => {
 
     applyAccordions(tree);
 
-    const root = (tree.children as JxElement[])[0]!;
-    const names = (root.children as JxElement[]).map((d) => d.attributes!["name"]);
+    const root = elementChild(tree, 0);
+    const names = elementChildren(root).map((d) => d.attributes!["name"]);
     expect(new Set(names).size).toBe(1);
     expect(names[0]).toBeTruthy();
   });
 
   test("gives two separate widgets different names", () => {
     const tree: JxElement = {
-      children: [alpineAccordion(["A", "B"]), alpineAccordion(["C", "D"])] as JxElement[],
+      children: [alpineAccordion(["A", "B"]), alpineAccordion(["C", "D"])],
       tagName: "div",
     };
 
     applyAccordions(tree);
 
-    const [first, second] = tree.children as JxElement[];
-    const nameOf = (w: JxElement): unknown => (w.children as JxElement[])[0]!.attributes!["name"];
+    const [first, second] = elementChildren(tree);
+    const nameOf = (w: JxElement) => elementChild(w, 0).attributes!["name"];
     expect(nameOf(first!)).not.toBe(nameOf(second!));
   });
 
@@ -98,8 +125,8 @@ describe("applyAccordions", () => {
 
     applyAccordions(tree);
 
-    const details = ((tree.children as JxElement[])[0]!.children as JxElement[])[0]!;
-    const [summary, body] = details.children as JxElement[];
+    const details = elementChild(elementChild(tree, 0), 0);
+    const [summary, body] = elementChildren(details);
     expect(summary!.tagName).toBe("summary");
     expect(countLeaves(summary!)).toEqual(["t:Available Sizes"]);
     expect(countLeaves(body!)).toEqual(["t:body 0"]);
@@ -110,11 +137,12 @@ describe("applyAccordions", () => {
 
     applyAccordions(tree);
 
-    const details = ((tree.children as JxElement[])[0]!.children as JxElement[])[0]!;
-    const body = (details.children as JxElement[])[1]!;
+    const details = elementChild(elementChild(tree, 0), 0);
+    const body = elementChild(details, 1);
     expect(body.attributes!["hidden"]).toBeUndefined();
-    expect((body.style as Record<string, unknown>)["display"]).toBeUndefined();
-    expect((body.style as Record<string, unknown>)["height"]).toBeUndefined();
+    const bodyStyle = styleOf(body);
+    expect(bodyStyle["display"]).toBeUndefined();
+    expect(bodyStyle["height"]).toBeUndefined();
   });
 
   test("deletes the dead directives nothing will ever execute", () => {
@@ -133,9 +161,9 @@ describe("applyAccordions", () => {
 
     applyAccordions(tree);
 
-    const details = ((tree.children as JxElement[])[0]!.children as JxElement[])[0]!;
+    const details = elementChild(elementChild(tree, 0), 0);
     expect(details.attributes!["class"]).toBe("accordion-item");
-    expect((details.style as Record<string, unknown>)["marginBottom"]).toBe("32px");
+    expect(styleOf(details)["marginBottom"]).toBe("32px");
   });
 
   test("conserves every leaf across the rewrite", () => {
@@ -163,7 +191,7 @@ describe("closure, and what it refuses", () => {
           tagName: "div",
         },
         { attributes: { "x-show": `open === ${compareKey}` }, tagName: "div" },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
   }
@@ -186,7 +214,7 @@ describe("closure, and what it refuses", () => {
   });
 
   test("refuses a row with no predicate at all", () => {
-    const bare: JxElement = { children: [] as JxElement[], tagName: "div" };
+    const bare: JxElement = { children: [], tagName: "div" };
     expect(read([row("0", "0"), bare])).toBeNull();
   });
 
@@ -195,7 +223,7 @@ describe("closure, and what it refuses", () => {
       children: [
         { attributes: { "@click": "other = (other === 1 ? null : 1)" }, tagName: "div" },
         { attributes: { "x-show": "other === 1" }, tagName: "div" },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
     expect(read([row("0", "0"), stray])).toBeNull();
@@ -217,7 +245,7 @@ describe("closure, and what it refuses", () => {
   test("ignores a repeater, which has no literal rows to read", () => {
     const repeater: JxElement = {
       attributes: { "x-data": "{ open: null }" },
-      children: { $prototype: "Array" } as never,
+      children: { $prototype: "Array", items: [] },
       tagName: "div",
     };
     const tree = page(repeater);
@@ -227,13 +255,13 @@ describe("closure, and what it refuses", () => {
 
 describe("leaf census", () => {
   test("counts a bare text child", () => {
-    const node: JxElement = { children: ["hello", "  ", "world"] as never, tagName: "p" };
+    const node: JxElement = { children: ["hello", "  ", "world"], tagName: "p" };
     expect(countLeaves(node)).toEqual(["t:hello", "t:world"]);
   });
 
   test("counts an image by its source, so a swapped picture reads as loss", () => {
     const node: JxElement = {
-      children: [{ attributes: { src: "/a.png" }, tagName: "img" }] as JxElement[],
+      children: [{ attributes: { src: "/a.png" }, tagName: "img" }],
       tagName: "p",
     };
     expect(countLeaves(node)).toEqual(["m:/a.png"]);
@@ -256,14 +284,14 @@ describe("what the rewrite refuses to touch", () => {
           children: [
             { attributes: { "@click": "open = (open === 0 ? null : 0)" }, tagName: "div" },
             { attributes: { "x-show": "open === 0" }, tagName: "div" },
-          ] as JxElement[],
+          ],
           tagName: "div",
         },
         "stray text nobody accounted for",
-      ] as never,
+      ],
       tagName: "div",
     };
-    const tree: JxElement = { children: [widget] as JxElement[], tagName: "div" };
+    const tree: JxElement = { children: [widget], tagName: "div" };
     const before = JSON.stringify(tree);
 
     expect(applyAccordions(tree)).toEqual({ converted: 0, rows: 0 });
@@ -278,16 +306,16 @@ describe("what the rewrite refuses to touch", () => {
           tagName: "div",
         },
         { attributes: { "x-show": `open === ${index}` }, tagName: "div" },
-      ] as JxElement[],
+      ],
       tagName: "div",
     });
     const widget: JxElement = {
       attributes: { "x-data": "{ open: null }" },
-      children: [row(0), "\n  ", row(1)] as never,
+      children: [row(0), "\n  ", row(1)],
       tagName: "div",
     };
 
-    expect(applyAccordions({ children: [widget] as JxElement[], tagName: "div" })).toEqual({
+    expect(applyAccordions({ children: [widget], tagName: "div" })).toEqual({
       converted: 1,
       rows: 2,
     });
@@ -296,7 +324,7 @@ describe("what the rewrite refuses to touch", () => {
   test("strips a string-valued inline handler but never a Jx object handler", () => {
     const widget: JxElement = {
       attributes: { "x-data": "{ open: null }" },
-      children: [0, 1].map((index) => ({
+      children: [0, 1].map((index): JxElement => ({
         children: [
           {
             attributes: {
@@ -306,12 +334,12 @@ describe("what the rewrite refuses to touch", () => {
             tagName: "div",
           },
           { attributes: { "x-show": `open === ${index}` }, tagName: "div" },
-        ] as JxElement[],
+        ],
         tagName: "div",
-      })) as JxElement[],
+      })),
       tagName: "div",
     };
-    const tree: JxElement = { children: [widget] as JxElement[], tagName: "div" };
+    const tree: JxElement = { children: [widget], tagName: "div" };
 
     applyAccordions(tree);
 
@@ -324,24 +352,24 @@ describe("rows containing loose text", () => {
     const row = (index: number): JxElement => ({
       children: [
         {
-          children: ["Title text"] as never,
+          children: ["Title text"],
           attributes: { "@click": `open = (open === ${index} ? null : ${index})` },
           tagName: "div",
         },
         {
           attributes: { "x-show": `open === ${index}`, hidden: "" },
-          children: [`body ${index}`] as never,
+          children: [`body ${index}`],
           tagName: "div",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     });
     const widget: JxElement = {
       attributes: { "x-data": "{ open: null }" },
-      children: [row(0), row(1)] as JxElement[],
+      children: [row(0), row(1)],
       tagName: "div",
     };
-    const tree: JxElement = { children: [widget] as JxElement[], tagName: "div" };
+    const tree: JxElement = { children: [widget], tagName: "div" };
     const before = countLeaves(tree);
 
     expect(applyAccordions(tree)).toEqual({ converted: 1, rows: 2 });

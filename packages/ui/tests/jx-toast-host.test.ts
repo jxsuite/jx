@@ -40,6 +40,8 @@ interface ToastSpec {
 
 /** One `jx-toast`, built but not mounted. */
 function toast(spec: ToastSpec): ToastEl {
+  /* SAFETY: registerUi() in beforeAll defined jx-toast, so createElement returns the upgraded
+     element, and jx-toast.json declares the `open` prop ToastEl names. */
   const el = document.createElement("jx-toast") as ToastEl;
   if (spec.open !== false) {
     el.setAttribute("open", "");
@@ -68,6 +70,9 @@ interface Stack {
 async function stack(attrs: Record<string, string>, specs: ToastSpec[]): Promise<Stack> {
   const elsewhere = document.createElement("button");
   elsewhere.textContent = "Somewhere else";
+  /* SAFETY: registerUi() in beforeAll defined jx-toast-host, so createElement returns the upgraded
+     element, and jx-toast-host.json declares the label, live, placement and hotkey props HostEl
+     names. */
   const host = document.createElement("jx-toast-host") as HostEl;
   for (const [key, value] of Object.entries(attrs)) {
     host.setAttribute(key, value);
@@ -313,8 +318,14 @@ describe("jx-toast-host", () => {
     const stray = document.createElement("div");
     document.body.append(stray);
     const state: ToastHostState = { hotkey: "F8", live: "polite" };
-    expect(() => {
-      onStackClose(state, { currentTarget: stray, target: stray } as unknown as Event);
-    }).not.toThrow();
+    /* Called from a listener on the stray node, so `currentTarget` and `target` are both that node,
+       exactly as a bound handler reused off a host would see them. */
+    let outcome = "not reached";
+    stray.addEventListener("close", (event) => {
+      onStackClose(state, event);
+      outcome = "returned";
+    });
+    stray.dispatchEvent(new Event("close"));
+    expect(outcome).toBe("returned");
   });
 });

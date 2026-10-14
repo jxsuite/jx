@@ -10,29 +10,65 @@
  */
 import { flush, installMockPlatform, resetStudioState, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject } from "@jxsuite/schema/types";
 
-type AnyRec = Record<string, any>;
+/** What a drag carries, as the adapter hands it to every callback. */
+interface DragSource {
+  data: JsonObject;
+}
 
-const draggables = new Map<Element, AnyRec>();
-const dropTargets = new Map<Element, AnyRec>();
-const monitors: AnyRec[] = [];
+/** Where a drag is, by the drop targets under it, innermost first. */
+interface DragLocation {
+  current: { dropTargets: { data: JsonObject }[] };
+}
+
+/** The pointer position the adapter passes to `canDrag` and `getData`. */
+interface PointerInput {
+  clientX: number;
+  clientY: number;
+}
+
+/** The slice of a chip's `draggable` config these tests drive. */
+interface RecordedDraggable {
+  element: Element;
+  canDrag: (args: { input: PointerInput }) => boolean;
+  getInitialData: () => JsonObject;
+}
+
+/** The slice of a `dropTargetForElements` config these tests drive (the tail's takes no args). */
+interface RecordedDropTarget {
+  element: Element;
+  canDrop: (args: { source: DragSource }) => boolean;
+  getData: (args?: { element: Element; input: PointerInput }) => JsonObject;
+}
+
+/** The slice of a `monitorForElements` config these tests drive, plus the mock's release mark. */
+interface RecordedMonitor {
+  onDragStart: (args: { source: DragSource }) => void;
+  onDrag: (args: { location: DragLocation }) => void;
+  onDrop: (args: { source: DragSource; location: DragLocation }) => void;
+  __released?: boolean;
+}
+
+const draggables = new Map<Element, RecordedDraggable>();
+const dropTargets = new Map<Element, RecordedDropTarget>();
+const monitors: RecordedMonitor[] = [];
 const released = new Set<Element>();
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: (cfg: AnyRec) => {
+  draggable: (cfg: RecordedDraggable) => {
     draggables.set(cfg.element, cfg);
     return () => {
       released.add(cfg.element);
     };
   },
-  dropTargetForElements: (cfg: AnyRec) => {
+  dropTargetForElements: (cfg: RecordedDropTarget) => {
     dropTargets.set(cfg.element, cfg);
     return () => {
       released.add(cfg.element);
     };
   },
-  monitorForElements: (cfg: AnyRec) => {
+  monitorForElements: (cfg: RecordedMonitor) => {
     monitors.push(cfg);
     return () => {
       cfg.__released = true;
@@ -59,14 +95,22 @@ let host: HTMLElement;
 
 function open(id: string, documentPath: string | null = `/project/${id}.json`) {
   return openTab({
-    document: { children: [], tagName: "div" } as JxMutableNode,
+    document: { children: [], tagName: "div" },
     documentPath,
     id,
   });
 }
 
+/** `el` as the HTMLElement the strip draws there, or a thrown error naming what is missing. */
+function drawn(el: Element | null, what: string): HTMLElement {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`${what} is not drawn`);
+  }
+  return el;
+}
+
 function tabs(into: HTMLElement = host): HTMLElement[] {
-  return [...into.querySelectorAll('[part="tab"]')] as HTMLElement[];
+  return [...into.querySelectorAll('[part="tab"]')].filter((el) => el instanceof HTMLElement);
 }
 
 function chipFor(id: string, into: HTMLElement = host): HTMLElement {
@@ -74,15 +118,15 @@ function chipFor(id: string, into: HTMLElement = host): HTMLElement {
 }
 
 function stripEl(into: HTMLElement = host): HTMLElement {
-  return into.querySelector('[part="tabs"]') as HTMLElement;
+  return drawn(into.querySelector('[part="tabs"]'), "the jx-tabs strip");
 }
 
-function monitor(): AnyRec {
+function monitor(): RecordedMonitor {
   return monitors.at(-1)!;
 }
 
 /** A chip's `draggable` registration invokes `getInitialData` at drag time, as the real one does. */
-function initialData(id: string, into: HTMLElement = host): AnyRec {
+function initialData(id: string, into: HTMLElement = host): JsonObject {
   return draggables.get(chipFor(id, into))!.getInitialData();
 }
 
@@ -96,7 +140,7 @@ beforeEach(() => {
     <div id="layer-dialog"></div>
   `;
   initLayers();
-  host = document.querySelector("#tab-strip") as HTMLElement;
+  host = drawn(document.querySelector("#tab-strip"), "#tab-strip");
   draggables.clear();
   dropTargets.clear();
   released.clear();
@@ -145,13 +189,13 @@ describe("chips are sources and slot targets", () => {
     open("a");
     await flush();
     const chip = chipFor("a");
-    const pin = chip.querySelector('[part="pin"]') as HTMLElement;
-    const close = chip.querySelector('[part="close"]') as HTMLElement;
-    (document.elementFromPoint as unknown as (x: number, y: number) => Element) = () => pin;
+    const pin = drawn(chip.querySelector('[part="pin"]'), "the pin toggle");
+    const close = drawn(chip.querySelector('[part="close"]'), "the close button");
+    document.elementFromPoint = () => pin;
     expect(draggables.get(chip)!.canDrag({ input: { clientX: 0, clientY: 0 } })).toBe(false);
-    (document.elementFromPoint as unknown as (x: number, y: number) => Element) = () => close;
+    document.elementFromPoint = () => close;
     expect(draggables.get(chip)!.canDrag({ input: { clientX: 0, clientY: 0 } })).toBe(false);
-    (document.elementFromPoint as unknown as (x: number, y: number) => Element) = () => chip;
+    document.elementFromPoint = () => chip;
     expect(draggables.get(chip)!.canDrag({ input: { clientX: 0, clientY: 0 } })).toBe(true);
   });
 });
@@ -306,13 +350,13 @@ describe("registration lifecycle", () => {
       '<div id="tab-strip-2" data-jx-region="pane.secondary/tabs"></div>',
     );
     await flush();
-    const secondHost = document.querySelector("#tab-strip-2") as HTMLElement;
+    const secondHost = drawn(document.querySelector("#tab-strip-2"), "#tab-strip-2");
     expect(secondHost.querySelector('[part="strip-row"]')).toBeNull();
 
     monitor().onDragStart({ source: { data: { paneId: PRIMARY_PANE, tabId: "a", type: "tab" } } });
     await flush();
-    const tail = secondHost.querySelector('[part="tabs"]') as HTMLElement;
-    expect(tail).not.toBeNull();
+    // Drawn() refuses a missing tail, so the drag growing one is asserted here too.
+    const tail = drawn(secondHost.querySelector('[part="tabs"]'), "the empty pane's tail target");
     expect(dropTargets.has(tail)).toBe(true);
 
     monitor().onDrop({
@@ -353,7 +397,7 @@ describe("cross-pane, through the monitor", () => {
     open("b", "/project/b.json");
     splitRight();
     await flush();
-    const secondHost = document.querySelector("#tab-strip-2") as HTMLElement;
+    const secondHost = drawn(document.querySelector("#tab-strip-2"), "#tab-strip-2");
     stubRect(chipFor("b", secondHost), { left: 0, width: 100 });
 
     monitor().onDrop({

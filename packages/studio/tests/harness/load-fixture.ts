@@ -12,6 +12,8 @@
 import { cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 
@@ -20,8 +22,8 @@ const REPO_ROOT = resolve(import.meta.dir, "../../../..");
  * @param {string} [opts.site] - Path to the source site, relative to repo root.
  * @param {string} [opts.page] - Page file to load as the working document, relative to the site.
  * @returns {{
- *   document: Record<string, unknown>;
- *   projectConfig: Record<string, unknown>;
+ *   document: JsonObject;
+ *   projectConfig: JsonObject;
  *   components: Array<{ name: string; path: string }>;
  *   projectRoot: string;
  *   saveFile: (relPath: string, content: string) => Promise<void>;
@@ -65,8 +67,13 @@ export function loadFixture({ site = "sites/test-blank", page = "pages/index.jso
   };
 }
 
-function readJson(p: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(p, "utf8"));
+/** Read a fixture JSON file. Every file this loads (a page, `project.json`) is one object. */
+function readJson(p: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(p, "utf8"));
+  if (!isJsonObject(parsed)) {
+    throw new TypeError(`fixture ${p} is not a JSON object`);
+  }
+  return parsed;
 }
 
 /**

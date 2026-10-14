@@ -38,7 +38,8 @@ import { elementForPath } from "./iframe-position";
 import type { AssetContext } from "./asset-resolve";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import type { CanvasMode, WireDiffMarks } from "./iframe-protocol";
-import type { JxDocument } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 
 /**
@@ -61,18 +62,12 @@ export interface RenderHandle {
   ctx: IframeRenderCtx;
 }
 
-interface HeadEntry {
-  tagName?: string;
-  attributes?: Record<string, unknown>;
-  textContent?: string;
-}
-
 /**
  * Register the document's `$elements` (components) in this iframe realm so the runtime can render
  * them.
  */
 export async function registerElements(doc: JxDocument, docBase: string): Promise<void> {
-  const elements = (doc as { $elements?: unknown[] }).$elements;
+  const elements = doc.$elements;
   if (!Array.isArray(elements)) {
     return;
   }
@@ -81,13 +76,16 @@ export async function registerElements(doc: JxDocument, docBase: string): Promis
   await Promise.all(
     elements.map(async (entry) => {
       const task = (async () => {
-        if (typeof entry === "string") {
+        if (isString(entry)) {
           const specifier =
             entry.startsWith("/") || entry.startsWith(".") ? entry : `/node_modules/${entry}`;
           await import(specifier);
-        } else if (entry && typeof entry === "object" && "$ref" in entry) {
-          await defineElement(new URL(String((entry as { $ref: string }).$ref), docBase).href);
-        } else if (entry && typeof entry === "object") {
+        } else if (isNonNullObject(entry) && "$ref" in entry) {
+          await defineElement(new URL(String(entry.$ref), docBase).href);
+        } else if (isNonNullObject(entry)) {
+          /* SAFETY: an `$elements` entry that is neither a specifier nor a `$ref` is an inline
+           * component definition by the schema (JxDocument is JxElement with a literal tagName).
+           * A malformed one throws inside this task, which the race below catches and logs. */
           await defineElement(entry as JxDocument, docBase);
         }
       })();
@@ -696,11 +694,11 @@ export function syncStylebookCss(doc: Document, mode: CanvasMode): void {
  * selectors can win (spec.md §9.5), and so removed tokens can't linger on reused iframes.
  */
 export function applySiteStyle(
-  siteStyle: Record<string, unknown> | null | undefined,
+  siteStyle: JxStyle | null | undefined,
   mediaQueries: Record<string, string> = {},
 ): void {
   const existing = document.head.querySelector(`#${SITE_STYLE_ID}`);
-  if (!siteStyle || typeof siteStyle !== "object") {
+  if (!siteStyle || !isNonNullObject(siteStyle)) {
     existing?.remove();
     return;
   }
@@ -746,15 +744,15 @@ export function applyPreviewColorScheme(doc: Document, scheme: "light" | "dark" 
  * @docs studio/interface/canvas
  */
 export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): void {
-  for (const el of root.querySelectorAll("[data-jx-popover-open]")) {
-    delete (el as HTMLElement).dataset.jxPopoverOpen;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-jx-popover-open]")) {
+    delete el.dataset.jxPopoverOpen;
   }
   if (path === null) {
     return;
   }
-  const target = root.querySelector(`[data-jx-popover]${jxPathSelector(path)}`);
+  const target = root.querySelector<HTMLElement>(`[data-jx-popover]${jxPathSelector(path)}`);
   if (target) {
-    (target as HTMLElement).dataset.jxPopoverOpen = "";
+    target.dataset.jxPopoverOpen = "";
   }
 }
 
@@ -783,26 +781,27 @@ export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): v
  * backdrop and all.
  */
 export function applyCanvasDialogOpen(root: ParentNode, path: string | null): void {
-  for (const el of root.querySelectorAll("[data-jx-dialog-open]")) {
-    delete (el as HTMLElement).dataset.jxDialogOpen;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-jx-dialog-open]")) {
+    delete el.dataset.jxDialogOpen;
   }
   if (path === null) {
     return;
   }
-  const target = root.querySelector(`dialog${jxPathSelector(path)}`);
+  const target = root.querySelector<HTMLElement>(`dialog${jxPathSelector(path)}`);
   if (target) {
-    (target as HTMLElement).dataset.jxDialogOpen = "";
+    target.dataset.jxDialogOpen = "";
   }
 }
 
 /** Inject the document's `$head` (link/meta/script) into the iframe's <head>, de-duped by href/src. */
 export function injectHead(doc: JxDocument, assets: AssetContext | null = null): void {
-  const head = (doc as { $head?: HeadEntry[] }).$head;
+  const head = doc.$head;
   if (!Array.isArray(head)) {
     return;
   }
   for (const entry of head) {
-    if (!entry?.tagName) {
+    // A `$head` array read off disk can hold a null or a tagless entry; neither emits anything.
+    if (!isNonNullObject(entry) || !entry.tagName) {
       continue;
     }
     const tag = String(entry.tagName).toLowerCase();
@@ -810,10 +809,10 @@ export function injectHead(doc: JxDocument, assets: AssetContext | null = null):
     if (tag === "script" && !entry.attributes?.src) {
       continue;
     }
-    const attrs = { ...entry.attributes } as Record<string, unknown>;
+    const attrs = { ...entry.attributes };
     for (const key of ["href", "src"]) {
       const val = attrs[key];
-      if (typeof val !== "string" || val === "") {
+      if (!isString(val) || val === "") {
         continue;
       }
       if (!val.startsWith("/") && !val.startsWith(".") && !val.startsWith("http")) {
@@ -833,7 +832,7 @@ export function injectHead(doc: JxDocument, assets: AssetContext | null = null):
       el.setAttribute(k, String(v));
     }
     if (entry.textContent) {
-      el.textContent = entry.textContent;
+      el.textContent = String(entry.textContent);
     }
     document.head.append(el);
   }
@@ -856,7 +855,7 @@ export function makeStamper(ctx: PathMapCtx) {
       (island) => path.length > island.length && island.every((seg, i) => path[i] === seg),
     );
 
-  return (created: Node, path: (string | number)[], def: unknown) => {
+  return (created: Node, path: (string | number)[], def: JxElement | string) => {
     if (!(created instanceof HTMLElement)) {
       return;
     }
@@ -866,7 +865,10 @@ export function makeStamper(ctx: PathMapCtx) {
     // Editable tree and re-render a live instance with default state. Mark the root so the
     // Runtime's element class leaves it alone (see defineElement's connectedCallback guard).
     const isDefinitionRoot =
-      path.length === 0 && (def as { tagName?: string } | null)?.tagName?.includes("-");
+      path.length === 0 &&
+      isNonNullObject(def) &&
+      isString(def.tagName) &&
+      def.tagName.includes("-");
     if (isDefinitionRoot) {
       created.dataset.jxDefinitionRoot = "";
     }
@@ -984,7 +986,7 @@ export async function renderResolvedDocument(opts: {
   docBase: string;
   mode: CanvasMode;
   mapperCtx: PathMapCtx;
-  siteStyle?: Record<string, unknown> | null;
+  siteStyle?: JxStyle | null;
   /**
    * How this host addresses project media, or null when the canvas origin serves the site's own URL
    * space (desktop, `jx dev`) and references need no resolution at all.
@@ -1037,7 +1039,7 @@ export async function renderResolvedDocument(opts: {
   // Iframe clears it (page-level templates are inert in design/edit via prepareForEditMode, so only
   // Component internals get stamped).
   setStampPropBindings(opts.mode === "design" || opts.mode === "edit");
-  applySiteStyle(opts.siteStyle, (opts.doc as { $media?: Record<string, string> }).$media ?? {});
+  applySiteStyle(opts.siteStyle, opts.doc.$media ?? {});
   injectHead(opts.doc, assets);
   syncEditModeCss(opts.container.ownerDocument, opts.mode);
   // The substitute rules for the attributes the de-link above renamed. Same predicate as the
@@ -1052,7 +1054,7 @@ export async function renderResolvedDocument(opts: {
   // But no own `$media` resolves the breakpoint to its real query (the iframe path calls buildScope
   // Directly and never the runtime's `Jx()` entry, which is the only other place _rootMedia is set).
   // Set it every render (even to `{}`) so a stale map from a previous document cannot leak.
-  setRootMedia((opts.doc as { $media?: Record<string, string> }).$media ?? {});
+  setRootMedia(opts.doc.$media ?? {});
   // Register components BEFORE renderNode. The runtime only applies a custom element's `$props` when
   // That element is ALREADY defined (renderNode gates renderCustomElementWithProps on a truthy
   // `customElements.get(tagName)`); if we register after render, every component paints with its
@@ -1066,8 +1068,8 @@ export async function renderResolvedDocument(opts: {
   // The scope MUST be the runtime's (runScoped): renderNode creates its binding effects with the
   // Runtime's copy of @vue/reactivity, and scope collection is per module instance — a studio
   // EffectScope here collects nothing and dispose() would leak every effect of this render.
-  const { result: el, stop } = runScoped(
-    () => renderNode(opts.doc, $defs, { _path: [], onNodeCreated }) as HTMLElement,
+  const { result: el, stop } = runScoped(() =>
+    renderNode(opts.doc, $defs, { _path: [], onNodeCreated }),
   );
   opts.container.replaceChildren(el);
   applyCanvasPopoverOpen(opts.container, opts.popoverOpen ?? null);

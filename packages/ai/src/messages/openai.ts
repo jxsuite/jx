@@ -9,7 +9,8 @@
  * @license MIT
  */
 
-import { isEmptyAssistant } from "./convert.ts";
+import type { JSONSchema } from "../tools.ts";
+import { isEmptyAssistant, isMemberBag, isText } from "./convert.ts";
 import type {
   ChatMessage,
   OpenAIMessage,
@@ -113,15 +114,34 @@ export function toOpenAIMessages(messages: readonly ChatMessage[]): OpenAIMessag
  * @returns {OpenAITool[]}
  */
 export function toOpenAITools(tools: readonly ToolSpec[]): OpenAITool[] {
-  return tools.map((tool) => ({
-    type: "function",
-    function: {
+  return tools.map((tool): OpenAITool => {
+    const fn: OpenAITool["function"] = {
       name: tool.name,
       description: tool.description,
       parameters: tool.inputSchema,
-      ...(tool.strict === true ? { strict: true as const } : {}),
-    },
-  }));
+    };
+    if (tool.strict === true) {
+      fn.strict = true;
+    }
+    return { type: "function", function: fn };
+  });
+}
+
+/**
+ * A `tools` entry as {@link fromOpenAITools} reads it: any object, whose members are checked before
+ * they are used.
+ */
+interface ListedTool {
+  readonly type?: unknown;
+  readonly function?: unknown;
+}
+
+/** A `tools` entry's `function` member, read the same way. */
+interface ListedFunction {
+  readonly name?: unknown;
+  readonly description?: unknown;
+  readonly parameters?: unknown;
+  readonly strict?: unknown;
 }
 
 /**
@@ -133,28 +153,29 @@ export function toOpenAITools(tools: readonly ToolSpec[]): OpenAITool[] {
  * @throws {TypeError} When an entry is not a function tool with a name, a description and a schema
  */
 export function fromOpenAITools(tools: readonly object[]): ToolSpec[] {
-  return tools.map((tool, index) => {
-    const fn = (tool as { type?: unknown; function?: unknown }).function as
-      | { name?: unknown; description?: unknown; parameters?: unknown; strict?: unknown }
-      | undefined;
+  return tools.map((tool, index): ToolSpec => {
+    // Every member of ListedTool and ListedFunction is optional and `unknown`: any object is one.
+    const listed: ListedTool = tool;
+    const fn: ListedFunction | undefined = isMemberBag(listed.function)
+      ? listed.function
+      : undefined;
     if (
-      (tool as { type?: unknown }).type !== "function" ||
-      typeof fn !== "object" ||
-      fn === null ||
-      typeof fn.name !== "string" ||
-      typeof fn.description !== "string" ||
-      typeof fn.parameters !== "object" ||
-      fn.parameters === null
+      listed.type !== "function" ||
+      fn === undefined ||
+      !isText(fn.name) ||
+      !isText(fn.description) ||
+      !isMemberBag(fn.parameters)
     ) {
       throw new TypeError(
         `tools[${index}] is not an OpenAI function tool with a name, a description and parameters`,
       );
     }
-    return {
-      name: fn.name,
-      description: fn.description,
-      inputSchema: fn.parameters as Readonly<Record<string, unknown>>,
-      ...(fn.strict === true ? { strict: true } : {}),
-    };
+    /* SAFETY: `parameters` was just checked to be a non-null object, and it is kept by reference
+       and never read here: it is the schema the listing's registry was given as a JSONSchema. */
+    const inputSchema = fn.parameters as Readonly<JSONSchema>;
+    if (fn.strict === true) {
+      return { name: fn.name, description: fn.description, inputSchema, strict: true };
+    }
+    return { name: fn.name, description: fn.description, inputSchema };
   });
 }

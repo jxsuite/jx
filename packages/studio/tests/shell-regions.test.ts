@@ -9,20 +9,30 @@
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
-import { html } from "lit-html";
 import * as leftPanelModule from "../src/panels/left-panel";
 import * as rightPanelModule from "../src/panels/right-panel";
 import { mountStatusbar, renderStatusbar, unmountStatusbar } from "../src/surfaces/statusbar";
-import { initShellRefs, leftPanel, rightPanel } from "../src/store";
+import { initShellRefs, leftPanel, requireShellRef, rightPanel } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { view } from "../src/view";
 import { shell } from "../src/shell";
+import type { NavigatorPanelDeps } from "../src/panels/panel-registry";
 import { listRegions, resolveRegion } from "../src/ui/regions";
 /* Imported for its side effect: the grid registers itself as a shell surface at import time, the
    same bargain `ui/panel-resize.ts` makes, so `mountShell()` below draws the pane cells. `studio.ts`
    gets this for free by importing `cellForPane`; a test that mounts the shell without the
    bootstrap has to say so. */
 import "../src/panels/pane-grid";
+
+/** The shell's Navigator cell, which `initShellRefs()` found before these tests run. */
+function navigatorHost(): HTMLElement {
+  return requireShellRef(leftPanel, "left-panel");
+}
+
+/** The shell's Inspector cell, which `initShellRefs()` found before these tests run. */
+function inspectorHost(): HTMLElement {
+  return requireShellRef(rightPanel, "right-panel");
+}
 
 /* The real frame. This used to be nine hand-listed divs plus `stampShellRegions()` to give them the
    region ids they could not carry themselves — and it was missing the bottom dock and the toast
@@ -32,9 +42,6 @@ import "../src/panels/pane-grid";
 beforeEach(async () => {
   await mountShellTree();
   initShellRefs();
-  if (!Element.prototype.scrollIntoView) {
-    Element.prototype.scrollIntoView = () => {};
-  }
   view.dndCleanups = [];
   view._layersCollapsed = new Set();
   resetStudioState();
@@ -93,7 +100,7 @@ describe("the frame's own regions, through mountShell", () => {
 
 // ─── navigator/panel:<id>, stamped once by the panel host ─────────────────────
 
-function leftCtx(overrides: Record<string, unknown> = {}) {
+function leftCtx(): NavigatorPanelDeps {
   return {
     defaultDef: (tag: string) => ({ tagName: tag }),
     defBadgeLabel: () => "badge",
@@ -103,21 +110,14 @@ function leftCtx(overrides: Record<string, unknown> = {}) {
     refreshData: mock(() => {}),
     registerComponentsDnD: mock(() => {}),
     registerElementsDnD: mock(() => {}),
-    registerFileTreeDnD: mock(() => {}),
     registerLayersDnD: mock(() => {}),
     renderCanvas: mock(() => {}),
-    renderFilesTemplate: mock(() => html`<div class="file-tree"></div>`),
-    renderGitPanel: mock(
-      () => html`<div class="git-commit-area" data-jx-region="navigator/panel:git/commit"></div>`,
-    ),
     mountSignalsPanel: mock(() => {}),
-    renderHeadTemplate: mock(() => html`<div id="head-rendered"></div>`),
-    renderImportsTemplate: mock(() => html`<div id="imports-rendered"></div>`),
     setCanvasMode: mock(() => {}),
     setGitDiffState: mock(() => {}),
-    setupTreeKeyboard: mock(() => {}),
-    webdata: { elements: { Text: [{ tag: "p" }] } },
-    ...overrides,
+    /* SAFETY: the Elements palette is the only reader of `webdata`, and it reads nothing but
+       `elements` (category name to `{ tag }` blocks); one category is all the Insert panel needs. */
+    webdata: { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"],
   };
 }
 
@@ -129,7 +129,7 @@ describe("navigator/panel:<id>", () => {
     test(`"${panel}" is addressable without anyone authoring its id`, async () => {
       resetWorkspaceWithTab();
       shell.leftTab = panel;
-      leftPanelModule.mount(leftCtx() as never);
+      leftPanelModule.mount(leftCtx());
       await flush(3);
 
       const region = resolveRegion(`navigator/panel:${panel}`);
@@ -137,14 +137,14 @@ describe("navigator/panel:<id>", () => {
       // The Navigator's box is a document (`surfaces/navigator-dock.json`), so it emits no class;
       // The part is what the region is stamped on and what a rule can key.
       expect(region!.getAttribute("part")).toBe("panel-body");
-      expect(leftPanel.contains(region)).toBe(true);
+      expect(navigatorHost().contains(region)).toBe(true);
     });
   }
 
   test("a document-level panel with no document still names its region", async () => {
     closeAllTabs();
     shell.leftTab = "layers";
-    leftPanelModule.mount(leftCtx() as never);
+    leftPanelModule.mount(leftCtx());
     await flush(3);
     expect(resolveRegion("navigator/panel:layers")).not.toBeNull();
   });
@@ -152,7 +152,7 @@ describe("navigator/panel:<id>", () => {
   test("exactly one panel region is on screen at a time", async () => {
     resetWorkspaceWithTab();
     shell.leftTab = "data";
-    leftPanelModule.mount(leftCtx() as never);
+    leftPanelModule.mount(leftCtx());
     await flush(3);
     const panelRegions = listRegions().filter((id) => id.startsWith("navigator/panel:"));
     expect(panelRegions).toEqual(["navigator/panel:data"]);
@@ -170,8 +170,8 @@ describe("navigator/panel:<id>", () => {
       files: [],
       isRepo: true,
       remotes: [],
-    } as never;
-    leftPanelModule.mount(leftCtx() as never);
+    };
+    leftPanelModule.mount(leftCtx());
     await flush(6);
     const commit = resolveRegion("navigator/panel:git/commit");
     expect(commit).not.toBeNull();
@@ -188,7 +188,7 @@ describe("inspector/tab:<value>", () => {
       mountAssistant: mock(() => {}),
       navigateToComponent: mock(() => {}),
       renderCanvas: mock(() => {}),
-    } as never);
+    });
   }
 
   /** Whether an Inspector tab's body is the one on screen — its panel is not `hidden`. */
@@ -206,7 +206,7 @@ describe("inspector/tab:<value>", () => {
     for (const key of ["properties", "style", "events", "assistant"]) {
       const body = resolveRegion(`inspector/tab:${key}`);
       expect(body).not.toBeNull();
-      expect(rightPanel.contains(body)).toBe(true);
+      expect(inspectorHost().contains(body)).toBe(true);
     }
     /* Showing is the `tabpanel`'s own `hidden`, not an inline `display` this dock writes onto a
        container: the four bodies are real tab panels now, so the strip's `aria-selected` and the
@@ -277,10 +277,10 @@ describe("Outline rows carry node identity", () => {
       tagName: "div",
     });
     shell.leftTab = "layers";
-    leftPanelModule.mount(leftCtx() as never);
+    leftPanelModule.mount(leftCtx());
     await flush(3);
 
-    const paths = [...leftPanel.querySelectorAll<HTMLElement>("[data-jx-path]")].map((el) =>
+    const paths = [...navigatorHost().querySelectorAll<HTMLElement>("[data-jx-path]")].map((el) =>
       JSON.parse(el.dataset.jxPath!),
     );
     expect(paths).toContainEqual([]);
@@ -296,12 +296,12 @@ describe("Outline rows carry node identity", () => {
       tagName: "div",
     });
     shell.leftTab = "layers";
-    leftPanelModule.mount(leftCtx() as never);
+    leftPanelModule.mount(leftCtx());
     await flush(3);
 
     // Matched by reading the attribute rather than by selector: happy-dom's parser cannot handle
     // The escaped quotes a JSON path needs, and the point is the attribute, not the selector.
-    const row = [...leftPanel.querySelectorAll<HTMLElement>("[data-jx-path]")].find(
+    const row = [...navigatorHost().querySelectorAll<HTMLElement>("[data-jx-path]")].find(
       (el) => el.dataset.jxPath === JSON.stringify(["children", 0]),
     );
     expect(outlineRowPath(row!.querySelector('[part="label"]'))).toEqual(["children", 0]);

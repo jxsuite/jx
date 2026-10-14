@@ -28,21 +28,88 @@ import {
   resetDocumentStyles,
 } from "../src/runtime";
 import { evaluateExpression, isMutating } from "../src/expression";
+import { BASE } from "./base-url.ts";
 import { adoptedCSS, elementCSS } from "./style-text.ts";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxScope, JxScopeValue } from "../src/types";
+
+/** What a test hands a compiled scope function: the scope itself, an event stand-in, or data. */
+type ScopeArgument = JxScope | JsonValue;
+
+/** A function `buildScope` compiled from a `Function` or `$expression` state entry. */
+type ScopeFunction = (...args: ScopeArgument[]) => JsonValue | undefined;
+
+/** A `Function` entry with a structured body AND parameters, which runs its statements async. */
+type StatementsFunction = (...args: ScopeArgument[]) => Promise<void>;
+
+/** Read a scope member that must be callable, failing the test when it is not. */
+function scopeCallable(scope: JxScope, key: string): (...args: never[]) => void {
+  const member = scope[key];
+  if (!isFunction(member)) {
+    throw new TypeError(`scope.${key} is not a function`);
+  }
+  return member;
+}
 
 /** Read a scope member as a callable — tests poke the dynamic scope directly. */
-const fnOf = (scope: Record<string, unknown>, key: string) =>
-  scope[key] as (...args: unknown[]) => unknown;
+function fnOf(scope: JxScope, key: string): ScopeFunction {
+  /* SAFETY: buildScope builds every callable entry from document code (`new Function`, an
+     `$expression` closure or a parameterless statements handler), so it accepts any arguments,
+     and each entry these tests call through here returns JSON data or nothing. */
+  return scopeCallable(scope, key) as ScopeFunction;
+}
+
+/** Read a parameterized structured-body entry, which buildScope wraps around `runStatements`. */
+function statementsFnOf(scope: JxScope, key: string): StatementsFunction {
+  /* SAFETY: buildScope maps a structured body with parameters to
+     `(...argValues) => runStatements(...)`, and runStatements is async and resolves to nothing. */
+  return scopeCallable(scope, key) as StatementsFunction;
+}
+
 /** Read a scope member as an array. */
-const arrOf = (scope: Record<string, unknown>, key: string) => scope[key] as unknown[];
+function arrOf(scope: JxScope, key: string): JxScopeValue[] {
+  const member = scope[key];
+  if (!Array.isArray(member)) {
+    throw new TypeError(`scope.${key} is not an array`);
+  }
+  return member;
+}
+
+/** Fail the test unless `value` is an instance of `ctor`, narrowing it for the assertions after. */
+function assertInstance<T>(
+  value: unknown,
+  ctor: abstract new (...args: never[]) => T,
+): asserts value is T {
+  if (!(value instanceof ctor)) {
+    throw new Error(`expected an instance of ${ctor.name}`);
+  }
+}
+
+/** Install `respond` as `fetch`, keeping Bun's `preconnect` so the stub is a whole `fetch`. */
+function stubFetch(respond: (url: string, init: RequestInit | undefined) => Response) {
+  const { preconnect } = fetch;
+  const handler = mock((input: RequestInfo | URL, init?: RequestInit) =>
+    Promise.resolve(respond(String(input), init)),
+  );
+  globalThis.fetch = Object.assign(handler, { preconnect });
+  return handler;
+}
+
 try {
   GlobalRegistrator.register();
 } catch {
   /* Already registered */
 }
 
-const renderNode: (...args: Parameters<typeof _renderNode>) => HTMLElement = _renderNode as any;
+/** Render an element definition, failing the test if a Text node or a non-HTML element comes back. */
+function renderNode(...args: Parameters<typeof _renderNode>): HTMLElement {
+  const node = _renderNode(...args);
+  if (!(node instanceof HTMLElement)) {
+    throw new Error("renderNode did not return an HTML element");
+  }
+  return node;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -163,8 +230,12 @@ describe("resolveRef", () => {
   child["$map/item"] = child.$map.item;
   child["$map/index"] = child.$map.index;
 
-  test("non-string returns as-is", () =>
-    expect(resolveRef(42 as unknown as string, state)).toBe(42));
+  test("non-string returns as-is", () => {
+    const doc: JsonObject = { $ref: 42 };
+    /* SAFETY: deliberately unsound. A `$ref` read from unvalidated document JSON can be a number,
+       and resolveRef hands any non-string back untouched, which is what this test pins. */
+    expect(resolveRef(doc.$ref as string, state)).toBe(42);
+  });
   test("#/state/ prefix resolves from scope", () => {
     expect(resolveRef("#/state/count", state)).toBe(5);
   });
@@ -172,14 +243,14 @@ describe("resolveRef", () => {
     expect(resolveRef("parent#/name", state)).toBe("Alice");
   });
   test("window#/ resolves global window property", () => {
-    (window as any)._testProp = "win";
+    Object.assign(window, { _testProp: "win" });
     expect(resolveRef("window#/_testProp", state)).toBe("win");
-    delete (window as any)._testProp;
+    Reflect.deleteProperty(window, "_testProp");
   });
   test("document#/ resolves global document property", () => {
-    (document as any)._testProp = "doc";
+    Object.assign(document, { _testProp: "doc" });
     expect(resolveRef("document#/_testProp", state)).toBe("doc");
-    delete (document as any)._testProp;
+    Reflect.deleteProperty(document, "_testProp");
   });
   test("$map/item resolves map item", () => {
     expect(resolveRef("$map/item", child)).toEqual({
@@ -214,18 +285,13 @@ describe("resolve", () => {
 
   test("fetches string URL and parses JSON", async () => {
     const payload = { tagName: "span" };
-    global.fetch = mock(() =>
-      Promise.resolve({
-        json: () => Promise.resolve(payload),
-        ok: true,
-      }),
-    ) as any;
+    stubFetch(() => Response.json(payload));
     const result = await resolve("http://example.com/comp.json");
     expect(result).toEqual(payload);
   });
 
   test("throws on non-ok response", async () => {
-    global.fetch = mock(() => Promise.resolve({ ok: false, status: 404 })) as any;
+    stubFetch(() => new Response(null, { status: 404 }));
     // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
     await expect(resolve("http://example.com/missing.json")).rejects.toThrow("404");
   });
@@ -236,13 +302,12 @@ describe("resolve", () => {
        `Unexpected token '<'` — a parser error for what is really a 404. Jx Cloud did this to every
        component $ref in the Studio canvas. The message has to name the cause, because the parser's
        does not. */
-    global.fetch = mock(() =>
-      Promise.resolve(
+    stubFetch(
+      () =>
         new Response("<!doctype html><html></html>", {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         }),
-      ),
-    ) as any;
+    );
     // oxlint-disable-next-line typescript/await-thenable -- see above
     await expect(resolve("http://example.com/spa-fallback.json")).rejects.toThrow(
       "returned HTML, not a document",
@@ -252,9 +317,8 @@ describe("resolve", () => {
   test("a response with no headers at all is still parsed — no evidence, no guess", async () => {
     // The check is evidence-based. A custom fetch that omits headers must not be broken by it.
     const payload = { tagName: "b" };
-    global.fetch = mock(() =>
-      Promise.resolve({ json: () => Promise.resolve(payload), ok: true }),
-    ) as any;
+    // A real Response whose `headers` reads as absent, as a host's `fetch` stand-in may answer.
+    stubFetch(() => Object.defineProperty(Response.json(payload), "headers", { value: undefined }));
     expect(await resolve("http://example.com/headerless.json")).toEqual(payload);
   });
 });
@@ -262,8 +326,6 @@ describe("resolve", () => {
 // ─── buildScope — Five-Shape state Grammar ───────────────────────────────────
 
 describe("buildScope", () => {
-  const BASE = "http://localhost/";
-
   test("returns empty scope for empty doc", async () => {
     const state = await buildScope({}, {}, BASE);
     expect(Object.keys(state).length).toBe(0);
@@ -384,7 +446,7 @@ describe("buildScope", () => {
       {},
       BASE,
     );
-    expect(typeof state.increment).toBe("function");
+    expect(state.increment).toBeTypeOf("function");
     fnOf(state, "increment")(state);
     expect(state.count).toBe(1);
   });
@@ -420,7 +482,7 @@ describe("buildScope", () => {
       {},
       BASE,
     );
-    expect(typeof state.addItem).toBe("function");
+    expect(state.addItem).toBeTypeOf("function");
   });
 
   test("Shape 4: Function with return + parameters is not auto-evaluated", async () => {
@@ -437,7 +499,7 @@ describe("buildScope", () => {
       {},
       BASE,
     );
-    expect(typeof state.handler).toBe("function");
+    expect(state.handler).toBeTypeOf("function");
     const result = fnOf(state, "handler")(state, { target: { value: "hello" } });
     expect(result).toBe("hello");
   });
@@ -473,7 +535,7 @@ describe("buildScope", () => {
       {},
       BASE,
     );
-    expect(typeof state.handler).toBe("function");
+    expect(state.handler).toBeTypeOf("function");
   });
 
   test("Shape 4: Function with $src → computed when fn has return and ≤1 param", async () => {
@@ -513,11 +575,12 @@ describe("buildScope", () => {
     // The `body`/`$src` union is a TypeScript-only contract; a raw document can still carry a
     // Truthy, non-string `body` (e.g. malformed authoring tooling), which skips both the
     // String-body branch and the neither-nor-body-nor-$src no-op.
-    const doc = { state: { bad: { $prototype: "Function", body: true } } };
+    const doc: JsonObject = { state: { bad: { $prototype: "Function", body: true } } };
+    /* SAFETY: deliberately unsound. `body: true` is outside JxFunctionDef, which is the point: the
+       runtime must refuse it rather than trust the TypeScript-only `body`/`$src` contract. */
+    const malformed = doc as JxDocument;
     // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
-    await expect(buildScope(doc as unknown as JxDocument, {}, BASE)).rejects.toThrow(
-      "neither body nor $src",
-    );
+    await expect(buildScope(malformed, {}, BASE)).rejects.toThrow("neither body nor $src");
   });
 
   test("Shape 4: Function with neither body nor $src → returns no-op", async () => {
@@ -530,14 +593,14 @@ describe("buildScope", () => {
       {},
       BASE,
     );
-    expect(typeof state.empty).toBe("function");
+    expect(state.empty).toBeTypeOf("function");
     expect(fnOf(state, "empty")()).toBeUndefined();
   });
 
   // Shape 5: External class $prototype
   test("Shape 5: $prototype other than Function → resolvePrototype", async () => {
-    const doc = { state: { items: { $prototype: "Set", default: [1, 2] } } };
-    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    const doc: JxDocument = { state: { items: { $prototype: "Set", default: [1, 2] } } };
+    const state = await buildScope(doc, {}, BASE);
     expect(state.items).toBeInstanceOf(Set);
   });
 
@@ -549,8 +612,8 @@ describe("buildScope", () => {
   });
 
   test("stores $media in scope", async () => {
-    const doc = { $media: { "--md": "(min-width: 768px)" } };
-    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    const doc: JxDocument = { $media: { "--md": "(min-width: 768px)" } };
+    const state = await buildScope(doc, {}, BASE);
     expect(state["$media"]).toEqual({ "--md": "(min-width: 768px)" });
   });
 });
@@ -558,8 +621,6 @@ describe("buildScope", () => {
 // ─── setSkipServerFunctions ──────────────────────────────────────────────────
 
 describe("setSkipServerFunctions", () => {
-  const BASE = "http://localhost/";
-
   test("skips timing:'server' entries when flag is true", async () => {
     setSkipServerFunctions(true);
     try {
@@ -656,7 +717,7 @@ describe("applyStyle", () => {
       `[data-jx="${el.dataset.jx}"]:hover { background-color: #15164a }`,
     ]);
     const probe = document.createElement("div");
-    probe.dataset.jx = el.dataset.jx as string;
+    probe.dataset.jx = el.dataset.jx;
     document.body.append(probe);
     expect(getComputedStyle(probe).backgroundColor).toBe("#6e0303");
   });
@@ -667,7 +728,7 @@ describe("applyStyle", () => {
     document.body.append(twin);
     applyStyle(el, { ":hover": { color: "blue" }, color: "red" });
     applyStyle(twin, { ":hover": { color: "blue" }, color: "red" });
-    expect(twin.dataset.jx).toBe(el.dataset.jx as string);
+    expect(twin.dataset.jx).toBe(el.dataset.jx);
     expect(adoptedCSS().split("\n").length).toBe(2);
   });
 
@@ -930,15 +991,13 @@ describe("applyStyle color-scheme dual emission", () => {
 
 // ─── resolvePrototype ─────────────────────────────────────────────────────────
 
+/* A test below binds a resolved entry into a reactive scope and reads it back. The read goes through
+   the proxy, which unwraps the ref, so it is compared as a scope member rather than as the ref
+   type the assignment narrowed it to. */
 describe("resolvePrototype", () => {
   test("Request: returns ref, starts null, fetches and sets data", async () => {
-    global.fetch = mock(() =>
-      Promise.resolve({
-        json: () => Promise.resolve({ id: 1 }),
-        ok: true,
-      }),
-    ) as any;
-    const state = reactive({} as Record<string, unknown>);
+    stubFetch(() => Response.json({ id: 1 }));
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "Request", url: "/api/test" },
       state,
@@ -947,27 +1006,20 @@ describe("resolvePrototype", () => {
     state.data = result;
     expect(isRef(result)).toBe(true);
     await wait();
-    expect(state.data).toEqual({ id: 1 });
+    expect(state.data).toEqual<JxScopeValue>({ id: 1 });
   });
 
   test("Request: manual:true does not auto-fetch", async () => {
-    const fetchMock = mock(() => Promise.resolve({ json: () => Promise.resolve({}), ok: true }));
-    global.fetch = fetchMock as any;
-    const state = reactive({} as Record<string, unknown>);
+    const fetchMock = stubFetch(() => Response.json({}));
+    const state = reactive<JxScope>({});
     await resolvePrototype({ $prototype: "Request", manual: true, url: "/api/x" }, state, "x");
     await wait();
     expect(fetchMock.mock.calls.length).toBe(0);
   });
 
   test("Request: sets error on non-ok response", async () => {
-    global.fetch = mock(() =>
-      Promise.resolve({
-        json: () => Promise.resolve({}),
-        ok: false,
-        statusText: "Not Found",
-      }),
-    ) as any;
-    const state = reactive({} as Record<string, unknown>);
+    stubFetch(() => Response.json({}, { status: 404, statusText: "Not Found" }));
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype({ $prototype: "Request", url: "/api/z" }, state, "z");
     state.z = result;
     await wait();
@@ -975,12 +1027,8 @@ describe("resolvePrototype", () => {
   });
 
   test("Request: POST with headers and body", async () => {
-    let captured = undefined as any;
-    global.fetch = mock((_url, opts) => {
-      captured = opts;
-      return Promise.resolve({ json: () => Promise.resolve({}), ok: true });
-    }) as any;
-    const state = reactive({} as Record<string, unknown>);
+    const fetchMock = stubFetch(() => Response.json({}));
+    const state = reactive<JxScope>({});
     await resolvePrototype(
       {
         $prototype: "Request",
@@ -993,9 +1041,10 @@ describe("resolvePrototype", () => {
       "r",
     );
     await wait();
-    expect(captured.method).toBe("POST");
-    expect(captured.headers).toEqual({ x: "1" });
-    expect(captured.body).toBe('{"a":1}');
+    const captured = fetchMock.mock.calls[0]?.[1];
+    expect(captured?.method).toBe("POST");
+    expect(captured?.headers).toEqual({ x: "1" });
+    expect(captured?.body).toBe('{"a":1}');
   });
 
   test("URLSearchParams: returns computed ref", async () => {
@@ -1010,32 +1059,32 @@ describe("resolvePrototype", () => {
 
   test("LocalStorage: reads existing value", async () => {
     localStorage.setItem("lsKey", JSON.stringify(99));
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "LocalStorage", key: "lsKey" },
       state,
       "ls",
     );
     state.ls = result;
-    expect(state.ls).toBe(99);
+    expect(state.ls).toBe<JxScopeValue>(99);
     localStorage.removeItem("lsKey");
   });
 
   test("LocalStorage: defaults to def.default when key absent", async () => {
     localStorage.removeItem("lsMissing");
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "LocalStorage", default: "fallback", key: "lsMissing" },
       state,
       "ls",
     );
     state.ls = result;
-    expect(state.ls).toBe("fallback");
+    expect(state.ls).toBe<JxScopeValue>("fallback");
   });
 
   test("LocalStorage: assignment persists to storage", async () => {
     localStorage.removeItem("lsPersist");
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "LocalStorage", default: 0, key: "lsPersist" },
       state,
@@ -1044,28 +1093,28 @@ describe("resolvePrototype", () => {
     state.ls = result;
     state.ls = 123;
     await wait();
-    expect(JSON.parse(localStorage.getItem("lsPersist") as string)).toBe(123);
+    expect(JSON.parse(localStorage.getItem("lsPersist") ?? "null")).toBe(123);
     localStorage.removeItem("lsPersist");
   });
 
   test("SessionStorage: reads and writes session storage", async () => {
     sessionStorage.setItem("ssKey", JSON.stringify("hello"));
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "SessionStorage", key: "ssKey" },
       state,
       "ss",
     );
     state.ss = result;
-    expect(state.ss).toBe("hello");
+    expect(state.ss).toBe<JxScopeValue>("hello");
     state.ss = "world";
     await wait();
-    expect(JSON.parse(sessionStorage.getItem("ssKey") as string)).toBe("world");
+    expect(JSON.parse(sessionStorage.getItem("ssKey") ?? "null")).toBe("world");
     sessionStorage.removeItem("ssKey");
   });
 
   test("Cookie: reads, writes cookie", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       {
         $prototype: "Cookie",
@@ -1086,8 +1135,12 @@ describe("resolvePrototype", () => {
 
   test("IndexedDB: returns ref", async () => {
     const fakeReq = { addEventListener: () => {} };
-    global.indexedDB = { open: () => fakeReq } as any;
-    const state = reactive({} as Record<string, unknown>);
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: { open: () => fakeReq },
+      writable: true,
+    });
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       {
         $prototype: "IndexedDB",
@@ -1098,51 +1151,58 @@ describe("resolvePrototype", () => {
       "db",
     );
     expect(isRef(result)).toBe(true);
-    delete (global as any).indexedDB;
+    Reflect.deleteProperty(globalThis, "indexedDB");
   });
 
   test("Set: returns a Set", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype({ $prototype: "Set" }, state, "s");
     state.s = result;
-    expect(state.s).toBeInstanceOf(Set);
-    expect((state.s as Set<unknown>).size).toBe(0);
+    const set = state.s;
+    expect(set).toBeInstanceOf(Set);
+    assertInstance(set, Set);
+    expect(set.size).toBe(0);
   });
 
   test("Set: default values", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype({ $prototype: "Set", default: [1, 2] }, state, "s");
     state.s = result;
-    expect((state.s as Set<unknown>).has(1)).toBe(true);
+    const set = state.s;
+    assertInstance(set, Set);
+    expect(set.has(1)).toBe(true);
   });
 
   test("Map: returns a Map", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype({ $prototype: "Map" }, state, "m");
     state.m = result;
     expect(state.m).toBeInstanceOf(Map);
   });
 
   test("Map: default object", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype({ $prototype: "Map", default: { a: 1 } }, state, "m");
     state.m = result;
-    expect((state.m as Map<string, unknown>).get("a")).toBe(1);
+    const map = state.m;
+    assertInstance(map, Map);
+    expect(map.get("a")).toBe(1);
   });
 
   test("FormData: returns FormData", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "FormData", fields: { name: "Alice" } },
       state,
       "fd",
     );
     expect(result).toBeInstanceOf(FormData);
-    expect((result as any).get("name")).toBe("Alice");
+    assertInstance(result, FormData);
+    expect(result.get("name")).toBe("Alice");
   });
 
   test("Blob: returns Blob", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype(
       { $prototype: "Blob", parts: ["hello"], type: "text/plain" },
       state,
@@ -1152,17 +1212,17 @@ describe("resolvePrototype", () => {
   });
 
   test("ReadableStream: returns null", async () => {
-    const state = reactive({} as Record<string, unknown>);
+    const state = reactive<JxScope>({});
     const result = await resolvePrototype({ $prototype: "ReadableStream" }, state, "rs");
     expect(result).toBeNull();
   });
 
   test("unknown $prototype: warns and returns ref(null)", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    const state = reactive({} as Record<string, unknown>);
-    const result = (await resolvePrototype({ $prototype: "Unknown" }, state, "u")) as any;
+    const state = reactive<JxScope>({});
+    const result = await resolvePrototype({ $prototype: "Unknown" }, state, "u");
     expect(isRef(result)).toBe(true);
-    expect(result.value).toBeNull();
+    expect(isRef(result) ? result.value : undefined).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Unknown"));
     warn.mockRestore();
   });
@@ -1188,7 +1248,7 @@ describe("renderNode", () => {
 
   test("sets plain boolean property", () => {
     const el = renderNode({ disabled: true, tagName: "button" }, reactive({}));
-    expect((el as any).disabled).toBe(true);
+    expect(el instanceof HTMLButtonElement && el.disabled).toBe(true);
   });
 
   test("sets reactive property from $ref", async () => {
@@ -1208,19 +1268,16 @@ describe("renderNode", () => {
 
   test("protected id property: set once, not reactive", () => {
     const state = reactive({ myId: "my-id" });
-    const el = renderNode(
-      {
-        id: { $ref: "#/state/myId" },
-        tagName: "div",
-      } as unknown as JxElement,
-      state,
-    ) as HTMLElement;
+    const def: JsonObject = { id: { $ref: "#/state/myId" }, tagName: "div" };
+    /* SAFETY: deliberately outside JxElement, which types `id` as a string. The runtime still
+       accepts a `$ref` there and binds it once, which is the behavior this test pins. */
+    const el = renderNode(def as JxElement, state);
     expect(el.id).toBe("my-id");
   });
 
   test("binds event handler via onclick $ref", async () => {
-    const state = reactive({ count: 0 });
-    (state as any).clickHandler = function clickHandler(s: any) {
+    const state = reactive<JxScope>({ count: 0 });
+    state.clickHandler = function clickHandler(s: { count: number }) {
       s.count += 1;
     };
     const el = renderNode({ onclick: { $ref: "#/state/clickHandler" }, tagName: "button" }, state);
@@ -1298,14 +1355,21 @@ describe("renderNode", () => {
    * Writing "false" leaves `<details open="false">`, which is an open `<details>`.
    */
   test("a value that resolves to null or undefined removes the attribute", async () => {
-    const state = reactive({ haspopup: true, missing: undefined as string | undefined });
+    const state = reactive<{ haspopup: boolean; missing: string | undefined }>({
+      haspopup: true,
+      missing: undefined,
+    });
+    const attributes: JsonObject = {
+      "aria-haspopup": "${state.haspopup ? 'menu' : null}",
+      title: { $ref: "#/state/missing" },
+      lang: null,
+    };
     const el = renderNode(
       {
-        attributes: {
-          "aria-haspopup": "${state.haspopup ? 'menu' : null}",
-          title: { $ref: "#/state/missing" },
-          lang: null as unknown as string,
-        },
+        /* SAFETY: deliberately outside JxAttributeValue: a hand-written document can carry a
+           literal `null`, and the runtime must treat it as "absent" exactly as a binding that
+           resolves to null, which the assertions below check. */
+        attributes: attributes as NonNullable<JxElement["attributes"]>,
         tagName: "div",
       },
       state,
@@ -1636,11 +1700,9 @@ describe("renderNode", () => {
 // ─── Integration: computed $src functions + Array map (fetch-demo pattern) ────
 
 describe("computed $src + Array map integration", () => {
-  const BASE = "http://localhost/";
-
   test("computed function filters items for Array map rendering", async () => {
     const srcUrl = new URL("_test_computed_src.js", import.meta.url).href;
-    const doc = {
+    const doc: JxDocument = {
       children: {
         $prototype: "Array",
         items: { $ref: "#/state/filteredPosts" },
@@ -1660,10 +1722,10 @@ describe("computed $src + Array map integration", () => {
       },
       tagName: "div",
     };
-    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
+    const state = await buildScope(doc, {}, BASE);
     expect(state.filteredPosts).toHaveLength(3);
 
-    const el = renderNode(doc as unknown as JxDocument, state) as HTMLElement;
+    const el = renderNode(doc, state);
     expect(el.children.length).toBe(3);
     expect(el.children[0]!.textContent).toBe("Hello World");
 
@@ -1677,7 +1739,7 @@ describe("computed $src + Array map integration", () => {
 
   test("computed function paginates items reactively", async () => {
     const srcUrl = new URL("_test_computed_src.js", import.meta.url).href;
-    const doc = {
+    const doc: JxDocument = {
       children: {
         $prototype: "Array",
         items: { $ref: "#/state/paginatedItems" },
@@ -1697,8 +1759,8 @@ describe("computed $src + Array map integration", () => {
       },
       tagName: "div",
     };
-    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
-    const el = renderNode(doc as unknown as JxDocument, state) as HTMLElement;
+    const state = await buildScope(doc, {}, BASE);
+    const el = renderNode(doc, state);
     expect(el.children.length).toBe(5);
     expect(el.children[0]!.textContent).toBe("Item 1");
 
@@ -1714,7 +1776,7 @@ describe("computed $src + Array map integration", () => {
   });
 
   test("event handler with parameters + return is callable, not computed", async () => {
-    const doc = {
+    const doc: JxDocument = {
       state: {
         addItem: {
           $prototype: "Function",
@@ -1725,13 +1787,13 @@ describe("computed $src + Array map integration", () => {
       },
       tagName: "div",
     };
-    const state = await buildScope(doc as unknown as JxDocument, {}, BASE);
-    expect(typeof state.addItem).toBe("function");
+    const state = await buildScope(doc, {}, BASE);
+    expect(state.addItem).toBeTypeOf("function");
     expect(state.items).toHaveLength(0);
     const result = fnOf(state, "addItem")(state, { text: "new item" });
     expect(result).toBe(true);
     expect(state.items).toHaveLength(1);
-    expect((arrOf(state, "items")[0] as { text: string }).text).toBe("new item");
+    expect(arrOf(state, "items")[0]).toMatchObject({ text: "new item" });
   });
 });
 
@@ -1852,7 +1914,7 @@ describe("Array members in a children array", () => {
   });
 
   test("empty items array renders no item nodes but keeps siblings", async () => {
-    const state = reactive({ list: [] as number[] });
+    const state = reactive<{ list: number[] }>({ list: [] });
     const el = renderNode(
       {
         children: [
@@ -1906,18 +1968,13 @@ describe("Jx", () => {
       target,
     );
     await wait();
-    expect((globalThis as any)._testMounted).toBe(true);
-    delete (globalThis as any)._testMounted;
+    expect(globalThis).toHaveProperty("_testMounted", true);
+    Reflect.deleteProperty(globalThis, "_testMounted");
   });
 
   test("fetches string source", async () => {
     const doc = { tagName: "article" };
-    global.fetch = mock(() =>
-      Promise.resolve({
-        json: () => Promise.resolve(doc),
-        ok: true,
-      }),
-    ) as any;
+    stubFetch(() => Response.json(doc));
     const target = document.createElement("div");
     await Jx("http://example.com/test.json", target);
     expect(target.children[0]!.tagName.toLowerCase()).toBe("article");
@@ -1933,8 +1990,6 @@ describe("Jx", () => {
 // ─── $media inheritance in buildScope ───────────────────────────────────────
 
 describe("buildScope — $media inheritance", () => {
-  const BASE = "http://localhost/";
-
   test("sets $media on state when doc has $media", async () => {
     const state = await buildScope(
       { $media: { "--md": "(max-width: 768px)" }, state: {} },
@@ -2112,7 +2167,7 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/count" },
       value: 42,
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.count).toBe(42);
   });
 
@@ -2123,7 +2178,7 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/count" },
       value: 5,
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.count).toBe(15);
   });
 
@@ -2134,7 +2189,7 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/count" },
       value: 3,
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.count).toBe(7);
   });
 
@@ -2145,9 +2200,9 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/dark" },
       value: { operator: "!", target: { $ref: "#/state/dark" } },
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.dark).toBe(true);
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.dark).toBe(false);
   });
 
@@ -2158,14 +2213,14 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/items" },
       value: 3,
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.items).toEqual([1, 2, 3]);
   });
 
   test("pop from array", () => {
     const state = reactive({ items: [1, 2, 3] });
     const node = { operator: "pop", target: { $ref: "#/state/items" } };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.items).toEqual([1, 2]);
   });
 
@@ -2176,19 +2231,22 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/items" },
       value: [1, 2],
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.items).toEqual(["a", "d"]);
   });
 
   test("assignment with event# ref", () => {
     const state = reactive({ name: "" });
-    const event = { target: { value: "hello" } };
+    // A real Event whose `target` reads as an input holding "hello", as it does in a listener.
+    const event = Object.defineProperty(new Event("input"), "target", {
+      value: { value: "hello" },
+    });
     const node = {
       operator: "=",
       target: { $ref: "#/state/name" },
       value: { $ref: "event#/target/value" },
     };
-    evaluateExpression(node, state, event as unknown as Event);
+    void evaluateExpression(node, state, event);
     expect(state.name).toBe("hello");
   });
 
@@ -2199,7 +2257,7 @@ describe("evaluateExpression — mutating operators", () => {
       target: { $ref: "#/state/user/name" },
       value: "new",
     };
-    evaluateExpression(node, state, null);
+    void evaluateExpression(node, state, null);
     expect(state.user.name).toBe("new");
   });
 });
@@ -2279,7 +2337,7 @@ describe("buildScope — $expression (Shape 5)", () => {
         },
       },
     });
-    expect(typeof scope.increment).toBe("function");
+    expect(scope.increment).toBeTypeOf("function");
     fnOf(scope, "increment")(scope, null);
     expect(scope.count).toBe(1);
   });
@@ -2377,7 +2435,7 @@ describe("buildScope — $expression (Shape 5)", () => {
         },
       },
     });
-    expect(typeof scope.toggle).toBe("function");
+    expect(scope.toggle).toBeTypeOf("function");
     expect(scope.on).toBe(false);
     fnOf(scope, "toggle")(scope, null);
     expect(scope.on).toBe(true);
@@ -2387,8 +2445,6 @@ describe("buildScope — $expression (Shape 5)", () => {
 // ─── Named formulas (call operator, spec §19.4c) ─────────────────────────────
 
 describe("buildScope — named formulas", () => {
-  const BASE = "http://localhost/";
-
   test("parameterized pure entry becomes a callable, not a computed", async () => {
     const state = await buildScope(
       {
@@ -2406,9 +2462,10 @@ describe("buildScope — named formulas", () => {
       {},
       BASE,
     );
-    expect(typeof state.lineTotal).toBe("function");
-    expect((state.lineTotal as (...a: unknown[]) => unknown)(3, 4)).toBe(12);
-    expect((state.lineTotal as (...a: unknown[]) => unknown)(5)).toBe(5);
+    expect(state.lineTotal).toBeTypeOf("function");
+    const lineTotal = fnOf(state, "lineTotal");
+    expect(lineTotal(3, 4)).toBe(12);
+    expect(lineTotal(5)).toBe(5);
   });
 
   test("call expression entries resolve scope callables reactively", async () => {
@@ -2445,8 +2502,6 @@ describe("buildScope — named formulas", () => {
 // ─── Structured function bodies (spec §20) ───────────────────────────────────
 
 describe("buildScope — structured function bodies", () => {
-  const BASE = "http://localhost/";
-
   test("parameterless structured body becomes an event handler", async () => {
     const state = await buildScope(
       {
@@ -2461,8 +2516,8 @@ describe("buildScope — structured function bodies", () => {
       {},
       BASE,
     );
-    expect(typeof state.addOne).toBe("function");
-    (state.addOne as (s: unknown, e: unknown) => void)(state, null);
+    expect(state.addOne).toBeTypeOf("function");
+    fnOf(state, "addOne")(state, null);
     expect(state.cart).toEqual([1, 2]);
   });
 
@@ -2483,25 +2538,23 @@ describe("buildScope — structured function bodies", () => {
       {},
       BASE,
     );
-    await (state.addToCart as (...a: unknown[]) => Promise<void>)("apple");
+    await statementsFnOf(state, "addToCart")("apple");
     expect(state.cart).toEqual(["apple"]);
   });
 });
 
 describe("renderNode — §13 $ref-child diagnostic", () => {
-  const BASE = "http://localhost/";
-
   test("warns once for a node-level $ref child and renders an empty div", async () => {
     const state = await buildScope({}, {}, BASE);
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const el = _renderNode({ $ref: "./components/card.json" } as unknown as JxElement, state);
-      expect((el as HTMLElement).tagName).toBe("DIV");
-      expect((el as HTMLElement).childNodes.length).toBe(0);
+      const el = renderNode({ $ref: "./components/card.json" }, state);
+      expect(el.tagName).toBe("DIV");
+      expect(el.childNodes.length).toBe(0);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0]?.[0])).toContain("$elements");
       // Second render of the same $ref does not warn again (dedup).
-      _renderNode({ $ref: "./components/card.json" } as unknown as JxElement, state);
+      _renderNode({ $ref: "./components/card.json" }, state);
       expect(warn).toHaveBeenCalledTimes(1);
     } finally {
       warn.mockRestore();
@@ -2514,10 +2567,7 @@ describe("Jx — $schema version guard", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const target = document.createElement("div");
-      await Jx(
-        { $schema: "https://jxsuite.com/schema/v2", tagName: "div" } as unknown as JxDocument,
-        target,
-      );
+      await Jx({ $schema: "https://jxsuite.com/schema/v2", tagName: "div" }, target);
       const called = warn.mock.calls.some((c) => String(c[0]).includes("v2"));
       expect(called).toBe(true);
     } finally {

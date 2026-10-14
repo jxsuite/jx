@@ -17,6 +17,7 @@
  */
 
 import type { JsonValue, ToolResult } from "../core-types.ts";
+import type { JSONSchema } from "../tools.ts";
 
 export type { JsonArray, JsonObject, JsonValue } from "../core-types.ts";
 
@@ -167,7 +168,7 @@ export interface ToolSpec {
   readonly title?: string;
   readonly description: string;
   /** JSON Schema for the arguments, by reference: a host may build it with live getters. */
-  readonly inputSchema: Readonly<Record<string, unknown>>;
+  readonly inputSchema: Readonly<JSONSchema>;
   /** OpenAI's strict mode, opted into per tool. */
   readonly strict?: boolean;
 }
@@ -196,7 +197,7 @@ export interface OpenAITool {
   function: {
     name: string;
     description: string;
-    parameters: Readonly<Record<string, unknown>>;
+    parameters: Readonly<JSONSchema>;
     strict?: true;
   };
 }

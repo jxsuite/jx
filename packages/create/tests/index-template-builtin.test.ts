@@ -30,8 +30,7 @@ console.log = () => {};
 
 process.argv = [process.argv[0] ?? "bun", "index.ts", "app-site", "--template", "mobile-app"];
 
-const cliEntry = "../index";
-const cliModule = (await import(cliEntry)) as { ready?: Promise<unknown> };
+const cliModule = await import("../index");
 await cliModule.ready;
 
 const destPath = resolve("app-site");

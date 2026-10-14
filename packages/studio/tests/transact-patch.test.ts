@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { toRaw } from "../src/reactivity";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
+import { getNodeAtPath } from "../src/state";
 import {
   beginRecording,
   endRecording,
@@ -31,18 +32,19 @@ import {
   undo,
 } from "../src/tabs/transact";
 
-import type { JxPatchOp } from "../src/tabs/patch-ops";
+import type { JxDocOp, JxPatchOp } from "../src/tabs/patch-ops";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 let tab: Tab;
 let tabCount = 0;
 
 interface ConsumerLog {
   classified: JxPatchOp[][];
-  marked: object[];
+  marked: JxMutableNode[];
   applied: JxPatchOp[][];
   /** The VALUE-CARRYING forward ops each apply received — what actually crosses to the canvas. */
-  appliedDocOps: unknown[][];
+  appliedDocOps: JxDocOp[][];
   escalated: string[];
 }
 
@@ -91,7 +93,7 @@ function freshDoc() {
 
 beforeEach(() => {
   tabCount += 1;
-  tab = openTab({ document: freshDoc(), id: `patch-test-${tabCount}` }) as Tab;
+  tab = openTab({ document: freshDoc(), id: `patch-test-${tabCount}` });
 });
 
 afterEach(() => {
@@ -135,8 +137,11 @@ describe("mutator op recording", () => {
 
   test("mutateUpdateProperty deleting an event binding keeps isEvent via the previous value", () => {
     transact(tab, (doc) => {
-      const first = (doc.children as Record<string, unknown>[])[0]!;
-      first["onclick"] = { $ref: "#/state/handler" };
+      const button = getNodeAtPath(doc, ["children", 0]);
+      if (!button) {
+        throw new Error("the fixture's first child is missing");
+      }
+      button["onclick"] = { $ref: "#/state/handler" };
     });
     const ops = opsFor((t) => mutateUpdateProperty(t, ["children", 0], "onclick"));
     expect(ops).toEqual([{ isEvent: true, key: "onclick", op: "set-prop", path: ["children", 0] }]);
@@ -208,7 +213,7 @@ describe("transactDoc consumer wiring", () => {
     const log = installConsumer({ patchable: true });
     transactDoc(tab, (t) => mutateUpdateStyle(t, ["children", 0], "color", "blue"));
     expect(log.marked.length).toBe(1);
-    expect(log.marked[0]).toBe(toRaw(tab.doc.document) as object);
+    expect(log.marked[0]).toBe(toRaw(tab.doc.document));
     expect(log.applied.length).toBe(1);
     expect(log.escalated.length).toBe(0);
     expect(tab.doc.dirty).toBe(true);
@@ -242,11 +247,9 @@ describe("transactDoc consumer wiring", () => {
   test("works without a registered consumer", () => {
     setPatchConsumer(null);
     transactDoc(tab, (t) => mutateUpdateStyle(t, ["children", 0], "color", "blue"));
-    expect(
-      (
-        (toRaw(tab.doc.document) as Record<string, unknown>).children as Record<string, unknown>[]
-      )[0]!.style,
-    ).toEqual({ color: "blue" });
+    expect(getNodeAtPath(toRaw(tab.doc.document), ["children", 0])?.style).toEqual({
+      color: "blue",
+    });
   });
 });
 
@@ -290,10 +293,12 @@ describe("history replay records value-carrying ops", () => {
 
     undo(tab);
 
-    const [op] = log.appliedDocOps[0] as { op: string; index: number; node: unknown }[];
-    expect(op!.op).toBe("insert-child");
-    expect(op!.index).toBe(1);
+    const [op] = log.appliedDocOps[0]!;
     // Without the node itself the canvas could not re-render the restored block.
-    expect(op!.node).toMatchObject({ tagName: "span", textContent: "world" });
+    expect(op).toMatchObject({
+      index: 1,
+      node: { tagName: "span", textContent: "world" },
+      op: "insert-child",
+    });
   });
 });

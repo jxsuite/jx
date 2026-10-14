@@ -32,5 +32,5 @@ import { activeTab } from "../workspace/workspace";
 export function pushProjectStylesToCanvas(): void {
   postSiteStyleToLiveHosts();
   const style = transposeStylebookStyle(getEffectiveStyle(activeTab.value?.doc.document?.style));
-  postStyleUpdateToStylebookHosts(style as Record<string, unknown>);
+  postStyleUpdateToStylebookHosts(style);
 }

@@ -6,7 +6,7 @@
  */
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNonNullObject, isString } from "@jxsuite/schema/guards";
 
 interface TokenLintFinding {
   path: string;
@@ -25,7 +25,8 @@ interface TokenLintFinding {
 function buildTokenIndex(projectStyle: Record<string, string>) {
   const index = new Map<string, string>();
   for (const [key, value] of Object.entries(projectStyle)) {
-    if (!key.startsWith("--") || typeof value !== "string") {
+    // The style object comes from `project.json`, where a key can also hold a nested block.
+    if (!key.startsWith("--") || !isString(value)) {
       continue;
     }
     const norm = value.toLowerCase().trim();
@@ -43,7 +44,7 @@ function buildTokenIndex(projectStyle: Record<string, string>) {
  * @returns {boolean}
  */
 function isTokenRef(value: string) {
-  return typeof value === "string" && value.includes("var(--");
+  return value.includes("var(--");
 }
 
 /**
@@ -53,7 +54,7 @@ function isTokenRef(value: string) {
  * @returns {boolean}
  */
 function isTemplate(value: string) {
-  return typeof value === "string" && value.includes("${");
+  return value.includes("${");
 }
 
 /**
@@ -78,18 +79,19 @@ export function flagHardcodedTokens(
 
   const findings: TokenLintFinding[] = [];
 
-  function walk(node: unknown, pathPrefix: string) {
-    if (!node || typeof node !== "object") {
+  /* Every member is re-checked rather than trusted: callers hand over model output parsed from
+     JSON, so a "node" may be a primitive, a `style` may be a string, and a child may be anything. */
+  function walk(el: JxMutableNode, pathPrefix: string) {
+    if (!isNonNullObject(el)) {
       return;
     }
-    const el = node as JxMutableNode;
 
-    if (el.style && typeof el.style === "object") {
+    if (isNonNullObject(el.style)) {
       for (const [prop, val] of Object.entries(el.style)) {
         if (prop.startsWith("@")) {
           continue;
         }
-        if (typeof val !== "string") {
+        if (!isString(val)) {
           continue;
         }
         if (isTokenRef(val) || isTemplate(val)) {
@@ -112,7 +114,7 @@ export function flagHardcodedTokens(
     if (Array.isArray(el.children)) {
       for (let i = 0; i < el.children.length; i++) {
         const child = el.children[i];
-        if (child && typeof child === "object") {
+        if (isNonNullObject(child)) {
           walk(child, `${pathPrefix} > ${displayTagName(child.tagName) || `[${i}]`}`);
         }
       }

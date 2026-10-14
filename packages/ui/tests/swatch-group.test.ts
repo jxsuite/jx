@@ -33,10 +33,14 @@ async function group(
   colours: string[] = ["red", "green", "blue"],
 ): Promise<JxSwatchGroup> {
   const outer = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-swatch-group from its component document, which
+     declares the `value`, `label` and `columns` props `JxSwatchGroup` lists. */
   const el = document.createElement("jx-swatch-group") as JxSwatchGroup;
   el.setAttribute("label", "Palette");
   el.setAttribute("value", value);
   for (const colour of colours) {
+    /* SAFETY: registerUi() in beforeAll defined jx-swatch from its component document, which
+       declares the `value`, `color`, `checked` and `tabindex` props `JxSwatch` lists. */
     const swatch = document.createElement("jx-swatch") as JxSwatch;
     swatch.setAttribute("value", colour.replace("!", ""));
     swatch.setAttribute("color", `#00000${colour.length % 10}`);
@@ -90,7 +94,7 @@ describe("jx-swatch-group", () => {
     const el = await group("red");
     const heard: unknown[] = [];
     el.parentElement!.addEventListener("change", (e) => {
-      heard.push((e as CustomEvent<unknown>).detail);
+      heard.push(e instanceof CustomEvent ? e.detail : undefined);
     });
     controls(el)[0]!.dispatchEvent(key("ArrowRight"));
     /* Synchronously, before anything re-renders: moving focus and moving the caret are ONE step,
@@ -145,9 +149,11 @@ describe("jx-swatch-group", () => {
     const selects: unknown[] = [];
     const changes: unknown[] = [];
     el.parentElement!.addEventListener("select", (e) => {
-      selects.push((e as CustomEvent<unknown>).detail);
+      selects.push(e instanceof CustomEvent ? e.detail : undefined);
     });
     el.parentElement!.addEventListener("change", (e) => {
+      /* SAFETY: the only `change` dispatched inside `outer` is the group's own, sent from its host
+         by onSwatchGroupSelect, so the target is the jx-swatch-group built above. */
       const target = e.target as JxSwatchGroup;
       changes.push(`${target.localName}=${target.value}`);
     });
@@ -190,6 +196,7 @@ describe("jx-swatch-group", () => {
     await tick();
     expect(carets(el)).toEqual(["0", "-1"]);
     /* And a swatch appended afterwards arrives with no tabindex at all, which is a SECOND one. */
+    // SAFETY: registerUi() in beforeAll defined jx-swatch with every prop `JxSwatch` lists.
     const extra = document.createElement("jx-swatch") as JxSwatch;
     extra.setAttribute("value", "amber");
     extra.setAttribute("color", "#f5d90a");
@@ -252,7 +259,7 @@ describe("jx-swatch-group", () => {
     const scope = { value: "red" };
     const fired: string[] = [];
     stray.addEventListener("keydown", (e) => {
-      onSwatchGroupKeydown(scope, e as KeyboardEvent);
+      onSwatchGroupKeydown(scope, e);
       fired.push("keydown");
     });
     stray.addEventListener("select", (e) => {

@@ -6,7 +6,7 @@
  * `@jxsuite/collab` whose diff/apply/convert functions delegate to swappable impls.
  */
 import { installMockPlatform } from "./harness";
-import { createMockCollabHub, settleCollab } from "./collab-mock";
+import { childNode, createMockCollabHub, HELLO_DOC, settleCollab } from "./collab-mock";
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import * as Y from "yjs";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
@@ -15,6 +15,7 @@ import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { collabState } from "../src/collab/collab-state";
 import { beginBatch, endBatch, mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
+import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
 import type { CollabHandle } from "@jxsuite/collab/provider";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
@@ -51,10 +52,6 @@ const {
   setCollabEnabled,
 } = await import("../src/collab/collab-session");
 
-const DOC: JxMutableNode = {
-  children: [{ tagName: "p", textContent: "Hello" }],
-  tagName: "div",
-};
 const PATH = "pages/gaps.json";
 
 type Hub = ReturnType<typeof createMockCollabHub>;
@@ -62,18 +59,18 @@ type Hub = ReturnType<typeof createMockCollabHub>;
 function openCollabTab(hub: Hub, doc?: JxMutableNode, path = PATH): Tab {
   installMockPlatform({ collab: hub.capability });
   return openTab({
-    document: structuredClone(doc ?? DOC),
+    document: structuredClone(doc ?? HELLO_DOC),
     documentPath: path,
     id: path,
-  }) as Tab;
+  });
 }
 
 function serverJson(hub: Hub, path = PATH): JxMutableNode {
-  return actualCollab.yDocToJson(hub.serverDoc(path)) as JxMutableNode;
+  return actualCollab.yDocToJson(hub.serverDoc(path));
 }
 
 function tabJson(tab: Tab): JxMutableNode {
-  return jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+  return jsonClone(toRaw(tab.doc.document));
 }
 
 const jsonSerializer = (tab: Tab) => Promise.resolve(JSON.stringify(toRaw(tab.doc.document)));
@@ -85,21 +82,33 @@ const jsonSerializer = (tab: Tab) => Promise.resolve(JSON.stringify(toRaw(tab.do
 async function withFakeTimers(fn: (runPending: () => Promise<void>) => Promise<void>) {
   const origSetTimeout = globalThis.setTimeout;
   const origClearTimeout = globalThis.clearTimeout;
-  const pending: (() => unknown)[] = [];
-  globalThis.setTimeout = ((cb: () => unknown, ms?: number, ...args: unknown[]) => {
-    if (typeof ms === "number" && ms >= 500) {
-      pending.push(cb);
-      return { __fake: true } as unknown as ReturnType<typeof setTimeout>;
+  const pending: (() => void)[] = [];
+  const intercepted = new Set<ReturnType<typeof setTimeout>>();
+  /* SAFETY: the double implements `setTimeout`'s call signature (a handler, a delay, and the extra
+     arguments it forwards untouched to the real timer) and returns a real handle. What the cast
+     adds is the `__promisify__` namespace `@types/node` declares on the global, which nothing under
+     test reads. */
+  globalThis.setTimeout = ((handler: () => void, ms?: number, ...args: []) => {
+    if (ms !== undefined && ms >= 500) {
+      pending.push(handler);
+      /* A genuine handle, cancelled at once: unique per call and exactly the type the code under
+         test stores, so `clearTimeout` below can tell an intercepted timer by identity. */
+      const handle = origSetTimeout(() => {}, 0);
+      origClearTimeout(handle);
+      intercepted.add(handle);
+      return handle;
     }
-    return origSetTimeout(cb as () => void, ms, ...(args as []));
+    return origSetTimeout(handler, ms, ...args);
   }) as typeof setTimeout;
-  globalThis.clearTimeout = ((handle: unknown) => {
-    if (handle && typeof handle === "object" && (handle as { __fake?: boolean }).__fake) {
-      const idx = pending.length; // Fake handles are not individually tracked; drop-all on run.
-      void idx;
+  /* SAFETY: every handle the code under test holds came from the doubled `setTimeout` above, which
+     only ever returns `ReturnType<typeof setTimeout>`; the cast only widens the parameter to the
+     string and number ids the other global overloads accept. */
+  globalThis.clearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
+    if (handle !== undefined && intercepted.has(handle)) {
+      // Intercepted timers are not individually cancelled: runPending fires every one of them.
       return;
     }
-    origClearTimeout(handle as ReturnType<typeof setTimeout>);
+    origClearTimeout(handle);
   }) as typeof clearTimeout;
   try {
     await fn(async () => {
@@ -128,12 +137,12 @@ describe("hook + watcher idempotence", () => {
   test("a second collab tab reuses the installed hooks; ensureCollab re-entry is a no-op", async () => {
     const hub = createMockCollabHub();
     installMockPlatform({ collab: hub.capability });
-    const tabA = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    const tabA = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     const tabB = openTab({
-      document: structuredClone(DOC),
+      document: structuredClone(HELLO_DOC),
       documentPath: "pages/other.json",
       id: "pages/other.json",
-    }) as Tab;
+    });
     await settleCollab();
     expect(collabState(tabA).active).toBe(true);
     expect(collabState(tabB).active).toBe(true);
@@ -154,7 +163,7 @@ describe("batch publishing", () => {
     await settleCollab();
     beginBatch(tab);
     expect(() => endBatch()).not.toThrow();
-    expect(serverJson(hub)).toEqual(DOC);
+    expect(serverJson(hub)).toEqual(HELLO_DOC);
   });
 
   test("an un-instrumented mutation inside a batch flushes by whole-doc diff", async () => {
@@ -164,7 +173,7 @@ describe("batch publishing", () => {
 
     beginBatch(tab);
     transactDoc(tab, (t) => {
-      (t.doc.document as JxMutableNode).tagName = "main";
+      t.doc.document.tagName = "main";
     });
     endBatch();
     await settleCollab();
@@ -185,7 +194,7 @@ describe("batch publishing", () => {
     applyDocOpsImpl = realApplyDocOpsToY;
     await settleCollab();
 
-    expect((serverJson(hub).children as JxMutableNode[])[0]!.textContent).toBe("Batched");
+    expect(childNode(serverJson(hub), 0).textContent).toBe("Batched");
   });
 });
 
@@ -204,7 +213,7 @@ describe("publish fallbacks", () => {
     applyDocOpsImpl = realApplyDocOpsToY;
     await settleCollab();
 
-    expect((serverJson(hub).children as JxMutableNode[])[0]!.textContent).toBe("Replaced");
+    expect(childNode(serverJson(hub), 0).textContent).toBe("Replaced");
   });
 
   test("an un-diffable document is hard-replaced into the Y structure", async () => {
@@ -214,7 +223,7 @@ describe("publish fallbacks", () => {
 
     diffDocsImpl = () => null;
     transactDoc(tab, (t) => {
-      (t.doc.document as JxMutableNode).tagName = "article";
+      t.doc.document.tagName = "article";
     });
     diffDocsImpl = realDiffDocs;
     await settleCollab();
@@ -230,7 +239,7 @@ describe("initial adoption", () => {
     const hub = createMockCollabHub();
     const shared: JxMutableNode = {
       children: [{ tagName: "h1", textContent: "Shared" }],
-    } as JxMutableNode; // No tagName — the local key must be DELETED on adoption.
+    }; // No tagName — the local key must be DELETED on adoption.
     actualCollab.seedStructure(hub.serverDoc(PATH), shared);
 
     diffDocsImpl = () => null;
@@ -240,12 +249,12 @@ describe("initial adoption", () => {
 
     expect(collabState(tab).active).toBe(true);
     expect(tabJson(tab)).toEqual(shared);
-    expect((toRaw(tab.doc.document) as JxMutableNode).tagName).toBeUndefined();
+    expect(toRaw(tab.doc.document).tagName).toBeUndefined();
   });
 
   test("a second client adopts the seeded shared frontmatter", async () => {
     const hub = createMockCollabHub();
-    actualCollab.seedStructure(hub.serverDoc(PATH), structuredClone(DOC), {
+    actualCollab.seedStructure(hub.serverDoc(PATH), structuredClone(HELLO_DOC), {
       frontmatter: { title: "Shared title" },
     });
     const tab = openCollabTab(hub);
@@ -304,7 +313,7 @@ describe("reconciler election", () => {
   test("a read-only client never mirrors a remote edit", async () => {
     const hub = createMockCollabHub({ identity: { permission: "read" } });
     // A read-only client never seeds — the room must exist before it can observe.
-    actualCollab.seedStructure(hub.serverDoc(PATH), structuredClone(DOC));
+    actualCollab.seedStructure(hub.serverDoc(PATH), structuredClone(HELLO_DOC));
     const tab = openCollabTab(hub);
     configureCollabSerializer(jsonSerializer);
     await settleCollab();
@@ -319,7 +328,7 @@ describe("reconciler election", () => {
     await settleCollab();
 
     // The remote edit applied, but this observer client scheduled no mirror.
-    expect((tabJson(tab).children as JxMutableNode[])[0]!.textContent).toBe("Remote");
+    expect(childNode(tabJson(tab), 0).textContent).toBe("Remote");
     expect(hub.serverDoc(PATH).getText("source").toString()).toBe("");
     peer.destroy();
   });
@@ -337,7 +346,7 @@ describe("reconciler election", () => {
       },
     });
     configureCollabSerializer(jsonSerializer);
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
 
     // Inject a peer with clientID 1 (lower than any random real id) that can write.
@@ -354,7 +363,7 @@ describe("reconciler election", () => {
     // A local edit publishes but does NOT mirror — the lower clientID is the reconciler.
     transactDoc(tab, (t) => mutateUpdateProperty(t, ["children", 0], "textContent", "Mine"));
     await settleCollab();
-    expect((serverJson(hub).children as JxMutableNode[])[0]!.textContent).toBe("Mine");
+    expect(childNode(serverJson(hub), 0).textContent).toBe("Mine");
     expect(hub.serverDoc(PATH).getText("source").toString()).toBe("");
     low.destroy();
   });
@@ -453,7 +462,7 @@ describe("source lock guards", () => {
     await settleCollab();
     ctx.leave();
     await settleCollab();
-    expect(serverJson(hub)).toEqual(DOC);
+    expect(serverJson(hub)).toEqual(HELLO_DOC);
     expect(actualCollab.canonicalOf(hub.serverDoc(PATH))).toBe("structure");
   });
 
@@ -462,7 +471,7 @@ describe("source lock guards", () => {
     const tab = openCollabTab(hub);
     configureCollabSerializer(jsonSerializer);
     let releaseParse!: () => void;
-    const edited = { children: [], tagName: "stale-parse" } as unknown as JxMutableNode;
+    const edited: JxMutableNode = { children: [], tagName: "stale-parse" };
     configureCollabParser(
       () =>
         new Promise((resolve) => {
@@ -484,7 +493,7 @@ describe("source lock guards", () => {
     releaseParse();
     await settleCollab();
 
-    expect(serverJson(hub)).toEqual(DOC);
+    expect(serverJson(hub)).toEqual(HELLO_DOC);
     peer.destroy();
   });
 
@@ -492,10 +501,10 @@ describe("source lock guards", () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     configureCollabSerializer(jsonSerializer);
-    const parsed = {
+    const parsed: JxMutableNode = {
       children: [{ tagName: "h2", textContent: "From source" }],
       tagName: "section",
-    } as unknown as JxMutableNode;
+    };
     configureCollabParser(() => Promise.resolve({ document: structuredClone(parsed) }));
     await settleCollab();
 
@@ -514,10 +523,10 @@ describe("source lock guards", () => {
     const hub = createMockCollabHub();
     const tab = openCollabTab(hub);
     configureCollabSerializer(jsonSerializer);
-    const parsed = {
+    const parsed: JxMutableNode = {
       children: [{ tagName: "h3", textContent: "Fallback" }],
       tagName: "aside",
-    } as unknown as JxMutableNode;
+    };
     configureCollabParser(() => Promise.resolve({ document: structuredClone(parsed) }));
     await settleCollab();
 
@@ -540,7 +549,7 @@ describe("source lock guards", () => {
     configureCollabSerializer(jsonSerializer);
     configureCollabParser(() =>
       Promise.resolve({
-        document: structuredClone(DOC),
+        document: structuredClone(HELLO_DOC),
         frontmatter: { title: "From source" },
       }),
     );
@@ -618,17 +627,15 @@ describe("identity fallbacks", () => {
         return h;
       },
     });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
 
     expect(collabState(tab).active).toBe(true);
-    const local = handles[0]!.awareness.getLocalState() as {
-      canWrite: boolean;
-      user: { login: string; color: string };
-    };
-    expect(local.canWrite).toBe(true);
-    expect(local.user.login).toMatch(/^guest-\d+$/);
-    expect(local.user.color).toMatch(/^#/);
+    // The session publishes its local state under the shared awareness contract.
+    const local: Partial<CollabAwarenessState> | null = handles[0]!.awareness.getLocalState();
+    expect(local?.canWrite).toBe(true);
+    expect(local?.user?.login).toMatch(/^guest-\d+$/);
+    expect(local?.user?.color).toMatch(/^#/);
   });
 });
 
@@ -669,7 +676,7 @@ describe("attach lifecycle races", () => {
         );
       },
     });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).status).toBe("connecting");
 
@@ -687,7 +694,7 @@ describe("attach lifecycle races", () => {
     await settleCollab();
     expect(collabState(tab).active).toBe(true);
 
-    (tab as { documentPath: string | null }).documentPath = null;
+    tab.documentPath = null;
     rekeyCollab(tab);
     await settleCollab();
     expect(collabState(tab).active).toBe(false);
@@ -699,7 +706,7 @@ describe("attach lifecycle races", () => {
        dead relay and a solo file were one indistinguishable state (collab.md §4). Editing still
        continues locally; what changed is that the app now says which of the two happened. */
     installMockPlatform({ collab: () => Promise.reject(new Error("boom")) });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).status).toBe("failed");
     expect(collabState(tab).attachError).toBe("boom");
@@ -711,8 +718,8 @@ describe("attach lifecycle races", () => {
 
 describe("solo-tab guards", () => {
   test("a tab opened with no platform registered stays solo", async () => {
-    delete (globalThis as { __jxPlatform?: unknown }).__jxPlatform;
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    globalThis.__jxPlatform = undefined;
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).active).toBe(false);
     expect(collabSourceContext(tab)).toBeNull();
@@ -721,7 +728,7 @@ describe("solo-tab guards", () => {
 
   test("rekeyCollab on a never-collab tab installs the watcher and attaches", async () => {
     installMockPlatform(); // No collab capability → the watcher is never installed.
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH }) as Tab;
+    const tab = openTab({ document: structuredClone(HELLO_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).active).toBe(false);
 

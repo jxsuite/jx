@@ -19,7 +19,7 @@ import { compileExclude } from "./content-rules.ts";
 import { transpileJxMarkdown } from "./transpile.ts";
 import { serializeJxMarkdown } from "./serialize.ts";
 import type { SerializeOptions } from "./serialize.ts";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry, MarkdownFileResult } from "./types.ts";
 
 export interface MarkdownLoadOptions {
@@ -37,7 +37,7 @@ export interface MarkdownLoadOptions {
    * The content type's `alerts` option: alert type → custom element, or `false` to leave GitHub
    * alerts (`> [!NOTE]`) as plain blockquotes. Absent renders the built-in callout markup.
    */
-  alerts?: unknown;
+  alerts?: JsonValue;
   /** Told of each `[!type]` marker whose type is not enabled (it stays a blockquote). */
   onUnknownAlert?: (type: string) => void;
 }
@@ -130,18 +130,11 @@ export class Markdown {
     } catch {
       // A format class may be handed content that is not on disk; an absent mtime is not an error.
     }
-    if (result.$excerpt != null) {
-      _meta.excerpt = result.$excerpt;
-    }
-    if (result.$toc != null) {
-      _meta.toc = result.$toc;
-    }
-    if (result.$readingTime != null) {
-      _meta.readingTime = result.$readingTime;
-    }
-    if (result.$wordCount != null) {
-      _meta.wordCount = result.$wordCount;
-    }
+    // `processMarkdown` always derives all four, so every entry carries them.
+    _meta.excerpt = result.$excerpt;
+    _meta.toc = result.$toc;
+    _meta.readingTime = result.$readingTime;
+    _meta.wordCount = result.$wordCount;
     return [
       {
         $children: result.$children,

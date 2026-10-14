@@ -1,26 +1,13 @@
 // Generates docs/studio/projects/starters.md from packages/starters/registry.json —
 // The same registry Studio's New Project template gallery reads.
 
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { listStarters } from "@jxsuite/starters";
+
 import { BANNER, frontmatter } from "./shared.ts";
-
-const ROOT = resolve(import.meta.dir, "../../..");
-
-interface StarterEntry {
-  id: string;
-  name: string;
-  industry: string;
-  tagline: string;
-  description: string;
-  features: string[];
-}
 
 /** Render the starter-templates reference page. */
 export function generateStarters(): string {
-  const registry = JSON.parse(
-    readFileSync(join(ROOT, "packages/starters/registry.json"), "utf8"),
-  ) as StarterEntry[];
+  const registry = listStarters();
 
   const lines: string[] = [
     frontmatter({

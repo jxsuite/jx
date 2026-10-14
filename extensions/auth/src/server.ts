@@ -20,21 +20,25 @@ import {
   toSessionInfo,
 } from "./config.ts";
 import type { Dialect } from "kysely";
+import type { HostEnv } from "@jxsuite/connector/provider-utils";
 import type { ConnectionDef, SessionInfo } from "@jxsuite/connector/types";
-import type { AuthProjectConfig, AuthSection } from "./config.ts";
-
-type Env = Record<string, unknown>;
+import type {
+  AuthDatabaseConfig,
+  AuthProjectConfig,
+  AuthSection,
+  AuthSessionPayload,
+} from "./config.ts";
 
 /** The provider surface the auth extension needs (a slice of ConnectorProvider). */
 export interface AuthConnectorProvider {
   kind: "sqlite" | "postgres";
-  dialect: (connection: ConnectionDef, env: Env) => Dialect | Promise<Dialect>;
+  dialect: (connection: ConnectionDef, env: HostEnv) => Dialect | Promise<Dialect>;
 }
 
 /** The Better Auth surface consumed here (structural — betterAuth() returns a far larger type). */
 export interface JxAuthInstance {
   handler: (request: Request) => Promise<Response>;
-  api: { getSession: (input: { headers: Headers }) => Promise<unknown> };
+  api: { getSession: (input: { headers: Headers }) => Promise<AuthSessionPayload | null> };
 }
 
 export interface CreateJxAuthOptions {
@@ -48,9 +52,9 @@ export interface CreateJxAuthOptions {
 async function resolveAuthDatabase(
   section: AuthSection,
   projectConfig: AuthProjectConfig,
-  env: Env,
+  env: HostEnv,
   connectors?: Record<string, AuthConnectorProvider>,
-): Promise<{ dialect: Dialect; type: "sqlite" | "postgres"; connection: string }> {
+): Promise<AuthDatabaseConfig & { connection: string }> {
   const connection = resolveAuthConnectionName(section, projectConfig);
   const def = projectConfig.connections?.[connection];
   if (!def) {
@@ -58,7 +62,7 @@ async function resolveAuthDatabase(
   }
   const provider = connectors?.[def.provider];
   if (provider) {
-    const dialect = await provider.dialect({ ...def, $name: connection } as ConnectionDef, env);
+    const dialect = await provider.dialect({ ...def, $name: connection }, env);
     return { connection, dialect, type: provider.kind };
   }
   const resolved = await resolveDialect(connection, projectConfig, env);
@@ -70,14 +74,14 @@ async function resolveAuthDatabase(
  *
  * @param {AuthSection} section - The project.json `auth` section
  * @param {AuthProjectConfig} projectConfig - Project config (connections lookup)
- * @param {Env} env - Host environment (bindings + env vars; the secret lives here)
+ * @param {HostEnv} env - Host environment (bindings + env vars; the secret lives here)
  * @param {CreateJxAuthOptions} [options]
  * @returns {Promise<JxAuthInstance>}
  */
 export async function createJxAuth(
   section: AuthSection,
   projectConfig: AuthProjectConfig,
-  env: Env,
+  env: HostEnv,
   options: CreateJxAuthOptions = {},
 ): Promise<JxAuthInstance> {
   const secret = resolveAuthSecret(section, env);
@@ -92,10 +96,10 @@ export async function createJxAuth(
     secret,
   });
   if (options.autoSync) {
-    const migrations = await getMigrations(authOptions as Parameters<typeof getMigrations>[0]);
+    const migrations = await getMigrations(authOptions);
     await migrations.runMigrations();
   }
-  return betterAuth(authOptions as Parameters<typeof betterAuth>[0]) as JxAuthInstance;
+  return betterAuth(authOptions);
 }
 
 /**
@@ -182,7 +186,7 @@ export function classifyAuthStatement(statement: string, connection: string): Au
  *
  * @param {AuthSection} section
  * @param {AuthProjectConfig} projectConfig
- * @param {Env} env
+ * @param {HostEnv} env
  * @param {object} [options]
  * @param {Record<string, AuthConnectorProvider>} [options.connectors] - Provider stand-ins
  * @returns {Promise<AuthMigrationsResult>}
@@ -190,7 +194,7 @@ export function classifyAuthStatement(statement: string, connection: string): Au
 export async function getAuthMigrations(
   section: AuthSection,
   projectConfig: AuthProjectConfig,
-  env: Env,
+  env: HostEnv,
   options: { connectors?: Record<string, AuthConnectorProvider> | undefined } = {},
 ): Promise<AuthMigrationsResult> {
   const { dialect, type, connection } = await resolveAuthDatabase(
@@ -200,7 +204,7 @@ export async function getAuthMigrations(
     options.connectors,
   );
   const authOptions = buildAuthOptions(section, env, { database: { dialect, type } });
-  const migrations = await getMigrations(authOptions as Parameters<typeof getMigrations>[0]);
+  const migrations = await getMigrations(authOptions);
   const sqlBlob = await migrations.compileMigrations();
   const steps = splitSqlStatements(sqlBlob).map((statement) =>
     classifyAuthStatement(statement, connection),

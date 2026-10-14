@@ -1,5 +1,6 @@
 import "./with-dom.js";
 import { createTab, disposeTab } from "../src/tabs/tab";
+import { childList, getNodeAtPath } from "../src/state";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { TransactionRecord } from "../src/tabs/patch-ops";
@@ -69,7 +70,7 @@ describe("setTransactObserver", () => {
     setTransactObserver((t, record, origin) => seen.push({ origin, record, tab: t }));
 
     transactDoc(tab, (t) => {
-      (t.doc.document as { tagName?: string }).tagName = "section";
+      t.doc.document.tagName = "section";
     });
 
     expect(seen).toHaveLength(1);
@@ -119,12 +120,9 @@ describe("applyExternalDocOps", () => {
 
     expect(origins).toEqual(["remote"]);
     expect(tab.history.snapshots).toHaveLength(1);
-    const doc = tab.doc.document as {
-      children: { tagName?: string; textContent?: string }[];
-    };
-    expect(doc.children).toHaveLength(2);
-    expect(doc.children[1]!.tagName).toBe("aside");
-    expect(doc.children[0]!.textContent).toBe("Remote");
+    expect(childList(tab.doc.document)).toHaveLength(2);
+    expect(getNodeAtPath(tab.doc.document, ["children", 1])?.tagName).toBe("aside");
+    expect(getNodeAtPath(tab.doc.document, ["children", 0])?.textContent).toBe("Remote");
     expect(tab.doc.dirty).toBe(true);
 
     disposeTab(tab);

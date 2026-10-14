@@ -54,12 +54,12 @@ import { collabState } from "../collab/collab-state";
 import { problemCount, problems } from "../services/notify";
 import { mountSurface, registerSurface } from "../ui/surface";
 import statusbarDoc from "./statusbar.json";
+import type { CommandArgValues } from "../commands/command-args";
 import type { CommandRegistry } from "../commands/registry";
 import type { EffectScope } from "@vue/reactivity";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("statusbar", statusbarDoc as unknown as JxDocument);
+registerSurface("statusbar", statusbarDoc);
 
 let _scope: EffectScope | null = null;
 
@@ -72,7 +72,7 @@ interface StatusItem {
   label: string;
   /** Extra context for the tooltip. The command's own title and chord are added to it. */
   title?: string;
-  args?: Record<string, unknown>;
+  args?: CommandArgValues;
 }
 
 /** One item as the surface reads it: a button that runs a command through `run`, or a readout. */
@@ -85,7 +85,7 @@ interface ProjectedItem {
   disabled: boolean;
   /** For a button: what `run` runs. */
   command: string | null;
-  args: Record<string, unknown> | undefined;
+  args: CommandArgValues | undefined;
 }
 
 interface ProjectedField {
@@ -147,9 +147,10 @@ function projectField(
   items: readonly (StatusItem | null)[],
 ): ProjectedField | null {
   const region = `statusbar/${id}`;
-  const live = items
-    .map((item) => (item === null ? null : projectItem(registry, region, item)))
-    .filter((item): item is ProjectedItem => item !== null);
+  const live = items.flatMap((item) => {
+    const projected = item === null ? null : projectItem(registry, region, item);
+    return projected === null ? [] : [projected];
+  });
   if (live.length === 0) {
     return null;
   }
@@ -266,7 +267,7 @@ function present(fields: readonly (ProjectedField | null)[]): ProjectedField[] {
   return fields.filter((field): field is ProjectedField => field !== null);
 }
 
-interface StatusbarScope extends Record<string, unknown> {
+interface StatusbarScope {
   /** The fields before the DOCUMENT slot: PROJECT. */
   leading: ProjectedField[];
   /** Whether the DOCUMENT slot has a trail to show. */
@@ -282,7 +283,7 @@ let _handle: SurfaceHandle | null = null;
 
 /** The reactive scope the surface reads, made once. */
 function state(): StatusbarScope {
-  _state ??= reactive({
+  _state ??= reactive<StatusbarScope>({
     hasDocument: false,
     leading: [],
     run: (key: string) => {
@@ -291,11 +292,11 @@ function state(): StatusbarScope {
         .find((i) => i.key === key);
       const registry = activeRegistry();
       if (item?.command && registry) {
-        void runReported(registry, item.command, item.args as never, "Status Bar");
+        void runReported(registry, item.command, item.args, "Status Bar");
       }
     },
     trailing: [],
-  }) as StatusbarScope;
+  });
   return _state;
 }
 
@@ -306,17 +307,19 @@ function state(): StatusbarScope {
  * is the same hand-over the pane grid gives the tab strip and the context bar.
  */
 function ensureMounted(): void {
-  if (_mount || !statusbarEl) {
+  // The host is captured, so the mount callback below reads the element this call checked.
+  const host = statusbarEl;
+  if (_mount || !host) {
     return;
   }
-  const mount = mountSurface("statusbar", state(), statusbarEl);
+  const mount = mountSurface("statusbar", state(), host);
   _mount = mount;
   void mount.then((handle) => {
     if (_mount !== mount) {
       return;
     }
     _handle = handle;
-    attachJumpBarHost(statusbarEl.querySelector<HTMLElement>('[part="trail"]'));
+    attachJumpBarHost(host.querySelector<HTMLElement>('[part="trail"]'));
   });
 }
 

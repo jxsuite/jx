@@ -2,7 +2,7 @@ import Electrobun from "electrobun/main";
 import { isAbsolute } from "node:path";
 import { setDirectoryDialog, setFileDialog } from "./project-session";
 import { setNotifyWebview, startBackgroundChecks } from "./updater";
-import { init as initUtils, openDirectoryDialog, openFileDialog } from "./utils";
+import { init, openDirectoryDialog, openFileDialog } from "./utils";
 import { handleAiApi } from "@jxsuite/server/ai-api";
 import { handleImportApi } from "@jxsuite/server/import-api";
 import { hostIsLoopbackOrAbsent, secretsMatch } from "@jxsuite/server/net-guard";
@@ -24,7 +24,7 @@ import {
 // Windows), which makes the boot effects untestable. `ready` lets tests await the same sequence.
 
 async function main() {
-  await initUtils();
+  await init();
   setFileDialog(openFileDialog);
   setDirectoryDialog(openDirectoryDialog);
 

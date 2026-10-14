@@ -34,8 +34,10 @@ describe("icon lookup", () => {
   });
 
   test("an unknown name draws nothing and warns once", () => {
-    expect(iconPath("no-such-icon", "regular")).toBe("");
-    expect(iconPath("no-such-icon", "regular")).toBe("");
+    const first = iconPath("no-such-icon", "regular");
+    const second = iconPath("no-such-icon", "regular");
+    expect(first).toBe("");
+    expect(second).toBe("");
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]![0])).toContain("no-such-icon");
   });

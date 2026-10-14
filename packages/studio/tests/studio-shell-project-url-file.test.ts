@@ -10,7 +10,7 @@ import { activeTab } from "../src/workspace/workspace";
 
 const { platform, state } = await bootStudio({
   overrides: {
-    resolveSiteContext: (async () => ({ sitePath: null })) as any,
+    resolveSiteContext: async () => ({ sitePath: null }),
   },
   seedFiles: {
     "docs/readme.weird": "# not a recognized format",

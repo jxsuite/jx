@@ -31,14 +31,16 @@
  * @docs studio/design/properties
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import propertiesPanelDoc from "./properties-panel.json";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceAction, SurfaceHandle, SurfaceOption } from "../ui/surface";
+import type { ColorTokenView } from "../ui/color-selector";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 
-registerSurface("properties-panel", propertiesPanelDoc as unknown as JxDocument);
+registerSurface("properties-panel", propertiesPanelDoc);
 
 /** Which control a `field` row draws. The flow picks it; the document switches on it. */
 export type ContentFieldKind =
@@ -52,25 +54,7 @@ export type ContentFieldKind =
   | "control";
 
 /** What a row is drawn as. Everything a section body can hold is one of these. */
-export type ContentRowShape = "field" | "kv" | "note" | "action" | "file";
-
-/**
- * One colour the project has named, as a `color` row's palette draws it.
- *
- * The same three fields the Style tab projects, and for the same reason: `value` is the reference a
- * click commits, `color` is only how it reads on screen, and `label` is what a reader hears.
- */
-export interface ContentTokenView extends Record<string, unknown> {
-  value: string;
-  color: string;
-  label: string;
-}
-
-/** A choice a select offers, in the shape the kit's select reads. */
-export interface ContentOption {
-  value: string;
-  label: string;
-}
+export type ContentRowVariant = "field" | "kv" | "note" | "action" | "file";
 
 /**
  * One row of a section — every field already decided, whatever shape it is.
@@ -81,7 +65,7 @@ export interface ContentOption {
 export interface ContentRowView {
   /** The row's reconcile identity AND what every callback hands back. */
   key: string;
-  shape: ContentRowShape;
+  variant: ContentRowVariant;
   /** `data-prop` — what `inspector/field:<prop>` addresses. Every shape carries one. */
   prop: string;
   /** The visible label of a `field`; the accessible name of a `kv` pair's controls. */
@@ -99,9 +83,9 @@ export interface ContentRowView {
   /** Draw the text control monospaced — a template, a pointer, a code-ish value. */
   mono: boolean;
   /** Choices for `select`; the routes or the popover ids for a `link`'s value half. */
-  options: ContentOption[];
+  options: SurfaceOption[];
   /** The palette a `color` row offers inside its picker, and whether it has one to offer. */
-  tokens: ContentTokenView[];
+  tokens: ColorTokenView[];
   hasTokens: boolean;
   /**
    * The provenance chip's shape: `""` draws nothing (§6.7's `default` state, where absence IS the
@@ -125,7 +109,7 @@ export interface ContentRowView {
   source: string;
   /** A `link` row's kind half: the chosen kind, and the five it chooses between. */
   linkKind: string;
-  kindOptions: ContentOption[];
+  kindOptions: SurfaceOption[];
   /** `route` draws a picker of the site's own routes; `text` draws a field. */
   linkValueKind: string;
   /** A `kv` pair's key cell, and the remove button's accessible name. */
@@ -151,12 +135,6 @@ export interface ContentSectionView {
   rows: ContentRowView[];
 }
 
-/** A button an empty state offers — the action that fills the region. */
-export interface ContentEmptyAction {
-  id: string;
-  label: string;
-}
-
 /** Everything the document reads. */
 export interface ContentPanelView {
   /**
@@ -168,7 +146,7 @@ export interface ContentPanelView {
   emptyMessage: string;
   emptyDetail: string;
   hasEmptyDetail: boolean;
-  emptyActions: ContentEmptyAction[];
+  emptyActions: SurfaceAction[];
   hasEmptyActions: boolean;
   /** The layout card: the tag clicked, its class, the file it came from. */
   layoutTag: string;
@@ -218,8 +196,7 @@ export interface ContentPanelSurface {
 /** A control host the document drew, reported as the runtime created it. */
 export type ContentControlSink = (key: string, host: HTMLElement) => void;
 
-interface ContentPanelScope
-  extends Record<string, unknown>, ContentPanelView, ContentPanelActions {}
+interface ContentPanelScope extends ContentPanelView, ContentPanelActions {}
 
 /** The scope's starting shape, before the first projection lands on it. */
 export function emptyContentView(): ContentPanelView {
@@ -267,15 +244,16 @@ function controlKeyOf(part: string, state: JxScope | undefined): string {
   if (part !== "control-host") {
     return "";
   }
-  const item = (state?.["$map"] as { item?: Record<string, unknown> } | undefined)?.item;
-  const key = item?.["key"];
-  return typeof key === "string" ? key : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const key = isJsonObject(item) ? item["key"] : undefined;
+  return isString(key) ? key : "";
 }
 
 /** A node definition's `part`, as written in the document. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -296,10 +274,10 @@ export function mountContentSurface(
   actions: ContentPanelActions,
   onControlHost: ContentControlSink,
 ): ContentPanelSurface {
-  const scope = reactive<ContentPanelScope>({
+  const scope: ContentPanelScope = reactive<ContentPanelScope>({
     ...emptyContentView(),
     ...actions,
-  }) as ContentPanelScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;

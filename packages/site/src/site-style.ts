@@ -39,6 +39,8 @@ import {
   isNestedSelectorKey,
   pureSchemeOf,
 } from "@jxsuite/runtime/css";
+import type { CssBuildOptions } from "@jxsuite/runtime/css";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxRef, JxStyle } from "@jxsuite/schema/types";
 
 /** Id of the injected site-style tag (replace-in-place, never accumulate). */
@@ -78,7 +80,7 @@ export type SiteStyleValueResolver = (
  * live-preview tab each ARE the page, with the project's `$head` in their head and the rendered
  * document as their body — so no host-side prefix is added, and nothing has to know one.
  *
- * @param {Record<string, unknown>} siteStyle
+ * @param {JxStyle} siteStyle - `project.json`'s `style` block
  * @param {Record<string, string>} mediaQueries
  * @param {(value: string) => string} transpose - Unit transposer (canvas vh→cqh etc.)
  * @param {SiteStyleValueResolver} [resolveValue] - What a reactive declaration becomes; absent, it
@@ -87,25 +89,22 @@ export type SiteStyleValueResolver = (
  * @docs studio/interface/canvas
  */
 export function buildSiteStyleCSS(
-  siteStyle: Record<string, unknown>,
+  siteStyle: JxStyle,
   mediaQueries: Record<string, string>,
   transpose: (value: string) => string,
   resolveValue?: SiteStyleValueResolver,
 ): string {
   const rules: string[] = [];
   const push = (style: JxStyle, selector: string | null) => {
-    for (const rule of buildStyleRules(style, {
-      mediaQueries,
-      scope: selector,
-      transposeValue: transpose,
-      /* The selector is closed over here rather than threaded through `buildStyleRules`, whose own
-         hook sees a rule TARGET (self / descendant / unscoped) and not the selector it hangs off;
-         the compiler's report names the selector, so this is where it is known. Conditionally
-         spread: `exactOptionalPropertyTypes` refuses an explicit `undefined` for an optional hook. */
-      ...(resolveValue
-        ? { resolveValue: (property, value) => resolveValue(property, value, selector) }
-        : {}),
-    })) {
+    const options: CssBuildOptions = { mediaQueries, scope: selector, transposeValue: transpose };
+    /* The selector is closed over here rather than threaded through `buildStyleRules`, whose own
+       hook sees a rule TARGET (self / descendant / unscoped) and not the selector it hangs off;
+       the compiler's report names the selector, so this is where it is known. Set only when given:
+       `exactOptionalPropertyTypes` refuses an explicit `undefined` for an optional hook. */
+    if (resolveValue) {
+      options.resolveValue = (property, value) => resolveValue(property, value, selector);
+    }
+    for (const rule of buildStyleRules(style, options)) {
       rules.push(rule.text);
     }
   };
@@ -120,9 +119,9 @@ export function buildSiteStyleCSS(
   const selectorBlocks: [string, JxStyle][] = [];
 
   for (const [key, value] of Object.entries(siteStyle)) {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    if (isNonNullObject(value) && !Array.isArray(value)) {
       if (key.startsWith("@")) {
-        condBlocks.push([key, value as JxStyle]);
+        condBlocks.push([key, value]);
       } else if (!key.startsWith("--")) {
         /* A selector-keyed block is a rule of the page's stylesheet, and this is where the canvas
            used to lose it. `&`-keyed blocks were rescued first — `&[data-theme="light"]` is a STATE
@@ -134,7 +133,7 @@ export function buildSiteStyleCSS(
            canvas, which showed headings in the fallback face and links underlined (#296). A block
            under a `--name` key is not a rule at all — a custom property has no block value — and
            is skipped the way the compiler skips it. */
-        selectorBlocks.push([key, value as JxStyle]);
+        selectorBlocks.push([key, value]);
       }
       continue;
     }
@@ -147,9 +146,9 @@ export function buildSiteStyleCSS(
        every token on `:root` resolving against the wrong element, and the site builder disagreeing
        with `installTheme`, which puts the same authored block on `:root`. */
     if (key.startsWith("--") || key === "colorScheme" || key === "color-scheme") {
-      rootProps[key] = value as string;
+      rootProps[key] = value;
     } else {
-      bodyProps[key] = value as string;
+      bodyProps[key] = value;
     }
   }
 
@@ -161,7 +160,7 @@ export function buildSiteStyleCSS(
     if (key.startsWith("&")) {
       /* `&` is spliced onto `:root`, so `&[data-theme="light"]` emits `:root[data-theme="light"]`.
          The runtime resolves `&` against a scope and a project block has none but the root. */
-      push({ [key]: block } as JxStyle, ":root");
+      push({ [key]: block }, ":root");
     } else {
       // A top-level selector key IS the selector — `.card` styles `.card`, not `:root .card`.
       push(block, key);
@@ -181,9 +180,9 @@ export function buildSiteStyleCSS(
     const condBody: JxStyle = {};
     const condSubs: [string, JxStyle][] = [];
     for (const [k, v] of Object.entries(block)) {
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      if (isNonNullObject(v) && !Array.isArray(v)) {
         if (!k.startsWith("@")) {
-          condSubs.push([k, v as JxStyle]);
+          condSubs.push([k, v]);
         }
         continue;
       }

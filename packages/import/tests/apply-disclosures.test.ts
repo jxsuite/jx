@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import { countLeaves } from "../src/apply-accordions.ts";
 import {
@@ -7,6 +8,28 @@ import {
   isDisclosurePanel,
 } from "../src/apply-disclosures.ts";
 
+/** A node's child array, failing the test when the slot holds a repeater or nothing. */
+function childrenOf(node: JxElement): (JxElement | string)[] {
+  if (!Array.isArray(node.children)) {
+    throw new TypeError("expected a child array");
+  }
+  return node.children;
+}
+
+/** The element at `index` among a node's children, failing the test on text or a missing child. */
+function elementChild(node: JxElement, index: number): JxElement {
+  const child = childrenOf(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new TypeError(`expected an element at children[${index}]`);
+  }
+  return child;
+}
+
+/** Every child of a node, failing the test if any of them is text. */
+function elementChildren(node: JxElement): JxElement[] {
+  return childrenOf(node).map((_, index) => elementChild(node, index));
+}
+
 /**
  * The corpus's "read more" disclosure, verbatim in shape: the panel is hidden by the ATTRIBUTE and
  * carries no style at all, and it sits BEFORE the control that opens it.
@@ -14,10 +37,10 @@ import {
 function readMore(id: string, tabindex = "-1"): JxElement {
   return {
     children: [
-      { children: [{ tagName: "p", textContent: "Visible intro" }] as JxElement[], tagName: "div" },
+      { children: [{ tagName: "p", textContent: "Visible intro" }], tagName: "div" },
       {
         attributes: { hidden: "", id },
-        children: [{ tagName: "p", textContent: `extra copy for ${id}` }] as JxElement[],
+        children: [{ tagName: "p", textContent: `extra copy for ${id}` }],
         tagName: "div",
       },
       {
@@ -32,16 +55,16 @@ function readMore(id: string, tabindex = "-1"): JxElement {
             children: [
               {
                 attributes: { "data-more-text": "Read more" },
-                children: ["Read more"] as never,
+                children: ["Read more"],
                 tagName: "span",
               },
-            ] as JxElement[],
+            ],
             tagName: "a",
           },
-        ] as JxElement[],
+        ],
         tagName: "p",
       },
-    ] as JxElement[],
+    ],
     tagName: "div",
   };
 }
@@ -52,7 +75,7 @@ describe("applyDisclosures", () => {
 
     expect(applyDisclosures(tree)).toEqual({ converted: 1, duplicateInvokers: 0 });
 
-    const kids = tree.children as JxElement[];
+    const kids = elementChildren(tree);
     expect(kids.map((c) => c.tagName)).toEqual(["div", "details"]);
   });
 
@@ -61,8 +84,8 @@ describe("applyDisclosures", () => {
 
     applyDisclosures(tree);
 
-    const details = (tree.children as JxElement[])[1]!;
-    const [summary, panel] = details.children as JxElement[];
+    const details = elementChild(tree, 1);
+    const [summary, panel] = elementChildren(details);
     expect(summary!.tagName).toBe("summary");
     expect(countLeaves(summary!)).toEqual(["t:Read more"]);
     expect(countLeaves(panel!)).toEqual(["t:extra copy for more-1"]);
@@ -87,7 +110,7 @@ describe("applyDisclosures", () => {
 
     applyDisclosures(tree);
 
-    const panel = ((tree.children as JxElement[])[1]!.children as JxElement[])[1]!;
+    const panel = elementChild(elementChild(tree, 1), 1);
     expect(panel.attributes!["hidden"]).toBeUndefined();
     // The id survives, because something else on the page may still refer to it.
     expect(panel.attributes!["id"]).toBe("more-1");
@@ -100,7 +123,7 @@ describe("applyDisclosures", () => {
 
     applyDisclosures(tree);
 
-    const kids = tree.children as JxElement[];
+    const kids = elementChildren(tree);
     expect(kids[0]!.tagName).toBe("div");
     expect(kids[1]!.tagName).toBe("details");
   });
@@ -116,21 +139,20 @@ describe("applyDisclosures", () => {
 
   test("converts several disclosures under one parent", () => {
     const merged: JxElement = {
-      children: [
-        ...(readMore("more-1").children as JxElement[]),
-        ...(readMore("more-2").children as JxElement[]),
-      ] as JxElement[],
+      children: [...childrenOf(readMore("more-1")), ...childrenOf(readMore("more-2"))],
       tagName: "div",
     };
 
     expect(applyDisclosures(merged).converted).toBe(2);
-    expect((merged.children as JxElement[]).filter((c) => c.tagName === "details")).toHaveLength(2);
+    expect(childrenOf(merged).filter((c) => !isString(c) && c.tagName === "details")).toHaveLength(
+      2,
+    );
   });
 
   test("also converts a panel hidden by display rather than the attribute", () => {
     const tree = readMore("more-1");
-    const panel = (tree.children as JxElement[])[1]!;
-    delete (panel.attributes as Record<string, unknown>)["hidden"];
+    const panel = elementChild(tree, 1);
+    delete panel.attributes!["hidden"];
     panel.style = { display: "none" };
 
     expect(applyDisclosures(tree).converted).toBe(1);
@@ -142,14 +164,14 @@ describe("a second control for a panel already claimed", () => {
     /* Two controls pointing at one panel is the read-more / show-less pair. Once the panel is
        inside a `<details>`, a leftover `aria-expanded="false"` lies to a screen reader. */
     const tree = readMore("more-1");
-    (tree.children as JxElement[]).push({
+    childrenOf(tree).push({
       children: [
         {
           attributes: { "aria-controls": "more-1", "aria-expanded": "false", role: "button" },
-          children: ["Show less"] as never,
+          children: ["Show less"],
           tagName: "a",
         },
-      ] as JxElement[],
+      ],
       tagName: "p",
     });
 
@@ -191,8 +213,8 @@ describe("what a disclosure is not", () => {
 
   test("an invoker whose panel does not exist is left alone", () => {
     const tree = readMore("more-1");
-    const panel = (tree.children as JxElement[])[1]!;
-    (panel.attributes as Record<string, unknown>)["id"] = "somewhere-else";
+    const panel = elementChild(tree, 1);
+    panel.attributes!["id"] = "somewhere-else";
     const before = JSON.stringify(tree);
 
     expect(applyDisclosures(tree).converted).toBe(0);
@@ -206,19 +228,17 @@ describe("what a disclosure is not", () => {
           children: [
             {
               attributes: { "aria-controls": "far", "aria-expanded": "false" },
-              children: ["open"] as never,
+              children: ["open"],
               tagName: "button",
             },
-          ] as JxElement[],
+          ],
           tagName: "section",
         },
         {
-          children: [
-            { attributes: { hidden: "", id: "far" }, children: ["body"] as never, tagName: "div" },
-          ] as JxElement[],
+          children: [{ attributes: { hidden: "", id: "far" }, children: ["body"], tagName: "div" }],
           tagName: "aside",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
     const before = JSON.stringify(tree);
@@ -246,7 +266,7 @@ describe("controls whose label is bare text", () => {
       children: [
         {
           attributes: { hidden: "", id: "p1" },
-          children: [{ tagName: "p", textContent: "body copy" }] as JxElement[],
+          children: [{ tagName: "p", textContent: "body copy" }],
           tagName: "div",
         },
         {
@@ -256,10 +276,10 @@ describe("controls whose label is bare text", () => {
               tagName: "a",
               textContent: "Read more",
             },
-          ] as JxElement[],
+          ],
           tagName: "p",
         },
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
     const before = countLeaves(tree);
@@ -267,9 +287,9 @@ describe("controls whose label is bare text", () => {
     expect(applyDisclosures(tree).converted).toBe(1);
     expect(countLeaves(tree)).toEqual(before);
 
-    const details = (tree.children as JxElement[])[0]!;
+    const details = elementChild(tree, 0);
     expect(details.tagName).toBe("details");
-    expect(countLeaves((details.children as JxElement[])[0]!)).toEqual(["t:Read more"]);
+    expect(countLeaves(elementChild(details, 0))).toEqual(["t:Read more"]);
   });
 });
 
@@ -279,11 +299,11 @@ describe("control shapes the unwrap has to survive", () => {
       children: [
         {
           attributes: { hidden: "", id: "p1" },
-          children: [{ tagName: "p", textContent: "body copy" }] as JxElement[],
+          children: [{ tagName: "p", textContent: "body copy" }],
           tagName: "div",
         },
         invokerBranch,
-      ] as JxElement[],
+      ],
       tagName: "div",
     };
   }
@@ -299,7 +319,7 @@ describe("control shapes the unwrap has to survive", () => {
 
     expect(applyDisclosures(tree).converted).toBe(1);
 
-    const summary = ((tree.children as JxElement[])[0]!.children as JxElement[])[0]!;
+    const summary = elementChild(elementChild(tree, 0), 0);
     expect(summary.tagName).toBe("summary");
     expect(JSON.stringify(summary)).not.toContain("aria-expanded");
     expect(countLeaves(summary)).toEqual(["t:Toggle"]);
@@ -316,10 +336,10 @@ describe("control shapes the unwrap has to survive", () => {
               tagName: "a",
               textContent: "Read more",
             },
-          ] as JxElement[],
+          ],
           tagName: "em",
         },
-      ] as never,
+      ],
       tagName: "p",
     });
     const before = countLeaves(tree);
@@ -337,7 +357,7 @@ describe("control shapes the unwrap has to survive", () => {
           style: { backgroundImage: "url(/i.svg)" },
           tagName: "button",
         },
-      ] as JxElement[],
+      ],
       tagName: "p",
     });
 

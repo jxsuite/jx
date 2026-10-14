@@ -7,7 +7,9 @@
  * boundary.
  */
 
-import { childIndex, getNodeAtPath, parentElementPath } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import { childIndex, parentElementPath } from "../store";
 import { isAncestor } from "../state";
 import { isTabActive } from "../workspace/workspace";
 import {
@@ -24,6 +26,7 @@ import type { JxContentResult, SlashCommand } from "./inline-edit";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { SpliceCoordinate } from "../tabs/selection";
 
 /**
  * Whether a committed inline-edit result is effectively empty (blank text / lone whitespace /
@@ -43,10 +46,21 @@ export function isEmptyContent(commitData?: JxContentResult): boolean {
   if (kids.length === 0) {
     return true;
   }
-  if (kids.length === 1 && typeof kids[0] === "string" && kids[0].trim() === "") {
+  const [only] = kids;
+  if (kids.length === 1 && isString(only) && only.trim() === "") {
     return true;
   }
-  return kids.length === 1 && typeof kids[0] === "object" && kids[0]?.tagName === "br";
+  // The result crossed the frame boundary as JSON, so a `null` child is excluded here explicitly.
+  return kids.length === 1 && isNonNullObject(only) && only.tagName === "br";
+}
+
+/** The slot of the block at `path`. */
+function blockSlot(path: JxPath): SpliceCoordinate {
+  /* SAFETY: a block with a sibling position has an element path ending in `"children", <index>`, so
+     it has a parent element path and its last segment is the numeric child index. A repeater's
+     template root (`…, "map"`) is editable too; callers do not exclude that case yet, so it reaches
+     here with a string segment exactly as before this cast. */
+  return { index: childIndex(path) as number, parentPath: parentElementPath(path) as JxPath };
 }
 
 /**
@@ -126,7 +140,7 @@ export function applyInlinePropCommit(
   if (!node) {
     return false;
   }
-  const current = (node.$props as Record<string, unknown> | undefined)?.[prop];
+  const current = node.$props?.[prop];
   if (`${current ?? ""}` === value) {
     return false;
   }
@@ -155,8 +169,8 @@ export function applyBlockMerge(
   if (!tab) {
     return null;
   }
-  const from = getNodeAtPath(tab.doc.document, fromPath) as JxMutableNode | undefined;
-  const into = getNodeAtPath(tab.doc.document, intoPath) as JxMutableNode | undefined;
+  const from = getNodeAtPath(tab.doc.document, fromPath);
+  const into = getNodeAtPath(tab.doc.document, intoPath);
   if (!from || !into) {
     return null;
   }
@@ -184,8 +198,11 @@ export function applyBlockMerge(
       mutateUpdateProperty(t, intoPath, "textContent", merged.textContent ?? "");
     }
     mutateRemoveNode(t, fromPath);
-    // A container emptied by the removal (the `<ul>` behind a list's last item) would otherwise
-    // Linger as invisible structure that still occupies layout and shows up in the layers panel.
+    /* A container emptied by the removal (the `<ul>` behind a list's last item) would otherwise
+       linger as invisible structure that still occupies layout and shows up in the layers panel.
+       SAFETY: `fromPath` is not the root (the ancestor check above refuses `[]`), and any node below
+       the root is addressed by at least two segments (`"children", <index>`, `"cases", <name>`, or
+       `"map"` under its repeater), so parentElementPath returns a path. */
     pruneEmptyAncestors(t, parentElementPath(fromPath) as JxPath);
     if (isTabActive(tab)) {
       t.session.selection = [intoPath];
@@ -202,12 +219,12 @@ export function applyBlockMerge(
 function pruneEmptyAncestors(tab: Tab, path: JxPath): void {
   let cur = path;
   while (cur.length > 0) {
-    const node = getNodeAtPath(tab.doc.document, cur) as JxMutableNode | undefined;
+    const node = getNodeAtPath(tab.doc.document, cur);
     const kids = node?.children;
     if (!node || !Array.isArray(kids) || kids.length > 0) {
       return;
     }
-    const parent = parentElementPath(cur) as JxPath | null;
+    const parent = parentElementPath(cur);
     mutateRemoveNode(tab, cur);
     if (!parent) {
       return;
@@ -227,8 +244,7 @@ export function applyInlineSplit(
   before: JxContentResult,
   after: JxContentResult,
 ): JxPath {
-  const parentPath = parentElementPath(path) as JxPath;
-  const idx = childIndex(path) as number;
+  const { parentPath, index: idx } = blockSlot(path);
   const newPath = [...parentPath, "children", idx + 1];
   if (!tab) {
     return newPath;
@@ -291,8 +307,7 @@ export function applyInlineInsert(
     return path;
   }
 
-  const parentPath = parentElementPath(path) as JxPath;
-  const idx = childIndex(path) as number;
+  const { parentPath, index: idx } = blockSlot(path);
   const newPath = [...parentPath, "children", idx + 1];
   if (!tab) {
     return newPath;
@@ -336,8 +351,8 @@ export function applyRangeReplace(
   if (!tab) {
     return null;
   }
-  const head = getNodeAtPath(tab.doc.document, from.path) as JxMutableNode | undefined;
-  const tail = getNodeAtPath(tab.doc.document, to.path) as JxMutableNode | undefined;
+  const head = getNodeAtPath(tab.doc.document, from.path);
+  const tail = getNodeAtPath(tab.doc.document, to.path);
   if (!head || !tail) {
     return null;
   }
@@ -366,6 +381,9 @@ export function applyRangeReplace(
     for (const path of removals) {
       if (getNodeAtPath(t.doc.document, path)) {
         mutateRemoveNode(t, path);
+        /* SAFETY: every removal is the range's tail or a rendered block the iframe named between its
+           ends; none is the root, which contains both ends, and any node below the root is
+           addressed by at least two segments, so parentElementPath returns a path. */
         pruneEmptyAncestors(t, parentElementPath(path) as JxPath);
       }
     }
@@ -389,7 +407,7 @@ function comparePathsDescending(a: JxPath, b: JxPath): number {
     if (av === bv) {
       continue;
     }
-    if (typeof av === "number" && typeof bv === "number") {
+    if (isNumber(av) && isNumber(bv)) {
       return bv - av;
     }
     return String(bv).localeCompare(String(av));

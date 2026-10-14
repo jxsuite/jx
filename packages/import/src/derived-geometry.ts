@@ -25,7 +25,8 @@
  * imply, so their measurements are kept.
  */
 
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElement, JxStyle } from "@jxsuite/schema/types";
 
 /** Elements sized by their own content or attributes rather than by their container. */
 const REPLACED = new Set([
@@ -49,8 +50,8 @@ const OUT_OF_FLOW = new Set(["absolute", "fixed", "sticky"]);
 /** A bare pixel length, which is the only shape a measurement takes. */
 const PIXEL_LENGTH = /^-?[\d.]+px$/;
 
-function isMeasured(value: unknown): boolean {
-  return typeof value === "string" && PIXEL_LENGTH.test(value);
+function isMeasured(value: JxStyle[string]): boolean {
+  return isString(value) && PIXEL_LENGTH.test(value);
 }
 
 /**
@@ -62,30 +63,28 @@ function isMeasured(value: unknown): boolean {
  * nothing else in the document that would reproduce it.
  */
 function hasContent(node: JxElement): boolean {
-  if (typeof node.textContent === "string" && node.textContent.trim().length > 0) {
+  if (isString(node.textContent) && node.textContent.trim().length > 0) {
     return true;
   }
   const children = Array.isArray(node.children) ? node.children : [];
-  return children.some((child) =>
-    typeof child === "string" ? child.trim().length > 0 : child !== undefined,
-  );
+  return children.some((child) => !isString(child) || child.trim().length > 0);
 }
 
 /**
  * Remove measured geometry from a style object, in place.
  *
  * @param {JxElement} node - The element the style belongs to; its tag and content decide the answer
- * @param {Record<string, unknown>} style - The style object to filter, mutated
- * @param {Record<string, unknown>} [context] - Where `position` and `display` are read from, when
- *   they are not in `style` itself. A breakpoint delta carries only what CHANGED, so it usually
- *   states neither, and judging it on its own would strip an absolutely-positioned box's width on
- *   the grounds that it looked like an in-flow one.
+ * @param {JxStyle} style - The style object to filter, mutated
+ * @param {JxStyle} [context] - Where `position` and `display` are read from, when they are not in
+ *   `style` itself. A breakpoint delta carries only what CHANGED, so it usually states neither, and
+ *   judging it on its own would strip an absolutely-positioned box's width on the grounds that it
+ *   looked like an in-flow one.
  * @returns {number} How many declarations were removed
  */
 export function dropDerivedGeometry(
   node: JxElement,
-  style: Record<string, unknown>,
-  context: Record<string, unknown> = style,
+  style: JxStyle,
+  context: JxStyle = style,
 ): number {
   const tag = String(node.tagName ?? "").toLowerCase();
   if (REPLACED.has(tag)) {

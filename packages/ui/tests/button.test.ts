@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { documentStyleText } from "@jxsuite/runtime";
 import { buildStyleRules } from "@jxsuite/runtime/css";
-import type { JxStyle } from "@jxsuite/schema/types";
+import { getNestedStyle } from "@jxsuite/schema/guards";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -35,8 +35,16 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+/** A fresh, unattached `jx-button`, typed with the state its document declares. */
+function createButton(): JxButton {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-button` from its document before any test
+     runs, so `createElement` constructs that class synchronously, and the class exposes every
+     declared state entry (each JxButton member) as a property. */
+  return document.createElement("jx-button") as JxButton;
+}
+
 async function button(attrs: Record<string, string> = {}, text = "Save"): Promise<JxButton> {
-  const el = document.createElement("jx-button") as JxButton;
+  const el = createButton();
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
   }
@@ -49,10 +57,13 @@ async function button(attrs: Record<string, string> = {}, text = "Save"): Promis
 const control = (el: Element) => el.querySelector<HTMLButtonElement>('[part="control"]')!;
 
 /** Every rule the element's own style block emits, under a stand-in scope handle. */
-const sheet = (): string[] =>
-  buildStyleRules(documents["jx-button"]!.style as JxStyle, { scope: "S" }).map(
-    (rule) => rule.text,
-  );
+const sheet = (): string[] => {
+  const { style } = documents["jx-button"];
+  if (!style) {
+    throw new Error("jx-button declares no style block");
+  }
+  return buildStyleRules(style, { scope: "S" }).map((rule) => rule.text);
+};
 
 describe("jx-button", () => {
   test("wraps one native button that carries the type, the text and the variant", async () => {
@@ -189,7 +200,7 @@ describe("jx-button", () => {
   });
 
   test("an icon slots before the label", async () => {
-    const el = document.createElement("jx-button") as JxButton;
+    const el = createButton();
     const icon = document.createElement("jx-icon");
     icon.setAttribute("slot", "icon");
     icon.setAttribute("name", "plus");
@@ -206,15 +217,15 @@ describe("jx-button", () => {
        the shipped loading spinner was a STATIONARY glyph: jx-button's style has no `animation`
        declaration anywhere in it, then or now. Adopting the element is what makes it move. */
     const el = await button({ loading: "" });
-    const spinner = el.querySelector('[part="spinner"]')!;
+    const spinner = el.querySelector<HTMLElement>('[part="spinner"]')!;
     expect(spinner.tagName).toBe("JX-SPINNER");
     expect(spinner.getAttribute("role")).toBe("progressbar");
     expect(spinner.getAttribute("aria-hidden")).toBe("true");
 
-    const style = JSON.stringify(documents["jx-button"]!.style);
+    const style = JSON.stringify(documents["jx-button"].style);
     expect(style).not.toContain("animation");
 
-    const handle = `[data-jx="${(spinner as HTMLElement).dataset["jx"] ?? ""}"]`;
+    const handle = `[data-jx="${spinner.dataset["jx"] ?? ""}"]`;
     const rule = documentStyleText()
       .split("\n")
       .find((line) => line.startsWith(`${handle} [part="glyph"] {`));
@@ -229,14 +240,16 @@ describe("jx-button", () => {
        beats a colour inherited from the control, so `color: inherit` on `[part="spinner"]` could
        not save it — the spinner's own paint had to become `currentColor`. */
     const el = await button({ loading: "", variant: "accent" });
-    const style = documents["jx-button"]!.style as Record<string, Record<string, string>>;
-    const accent = style['&[data-variant="accent"] > [part="control"]']!;
+    const accent = getNestedStyle(
+      documents["jx-button"].style,
+      '&[data-variant="accent"] > [part="control"]',
+    )!;
     expect(accent["background"]).toBe("var(--jx-accent-solid)");
     expect(accent["color"]).toBe("var(--jx-accent-fg)");
     // The spinner takes THAT, rather than naming a colour of its own.
     const spinnerGlyph = el.querySelector<HTMLElement>('[part="spinner"] [part="glyph"]')!;
     expect(getComputedStyle(spinnerGlyph).color).toBe("currentcolor");
-    expect(JSON.stringify(documents["jx-spinner"]!.style)).not.toContain("--jx-accent");
+    expect(JSON.stringify(documents["jx-spinner"].style)).not.toContain("--jx-accent");
   });
 
   test("jx-spinner is registered before jx-button, because jx-button renders one", async () => {
@@ -244,7 +257,7 @@ describe("jx-button", () => {
        renders gets an HTMLUnknownElement child instead. */
     const order = Object.keys(documents);
     expect(order.indexOf("jx-spinner")).toBeLessThan(order.indexOf("jx-button"));
-    expect(JSON.stringify(documents["jx-button"]!.$elements)).toContain("./jx-spinner.json");
+    expect(JSON.stringify(documents["jx-button"].$elements)).toContain("./jx-spinner.json");
     const el = await button({ loading: "" });
     expect(el.querySelector('[part="spinner"]')!.querySelector('[part="glyph"]')).not.toBeNull();
   });

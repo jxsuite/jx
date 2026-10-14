@@ -10,12 +10,15 @@
  */
 
 import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { toRaw } from "../reactivity";
 // Imported for local use AND re-exported below so existing consumers keep their import site.
 // oxlint-disable-next-line unicorn/prefer-export-from
 import { formatPreviewValue } from "../utils/preview-format";
+import type { PreviewValue } from "../utils/preview-format";
 
-import type { ExpressionNode } from "@jxsuite/runtime/expression";
+import type { JxScope } from "@jxsuite/runtime/types";
+import type { JxExpressionNode, JxExpressionOperand } from "@jxsuite/schema/types";
 
 export interface ExpressionPreview {
   /** Path-keyed display values: "" is the root node, "value/target" a nested operand, etc. */
@@ -36,14 +39,14 @@ export { formatPreviewValue };
  * (canvas not yet rendered) — the editor renders no badges rather than wrong ones.
  */
 export function previewExpression(
-  node: unknown,
-  scope?: Record<string, unknown> | null,
+  node: JxExpressionOperand | undefined,
+  scope?: JxScope | null,
 ): ExpressionPreview | null {
-  if (!scope || !node || typeof node !== "object" || !("operator" in node)) {
+  if (!scope || !isNonNullObject(node) || !("operator" in node)) {
     return null;
   }
 
-  let state: Record<string, unknown>;
+  let state: JxScope;
   try {
     // Callers hand over tab.session.canvas.scope, which the reactive session tree wraps in a
     // Proxy — structuredClone rejects proxies, so unwrap to the raw snapshot first.
@@ -54,11 +57,20 @@ export function previewExpression(
   }
 
   const values = new Map<string, string>();
-  const expr = node as ExpressionNode;
+  /* SAFETY: an operand object carrying `operator` is the expression-node member of the operand
+     union (the plain-object member is an options bag, which has no operator), and a node whose
+     other members are malformed throws inside `evaluateExpression`, which this preview reports
+     as its `error` rather than trusting. */
+  const expr = node as JxExpressionNode;
   let errorMessage: string | null = null;
   try {
-    evaluateExpression(expr, state, null, undefined, {
-      report: (path, value) => values.set(path.join("/"), formatPreviewValue(value)),
+    void evaluateExpression(expr, state, null, undefined, {
+      report: (path, value) => {
+        /* SAFETY: the trace reports raw runtime values, and PreviewValue names every category a JS
+           value falls in (primitive, bigint, symbol, function, array, record); formatting relies on
+           nothing beyond what JSON.stringify and String() accept for any value. */
+        values.set(path.join("/"), formatPreviewValue(value as PreviewValue));
+      },
     });
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : String(error);

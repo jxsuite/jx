@@ -37,6 +37,14 @@ function ruleFor(text: string): IgnoreRule {
   return rules[0]!;
 }
 
+/**
+ * The part of `path` that `rule` matches, or `null`. Rules compile anchored at both ends, so a
+ * match is the whole path or nothing, and the assertion can name the exact value.
+ */
+function matchOf(rule: IgnoreRule, path: string): string | null {
+  return rule.re.exec(path)?.[0] ?? null;
+}
+
 /** The verdict on `path` under a single root-level `.gitignore` holding `text`. */
 function at(text: string, path: string, isDir = false): boolean {
   return isIgnored([layer("", text)], path, isDir);
@@ -79,24 +87,24 @@ describe("parseGitignore", () => {
   });
 
   test("trailing spaces go, unless the author escaped one", () => {
-    expect(ruleFor("bar   ").re.test("bar")).toBe(true);
+    expect(matchOf(ruleFor("bar   "), "bar")).toBe("bar");
     // `foo\ ` names a file whose last character IS a space.
-    expect(ruleFor(String.raw`foo\ `).re.test("foo ")).toBe(true);
-    expect(ruleFor(String.raw`foo\ `).re.test("foo")).toBe(false);
+    expect(matchOf(ruleFor(String.raw`foo\ `), "foo ")).toBe("foo ");
+    expect(matchOf(ruleFor(String.raw`foo\ `), "foo")).toBeNull();
     // An even run of backslashes escaped each OTHER, not the space, so the space still goes and
     // What survives is a file named `baz\`.
-    expect(ruleFor(String.raw`baz\\ `).re.test("baz\\")).toBe(true);
+    expect(matchOf(ruleFor(String.raw`baz\\ `), "baz\\")).toBe("baz\\");
   });
 
   test(String.raw`\# and \! are literals rather than a comment and a negation`, () => {
     expect(ruleFor(String.raw`\#notes.md`)).toMatchObject({ negated: false });
-    expect(ruleFor(String.raw`\#notes.md`).re.test("#notes.md")).toBe(true);
+    expect(matchOf(ruleFor(String.raw`\#notes.md`), "#notes.md")).toBe("#notes.md");
     expect(ruleFor(String.raw`\!urgent.md`)).toMatchObject({ negated: false });
-    expect(ruleFor(String.raw`\!urgent.md`).re.test("!urgent.md")).toBe(true);
+    expect(matchOf(ruleFor(String.raw`\!urgent.md`), "!urgent.md")).toBe("!urgent.md");
   });
 
   test("a trailing backslash escapes nothing and matches itself", () => {
-    expect(ruleFor("foo\\").re.test("foo\\")).toBe(true);
+    expect(matchOf(ruleFor("foo\\"), "foo\\")).toBe("foo\\");
   });
 });
 

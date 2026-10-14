@@ -31,10 +31,9 @@ import { effect, effectScope, reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import checklistDoc from "./panel-deploy-checklist.json";
 import type { EffectScope } from "@vue/reactivity";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-deploy-checklist", checklistDoc as unknown as JxDocument);
+registerSurface("panel-deploy-checklist", checklistDoc);
 
 /** One prerequisite, as the document draws it. Every field is a value: no records, no closures. */
 export interface DeployStepRowView {
@@ -81,7 +80,7 @@ export interface DeployChecklistDeps {
 }
 
 /** The scope the document reads: the projection, flattened, beside the one callback. */
-interface DeployChecklistScope extends Record<string, unknown>, DeployChecklistView {
+interface DeployChecklistScope extends DeployChecklistView {
   runAction: () => void;
 }
 
@@ -109,7 +108,7 @@ function standingIn(container: HTMLElement): boolean {
     return false;
   }
   // Still mounting into this very container: a second call must not start a second mount.
-  return _handle === null ? _mount !== null : (_handle.root as Node).parentNode === container;
+  return _handle === null ? _mount !== null : _handle.root.parentNode === container;
 }
 
 /**
@@ -127,7 +126,7 @@ export function mountDeployChecklistSurface(
   }
   disposeDeployChecklistSurface();
   _container = container;
-  const scope = reactive<DeployChecklistScope>({
+  const scope: DeployChecklistScope = reactive<DeployChecklistScope>({
     actionDisabled: false,
     actionLabel: "",
     actionTitle: "",
@@ -138,7 +137,7 @@ export function mountDeployChecklistSurface(
     runAction: deps.runAction,
     steps: [],
     summary: "",
-  }) as DeployChecklistScope;
+  });
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {

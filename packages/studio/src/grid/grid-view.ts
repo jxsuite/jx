@@ -37,6 +37,7 @@ import type {
   ColumnComponent,
   ColumnDefinition,
   RowComponent,
+  RowData,
 } from "tabulator-tables";
 import type { GridCellValue, GridColumn } from "./grid-source";
 import type { GridController } from "./grid-controller";
@@ -89,7 +90,7 @@ function makeHost(className: string): HTMLElement {
   return host;
 }
 
-function sorterForColumn(column: GridColumn): ColumnDefinition["sorter"] {
+function sorterForColumn(column: GridColumn): ColumnDefinition<GridCellValue>["sorter"] {
   switch (column.kind) {
     case "number": {
       return "number";
@@ -98,8 +99,7 @@ function sorterForColumn(column: GridColumn): ColumnDefinition["sorter"] {
       return "boolean";
     }
     case "array": {
-      return (a: unknown, b: unknown) =>
-        cellToText(a as GridCellValue).localeCompare(cellToText(b as GridCellValue));
+      return (a: GridCellValue, b: GridCellValue) => cellToText(a).localeCompare(cellToText(b));
     }
     default: {
       return "string";
@@ -119,9 +119,9 @@ export function createGridView(host: HTMLElement, controller: GridController): G
   let built = false;
   let pendingRefresh = false;
 
-  const rowKeyOf = (row: RowComponent) => String(row.getData()[ROW_KEY_FIELD] ?? "");
+  const rowKeyOf = (row: RowComponent<GridCellValue>) => String(row.getData()[ROW_KEY_FIELD] ?? "");
 
-  const paintRow = (row: RowComponent) => {
+  const paintRow = (row: RowComponent<GridCellValue>) => {
     const rowState = buffer.rowState(rowKeyOf(row));
     const el = row.getElement();
     el.classList.toggle("jx-grid-row--pending-delete", rowState === "pending-delete");
@@ -129,7 +129,7 @@ export function createGridView(host: HTMLElement, controller: GridController): G
     el.classList.toggle("jx-grid-row--stale", rowState === "stale");
   };
 
-  const paintCell = (cell: CellComponent) => {
+  const paintCell = (cell: CellComponent<GridCellValue>) => {
     const cellState = buffer.cellState(rowKeyOf(cell.getRow()), cell.getField());
     const el = cell.getElement();
     el.classList.toggle("jx-grid-cell--dirty", cellState === "dirty");
@@ -147,10 +147,11 @@ export function createGridView(host: HTMLElement, controller: GridController): G
     (column.editable || (column.insertOnly === true && buffer.isInsertKey(rowKey))) &&
     buffer.rowState(rowKey) !== "pending-delete";
 
-  const columnDefs: ColumnDefinition[] = columns.map((column) => {
+  const columnDefs: ColumnDefinition<GridCellValue>[] = columns.map((column) => {
     const baseFormatter = formatterForColumn(column, makeHost);
     return {
-      editable: (cell: CellComponent) => cellEditable(column, rowKeyOf(cell.getRow())),
+      editable: (cell: CellComponent<GridCellValue>) =>
+        cellEditable(column, rowKeyOf(cell.getRow())),
       // Image/reference cells edit through an anchored popover (dblclick), not an editor session.
       editor: hasPopoverEditor(column) ? undefined : editorForColumn(column, makeHost),
       field: column.field,
@@ -254,7 +255,7 @@ export function createGridView(host: HTMLElement, controller: GridController): G
   };
   const unregisterProbe = registerGridProbe(probe);
 
-  table.on("cellEdited", (cell: CellComponent) => {
+  table.on("cellEdited", (cell: CellComponent<GridCellValue>) => {
     if (suppress) {
       return;
     }
@@ -267,7 +268,7 @@ export function createGridView(host: HTMLElement, controller: GridController): G
     const value = coerceCellInput(cell.getValue(), column);
     buffer.setCell(rowKey, field, value);
     // Normalize what the table shows to the typed value (e.g. pasted "42" in a number column).
-    if (!cellValuesEqual(value, cell.getValue() as GridCellValue)) {
+    if (!cellValuesEqual(value, cell.getValue())) {
       suppress = true;
       try {
         cell.setValue(value, true);
@@ -287,7 +288,7 @@ export function createGridView(host: HTMLElement, controller: GridController): G
     saveGridLayout(gridId, { order: ordered.map((c) => c.getField()) });
   });
 
-  table.on("cellDblClick", (_event: unknown, cell: CellComponent) => {
+  table.on("cellDblClick", (_event: MouseEvent, cell: CellComponent<GridCellValue>) => {
     const column = columnByField.get(cell.getField());
     const rowKey = rowKeyOf(cell.getRow());
     if (!column || !hasPopoverEditor(column) || !cellEditable(column, rowKey)) {
@@ -390,12 +391,8 @@ export function createGridView(host: HTMLElement, controller: GridController): G
         return;
       }
       const fields = columns.map((column) => column.field);
-      table.setFilter((data: Record<string, unknown>) =>
-        fields.some((field) =>
-          cellToText(data[field] as GridCellValue)
-            .toLowerCase()
-            .includes(query),
-        ),
+      table.setFilter((data: RowData<GridCellValue>) =>
+        fields.some((field) => cellToText(data[field]).toLowerCase().includes(query)),
       );
     },
   };

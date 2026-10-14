@@ -14,10 +14,10 @@ import {
   summary,
   valueImportSpecifiers,
 } from "../scripts/check-electrobun-config";
-import type { ConfigShape, Failure, Inputs } from "../scripts/check-electrobun-config";
+import type { CheckedConfig, Failure, Inputs } from "../scripts/check-electrobun-config";
 import { STUDIO_ASSETS } from "../../studio/src/hosting/layout";
 
-const soundConfig = (): ConfigShape => ({
+const soundConfig = (): CheckedConfig => ({
   build: {
     bun: { entrypoint: "src/index.ts" },
     copy: {
@@ -152,12 +152,14 @@ describe("report", () => {
 
   test("a PARTIAL derivation is caught too, and names what is missing", () => {
     const config = soundConfig();
+    // Something to drop: the layout derives at least one studio asset.
+    expect(STUDIO_ASSETS.length).toBeGreaterThan(0);
     const [dropped] = STUDIO_ASSETS;
     const copy = { ...config.build.copy };
-    delete copy[`assets/studio/${dropped?.path ?? ""}`];
+    delete copy[`assets/studio/${dropped.path}`];
     const failures = report(inputs({ config: { ...config, build: { ...config.build, copy } } }));
     expect(rules(failures)).toEqual(["derived"]);
-    expect(failures[0]?.message).toContain(dropped?.path ?? "");
+    expect(failures[0]?.message).toContain(dropped.path);
   });
 
   test("a non-prebuild copy source that vanished fails; prebuild outputs are exempt", () => {

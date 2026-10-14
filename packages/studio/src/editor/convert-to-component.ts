@@ -17,9 +17,10 @@
  *
  * @docs studio/design/components
  */
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNonNullObject } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { childIndex, getNodeAtPath, parentElementPath } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { childIndex, parentElementPath } from "../store";
 import { primarySelection } from "../tabs/selection";
 import { activeTab } from "../workspace/workspace";
 import { transact } from "../tabs/transact";
@@ -71,10 +72,16 @@ export async function convertToComponent() {
   const converted = transact(tab, (doc) => {
     // Navigate to parent's children array and replace the node
     const pp = parentElementPath(selectionPath) ?? [];
+    /* SAFETY: an element with a sibling position ends in `"children", <index>`, so this is the
+       numeric child index. A selected repeater template (`…, "map"`) or `$switch` case also passes
+       the two-segment check above; callers do not exclude that case yet, so it reaches here with a
+       string segment exactly as before this cast. */
     const idx = childIndex(selectionPath) as number;
     let parent = doc;
-    // Paths address nodes by construction (same contract as getNodeAtPath).
     for (const seg of pp) {
+      /* SAFETY: `pp` is the parent element's path, and a `JxPath` alternates node keys with
+         `"children"` and an index, so walking it from the root lands on a node (the same contract as
+         getNodeAtPath). */
       parent = parent[seg] as JxMutableNode;
     }
     if (!Array.isArray(parent.children)) {
@@ -87,8 +94,7 @@ export async function convertToComponent() {
       doc.$elements = [];
     }
     const alreadyReferenced = doc.$elements.some(
-      (/** @type {JxMutableNode | string | { $ref: string }} */ el) =>
-        el && typeof el === "object" && "$ref" in el && el.$ref === refPath,
+      (el) => isNonNullObject(el) && "$ref" in el && el.$ref === refPath,
     );
     if (!alreadyReferenced) {
       doc.$elements.push({ $ref: refPath });

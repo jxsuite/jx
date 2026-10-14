@@ -3,49 +3,25 @@ import { streamImport } from "@jxsuite/studio/import-client";
 import { base64ToBytes, toBase64 } from "@jxsuite/studio/base64";
 import { setPreviewNavigateHandler } from "@jxsuite/studio/preview-navigate";
 import type {
-  AppInfo,
-  ComponentMeta,
   CreateProjectDestination,
-  ExtensionCatalogEntry,
-  ExtensionsInfo,
   FsEvent,
   FsResyncReason,
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
   RecentProjectEntry,
-  ReferencesResult,
-  RenameResult,
-  SiteBuildResult,
-  SitePreviewResult,
-  StarterInfo,
+  FormatActionRequest,
   StudioPlatform,
 } from "@jxsuite/studio/types";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import type {
-  DataConnectionsResponse,
-  DataConnectionTestResult,
-  DataPushResult,
   DataRowDelete,
   DataRowInsert,
   DataRowsQuery,
-  DataRowsResult,
   DataRowUpdate,
-  SecretsListResponse,
-  SecretsSetRequest,
-  SecretsSetResponse,
-  SettingsPatch,
+  KeyValuePatch,
 } from "@jxsuite/protocol";
-import type {
-  CodeServiceResult,
-  DirEntry,
-  GitBranchesResult,
-  GitLogEntry,
-  GitStatusResult,
-  PackageInfo,
-  PackageOpResult,
-  PackageVersionInfo,
-} from "../rpc-schema";
+import type { StudioRPC } from "../rpc-schema";
 
 /* Inferred return type with a `satisfies` conformance check at the bottom, so callers see which of
    the PAL's OPTIONAL members this launcher actually implements — annotating `StudioPlatform` made
@@ -82,6 +58,33 @@ const REQUEST_TIMEOUT_MS = 300_000;
  */
 const PING_INTERVAL_MS = 30_000;
 
+/** Every request the launcher answers, keyed by method: what it takes and what it resolves. */
+type StudioRequests = StudioRPC["bun"]["requests"];
+
+/**
+ * A server push's `params`: the object the launcher handed `projectServer.push` — `{ events }` for
+ * `onFileEvents`, `{ settings }` for `settingsChanged` — and nothing at all for `focusWindow`.
+ */
+interface PushParams {
+  events?: FsEvent[];
+  settings?: Record<string, string>;
+}
+
+/** One frame off the RPC socket: a reply (`id`, then `result` or `error`) or a push (`method`). */
+interface ServerFrame {
+  id?: number;
+  method?: string;
+  params?: PushParams;
+  error?: string;
+  result?: JsonValue;
+}
+
+/** An in-flight request's settlement, keyed in `pending` by the id its reply will echo. */
+interface PendingReply {
+  resolve: (result: JsonValue | undefined) => void;
+  reject: (error: Error) => void;
+}
+
 export function createDesktopPlatform() {
   // The project server gates the WS upgrade on the token. The launcher passes it in the shell URL
   // (?token=…); read it here before the shell strips it from the address bar after boot.
@@ -94,36 +97,45 @@ export function createDesktopPlatform() {
     ? `/__studio__/canvas.html?rpcToken=${encodeURIComponent(token)}`
     : "/__studio__/canvas.html";
   let nextId = 1;
-  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  const pending = new Map<number, PendingReply>();
 
   /* Server-initiated frames (`method`, no `id`) — the twin of electrobun's `handlers.messages`.
      A launcher speaks first for the things the shell cannot ask about: a file changed under the
      project root, or another window asked this one to come forward. */
-  const messages: Record<string, (params: never) => void> = {
-    /* Raise this window. The launcher relays it when a second window is asked to open a project
-       this one already holds; nothing else in the shell can bring an OS window forward. */
-    focusWindow: () => {
-      try {
-        window.focus();
-      } catch {
-        // A window manager that refuses the raise simply leaves the window where it is.
-      }
-    },
-    /* Batched filesystem changes from the backend watcher — the sidebar's live sync. */
-    onFileEvents: (params: { events?: FsEvent[] }) => {
-      const { events } = params;
-      if (events && events.length > 0) {
-        fileEventHandler?.(events);
-      }
-    },
-    /* Another window's settings change. Every chromium window is its own process, so this is the
-       only way one hears about another. */
-    settingsChanged: (params: { settings?: Record<string, string> }) => {
-      if (params.settings) {
-        settingsHandler?.(params.settings);
-      }
-    },
-  };
+  const messages = new Map<string, (params: PushParams) => void>([
+    [
+      /* Raise this window. The launcher relays it when a second window is asked to open a project
+         this one already holds; nothing else in the shell can bring an OS window forward. */
+      "focusWindow",
+      () => {
+        try {
+          window.focus();
+        } catch {
+          // A window manager that refuses the raise simply leaves the window where it is.
+        }
+      },
+    ],
+    [
+      /* Batched filesystem changes from the backend watcher — the sidebar's live sync. */
+      "onFileEvents",
+      (params) => {
+        const { events } = params;
+        if (events && events.length > 0) {
+          fileEventHandler?.(events);
+        }
+      },
+    ],
+    [
+      /* Another window's settings change. Every chromium window is its own process, so this is the
+         only way one hears about another. */
+      "settingsChanged",
+      (params) => {
+        if (params.settings) {
+          settingsHandler?.(params.settings);
+        }
+      },
+    ],
+  ]);
 
   // The studio sidebar's live-sync subscriber, if any. Set via subscribeFileEvents below.
   let fileEventHandler: ((events: FsEvent[]) => void) | null = null;
@@ -197,24 +209,26 @@ export function createDesktopPlatform() {
     });
 
     ws.addEventListener("message", (event) => {
-      const msg = JSON.parse(event.data as string) as {
-        id?: number;
-        method?: string;
-        params?: unknown;
-        error?: string;
-        result?: unknown;
-      };
+      /* SAFETY: trust boundary. The only peer on this token-gated socket is the launcher's project
+         server, which sends nothing but text frames it built with `JSON.stringify`: replies as
+         `{ id, result }` / `{ id, error }` and pushes as `{ method, params }`. */
+      const msg = JSON.parse(event.data as string) as ServerFrame;
       if (msg.method) {
         // Unsolicited: dispatch by name. An unknown method is a newer launcher talking to an older
         // Shell, which is not an error — it is a message this build has no use for.
-        messages[msg.method]?.(msg.params as never);
+        /* SAFETY: a push carries the params its sender passed (see PushParams); `focusWindow` is
+           the one push sent without any, and its handler reads none. */
+        messages.get(msg.method)?.(msg.params as PushParams);
         return;
       }
-      const p = msg.id === undefined ? undefined : pending.get(msg.id);
+      if (msg.id === undefined) {
+        return;
+      }
+      const p = pending.get(msg.id);
       if (!p) {
         return;
       }
-      pending.delete(msg.id!);
+      pending.delete(msg.id);
       if (msg.error) {
         p.reject(new Error(msg.error));
       } else {
@@ -255,7 +269,14 @@ export function createDesktopPlatform() {
     }
   });
 
-  async function request(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  /**
+   * Send `method` and resolve with its reply. A method whose schema params are `void` may still be
+   * sent an empty object, which is what several PAL calls have always put on the wire.
+   */
+  async function request<M extends keyof StudioRequests>(
+    method: M,
+    params?: StudioRequests[M]["params"] | Record<string, never>,
+  ): Promise<StudioRequests[M]["response"]> {
     await ready;
     /* The guard the old transport did not have. `send` on a dead socket is a no-op, so without
        this the frame vanishes and the caller waits forever for a reply nobody will write. */
@@ -274,9 +295,12 @@ export function createDesktopPlatform() {
           clearTimeout(timer);
           reject(error);
         },
-        resolve: (value) => {
+        resolve: (result) => {
           clearTimeout(timer);
-          resolve(value);
+          /* SAFETY: the reply echoing this id carries the value the backend's handler for `method`
+             resolved, which rpc-schema.ts declares as this method's response (a `void` response
+             arrives as `null`, which no caller of one reads). */
+          resolve(result as StudioRequests[M]["response"]);
         },
       });
       ws.send(JSON.stringify({ id, method, params }));
@@ -303,7 +327,7 @@ export function createDesktopPlatform() {
        no opener to hand it to. */
     void request("openExternal", { url })
       .then((result) => {
-        if (!(result as { ok?: boolean } | null)?.ok) {
+        if (!result.ok) {
           fallback();
         }
       })
@@ -330,23 +354,24 @@ export function createDesktopPlatform() {
     },
 
     async openProject() {
-      return request("openProject") as Promise<{
-        config: ProjectConfig;
-        handle: { root: string; name: string; projectConfig: ProjectConfig };
-      } | null>;
+      return request("openProject");
     },
 
     async probeRootProject() {
       try {
         const content = await request("readFile", { path: "project.json" });
-        const config = JSON.parse(content as string) as { name?: string };
+        /* SAFETY: `content` is project.json's text. The PAL hands Studio the parsed document as the
+           project's config without validating it, as every launcher does; text that is not JSON
+           throws into the catch below and reads as "no project". */
+        const config = JSON.parse(content) as ProjectConfig;
         // Resolve the absolute backend root so the recent-projects list gets a re-openable key.
-        const { root } = (await request("getProjectRoot")) as { root: string | null };
+        const { root } = await request("getProjectRoot");
+        const directories: string[] = [];
         return {
           info: {
-            directories: [] as string[],
+            directories,
             isSiteProject: true as const,
-            projectConfig: config as ProjectConfig,
+            projectConfig: config,
           },
           meta: { name: config.name || "project", root: root || "." },
         };
@@ -360,20 +385,17 @@ export function createDesktopPlatform() {
     },
 
     async getProjectRoot() {
-      return request("getProjectRoot") as Promise<{ root: string | null }>;
+      return request("getProjectRoot");
     },
 
     async setWindowProject(root: string) {
-      return request("setWindowProject", { root }) as Promise<{
-        deduped: boolean;
-        config: ProjectConfig | null;
-      }>;
+      return request("setWindowProject", { root });
     },
 
     // ─── Recent projects (user-level store, shared across per-project profiles) ──
 
     async getRecentProjects() {
-      return request("getRecentProjects") as Promise<RecentProjectEntry[]>;
+      return request("getRecentProjects");
     },
 
     async saveRecentProjects(projects: RecentProjectEntry[]) {
@@ -385,19 +407,19 @@ export function createDesktopPlatform() {
      * loopback server to redirect to and keeps the device flow, so this is not a PAL member.
      */
     githubAuth: {
-      signIn: (force = false) => request("githubSignIn", { force }) as Promise<{ token: string }>,
-      signOut: () => request("githubSignOut") as Promise<{ ok: boolean }>,
-      status: () => request("githubToken") as Promise<{ stored: boolean }>,
+      signIn: (force = false) => request("githubSignIn", { force }),
+      signOut: () => request("githubSignOut"),
+      status: () => request("githubToken"),
     },
 
     // ─── User settings (user-level store, shared across per-project profiles) ──
 
     async getSettings() {
-      return request("getSettings") as Promise<Record<string, string>>;
+      return request("getSettings");
     },
 
-    async patchSettings(patch: SettingsPatch) {
-      return request("patchSettings", { patch }) as Promise<Record<string, string>>;
+    async patchSettings(patch: KeyValuePatch) {
+      return request("patchSettings", { patch });
     },
 
     subscribeSettings(handler: (settings: Record<string, string>) => void) {
@@ -422,52 +444,47 @@ export function createDesktopPlatform() {
     },
 
     async resolveSiteContext(filePath: string) {
-      return request("resolveSiteContext", { filePath }) as Promise<{
-        sitePath: string | null;
-        projectConfig?: ProjectConfig;
-        fileRelPath?: string;
-      }>;
+      return request("resolveSiteContext", { filePath });
     },
 
     async listDirectory(dir: string) {
-      return request("listDirectory", { dir }) as Promise<DirEntry[]>;
+      return request("listDirectory", { dir });
     },
 
     async readFile(path: string) {
-      return request("readFile", { path }) as Promise<string>;
+      return request("readFile", { path });
     },
 
     /* Bytes, base64 across the socket. Chromium serves the shell same-origin, so this could have
        been a fetch — but two decode paths is two behaviours, and the one CI never exercises is the
        one that breaks. Both launchers take the same route. */
     async readFileBytes(path: string) {
-      const { data } = (await request("readFileBytes", { path })) as { data: string };
+      const { data } = await request("readFileBytes", { path });
+      /* SAFETY: base64ToBytes is `Uint8Array.from(…)`, which always allocates a fresh, unshared
+         ArrayBuffer. */
       return base64ToBytes(data).buffer as ArrayBuffer;
     },
 
     async writeFile(path: string, content: string) {
-      return request("writeFile", { content, path }) as Promise<void>;
+      return request("writeFile", { content, path });
     },
 
     // The WS transport JSON-serializes params, so binary must be base64 before it goes on the wire
     // (a File/Blob would serialize to `{}`); the backend base64-decodes. A string passes through.
     async uploadFile(path: string, data: string | File | Blob | ArrayBuffer) {
-      return (await request("uploadFile", { data: await toBase64(data), path })) as {
-        path: string;
-        size: number;
-      };
+      return await request("uploadFile", { data: await toBase64(data), path });
     },
 
     async deleteFile(path: string) {
-      return request("deleteFile", { path }) as Promise<void>;
+      return request("deleteFile", { path });
     },
 
     async renameFile(from: string, to: string) {
-      return request("renameFile", { from, to }) as Promise<RenameResult>;
+      return request("renameFile", { from, to });
     },
 
     async findReferences(target: { path?: string; tagName?: string }) {
-      return request("findReferences", target) as Promise<ReferencesResult>;
+      return request("findReferences", target);
     },
 
     /**
@@ -499,22 +516,22 @@ export function createDesktopPlatform() {
     },
 
     async createDirectory(path: string) {
-      return request("createDirectory", { path }) as Promise<void>;
+      return request("createDirectory", { path });
     },
 
     async discoverComponents(dir?: string) {
-      return request("discoverComponents", { dir }) as Promise<ComponentMeta[]>;
+      return request("discoverComponents", { dir });
     },
 
-    async codeService(action: string, payload: unknown) {
+    async codeService(action: string, payload: JsonValue | undefined) {
       return request("codeService", {
         action,
         payload,
-      }) as Promise<CodeServiceResult | null>;
+      });
     },
 
     async locateFile(name: string) {
-      return request("locateFile", { name }) as Promise<string | null>;
+      return request("locateFile", { name });
     },
 
     async fetchPluginSchema(src: string, prototype?: string, base?: string) {
@@ -522,63 +539,63 @@ export function createDesktopPlatform() {
         base,
         prototype,
         src,
-      }) as Promise<unknown>;
+      });
     },
 
     async gitStatus() {
-      return request("gitStatus") as Promise<GitStatusResult>;
+      return request("gitStatus");
     },
 
     async gitBranches() {
-      return request("gitBranches") as Promise<GitBranchesResult>;
+      return request("gitBranches");
     },
 
     async gitLog(limit?: number) {
-      return request("gitLog", { limit }) as Promise<GitLogEntry[]>;
+      return request("gitLog", { limit });
     },
 
     async gitStage(files: string[]) {
-      return request("gitStage", { files }) as Promise<void>;
+      return request("gitStage", { files });
     },
 
     async gitUnstage(files: string[]) {
-      return request("gitUnstage", { files }) as Promise<void>;
+      return request("gitUnstage", { files });
     },
 
     async gitCommit(message: string) {
-      return request("gitCommit", { message }) as Promise<void>;
+      return request("gitCommit", { message });
     },
 
     async gitPush(opts?: { setUpstream?: boolean }) {
-      return request("gitPush", opts || {}) as Promise<void>;
+      return request("gitPush", opts || {});
     },
 
     async gitPull() {
-      return request("gitPull") as Promise<void>;
+      return request("gitPull");
     },
 
     async gitFetch() {
-      return request("gitFetch") as Promise<void>;
+      return request("gitFetch");
     },
 
     async gitCheckout(branch: string) {
-      return request("gitCheckout", { branch }) as Promise<void>;
+      return request("gitCheckout", { branch });
     },
 
     async gitCreateBranch(name: string) {
-      return request("gitCreateBranch", { name }) as Promise<void>;
+      return request("gitCreateBranch", { name });
     },
 
     async gitDiff(path?: string) {
-      return request("gitDiff", { path }) as Promise<string>;
+      return request("gitDiff", { path });
     },
 
     async gitDiscard(files: string[]) {
-      return request("gitDiscard", { files }) as Promise<void>;
+      return request("gitDiscard", { files });
     },
 
     async gitShow(opts: { path: string; ref?: string }) {
-      return request("gitShow", opts) as Promise<string>;
+      return request("gitShow", opts);
     },
 
     async gitInit() {
@@ -595,7 +612,7 @@ export function createDesktopPlatform() {
      * very same paths.
      */
     async buildSite() {
-      return request("buildSite") as Promise<SiteBuildResult>;
+      return request("buildSite");
     },
 
     /**
@@ -604,7 +621,7 @@ export function createDesktopPlatform() {
      * outlives the window that opened it.
      */
     async previewSite(opts: { route: string }) {
-      return request("previewSite", opts) as Promise<SitePreviewResult>;
+      return request("previewSite", opts);
     },
 
     async setPreviewOverlay(path: string, contents: string) {
@@ -620,75 +637,70 @@ export function createDesktopPlatform() {
     },
 
     async searchFiles(query: string, extensions?: string[]) {
-      return request("searchFiles", { extensions, query }) as Promise<DirEntry[]>;
+      return request("searchFiles", { extensions, query });
     },
 
     async listFormats() {
-      return request("listFormats", {}) as Promise<Record<string, unknown>[]>;
+      return request("listFormats", {});
     },
 
     /** The extensions payload behind descriptor-contributed settings sections. */
     async listExtensions() {
-      return request("listExtensions", {}) as Promise<ExtensionsInfo[]>;
+      return request("listExtensions", {});
     },
     async listExtensionCatalog() {
-      return request("listExtensionCatalog", {}) as Promise<ExtensionCatalogEntry[]>;
+      return request("listExtensionCatalog", {});
     },
 
     /** Pre-bundled per-project entry schemas for Monaco registration. */
     async fetchProjectSchemas() {
-      return request("fetchProjectSchemas", {}) as Promise<{
-        project?: Record<string, unknown>;
-        document?: Record<string, unknown>;
-      }>;
+      return request("fetchProjectSchemas", {});
     },
 
     // ─── Data surface + secrets (owner console; names-only secrets) ────────────
 
     async dataConnections() {
-      return request("dataConnections", {}) as Promise<DataConnectionsResponse>;
+      return request("dataConnections", {});
     },
 
     async dataConnectionTest(connection: string) {
-      return request("dataConnectionTest", { connection }) as Promise<DataConnectionTestResult>;
+      return request("dataConnectionTest", { connection });
     },
 
     async dataPush(opts?: { connection?: string; dryRun?: boolean }) {
-      return request("dataPush", opts ?? {}) as Promise<DataPushResult>;
+      return request("dataPush", opts ?? {});
     },
 
     async dataRows(query: DataRowsQuery) {
-      return request("dataRows", { ...query }) as Promise<DataRowsResult>;
+      return request("dataRows", { ...query });
     },
 
     async dataInsertRow(req: DataRowInsert) {
-      return request("dataInsertRow", { ...req }) as Promise<{ row: Record<string, unknown> }>;
+      return request("dataInsertRow", { ...req });
     },
 
     async dataUpdateRow(req: DataRowUpdate) {
-      return request("dataUpdateRow", { ...req }) as Promise<{ row: Record<string, unknown> }>;
+      return request("dataUpdateRow", { ...req });
     },
 
     async dataDeleteRow(req: DataRowDelete) {
-      return request("dataDeleteRow", { ...req }) as Promise<{ ok: boolean }>;
+      return request("dataDeleteRow", { ...req });
     },
 
     async listSecrets() {
-      const res = (await request("listSecrets", {})) as SecretsListResponse;
+      const res = await request("listSecrets", {});
       return res.names;
     },
 
-    async setSecrets(req: SecretsSetRequest) {
-      return request("setSecrets", { ...req }) as Promise<SecretsSetResponse>;
+    async setSecrets(req: KeyValuePatch) {
+      return request("setSecrets", { ...req });
     },
 
     /**
      * Class resolution over HTTP: the project server gates `/__jx_resolve__` on the RPC token (a
      * token-less fetch 403s), so pass the token captured from the shell URL.
-     *
-     * @param {Record<string, unknown>} body
      */
-    async resolveClass(body: Record<string, unknown>) {
+    async resolveClass(body: JsonObject) {
       const res = await fetch(`/__jx_resolve__?token=${encodeURIComponent(token)}`, {
         body: JSON.stringify(body),
         headers: { "content-type": "application/json" },
@@ -697,40 +709,41 @@ export function createDesktopPlatform() {
       if (!res.ok) {
         throw new Error(`Class resolution failed: ${res.status}`);
       }
-      return (await res.json()) as unknown;
+      /* SAFETY: `res.json()` resolves only after parsing the body as JSON, so its result is a JSON
+         value. */
+      return (await res.json()) as JsonValue;
     },
 
-    /** @param {Record<string, unknown>} payload */
-    async formatAction(payload: Record<string, unknown>) {
+    async formatAction(payload: FormatActionRequest) {
       return request("formatAction", payload);
     },
 
     async addPackage(name: string) {
-      return request("addPackage", { name }) as Promise<unknown>;
+      return request("addPackage", { name });
     },
 
     async removePackage(name: string) {
-      return request("removePackage", { name }) as Promise<unknown>;
+      return request("removePackage", { name });
     },
 
     async listPackages() {
-      return request("listPackages") as Promise<PackageInfo[]>;
+      return request("listPackages");
     },
 
     async installDependencies() {
-      return request("installDependencies") as Promise<PackageOpResult>;
+      return request("installDependencies");
     },
 
     async dependenciesNeedInstall() {
-      return request("dependenciesNeedInstall") as Promise<boolean>;
+      return request("dependenciesNeedInstall");
     },
 
     async packageVersions() {
-      return request("packageVersions") as Promise<PackageVersionInfo[]>;
+      return request("packageVersions");
     },
 
     async setPackageVersions(updates: { name: string; version: string; dev?: boolean }[]) {
-      return request("setPackageVersions", { updates }) as Promise<PackageOpResult>;
+      return request("setPackageVersions", { updates });
     },
 
     /**
@@ -741,7 +754,7 @@ export function createDesktopPlatform() {
      * updater it does not have could only ever answer "unknown".
      */
     async getAppInfo() {
-      return request("appInfo") as Promise<AppInfo>;
+      return request("appInfo");
     },
 
     // ─── Multi-window ───────────────────────────────────────────────────────────
@@ -755,12 +768,12 @@ export function createDesktopPlatform() {
      * thing this branch must not do.
      */
     async pickProject() {
-      return request("pickProject") as Promise<{ root: string; name: string } | null>;
+      return request("pickProject");
     },
 
     /** Open a project in another window, focusing the window that already holds it if there is one. */
     async openProjectInNewWindow(root: string) {
-      return request("openProjectInNewWindow", { root }) as Promise<{ focused: boolean }>;
+      return request("openProjectInNewWindow", { root });
     },
 
     /** Open a fresh welcome window. */
@@ -794,14 +807,11 @@ export function createDesktopPlatform() {
       if (destination.kind !== "path") {
         throw new Error("This launcher creates projects on disk; repo destinations are cloud-only");
       }
-      return request("createProject", { ...opts, destination }) as Promise<{
-        root: string;
-        config: ProjectConfig;
-      }>;
+      return request("createProject", { ...opts, destination });
     },
 
     async listStarters() {
-      return request("listStarters") as Promise<StarterInfo[]>;
+      return request("listStarters");
     },
 
     /**
@@ -813,7 +823,7 @@ export function createDesktopPlatform() {
      * all.
      */
     async pickDirectory() {
-      const result = (await request("pickDirectory")) as { path: string | null };
+      const result = await request("pickDirectory");
       return result.path;
     },
 

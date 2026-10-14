@@ -653,7 +653,7 @@ describe("report", () => {
     spectrum: [],
     duplicateAnimations: [],
   };
-  const finding = (text: string): { file: string; line: number; text: string } => ({
+  const finding = (text: string) => ({
     file: "src/a.ts",
     line: 1,
     text,
@@ -690,8 +690,9 @@ describe("report", () => {
   test("passes with px nudges, truncating a long list", () => {
     const pxWarnings = Array.from({ length: 25 }, (_, i) => finding(`w${i}`));
     expect(report({ ...empty, pxWarnings })).toBe(0);
-    expect(logs.join("\n")).toContain("…and 5 more");
-    expect(logs.join("\n")).toContain("25 px token nudge(s)");
+    const printed = logs.join("\n");
+    expect(printed).toContain("…and 5 more");
+    expect(printed).toContain("25 px token nudge(s)");
   });
 
   test("does not truncate a short px list", () => {
@@ -716,8 +717,9 @@ describe("report", () => {
 
   test("fails on a banned identifier, and says what to use instead", () => {
     expect(report({ ...empty, banned: [finding("statusMessage — use notify.error")] })).toBe(1);
-    expect(logs.join("\n")).toContain("may not name");
-    expect(logs.join("\n")).toContain("notify.error");
+    const printed = logs.join("\n");
+    expect(printed).toContain("may not name");
+    expect(printed).toContain("notify.error");
   });
 
   test("fails when a file grows a bare empty catch", () => {
@@ -736,15 +738,17 @@ describe("report", () => {
 
   test("fails on an unpaired focus-ring suppression, naming the line", () => {
     expect(report({ ...empty, focusRings: [finding(".field — no allowance")] })).toBe(1);
-    expect(logs.join("\n")).toContain("focus-ring problem(s)");
-    expect(logs.join("\n")).toContain("src/a.ts:1");
+    const printed = logs.join("\n");
+    expect(printed).toContain("focus-ring problem(s)");
+    expect(printed).toContain("src/a.ts:1");
   });
 
   test("fails on a contrast pair below its ratio, and says how to record it as debt", () => {
     expect(report({ ...empty, contrast: [finding("--fg on --bg is 3.10:1")] })).toBe(1);
-    expect(logs.join("\n")).toContain("below the contrast WCAG 2.2 asks of them");
-    expect(logs.join("\n")).toContain("--fg on --bg is 3.10:1");
-    expect(logs.join("\n")).toContain("CONTRAST_DEBT");
+    const printed = logs.join("\n");
+    expect(printed).toContain("below the contrast WCAG 2.2 asks of them");
+    expect(printed).toContain("--fg on --bg is 3.10:1");
+    expect(printed).toContain("CONTRAST_DEBT");
   });
 
   /*
@@ -756,9 +760,10 @@ describe("report", () => {
       finding("--bg is documented as `#1e1e1e` but tokens.css ships #111111"),
     ];
     expect(report({ ...empty, guidelineTokens })).toBe(1);
-    expect(logs.join("\n")).toContain("studio-ui-guidelines.md §1.1");
-    expect(logs.join("\n")).toContain("designing against");
-    expect(logs.join("\n")).toContain("#1e1e1e");
+    const printed = logs.join("\n");
+    expect(printed).toContain("studio-ui-guidelines.md §1.1");
+    expect(printed).toContain("designing against");
+    expect(printed).toContain("#1e1e1e");
   });
 
   test("fails on a stale focus-ring allowance", () => {
@@ -957,8 +962,9 @@ describe("what the ban reads", () => {
 
   test("stripDocProse survives an escaped quote inside the prose", () => {
     const json = String.raw`{"$description":"it said \"sp-theme\" once","a":"sp-picker"}`;
-    expect(stripDocProse(json)).toContain("sp-picker");
-    expect(stripDocProse(json)).not.toContain("sp-theme");
+    const out = stripDocProse(json);
+    expect(out).toContain("sp-picker");
+    expect(out).not.toContain("sp-theme");
   });
 });
 

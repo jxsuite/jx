@@ -39,6 +39,6 @@ export function appInfo(): AppInfo {
        About screen already has a better answer than anything reachable from here — a `git` call in
        a Nix store path would name the store, not the release. */
     hash: process.env.JX_STUDIO_COMMIT || "unknown",
-    version: (pkg as { version: string }).version,
+    version: pkg.version,
   };
 }

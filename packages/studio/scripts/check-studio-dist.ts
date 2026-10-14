@@ -31,6 +31,9 @@
 import { Glob } from "bun";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, resolve } from "node:path";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { Problem } from "./check-studio-package.ts";
 import { toPosixPath } from "./lib/posix-path";
 import { STUDIO_ASSETS, STUDIO_WORKERS } from "../src/hosting/layout";
 
@@ -38,11 +41,6 @@ import { STUDIO_ASSETS, STUDIO_WORKERS } from "../src/hosting/layout";
 export const MANIFEST = "dist/manifest.json";
 
 const PKG_DIR = resolve(import.meta.dir, "..");
-
-export interface Finding {
-  rule: string;
-  detail: string;
-}
 
 /**
  * Emitted CSS that nothing loads.
@@ -78,26 +76,33 @@ export function accountedFor(path: string): boolean {
   return STUDIO_ASSETS.some((a) => (a.dir ? path.startsWith(`${a.path}/`) : a.path === path));
 }
 
-export function unaccounted(emitted: readonly string[]): Finding[] {
-  return emitted
-    .filter((p) => !accountedFor(p))
-    .map((p) => ({
-      detail: `${p} is emitted but no manifest entry accounts for it — add it to STUDIO_ASSETS or to STUDIO_ASSET_EXCLUDE`,
-      rule: "unaccounted",
-    }));
+export function unaccounted(emitted: readonly string[]): Problem[] {
+  return emitted.flatMap((p) =>
+    accountedFor(p)
+      ? []
+      : [
+          {
+            detail: `${p} is emitted but no manifest entry accounts for it — add it to STUDIO_ASSETS or to STUDIO_ASSET_EXCLUDE`,
+            rule: "unaccounted",
+          },
+        ],
+  );
 }
 
 /** Every `url(...)` in `css`, ignoring data uris and absolute urls. */
 export function cssUrls(css: string): string[] {
-  return [...css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)]
-    .map((m) => m[2]!.trim())
-    .filter((u) => !/^(?:data:|https?:|\/\/|#)/.test(u))
-    .map((u) => u.split(/[?#]/)[0]!)
-    .filter(Boolean);
+  return [...css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)].flatMap((m) => {
+    const url = m[2]!.trim();
+    if (/^(?:data:|https?:|\/\/|#)/.test(url)) {
+      return [];
+    }
+    const path = url.split(/[?#]/)[0]!;
+    return path ? [path] : [];
+  });
 }
 
-export function danglingUrls(pkgDir: string, cssFiles: readonly string[]): Finding[] {
-  const findings: Finding[] = [];
+export function danglingUrls(pkgDir: string, cssFiles: readonly string[]): Problem[] {
+  const findings: Problem[] = [];
   for (const rel of cssFiles) {
     for (const url of cssUrls(readFileSync(join(pkgDir, rel), "utf8"))) {
       const target = posix.normalize(posix.join(posix.dirname(rel), url));
@@ -116,24 +121,27 @@ export function unreachableStylesheets(
   pkgDir: string,
   cssFiles: readonly string[],
   jsFiles: readonly string[],
-): Finding[] {
+): Problem[] {
   const allowed = UNREACHABLE_CSS.map((p) => new Glob(p));
   const bodies = jsFiles.map((f) => readFileSync(join(pkgDir, f), "utf8"));
-  const documents = ["index.html", "canvas.html"]
-    .filter((d) => existsSync(join(pkgDir, d)))
-    .map((d) => readFileSync(join(pkgDir, d), "utf8"));
-  return cssFiles
-    .filter((rel) => {
-      if (rel === "dist/studio.css" || allowed.some((g) => g.match(rel))) {
-        return false;
-      }
-      const name = rel.split("/").pop()!;
-      return ![...bodies, ...documents].some((body) => body.includes(name));
-    })
-    .map((rel) => ({
-      detail: `${rel} is emitted but no emitted script and no document names it`,
-      rule: "unreachable-css",
-    }));
+  const documents = ["index.html", "canvas.html"].flatMap((d) =>
+    existsSync(join(pkgDir, d)) ? [readFileSync(join(pkgDir, d), "utf8")] : [],
+  );
+  return cssFiles.flatMap((rel) => {
+    if (rel === "dist/studio.css" || allowed.some((g) => g.match(rel))) {
+      return [];
+    }
+    const name = rel.split("/").pop()!;
+    if ([...bodies, ...documents].some((body) => body.includes(name))) {
+      return [];
+    }
+    return [
+      {
+        detail: `${rel} is emitted but no emitted script and no document names it`,
+        rule: "unreachable-css",
+      },
+    ];
+  });
 }
 
 /**
@@ -144,12 +152,14 @@ export function unreachableStylesheets(
  * the manifest's own `chunk` entry rather than a hard-coded `dist/chunks/`: a preload hint for an
  * entry or a stylesheet would be a different kind of mistake, and the gate should say so.
  */
-export function preloadFindings(pkgDir: string, emitted: readonly string[]): Finding[] {
+export function preloadFindings(pkgDir: string, emitted: readonly string[]): Problem[] {
   const path = join(pkgDir, MANIFEST);
   if (!existsSync(path)) {
     return [{ detail: `${MANIFEST} is absent — the release build writes it`, rule: "preload" }];
   }
-  const { preload } = JSON.parse(readFileSync(path, "utf8")) as { preload?: unknown };
+  const manifest: JsonValue = JSON.parse(readFileSync(path, "utf8"));
+  // A manifest that is not an object has no preload list either, and is reported as one without.
+  const preload = isJsonObject(manifest) ? manifest.preload : undefined;
   if (!Array.isArray(preload) || preload.length === 0) {
     return [
       {
@@ -162,8 +172,8 @@ export function preloadFindings(pkgDir: string, emitted: readonly string[]): Fin
   }
   const chunkDirs = STUDIO_ASSETS.filter((a) => a.kind === "chunk").map((a) => `${a.path}/`);
   const present = new Set(emitted);
-  const findings: Finding[] = [];
-  for (const entry of preload as unknown[]) {
+  const findings: Problem[] = [];
+  for (const entry of preload) {
     const name = String(entry);
     if (!present.has(name)) {
       findings.push({
@@ -180,7 +190,7 @@ export function preloadFindings(pkgDir: string, emitted: readonly string[]): Fin
   return findings;
 }
 
-export function analyze(pkgDir = PKG_DIR): Finding[] {
+export function analyze(pkgDir = PKG_DIR): Problem[] {
   const distDir = join(pkgDir, "dist");
   const emitted = emittedFiles(distDir, pkgDir);
   if (emitted.length === 0) {
@@ -196,12 +206,16 @@ export function analyze(pkgDir = PKG_DIR): Finding[] {
     (w) => ({ detail: `dist/workers/${w} is absent`, rule: "missing" }),
   );
 
-  const staleAllowed = UNREACHABLE_CSS.filter(
-    (pattern) => !css.some((rel) => new Glob(pattern).match(rel)),
-  ).map((pattern) => ({
-    detail: `UNREACHABLE_CSS allows ${pattern}, which nothing emits any more — delete the entry`,
-    rule: "stale-allowlist",
-  }));
+  const staleAllowed = UNREACHABLE_CSS.flatMap((pattern) =>
+    css.some((rel) => new Glob(pattern).match(rel))
+      ? []
+      : [
+          {
+            detail: `UNREACHABLE_CSS allows ${pattern}, which nothing emits any more — delete the entry`,
+            rule: "stale-allowlist",
+          },
+        ],
+  );
 
   return [
     ...missing,
@@ -215,7 +229,7 @@ export function analyze(pkgDir = PKG_DIR): Finding[] {
 }
 
 /** The report, as lines. Pure, so the runner is one call. */
-export function report(findings: readonly Finding[], pkgDir = PKG_DIR): string[] {
+export function report(findings: readonly Problem[], pkgDir = PKG_DIR): string[] {
   if (findings.length === 0) {
     const dist = emittedFiles(join(pkgDir, "dist"), pkgDir);
     const bytes = dist.reduce((n, p) => n + statSync(join(pkgDir, p)).size, 0);

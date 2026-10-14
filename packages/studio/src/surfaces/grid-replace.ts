@@ -15,10 +15,9 @@ import { reactive } from "../reactivity";
 import { openPopoverSurface } from "../ui/popover-surface";
 import { registerSurface } from "../ui/surface";
 import gridReplaceDoc from "./grid-replace.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { PopoverSurfaceHandle } from "../ui/popover-surface";
+import type { OpenPopoverSurfaceOptions, PopoverSurfaceHandle } from "../ui/popover-surface";
 
-registerSurface("grid-replace", gridReplaceDoc as unknown as JxDocument);
+registerSurface("grid-replace", gridReplaceDoc);
 
 /** The slot id, and so the panel's region: `overlay.popover:grid/replace`. */
 const SLOT = "grid/replace";
@@ -31,9 +30,7 @@ export interface GridReplaceActions {
   dismissed?: () => void;
 }
 
-export type GridReplaceSurfaceHandle = PopoverSurfaceHandle;
-
-interface GridReplaceScope extends Record<string, unknown> {
+interface GridReplaceScope {
   x: number;
   y: number;
   find: string;
@@ -50,14 +47,14 @@ interface GridReplaceScope extends Record<string, unknown> {
  * @param {{ x: number; y: number }} at - Where it opens, in viewport pixels
  * @param {GridReplaceActions} actions - What each press does
  * @param {HTMLElement | null} anchor - The toolbar button it hangs from
- * @returns {GridReplaceSurfaceHandle}
+ * @returns {PopoverSurfaceHandle}
  */
 export function openGridReplaceSurface(
   at: { x: number; y: number },
   actions: GridReplaceActions,
   anchor: HTMLElement | null,
-): GridReplaceSurfaceHandle {
-  const scope = reactive<GridReplaceScope>({
+): PopoverSurfaceHandle {
+  const scope: GridReplaceScope = reactive<GridReplaceScope>({
     cancel: () => {
       handle.close();
       actions.dismissed?.();
@@ -75,15 +72,18 @@ export function openGridReplaceSurface(
     },
     x: at.x,
     y: at.y,
-  }) as GridReplaceScope;
+  });
 
-  const handle = openPopoverSurface({
+  const popover: OpenPopoverSurfaceOptions<GridReplaceScope> = {
     anchor,
     name: "grid-replace",
     scope,
     slot: SLOT,
-    ...(actions.dismissed ? { onDismissed: actions.dismissed } : {}),
-  });
+  };
+  if (actions.dismissed) {
+    popover.onDismissed = actions.dismissed;
+  }
+  const handle = openPopoverSurface(popover);
 
   return handle;
 }

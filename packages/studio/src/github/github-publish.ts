@@ -31,7 +31,8 @@ import { authenticateGithub } from "./github-auth";
 import { beginActivity } from "../panels/activity-panel";
 import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
-import type { GithubPublishSurfaceHandle, RepoOptions } from "../surfaces/github-publish";
+import type { RepoOptions } from "../surfaces/github-publish";
+import type { DialogLayerHandle } from "../ui/surface";
 
 interface GithubErrorResponse {
   errors?: { message?: string }[];
@@ -77,7 +78,7 @@ function askForRepoOptions(projectName: string): Promise<RepoOptions | null> {
       answered = true;
       resolve(value);
     };
-    const handle: GithubPublishSurfaceHandle = openGithubPublishSurface({
+    const handle: DialogLayerHandle = openGithubPublishSurface({
       layer: layerHost("dialog"),
       name: projectName,
       onCancel: () => {
@@ -125,25 +126,24 @@ export async function createGithubRepository({ projectName }: { projectName: str
   });
 
   activity.step(REPO_STEPS[0]);
-  const createRes = await fetch("https://api.github.com/user/repos", {
-    body: JSON.stringify({
-      auto_init: false,
-      description: repoOpts.description,
-      name: repoOpts.name,
-      private: repoOpts.isPrivate,
-    }),
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  }).catch((error: unknown) => {
+  let createRes: Response;
+  try {
+    createRes = await fetch("https://api.github.com/user/repos", {
+      body: JSON.stringify({
+        auto_init: false,
+        description: repoOpts.description,
+        name: repoOpts.name,
+        private: repoOpts.isPrivate,
+      }),
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+  } catch (error) {
     activity.log(errorMessage(error));
-    return null;
-  });
-
-  if (!createRes) {
     activity.fail("Could not reach GitHub to create the repository.", {
       action: "git.createGithubRepository",
     });
@@ -151,6 +151,8 @@ export async function createGithubRepository({ projectName }: { projectName: str
   }
 
   if (!createRes.ok) {
+    /* SAFETY: GitHub's REST API answers a failed request with a JSON body carrying `message` and,
+       For a validation failure, an `errors` array; both are optional here and read with fallbacks. */
     const err = (await createRes.json()) as GithubErrorResponse;
     activity.log(err.errors?.[0]?.message || err.message || `GitHub answered ${createRes.status}.`);
     activity.fail("Could not create the GitHub repository.", {
@@ -159,6 +161,8 @@ export async function createGithubRepository({ projectName }: { projectName: str
     return false;
   }
 
+  /* SAFETY: `createRes.ok` was checked above, and a successful `POST /user/repos` answers with the
+     Full repository object, of which `clone_url` and `html_url` are required members. */
   const repo = (await createRes.json()) as GithubRepoResponse;
   activity.log(`Created ${repo.html_url}`);
   const platform = getPlatform();

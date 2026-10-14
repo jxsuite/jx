@@ -15,14 +15,17 @@ describe("starter registry", () => {
 
   test("every entry has the required, non-empty fields", () => {
     for (const s of starters) {
-      expect(typeof s.id).toBe("string");
-      expect(s.id).not.toBe("");
-      expect(s.name).not.toBe("");
-      expect(s.industry).not.toBe("");
-      expect(s.tagline).not.toBe("");
-      expect(s.description).not.toBe("");
+      for (const field of [s.id, s.name, s.industry, s.tagline, s.description]) {
+        expect(field).toBeString();
+        expect(field).not.toBe("");
+      }
       expect(Array.isArray(s.features)).toBe(true);
       expect(s.features.length).toBeGreaterThan(0);
+      for (const feature of s.features) {
+        expect(feature).toBeString();
+      }
+      expect(s.accent).toBeString();
+      expect(s.thumbnail).toBeString();
       expect(s.accent).toMatch(/^#[0-9a-fA-F]{3,8}$/);
       expect(s.thumbnail.startsWith("data:image/")).toBe(true);
     }

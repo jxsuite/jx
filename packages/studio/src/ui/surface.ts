@@ -11,8 +11,9 @@
  * @docs extending/ui-kit
  */
 import { mount, preloadDocument } from "@jxsuite/runtime";
-import type { JxMountOptions, JxScope } from "@jxsuite/runtime/types";
+import type { JxHostScope, JxMountOptions, JxScope } from "@jxsuite/runtime/types";
 import type { JxDocument } from "@jxsuite/schema/types";
+import type { SelectRow } from "@jxsuite/ui/behaviors/select";
 import { registerMount, unregisterMount } from "../services/surface-registry";
 import { kitReady } from "./kit";
 import { REGION_ATTR } from "./regions";
@@ -49,6 +50,61 @@ export function surfaceResolver(url: string): JxDocument | undefined {
   return surfaces.get(url.slice(SURFACES_BASE.length, -".json".length));
 }
 
+/**
+ * One row a surface document draws in a picker (a `jx-select` option, a radio, a segmented button):
+ * the value the control reports back, and the label the reader sees. The kit's own row, the one
+ * `jx-select` draws.
+ */
+export type { SelectRow as SurfaceOption } from "@jxsuite/ui/behaviors/select";
+
+/**
+ * One thing a surface document draws for the reader to act on (an empty state's button, an openable
+ * source): an id only the flow knows the meaning of, and the words on it.
+ */
+export interface SurfaceAction {
+  id: string;
+  label: string;
+}
+
+/** A delimited, labelled run of picker rows: the kit's `optgroup`, which draws both halves of it. */
+export interface SurfaceOptionGroup {
+  id: string;
+  label: string;
+  rows: SelectRow[];
+}
+
+/** A dialog document mounted into the dialog layer, as the flow that opened it holds it. */
+export interface DialogLayerHandle {
+  /** The slot in the dialog layer that carries the region. */
+  host: HTMLElement;
+  /** Resolves with the `jx-dialog` element once it has rendered and been opened. */
+  ready: Promise<HTMLElement>;
+  /** Close the dialog (the platform restores focus) and dispose the document. Idempotent. */
+  close: () => void;
+}
+
+/** A label, and the key that identifies what it names (a chip, a section, a menu choice). */
+export interface KeyedLabel {
+  key: string;
+  label: string;
+}
+
+/** A label, and the tag it stands for (a declared language, an element a button adds). */
+export interface TaggedLabel {
+  tag: string;
+  label: string;
+}
+
+/** One tab a surface document draws in a tablist strip. */
+export interface SurfaceTab {
+  /** The tab's identity: the row key, the strip's `selected` value, and `data-tab`. */
+  key: string;
+  /** What the tab reads, badge included ("Problems 2"). */
+  label: string;
+  /** The tab element's own id, which the one panel names as its `aria-labelledby`. */
+  tabId: string;
+}
+
 export interface SurfaceHandle {
   readonly scope: JxScope;
   readonly root: HTMLElement | Text;
@@ -69,9 +125,9 @@ export interface MountSurfaceOptions {
  *
  * @throws {Error} When no document is registered under `name`
  */
-export async function mountSurface(
+export async function mountSurface<S extends JxHostScope<S>>(
   name: string,
-  hostScope: Record<string, unknown>,
+  hostScope: S,
   host: HTMLElement,
   options: MountSurfaceOptions = {},
 ): Promise<SurfaceHandle> {
@@ -83,14 +139,21 @@ export async function mountSurface(
   if (options.region) {
     host.setAttribute(REGION_ATTR, options.region);
   }
-  const handle = await mount(doc, host, {
+  const mountOptions: JxMountOptions<S> = {
     scope: hostScope,
     base: SURFACES_BASE,
     resolver: surfaceResolver,
-    ...(options.onNodeCreated ? { onNodeCreated: options.onNodeCreated } : {}),
-    ...(options.onNodeMoved ? { onNodeMoved: options.onNodeMoved } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
+  };
+  if (options.onNodeCreated) {
+    mountOptions.onNodeCreated = options.onNodeCreated;
+  }
+  if (options.onNodeMoved) {
+    mountOptions.onNodeMoved = options.onNodeMoved;
+  }
+  if (options.signal) {
+    mountOptions.signal = options.signal;
+  }
+  const handle = await mount(doc, host, mountOptions);
 
   const surfaceHandle = (dispose: () => void): SurfaceHandle => ({
     dispose,

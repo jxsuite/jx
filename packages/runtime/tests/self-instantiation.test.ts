@@ -16,6 +16,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { defineElement, MAX_COMPONENT_NESTING, mount } from "../src/runtime";
+import type { JxStateDefinition } from "@jxsuite/schema/types";
 
 try {
   GlobalRegistrator.register();
@@ -26,6 +27,11 @@ try {
 // Unique tags per test: `customElements.define` is one-shot for the life of the realm.
 let uid = 0;
 const uniqueTag = () => `si-test-${(uid += 1)}`;
+
+/** An object that refers to itself, which `JSON.stringify` refuses. */
+interface CircularNode {
+  self?: CircularNode;
+}
 
 /**
  * Wait until `done()` holds, or fail after `limit` ms. Bounded, because the bug under test is a
@@ -40,6 +46,13 @@ async function settle(done: () => boolean, limit = 5000): Promise<void> {
     await new Promise((r) => {
       setTimeout(r, 5);
     });
+  }
+}
+
+/** Fail the test unless a logged or dispatched error value is an `Error`. */
+function assertError(value: unknown): asserts value is Error {
+  if (!(value instanceof Error)) {
+    throw new Error("expected an Error to be reported");
   }
 }
 
@@ -89,7 +102,8 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     // Instance has no props, the one it draws has `name`, and the one THAT draws has the same
     // `name` — so the cycle closes on the third, exactly where the build would close it.
     expect(errors).toHaveBeenCalledTimes(1);
-    const [label, error] = errors.mock.calls[0] as [string, Error];
+    const [label, error] = errors.mock.calls[0] ?? [];
+    assertError(error);
     expect(label).toBe(`Jx: <${tag}> was not rendered:`);
     expect(error.message).toBe(
       `Component <${tag}> renders itself: ${tag} → ${tag} → ${tag}. A component cannot appear ` +
@@ -118,9 +132,9 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     // The console line inside a canvas iframe reaches nobody; the event is what a page or the
     // Studio canvas can collect. It bubbles, so a listener on the host sees it; it is an
     // `ErrorEvent`, so the error and its message are where the platform puts them.
-    const seen: ErrorEvent[] = [];
+    const seen: Event[] = [];
     host.addEventListener("jx-error", (event) => {
-      seen.push(event as ErrorEvent);
+      seen.push(event);
     });
 
     await mount({ children: [{ tagName: tag }] }, host);
@@ -134,10 +148,11 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     }
     expect(event.bubbles).toBe(true);
     expect(event.message).toContain(`renders itself: ${tag} → ${tag} → ${tag}.`);
-    expect((event.error as Error).message).toBe(event.message);
+    expect(event.error).toBeInstanceOf(Error);
+    expect(event.error.message).toBe(event.message);
     // Dispatched AT the refused instance: the third host, the empty one.
     const cards = [...host.querySelectorAll(tag)];
-    expect(cards.indexOf(event.target as Element)).toBe(2);
+    expect(event.target instanceof Element ? cards.indexOf(event.target) : -1).toBe(2);
     // And the console still says the same thing, for a page with nobody listening.
     expect(errors).toHaveBeenCalledTimes(1);
   });
@@ -184,8 +199,9 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     await pause();
 
     expect(errors).toHaveBeenCalledTimes(2);
-    for (const call of errors.mock.calls) {
-      expect((call[1] as Error).message).toContain(`${tag} → ${tag} → ${tag}.`);
+    for (const [, error] of errors.mock.calls) {
+      assertError(error);
+      expect(error.message).toContain(`${tag} → ${tag} → ${tag}.`);
     }
     // Each page-level instance grew exactly two levels before its third was refused.
     expect(host.querySelectorAll(tag).length).toBe(6);
@@ -240,7 +256,8 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     await pause();
 
     expect(errors).toHaveBeenCalledTimes(1);
-    const error = errors.mock.calls[0]?.[1] as Error;
+    const error = errors.mock.calls[0]?.[1];
+    assertError(error);
     expect(error.message).toStartWith(
       `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${tag} → `,
     );
@@ -308,7 +325,10 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     await pause();
 
     expect(errors).toHaveBeenCalledTimes(4);
-    const messages = errors.mock.calls.map((call) => (call[1] as Error).message);
+    const messages = errors.mock.calls.map(([, error]) => {
+      assertError(error);
+      return error.message;
+    });
     for (const tag of [byAttribute, byPropsAttribute, byPayload, byArrayPayload]) {
       expect(messages.some((m) => m.includes(`renders itself: ${tag} → ${tag}.`))).toBe(true);
       expect(host.querySelectorAll(tag).length).toBe(2);
@@ -349,8 +369,9 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
       tagName: tag,
     });
 
-    const el = document.createElement(tag) as HTMLElement & { rung?: unknown };
-    el.rung = new Rung(0);
+    const el = document.createElement(tag);
+    // Assigned through [[Set]] exactly as `el.rung = …` would, so the element's accessor runs.
+    Object.assign(el, { rung: new Rung(0) });
     host.append(el);
     await settle(() => host.querySelector("span") !== null);
     await pause();
@@ -373,16 +394,18 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
     // First two levels are different by policy — a false diagnostic would block a page that might
     // End. The proxy is then forwarded as itself, so the third level closes on the second by
     // Reference, which is where the diagnostic lands.
-    const node: Record<string, unknown> = {};
+    const node: CircularNode = {};
     node.self = node;
-    const el = document.createElement(tag) as HTMLElement & { node?: unknown };
-    el.node = node;
+    const el = document.createElement(tag);
+    // Assigned through [[Set]] exactly as `el.node = …` would, so the element's accessor runs.
+    Object.assign(el, { node });
     host.append(el);
     await settle(() => errors.mock.calls.length > 0);
     await pause();
 
     expect(errors).toHaveBeenCalledTimes(1);
-    const error = errors.mock.calls[0]?.[1] as Error;
+    const error = errors.mock.calls[0]?.[1];
+    assertError(error);
     expect(error.message).toContain(`renders itself: ${tag} → ${tag} → ${tag}.`);
     expect(host.querySelectorAll(tag).length).toBe(3);
   });
@@ -415,13 +438,16 @@ describe("self-instantiating definitions (spec.md §16.9)", () => {
 
     expect(errors).toHaveBeenCalledTimes(1);
     expect(seen.length).toBe(1);
-    const error = errors.mock.calls[0]?.[1] as Error;
+    const error = errors.mock.calls[0]?.[1];
+    assertError(error);
     expect(error.message).toContain(`renders itself: ${tag} → ${tag}.`);
     // The page-level host, given the same label its definition forwards, is refused at its
     // Second level: two hosts stand, both in the document.
     const hosts = [...host.querySelectorAll(tag)];
     expect(hosts.length).toBe(2);
-    expect(seen.map((event) => hosts.indexOf(event.target as Element))).toEqual([1]);
+    expect(
+      seen.map(({ target }) => (target instanceof Element ? hosts.indexOf(target) : -1)),
+    ).toEqual([1]);
   });
 
   test("an instance slotted inside the same tag at the call site is not a cycle", async () => {
@@ -471,7 +497,7 @@ describe("instances created after the first paint (spec.md §16.9, re-expansion)
   };
 
   /** A node that starts closed and, open, draws one more of itself: the accordion shape. */
-  const opener = (tag: string, state: Record<string, unknown> = {}) =>
+  const opener = (tag: string, state: Record<string, JxStateDefinition> = {}) =>
     defineElement({
       children: [
         {
@@ -505,7 +531,8 @@ describe("instances created after the first paint (spec.md §16.9, re-expansion)
     // Flips from a click that opens, so the cycle check is not asked across that boundary and the
     // Cap is what ends it — with the advice that fits, since a case that stops is what is missing.
     expect(errors).toHaveBeenCalledTimes(1);
-    const error = errors.mock.calls[0]?.[1] as Error;
+    const error = errors.mock.calls[0]?.[1];
+    assertError(error);
     expect(error.message).toStartWith(
       `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${tag} → `,
     );
@@ -526,7 +553,8 @@ describe("instances created after the first paint (spec.md §16.9, re-expansion)
       const want = level + 2;
       const nodes = host.querySelectorAll(tag);
       expect(nodes.length).toBe(level + 1);
-      (nodes[level] as HTMLElement & { open: boolean }).open = true;
+      // Assigned through [[Set]] exactly as `node.open = true` would, so the element's accessor runs.
+      Object.assign(nodes.item(level), { open: true });
       await settle(() => host.querySelectorAll(tag).length === want);
       const leaf = `${`${tag} `.repeat(want)}span`;
       await settle(() => host.querySelector(leaf) !== null);
@@ -570,7 +598,8 @@ describe("instances created after the first paint (spec.md §16.9, re-expansion)
     await pause();
 
     expect(errors).toHaveBeenCalledTimes(1);
-    const error = errors.mock.calls[0]?.[1] as Error;
+    const error = errors.mock.calls[0]?.[1];
+    assertError(error);
     expect(error.message).toContain(`renders itself: ${tag} → ${tag} → ${tag}.`);
     expect(host.querySelectorAll(tag).length).toBe(3);
   });
@@ -602,7 +631,8 @@ describe("instances created after the first paint (spec.md §16.9, re-expansion)
     await pause();
 
     expect(errors).toHaveBeenCalledTimes(1);
-    const error = errors.mock.calls[0]?.[1] as Error;
+    const error = errors.mock.calls[0]?.[1];
+    assertError(error);
     expect(error.message).toStartWith(
       `Component nesting exceeds ${MAX_COMPONENT_NESTING} levels: ${tag} → `,
     );

@@ -2,18 +2,18 @@
  * A coalescing, serializing write queue.
  *
  * The defect it exists to make unrepresentable: saving a provider mutates three settings through
- * three setters, and each setter used to fire its own whole-map write. Three overlapping writes went
- * out against one file, each reading storage at a different moment, with no ordering between them —
- * so whichever landed last won. That was observed in the wild as a settings file holding
+ * three setters, and each setter used to fire its own whole-map write. Three overlapping writes
+ * went out against one file, each reading storage at a different moment, with no ordering between
+ * them — so whichever landed last won. That was observed in the wild as a settings file holding
  * `{"jx.ai.model": "gpt-4o"}`: the SECOND of three snapshots, landing last, a state storage itself
  * never rested in.
  *
  * Two rules, and they are different guarantees:
  *
- * 1.  **Coalesce.** Every mutation in one synchronous burst merges into a single patch, sent once
- *     the burst has finished. N setters produce one write, not N.
- * 2.  **Serialize.** At most one send is in flight. A mutation made while one is out waits for it
- *     rather than racing it, so the order the app made changes in is the order the store sees them.
+ * 1. **Coalesce.** Every mutation in one synchronous burst merges into a single patch, sent once the
+ *    burst has finished. N setters produce one write, not N.
+ * 2. **Serialize.** At most one send is in flight. A mutation made while one is out waits for it
+ *    rather than racing it, so the order the app made changes in is the order the store sees them.
  *
  * Generic over the transport so the kernel can hand it a platform call and a test can hand it an
  * array. `schedule` is injectable for the same reason.
@@ -34,7 +34,7 @@ export interface WriteQueueOptions {
   /** Deliver one merged patch. Rejection is reported through {@link WriteQueueOptions.onError}. */
   send: (patch: SettingsPatch) => Promise<void>;
   /** Called with the failure and the patch that did not land. */
-  onError?: (error: unknown, patch: SettingsPatch) => void;
+  onError?: (cause: unknown, patch: SettingsPatch) => void;
   /**
    * Defer to the end of the current burst. Defaults to `queueMicrotask`.
    *
@@ -89,7 +89,7 @@ export function createWriteQueue(opts: WriteQueueOptions): WriteQueue {
     }
     tail = tail
       .then(() => opts.send(patch))
-      .catch((error: unknown) => {
+      .catch((error) => {
         opts.onError?.(error, patch);
       });
     return tail;

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { bootUrl, DOCK_COMMAND, frameBlockers, matchState, OPEN_COMMANDS } from "./shot";
 import { resolveShot, validateManifest } from "./types";
 import type { ShotContext } from "./shot";
-import type { Manifest, ResolvedOpen } from "./types";
+import type { ResolvedOpen } from "./types";
 
 const ctx: ShotContext = {
   force: false,
@@ -21,7 +21,7 @@ function open(patch: Partial<ResolvedOpen> = {}): ResolvedOpen {
     contract: 1,
     outDir: "docs/images",
     shots: [{ capture: [{ image: "x" }], name: "x" }],
-  }) as Manifest;
+  });
   return { ...resolveShot(m, m.shots[0]!).open, ...patch };
 }
 
@@ -42,8 +42,9 @@ describe("bootUrl", () => {
 
   test("opens the OVERLAY, never the repo-relative path the manifest wrote", () => {
     const url = new URL(bootUrl(ctx, open({ project: "packages/starters/sites/restaurant" })));
-    expect(url.searchParams.get("project")).toBe(ctx.projectRoot!);
-    expect(url.searchParams.get("project")).toContain(".cache/screenshots");
+    const project = url.searchParams.get("project");
+    expect(project).toBe(ctx.projectRoot!);
+    expect(project).toContain(".cache/screenshots");
   });
 
   test("a shot with no project boots the welcome screen — no project, no file", () => {
@@ -71,10 +72,10 @@ describe("the open→command mapping", () => {
   });
 
   test("no open field is applied through a toggle", () => {
+    // DOCK_COMMAND is pinned to "view.setDock" exactly by the test above.
     for (const { id } of Object.values(OPEN_COMMANDS)) {
       expect(id).not.toMatch(/\.toggle[A-Z]/);
     }
-    expect(DOCK_COMMAND).not.toMatch(/\.toggle[A-Z]/);
   });
 });
 
@@ -152,7 +153,7 @@ class FakeFace {
   constructor(status: string) {
     this.status = status;
   }
-  load(): Promise<unknown> {
+  load(): Promise<FakeFace> {
     this.loads += 1;
     if (this.status === "unloaded") {
       this.status = "loading";
@@ -163,13 +164,14 @@ class FakeFace {
 
 /** Install the three globals `frameBlockers` reads, as a frame would present them. */
 function installFrame(faces: FakeFace[], setStatus = "loaded"): void {
-  const g = globalThis as Record<string, unknown>;
-  g.document = {
-    activeElement: null,
-    fonts: { status: setStatus, [Symbol.iterator]: () => faces[Symbol.iterator]() },
-    getAnimations: () => [],
-  };
-  g.window = {};
+  Object.assign(globalThis, {
+    document: {
+      activeElement: null,
+      fonts: { status: setStatus, [Symbol.iterator]: () => faces[Symbol.iterator]() },
+      getAnimations: () => [],
+    },
+    window: {},
+  });
 }
 
 /** Only the font clause; the focus clause reports once on first sight by design. */

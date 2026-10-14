@@ -111,10 +111,7 @@ describe("deployChecklist — the provider links", () => {
   });
 
   test("a connected provider is done and names the Pages project", () => {
-    setProjectState({
-      expanded: new Set(),
-      projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
-    } as never);
+    resetStudioState({ projectConfig: { build: { deploy: DEPLOY }, name: "My Site" } });
     expect(step("provider").state).toBe("done");
     expect(step("provider").detail).toContain("my-site");
   });
@@ -123,10 +120,7 @@ describe("deployChecklist — the provider links", () => {
 describe("deployChecklist — the deployment link", () => {
   beforeEach(() => {
     shell.git.status = gitStatus({ remotes: ["origin"] });
-    setProjectState({
-      expanded: new Set(),
-      projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
-    } as never);
+    resetStudioState({ projectConfig: { build: { deploy: DEPLOY }, name: "My Site" } });
   });
 
   test("with no provider connected, nothing is deployed and it says why", () => {
@@ -176,7 +170,7 @@ describe("deployChecklist — the deployment link", () => {
 
 describe("deployStatusItem — the status bar's project field", () => {
   test("no project, no item", () => {
-    setProjectState(null as never);
+    setProjectState(null);
     expect(deployStatusItem()).toBeNull();
   });
 
@@ -191,10 +185,7 @@ describe("deployStatusItem — the status bar's project field", () => {
 
   test("a whole chain reads as ambient state, pointing at the dashboard", () => {
     shell.git.status = gitStatus({ remotes: ["origin"] });
-    setProjectState({
-      expanded: new Set(),
-      projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
-    } as never);
+    resetStudioState({ projectConfig: { build: { deploy: DEPLOY }, name: "My Site" } });
     noteDeployment({
       createdOn: "2026-07-06T00:00:00Z",
       environment: "production",
@@ -246,9 +237,9 @@ describe("the deploy-checklist surface", () => {
   }
 
   test("draws nothing at all when no project is open", async () => {
-    setProjectState(null as never);
+    setProjectState(null);
     const host = await paint();
-    expect(host.textContent?.trim()).toBe("");
+    expect(host.textContent.trim()).toBe("");
     expect(host.querySelector('[part="list"]')).toBeNull();
   });
 
@@ -328,10 +319,7 @@ describe("the deploy-checklist surface", () => {
 
   test("a whole chain says so and offers no next action", async () => {
     shell.git.status = gitStatus({ remotes: ["origin"] });
-    setProjectState({
-      expanded: new Set(),
-      projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
-    } as never);
+    resetStudioState({ projectConfig: { build: { deploy: DEPLOY }, name: "My Site" } });
     noteDeployment({
       createdOn: "2026-07-06T00:00:00Z",
       environment: "production",
@@ -354,10 +342,7 @@ describe("the deploy-checklist surface", () => {
      else the dock happened to be doing, which is not a subscription. */
   test("a deployment observed while the surface is up moves the row without a repaint", async () => {
     shell.git.status = gitStatus({ remotes: ["origin"] });
-    setProjectState({
-      expanded: new Set(),
-      projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
-    } as never);
+    resetStudioState({ projectConfig: { build: { deploy: DEPLOY }, name: "My Site" } });
     const host = await paint();
     expect(stepStates(host).at(-1)).toBe("unknown");
     noteDeployment({

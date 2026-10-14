@@ -12,7 +12,7 @@ import { describe, expect, test } from "bun:test";
 import { emitElementModule } from "../src/targets/compile-element";
 import type { JxDocument } from "@jxsuite/schema/types";
 
-const emit = (doc: unknown) => emitElementModule(doc as JxDocument, "XProbe", []);
+const emit = (doc: JxDocument) => emitElementModule(doc, "XProbe", []);
 
 describe("emitLitNode — IDL properties", () => {
   test("emits a literal string property", () => {

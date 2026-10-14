@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { serializeDataScope } from "../src/canvas/serialize-scope";
+import type { JxScope } from "@jxsuite/runtime/types";
 
 /** Fake a Vue ref so the top-level auto-unwrap path is exercised (mirrors merge-tags.test.ts). */
 function ref<T>(value: T) {
@@ -48,7 +49,7 @@ describe("serializeDataScope", () => {
   });
 
   test("a circular object maps that key to null (no throw)", () => {
-    const circular: Record<string, unknown> = { a: 1 };
+    const circular: JxScope = { a: 1 };
     circular.self = circular;
     const out = serializeDataScope({ circular, ok: "fine" });
     expect(out.circular).toBeNull();
@@ -57,7 +58,7 @@ describe("serializeDataScope", () => {
 
   test("a throwing getter maps that key to null (no throw)", () => {
     const out = serializeDataScope({
-      get boom(): unknown {
+      get boom(): never {
         throw new Error("computed exploded");
       },
       safe: 1,
@@ -80,9 +81,10 @@ describe("serializeDataScope", () => {
   });
 
   test("a value that JSON.stringify serializes to undefined maps to null", () => {
-    // A bare undefined/symbol at the top level stringifies to `undefined` (not a string).
-    const out = serializeDataScope({ sym: Symbol("x"), undef: undefined });
-    expect(out.sym).toBeNull();
+    // A bare undefined at the top level, or an object whose `toJSON()` answers undefined,
+    // Stringifies to `undefined` (not a string).
+    const out = serializeDataScope({ opaque: { toJSON: () => {} }, undef: undefined });
+    expect(out.opaque).toBeNull();
     expect(out.undef).toBeNull();
   });
 

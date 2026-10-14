@@ -134,8 +134,8 @@ describe("renderDocPreview", () => {
     const actions: string[] = [];
     installMockPlatform(
       {
-        formatAction: (payload: Record<string, unknown>) => {
-          actions.push(String(payload.action));
+        formatAction: (payload) => {
+          actions.push(payload.action);
           return Promise.resolve({ children: [], tagName: "article" });
         },
       },
@@ -163,10 +163,14 @@ describe("renderDocPreview", () => {
     const { beginListing, noteListing, resetAssetVersions } =
       await import("../src/files/asset-versions");
     // The host's file base is resolved against the page, so the page needs a real URL.
-    const { happyDOM } = globalThis as unknown as { happyDOM?: { setURL: (u: string) => void } };
+    /* SAFETY: the harness registers happy-dom's GlobalRegistrator, which copies the window's members
+       onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM?: { setURL: (u: string) => void };
+    };
     happyDOM?.setURL("https://h.example/");
     installMockPlatform(
-      { assetSpace: "repo", documentBaseUrl: "https://h.example/raw/" } as never,
+      { assetSpace: "repo", documentBaseUrl: "https://h.example/raw/" },
       {
         "pages/index.json": JSON.stringify({
           children: [
@@ -219,7 +223,7 @@ describe("previewFor", () => {
       path: "components/button.json",
       source: "npm",
       tagName: "x-btn",
-    } as (typeof componentRegistry)[number]);
+    });
     const rendered = await previewFor("components/button.json", createPreviewCache());
     expect(rendered?.className).toBe("component-preview");
   });
@@ -236,13 +240,45 @@ describe("previewFor", () => {
       path: "components/bad.json",
       source: "npm",
       tagName: "x-bad",
-    } as (typeof componentRegistry)[number]);
+    });
     componentPreview = () => {
       throw new Error("boom");
     };
     expect(await previewFor("components/bad.json", createPreviewCache())).toBeUndefined();
   });
 });
+
+/** The fields of an intersection record the preview gate reads. */
+type IntersectionRecords = Pick<IntersectionObserverEntry, "isIntersecting" | "target">[];
+
+/** The members of an IntersectionObserver instance the preview gate calls. */
+interface ObserverDouble {
+  disconnect: () => void;
+  observe: (target: Element) => void;
+  unobserve: (target: Element) => void;
+}
+
+/**
+ * Install a stand-in IntersectionObserver whose instances delegate to `double`, handing each
+ * constructed instance's callback to `capture` so a test can fire records at will.
+ */
+function installObserver(
+  double: ObserverDouble,
+  capture: (callback: (records: IntersectionRecords) => void) => void = () => {},
+): void {
+  class FakeIntersectionObserver implements ObserverDouble {
+    disconnect = double.disconnect;
+    observe = double.observe;
+    unobserve = double.unobserve;
+    constructor(callback: (records: IntersectionRecords) => void) {
+      capture(callback);
+    }
+  }
+  /* SAFETY: createPreviewObserver constructs it with `new`, a records callback and an options bag
+     the stand-in ignores, calls only `observe`, `unobserve` and `disconnect` on the instance, and
+     reads only `isIntersecting` and `target` off each record the callback receives. */
+  globalThis.IntersectionObserver = FakeIntersectionObserver as typeof IntersectionObserver;
+}
 
 describe("createPreviewObserver", () => {
   const original = globalThis.IntersectionObserver;
@@ -267,21 +303,20 @@ describe("createPreviewObserver", () => {
   test("reports a card once, on entry, and stops watching it", () => {
     const observed: Element[] = [];
     const unobserved: Element[] = [];
-    let fire: (records: { isIntersecting: boolean; target: Element }[]) => void = () => {};
+    let fire: (records: IntersectionRecords) => void = () => {};
     let disconnected = false;
-    function FakeIntersectionObserver(
-      this: Record<string, unknown>,
-      cb: (records: { isIntersecting: boolean; target: Element }[]) => void,
-    ) {
-      fire = cb;
-      this.disconnect = () => {
-        disconnected = true;
-      };
-      this.observe = (target: Element) => observed.push(target);
-      this.unobserve = (target: Element) => unobserved.push(target);
-    }
-    globalThis.IntersectionObserver =
-      FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+    installObserver(
+      {
+        disconnect: () => {
+          disconnected = true;
+        },
+        observe: (target) => observed.push(target),
+        unobserve: (target) => unobserved.push(target),
+      },
+      (cb) => {
+        fire = cb;
+      },
+    );
 
     const seen: Element[] = [];
     const observer = createPreviewObserver((el) => seen.push(el));
@@ -306,13 +341,11 @@ describe("createPreviewObserver", () => {
 
   test("observing the same card twice watches it once — a repaint per scroll frame is not two", () => {
     const observed: Element[] = [];
-    function FakeIntersectionObserver(this: Record<string, unknown>) {
-      this.disconnect = () => {};
-      this.observe = (target: Element) => observed.push(target);
-      this.unobserve = () => {};
-    }
-    globalThis.IntersectionObserver =
-      FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+    installObserver({
+      disconnect: () => {},
+      observe: (target) => observed.push(target),
+      unobserve: () => {},
+    });
 
     const observer = createPreviewObserver(() => {});
     const card = element("a");
@@ -331,13 +364,11 @@ describe("createPreviewObserver", () => {
    */
   test("releaseDetached drops exactly the cards that left the document, and keeps the rest", () => {
     const unobserved: Element[] = [];
-    function FakeIntersectionObserver(this: Record<string, unknown>) {
-      this.disconnect = () => {};
-      this.observe = () => {};
-      this.unobserve = (target: Element) => unobserved.push(target);
-    }
-    globalThis.IntersectionObserver =
-      FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+    installObserver({
+      disconnect: () => {},
+      observe: () => {},
+      unobserve: (target) => unobserved.push(target),
+    });
 
     const host = document.createElement("div");
     document.body.append(host);

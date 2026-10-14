@@ -81,8 +81,9 @@ describe("loopbackRedirectUri", () => {
      * RFC 8252 §8.3. `localhost` is a name and a name resolves: a hosts entry can point it at
      * another machine, and the authorization code would be delivered there.
      */
-    expect(loopbackRedirectUri(4321)).toBe(`http://127.0.0.1:4321${OAUTH_CALLBACK_PATH}`);
-    expect(loopbackRedirectUri(4321)).not.toContain("localhost");
+    const uri = loopbackRedirectUri(4321);
+    expect(uri).toBe(`http://127.0.0.1:4321${OAUTH_CALLBACK_PATH}`);
+    expect(uri).not.toContain("localhost");
   });
 });
 
@@ -228,16 +229,19 @@ describe("exchangeCode", () => {
   };
 
   test("posts the verifier and the exact redirect_uri, and no client secret", async () => {
-    let seen: URLSearchParams | null = null;
+    const seen: URLSearchParams[] = [];
     const result = await exchangeCode({
       ...BASE,
       fetchImpl: async (_input, init) => {
-        seen = new URLSearchParams(String(init?.body));
+        seen.push(new URLSearchParams(String(init.body)));
         return Response.json({ access_token: "gho_x", scope: "repo", token_type: "bearer" });
       },
     });
 
-    const body = seen as unknown as URLSearchParams;
+    const body = seen.at(-1);
+    if (!body) {
+      throw new Error("exchangeCode never posted to the token endpoint");
+    }
     expect(body.get("grant_type")).toBe("authorization_code");
     expect(body.get("code_verifier")).toBe(BASE.verifier);
     // §4.1.3 requires the same value the authorization request carried, verbatim.

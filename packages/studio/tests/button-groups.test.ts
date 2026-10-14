@@ -26,37 +26,64 @@
  * The walk reaches every element in a document however deep, through `children`, `$switch` cases
  * and `$prototype: "Array"` maps alike, so nesting a group one wrapper deeper cannot dodge it.
  */
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-/** The slice of a surface node this suite reads. */
-interface Node {
-  tagName?: unknown;
-  attributes?: Record<string, unknown>;
-  $props?: Record<string, unknown>;
-  $prototype?: unknown;
-  children?: unknown;
-  map?: unknown;
-  style?: Record<string, unknown>;
+/** A surface document read off disk: its root is a JSON object, or the file is not a document. */
+function readSurface(path: string): JsonObject {
+  const doc = JSON.parse(readFileSync(path, "utf8"));
+  if (!isJsonObject(doc)) {
+    throw new TypeError(`${path} is not a JSON object`);
+  }
+  return doc;
 }
 
 const dir = resolve(import.meta.dir, "../src/surfaces");
 const surfaces = readdirSync(dir)
   .filter((name) => name.endsWith(".json"))
-  .map((name) => ({ doc: JSON.parse(readFileSync(join(dir, name), "utf8")) as Node, name }));
+  .map((name) => ({ doc: readSurface(join(dir, name)), name }));
+
+/** A member of a node that is itself an object (`$props`, `attributes`, `style`, `onclick`). */
+function objectAt(node: JsonObject, key: string): JsonObject | undefined {
+  const value = node[key];
+  return isJsonObject(value) ? value : undefined;
+}
+
+/** One of a node's `$props`, when it declares any. */
+function propOf(node: JsonObject, name: string): JsonValue | undefined {
+  return objectAt(node, "$props")?.[name];
+}
+
+/** One of a node's `attributes`, when it declares any. */
+function attrOf(node: JsonObject, name: string): JsonValue | undefined {
+  return objectAt(node, "attributes")?.[name];
+}
+
+/** A node's `children` when they are a static list; any other form holds no direct children. */
+function childrenOf(node: JsonObject): JsonValue[] {
+  const { children } = node;
+  return Array.isArray(children) ? children : [];
+}
+
+/** One rule of a surface's own `style` block, or an empty rule when it declares none. */
+function ruleOf(doc: JsonObject, selector: string): JsonObject {
+  const rule = objectAt(doc, "style")?.[selector];
+  return isJsonObject(rule) ? rule : {};
+}
 
 /** Every element anywhere in a document: any object that names a tag, at any depth. */
-function elements(value: unknown): Node[] {
+function elements(value: JsonValue): JsonObject[] {
   if (Array.isArray(value)) {
     return value.flatMap((item) => elements(item));
   }
-  if (value === null || typeof value !== "object") {
+  if (!isJsonObject(value)) {
     return [];
   }
-  const node = value as Node;
-  const own = typeof node.tagName === "string" ? [node] : [];
-  return [...own, ...Object.values(node).flatMap((child) => elements(child))];
+  const own = isString(value["tagName"]) ? [value] : [];
+  return [...own, ...Object.values(value).flatMap((child) => elements(child))];
 }
 
 /**
@@ -64,37 +91,40 @@ function elements(value: unknown): Node[] {
  * the map of an `Array` among them, which stands for every item it repeats. That is exactly the set
  * the group's direct-child seam reaches; a button inside any other element is not one.
  */
-function members(node: Node): Node[] {
-  const kids = Array.isArray(node.children) ? (node.children as Node[]) : [];
-  return kids.flatMap((kid) => {
-    if (kid?.$prototype === "Array" && kid.map && typeof kid.map === "object") {
-      return members({ children: [kid.map] });
+function members(node: JsonObject): JsonObject[] {
+  return childrenOf(node).flatMap((kid) => {
+    if (!isJsonObject(kid)) {
+      return [];
     }
-    return kid?.tagName === "jx-action-button" ? [kid] : [];
+    const { map } = kid;
+    if (kid["$prototype"] === "Array" && isNonNullObject(map)) {
+      return members({ children: [map] });
+    }
+    return kid["tagName"] === "jx-action-button" ? [kid] : [];
   });
 }
 
 /** How many buttons a container draws, counting a repeated map as the "two or more" it is. */
-function drawn(node: Node): Node[] {
-  const kids = Array.isArray(node.children) ? (node.children as Node[]) : [];
-  const out: Node[] = [];
-  for (const kid of kids) {
+function drawn(node: JsonObject): JsonObject[] {
+  const out: JsonObject[] = [];
+  for (const kid of childrenOf(node)) {
     const own = members({ children: [kid] });
     out.push(...own);
-    if (kid?.$prototype === "Array") {
+    if (isJsonObject(kid) && kid["$prototype"] === "Array") {
       out.push(...own);
     }
   }
   return out;
 }
 
-const partOf = (node: Node) => String(node.attributes?.["part"] ?? "");
-const where = (name: string, node: Node) => `${name} ${node.tagName} [part="${partOf(node)}"]`;
+const partOf = (node: JsonObject) => String(attrOf(node, "part") ?? "");
+const where = (name: string, node: JsonObject) =>
+  `${name} ${String(node["tagName"])} [part="${partOf(node)}"]`;
 
 /** Every `jx-action-group` in Studio's chrome, with the document it lives in. */
 const groups = surfaces.flatMap(({ doc, name }) =>
   elements(doc)
-    .filter((node) => node.tagName === "jx-action-group")
+    .filter((node) => node["tagName"] === "jx-action-group")
     .map((node) => ({ name, node })),
 );
 
@@ -116,32 +146,32 @@ const NOT_SEGMENTED = new Map<string, string>([
 describe("Studio's button groups", () => {
   test("there are groups to judge, and both kinds are among them", () => {
     expect(groups.length).toBeGreaterThan(10);
-    expect(groups.some(({ node }) => node.$props?.["compact"] === false)).toBe(true);
-    expect(groups.some(({ node }) => node.$props?.["compact"] !== false)).toBe(true);
+    expect(groups.some(({ node }) => propOf(node, "compact") === false)).toBe(true);
+    expect(groups.some(({ node }) => propOf(node, "compact") !== false)).toBe(true);
   });
 
   test("no member of a compact group asks to be quiet, because the group frames it anyway", () => {
     for (const { name, node } of groups) {
-      if (node.$props?.["compact"] === false) {
+      if (propOf(node, "compact") === false) {
         continue;
       }
       for (const member of members(node)) {
-        expect(member.$props?.["quiet"], `${where(name, node)} > ${partOf(member)}`).not.toBe(true);
+        expect(propOf(member, "quiet"), `${where(name, node)} > ${partOf(member)}`).not.toBe(true);
       }
     }
   });
 
   test('every member of a selects="single" group is a radio: it binds checked, and never toggles', () => {
     for (const { name, node } of groups) {
-      if (node.$props?.["selects"] !== "single") {
+      if (propOf(node, "selects") !== "single") {
         continue;
       }
       const radios = members(node);
       expect(radios.length, where(name, node)).toBeGreaterThan(0);
       for (const member of radios) {
         const label = `${where(name, node)} > ${partOf(member)}`;
-        expect(member.$props?.["checked"], label).toBeDefined();
-        expect(member.$props?.["toggles"], label).toBeUndefined();
+        expect(propOf(member, "checked"), label).toBeDefined();
+        expect(propOf(member, "toggles"), label).toBeUndefined();
       }
     }
   });
@@ -156,12 +186,16 @@ describe("Studio's button groups", () => {
     let toggles = 0;
     for (const { doc, name } of surfaces) {
       for (const node of elements(doc)) {
-        if (node.tagName !== "jx-action-button" || node.$props?.["toggles"] !== true) {
+        if (node["tagName"] !== "jx-action-button" || propOf(node, "toggles") !== true) {
           continue;
         }
         toggles += 1;
-        const body = (node as { onclick?: { body?: Record<string, unknown>[] } }).onclick?.body;
-        const acts = (body ?? []).some((step) => Object.keys(step).some((k) => !STOP_ONLY.has(k)));
+        const body = objectAt(node, "onclick")?.["body"];
+        const steps = Array.isArray(body) ? body : [];
+        /* A step that is not an object is not a bare stop either, so it counts as acting. */
+        const acts = steps.some(
+          (step) => !isJsonObject(step) || Object.keys(step).some((k) => !STOP_ONLY.has(k)),
+        );
         if (acts) {
           found.push(where(name, node));
         }
@@ -175,25 +209,26 @@ describe("Studio's button groups", () => {
     const style = surfaces.find(({ name }) => name === "style-panel.json")!.doc;
     const row = elements(style).find(
       (node) =>
-        node.tagName === "jx-action-group" && members(node).some((m) => partOf(m) === "button"),
+        node["tagName"] === "jx-action-group" && members(node).some((m) => partOf(m) === "button"),
     )!;
-    expect(row.$props?.["selects"]).toBe("single");
+    expect(propOf(row, "selects")).toBe("single");
     const [button] = members(row);
-    expect(button!.$props?.["toggles"]).toBeUndefined();
-    expect(button!.$props?.["checked"]).toEqual({ $ref: "$map/item/checked" });
+    expect(propOf(button!, "toggles")).toBeUndefined();
+    expect(propOf(button!, "checked")).toEqual({ $ref: "$map/item/checked" });
   });
 
   test("no span or div draws a button group of its own", () => {
     const found: string[] = [];
     for (const { doc, name } of surfaces) {
       for (const node of elements(doc)) {
-        const role = node.attributes?.["role"];
-        if (node.tagName === "jx-action-group" || (role !== "group" && role !== "radiogroup")) {
+        const role = attrOf(node, "role");
+        if (node["tagName"] === "jx-action-group" || (role !== "group" && role !== "radiogroup")) {
           continue;
         }
         const buttons = drawn(node);
         const stateful = buttons.filter(
-          (button) => "selected" in (button.$props ?? {}) || "checked" in (button.$props ?? {}),
+          (button) =>
+            propOf(button, "selected") !== undefined || propOf(button, "checked") !== undefined,
         );
         if (buttons.length >= 2 && stateful.length > 0) {
           found.push(`${name} ${partOf(node)}`);
@@ -211,10 +246,12 @@ describe("Studio's button groups", () => {
     /* Spectrum had exactly two action groups that were quiet on purpose, the Files toolbar
        (`compact quiet`) and the git sync verbs (`quiet`, never compact). The kit spells both as a
        group that is not compact, over its members' default quiet. */
-    const row = (doc: string, part: string) =>
-      groups.find(({ name, node }) => name === doc && partOf(node) === part)?.node;
-    expect(row("files-panel.json", "toolbar-actions")?.$props?.["compact"]).toBe(false);
-    expect(row("git-panel.json", "sync-actions")?.$props?.["compact"]).toBe(false);
+    const compactOf = (doc: string, part: string) => {
+      const row = groups.find(({ name, node }) => name === doc && partOf(node) === part)?.node;
+      return row && propOf(row, "compact");
+    };
+    expect(compactOf("files-panel.json", "toolbar-actions")).toBe(false);
+    expect(compactOf("git-panel.json", "sync-actions")).toBe(false);
   });
 
   test("a group that WRAPS is not compact, and its members frame themselves", () => {
@@ -227,18 +264,18 @@ describe("Studio's button groups", () => {
     for (const { name, node } of groups) {
       const part = partOf(node);
       const { doc } = surfaces.find((surface) => surface.name === name)!;
-      const rules = Object.entries(doc.style ?? {});
+      const rules = Object.entries(objectAt(doc, "style") ?? {});
       const wraps = rules.some(([key, block]) => {
-        const declared = (block as Record<string, unknown> | undefined)?.["flexWrap"];
+        const declared = isJsonObject(block) ? block["flexWrap"] : undefined;
         return key.includes(`[part="${part}"]`) && String(declared ?? "").startsWith("wrap");
       });
       if (!wraps) {
         continue;
       }
       wrapping.push(`${name} ${part}`);
-      expect(node.$props?.["compact"], `${where(name, node)} wraps`).toBe(false);
+      expect(propOf(node, "compact"), `${where(name, node)} wraps`).toBe(false);
       for (const member of members(node)) {
-        expect(member.$props?.["quiet"], `${where(name, node)} > ${partOf(member)}`).toBe(false);
+        expect(propOf(member, "quiet"), `${where(name, node)} > ${partOf(member)}`).toBe(false);
       }
     }
     expect(wrapping).toEqual(["pane-context.json sizes", "pane-context.json features"]);
@@ -254,7 +291,7 @@ describe("Studio's button groups", () => {
     const pane = surfaces.find(({ name }) => name === "pane-context.json")!.doc;
     const all = elements(pane);
     const pod = all.find((node) => partOf(node) === "pod")!;
-    const kids = (pod.children as Node[]).map((kid) => partOf(kid));
+    const kids = childrenOf(pod).map((kid) => (isJsonObject(kid) ? partOf(kid) : ""));
     expect(kids).toEqual(["zoom-group", "fit-slot"]);
     const zoom = all.find((node) => partOf(node) === "zoom-group")!;
     expect(members(zoom).map((member) => partOf(member))).toEqual([
@@ -262,7 +299,7 @@ describe("Studio's button groups", () => {
       "zoom-label",
       "zoom-in",
     ]);
-    const rule = (pane.style?.['& [part="pod"]'] ?? {}) as Record<string, unknown>;
+    const rule = ruleOf(pane, '& [part="pod"]');
     expect(rule["display"]).toBe("flex");
     for (const own of ["border", "borderRadius", "background", "padding"]) {
       expect(rule[own], `the pod draws its own ${own} around two framed controls`).toBeUndefined();
@@ -274,11 +311,8 @@ describe("Studio's button groups", () => {
        (it sets its own), and the 48px floor on a host whose control sat inside it at its content
        width: a 6px gap opened in the segmented frame before the `+` segment. */
     const pane = surfaces.find(({ name }) => name === "pane-context.json")!.doc;
-    const host = pane.style?.['& [part="zoom-label"]'] as Record<string, unknown>;
-    const control = pane.style?.['& [part="zoom-label"] > [part="control"]'] as Record<
-      string,
-      unknown
-    >;
+    const host = ruleOf(pane, '& [part="zoom-label"]');
+    const control = ruleOf(pane, '& [part="zoom-label"] > [part="control"]');
     expect(host["minWidth"]).toBe("48px");
     expect(host["fontFamily"]).toBeUndefined();
     expect(control["flex"]).toBe("1");

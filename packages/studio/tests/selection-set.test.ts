@@ -24,17 +24,20 @@ import {
 } from "../src/tabs/selection";
 import { describe, expect, test } from "bun:test";
 
-const A = ["children", 0];
-const B = ["children", 1];
+import type { JxPath } from "../src/state";
+import { A, B, MAP_TEMPLATE } from "./shared-fixtures";
+
 const C = ["children", 2];
 const A0 = ["children", 0, "children", 0];
 
 /** The Outline rows that are NOT splice coordinates, each one a single ctrl-click away. */
 const ROOT: (string | number)[] = [];
-const MAP_TEMPLATE = ["children", 1, "map"];
 const MAP_TEMPLATE_CHILD = ["children", 1, "map", "children", 0];
 const SWITCH_CASE = ["children", 1, "cases", "warn"];
 const LEGACY_WHOLE_CHILDREN = ["children"];
+
+/** A selection that was never written at all, which every helper must read as "nothing selected". */
+const NEVER_SET: readonly JxPath[] | undefined = undefined;
 
 describe("primarySelection — the single-target invariant", () => {
   test("a selection of one IS its only path, for every surface that asks", () => {
@@ -45,7 +48,7 @@ describe("primarySelection — the single-target invariant", () => {
   test("empty and absent both mean nothing is selected", () => {
     expect(primarySelection([])).toBeNull();
     expect(primarySelection(null)).toBeNull();
-    expect(primarySelection(undefined as unknown as null)).toBeNull();
+    expect(primarySelection(NEVER_SET)).toBeNull();
   });
 
   test("with several, the primary is the most recently added", () => {
@@ -61,7 +64,7 @@ describe("selectionAnchor", () => {
   test("the anchor is the FIRST path and survives extension", () => {
     expect(selectionAnchor([A, B, C])).toEqual(A);
     expect(selectionAnchor([])).toBeNull();
-    expect(selectionAnchor(undefined as unknown as null)).toBeNull();
+    expect(selectionAnchor(NEVER_SET)).toBeNull();
   });
 });
 
@@ -74,7 +77,7 @@ describe("isSelected", () => {
   test("no path and no selection are both false rather than throwing", () => {
     expect(isSelected([A], null)).toBe(false);
     expect(isSelected(null, A)).toBe(false);
-    expect(isSelected(undefined as unknown as null, A)).toBe(false);
+    expect(isSelected(NEVER_SET, A)).toBe(false);
   });
 });
 
@@ -273,7 +276,7 @@ describe("selectionsEqual", () => {
 
   test("null, undefined and [] are the same selection", () => {
     expect(selectionsEqual(null, [])).toBe(true);
-    expect(selectionsEqual(undefined as unknown as null, [])).toBe(true);
+    expect(selectionsEqual(NEVER_SET, [])).toBe(true);
   });
 
   test("different lengths are never equal", () => {
@@ -310,7 +313,7 @@ describe("unifyValues — the Mixed decision", () => {
   });
 
   test("null and undefined are the same absence", () => {
-    expect(unifyValues([null, undefined as unknown as null]).mixed).toBe(false);
+    expect(unifyValues([null, undefined]).mixed).toBe(false);
   });
 
   test("nothing to compare is not mixed", () => {

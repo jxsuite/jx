@@ -13,7 +13,8 @@
  */
 import { flush, installMockPlatform, mountOverlayLayers } from "./harness";
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { RepoInfo, RepoProjects } from "../src/types";
+import type { AccountStatus, RepoInfo, RepoProjects } from "../src/types";
+import { JOIN_LINK, REPOS } from "./shared-fixtures";
 
 const {
   SCAN_DELAY_MS,
@@ -27,27 +28,6 @@ const { initLayers } = await import("../src/ui/layers");
 
 mountOverlayLayers(document.body);
 initLayers();
-
-const REPOS: RepoInfo[] = [
-  {
-    defaultBranch: "main",
-    fullName: "octocat/site",
-    isJxProject: true,
-    name: "site",
-    owner: "octocat",
-    permission: "admin",
-    private: true,
-  },
-  {
-    defaultBranch: "trunk",
-    fullName: "acme/marketing",
-    isJxProject: false,
-    name: "marketing",
-    owner: "acme",
-    permission: "write",
-    private: false,
-  },
-];
 
 const READ_ONLY_REPO: RepoInfo = {
   defaultBranch: "main",
@@ -75,11 +55,11 @@ function found(...locations: RepoProjects["locations"]): RepoProjects {
 }
 
 function d<T extends Element = HTMLElement>(sel: string): T | null {
-  return document.querySelector(`#layer-dialog ${sel}`) as T | null;
+  return document.querySelector<T>(`#layer-dialog ${sel}`);
 }
 
 function all<T extends Element = HTMLElement>(sel: string): T[] {
-  return [...document.querySelectorAll(`#layer-dialog ${sel}`)] as T[];
+  return [...document.querySelectorAll<T>(`#layer-dialog ${sel}`)];
 }
 
 /** The dialog itself, which is the surface's root. */
@@ -105,7 +85,7 @@ function dblclick(el: Element): void {
 
 /** The refusal above the footer. `failure`, not `error`: `jx-textfield` owns that part name. */
 function failureText(): string | null {
-  return d('[part="failure"]')?.textContent?.trim() ?? null;
+  return d('[part="failure"]')?.textContent.trim() ?? null;
 }
 
 function emptyText(): string | null {
@@ -117,7 +97,7 @@ function noteText(): string | null {
 }
 
 function summaryText(): string {
-  return d('[part="summary"]')?.textContent?.trim() ?? "";
+  return d('[part="summary"]')?.textContent.trim() ?? "";
 }
 
 function accessLinks(): HTMLAnchorElement[] {
@@ -177,6 +157,17 @@ function pressOpen(): void {
  */
 function dismiss(): void {
   dialog()?.dispatchEvent(new Event("cancel", { bubbles: true }));
+}
+
+/** The action-required offer: the one `jx-dialog` on the page that is not the picker itself. */
+function offerDialog(): Element {
+  const offer = [...document.querySelectorAll("jx-dialog")].find(
+    (element) => element.getAttribute("part") !== "add-repo",
+  );
+  if (!offer) {
+    throw new Error("no action-required offer was shown over the picker");
+  }
+  return offer;
 }
 
 function wait(ms: number): Promise<void> {
@@ -259,7 +250,7 @@ describe("openAddRepoModal", () => {
     expect(dialog()?.querySelector('[part="headline"]')?.textContent).toBe(
       "Add existing repository",
     );
-    expect(confirmButton()?.textContent?.trim()).toBe("Add");
+    expect(confirmButton()?.textContent.trim()).toBe("Add");
     // Nothing is chosen yet, so there is nothing to add.
     expect(confirmButton()?.disabled).toBe(true);
     expect(d("sp-dialog-wrapper")).toBeNull();
@@ -286,7 +277,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () => Promise.resolve(found({ dir: "", name: "Site" })),
       listRepos: () => Promise.resolve(REPOS),
     });
@@ -319,7 +310,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main:${opts.dir}` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () => Promise.resolve(found({ dir: "Sites/avunu.net", name: "Avunu" })),
       listRepos: () => Promise.resolve(REPOS),
       openProjectPicker: "repo-list",
@@ -336,7 +327,7 @@ describe("openAddRepoModal", () => {
     expect(named).not.toBe("");
     expect(document.querySelector(`#${named}`)?.textContent).toBe("Project Folder");
     expect(summaryText()).toBe("Opens octocat/site at Sites/avunu.net/ on main.");
-    expect(confirmButton()?.textContent?.trim()).toBe("Open");
+    expect(confirmButton()?.textContent.trim()).toBe("Open");
 
     pressOpen();
     await flush();
@@ -353,7 +344,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main:${opts.dir ?? ""}` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () =>
         Promise.resolve(
           found({ dir: "" }, { dir: "sites/blog", name: "Blog" }, { dir: "sites/shop" }),
@@ -405,7 +396,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main:${opts.dir ?? ""}` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () => Promise.resolve(found({ dir: "" })),
       listRepos: () => Promise.resolve(REPOS),
     });
@@ -487,7 +478,7 @@ describe("openAddRepoModal", () => {
   test("a scan that fails leaves the folder field to name one, and the root to open", async () => {
     const importProject = mock(() => Promise.resolve({ root: "octocat/site@main" }));
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () => Promise.reject(new Error("GitHub said no")),
       listRepos: () => Promise.resolve(REPOS),
     });
@@ -509,7 +500,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main:${opts.dir ?? ""}` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
@@ -532,7 +523,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@trunk` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: (repo) => {
         scans.push(`${repo.owner}/${repo.name}`);
         return Promise.resolve(found({ dir: "" }));
@@ -610,7 +601,7 @@ describe("openAddRepoModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main:${opts.dir}` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () =>
         new Promise<RepoProjects>((resolve) => {
           land = resolve;
@@ -633,7 +624,7 @@ describe("openAddRepoModal", () => {
   test("a double-click on a repository holding several projects only chooses it", async () => {
     const importProject = mock(() => Promise.resolve({ root: "r" }));
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepoProjects: () => Promise.resolve(found({ dir: "a" }, { dir: "b" })),
       listRepos: () => Promise.resolve(REPOS),
     });
@@ -697,7 +688,7 @@ describe("openAddRepoModal", () => {
         }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepos: () => Promise.resolve(REPOS),
       openProjectPicker: "repo-list",
     });
@@ -707,7 +698,7 @@ describe("openAddRepoModal", () => {
     await flush();
     pressOpen();
     await flush();
-    expect(confirmButton()?.textContent?.trim()).toBe("Opening…");
+    expect(confirmButton()?.textContent.trim()).toBe("Opening…");
     expect(confirmButton()?.disabled).toBe(true);
     expect(refreshButton()).toBeNull();
     dialog()!.dispatchEvent(new Event("confirm"));
@@ -750,23 +741,21 @@ describe("openAddRepoModal", () => {
     expect(await promise).toBeNull();
   });
 
-  const JOIN = { href: "https://example.test/join", id: "join", label: "Join" };
-
   /* Adopting a repository is something a backend may refuse until the user acts (desktop.md §10.4):
      the refusal's actions are offered, and an action that is done imports again. */
   test("an action-required refusal is offered, and the import runs again once it is done", async () => {
     let attempts = 0;
     installMockPlatform({
-      importProject: (async (opts: { owner: string; name: string }) => {
+      importProject: async (opts: { owner: string; name: string }) => {
         attempts += 1;
         if (attempts === 1) {
           throw Object.assign(new Error("Opening octocat/site needs a team membership."), {
-            actions: [JOIN],
+            actions: [JOIN_LINK],
             code: "action_required",
           });
         }
         return { root: `${opts.owner}/${opts.name}@main` };
-      }) as never,
+      },
       listRepos: () => Promise.resolve(REPOS),
       performAction: async () => ({ status: "done" }),
     });
@@ -777,10 +766,7 @@ describe("openAddRepoModal", () => {
     pressOpen();
     await flush(3);
     expect(failureText()).toContain("needs a team membership");
-    const offer = [...document.querySelectorAll("jx-dialog")].find(
-      (element) => element.getAttribute("part") !== "add-repo",
-    ) as HTMLElement;
-    offer.dispatchEvent(new Event("confirm"));
+    offerDialog().dispatchEvent(new Event("confirm"));
     expect(await promise).toEqual({ root: "octocat/site@main" });
     expect(attempts).toBe(2);
   });
@@ -788,13 +774,13 @@ describe("openAddRepoModal", () => {
   test("a declined offer leaves the refusal inline and imports nothing more", async () => {
     let attempts = 0;
     installMockPlatform({
-      importProject: (async () => {
+      importProject: async () => {
         attempts += 1;
         throw Object.assign(new Error("Opening octocat/site needs a team membership."), {
-          actions: [JOIN],
+          actions: [JOIN_LINK],
           code: "action_required",
         });
-      }) as never,
+      },
       listRepos: () => Promise.resolve(REPOS),
       performAction: async () => ({ status: "canceled" }),
     });
@@ -804,10 +790,7 @@ describe("openAddRepoModal", () => {
     await flush();
     pressOpen();
     await flush(3);
-    const offer = [...document.querySelectorAll("jx-dialog")].find(
-      (element) => element.getAttribute("part") !== "add-repo",
-    ) as HTMLElement;
-    offer.dispatchEvent(new Event("cancel"));
+    offerDialog().dispatchEvent(new Event("cancel"));
     await flush(3);
     expect(attempts).toBe(1);
     expect(failureText()).toContain("needs a team membership");
@@ -885,15 +868,18 @@ describe("openAddRepoModal", () => {
 
 describe("repository-access footer", () => {
   const MANAGE_URL = "https://github.com/settings/installations/7";
-  const INSTALL_URL = "https://github.com/apps/jx-suite/installations/new";
+
+  /** One installation the user can widen, plus the App's install page for another account. */
+  function accessStatus() {
+    return {
+      appInstallUrl: "https://github.com/apps/jx-suite/installations/new",
+      installations: [{ account: "octocat", id: 7, manageUrl: MANAGE_URL }],
+    } satisfies AccountStatus;
+  }
 
   test("offers a manage link per installation plus another-account install", async () => {
     installMockPlatform({
-      getAccountStatus: () =>
-        Promise.resolve({
-          appInstallUrl: INSTALL_URL,
-          installations: [{ account: "octocat", id: 7, manageUrl: MANAGE_URL }],
-        }),
+      getAccountStatus: () => Promise.resolve(accessStatus()),
       importProject: () => Promise.resolve({ root: "r" }),
       listRepos: () => Promise.resolve(REPOS),
       openProjectPicker: "repo-list",
@@ -902,9 +888,9 @@ describe("repository-access footer", () => {
     await flush(3);
     // Rendered alongside a populated list — widening access is not just an empty-state fallback.
     expect(rows()).toHaveLength(2);
-    expect(accessLinks().map((a) => [a.textContent?.trim(), a.href])).toEqual([
+    expect(accessLinks().map((a) => [a.textContent.trim(), a.href])).toEqual([
       ["octocat", MANAGE_URL],
-      ["Another account…", INSTALL_URL],
+      ["Another account…", accessStatus().appInstallUrl],
     ]);
     dismiss();
     expect(await promise).toBeNull();
@@ -912,11 +898,7 @@ describe("repository-access footer", () => {
 
   test("the picker hydrates account status itself, so Add mode gets the links too", async () => {
     installMockPlatform({
-      getAccountStatus: () =>
-        Promise.resolve({
-          appInstallUrl: INSTALL_URL,
-          installations: [{ account: "octocat", id: 7, manageUrl: MANAGE_URL }],
-        }),
+      getAccountStatus: () => Promise.resolve(accessStatus()),
       importProject: () => Promise.resolve({ root: "r" }),
       listRepos: () => Promise.resolve(REPOS),
     });
@@ -932,11 +914,7 @@ describe("repository-access footer", () => {
     let granted = false;
     let release: (() => void) | null = null;
     installMockPlatform({
-      getAccountStatus: () =>
-        Promise.resolve({
-          appInstallUrl: INSTALL_URL,
-          installations: [{ account: "octocat", id: 7, manageUrl: MANAGE_URL }],
-        }),
+      getAccountStatus: () => Promise.resolve(accessStatus()),
       importProject: () => Promise.resolve({ root: "r" }),
       listRepos: () =>
         granted
@@ -969,11 +947,7 @@ describe("repository-access footer", () => {
   test("Refresh scans the chosen repository again, since a project.json may have just landed", async () => {
     let scans = 0;
     installMockPlatform({
-      getAccountStatus: () =>
-        Promise.resolve({
-          appInstallUrl: INSTALL_URL,
-          installations: [{ account: "octocat", id: 7, manageUrl: MANAGE_URL }],
-        }),
+      getAccountStatus: () => Promise.resolve(accessStatus()),
       importProject: () => Promise.resolve({ root: "r" }),
       listRepoProjects: () => {
         scans += 1;
@@ -1050,7 +1024,7 @@ describe("openProjectPickerModal", () => {
       Promise.resolve({ root: `${opts.owner}/${opts.name}@main` }),
     );
     installMockPlatform({
-      importProject: importProject as never,
+      importProject,
       listRepos: () => Promise.resolve(REPOS),
       openProjectPicker: "repo-list",
     });

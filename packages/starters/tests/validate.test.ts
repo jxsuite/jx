@@ -12,10 +12,21 @@ import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { parseProjectConfig } from "@jxsuite/schema/parse";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { listStarters, SITES_DIR } from "../index";
 
 const starters = listStarters();
+
+/** Parse a committed bundled entry schema, which is always a JSON Schema object document. */
+function parseSchemaDocument(raw: string): JsonObject {
+  const parsed: unknown = JSON.parse(raw);
+  if (!isJsonObject(parsed)) {
+    throw new Error("A bundled entry schema must be a JSON object");
+  }
+  return parsed;
+}
 
 /** Compile each distinct schema once — starters share identical bundled entry documents. */
 const validatorCache = new Map<string, ReturnType<Ajv2020["compile"]>>();
@@ -25,27 +36,27 @@ function compileSchema(raw: string) {
   if (!validate) {
     const ajv = new Ajv2020({ allErrors: true, ownProperties: true, strict: false });
     addFormats(ajv);
-    validate = ajv.compile(JSON.parse(raw) as Record<string, unknown>);
+    validate = ajv.compile(parseSchemaDocument(raw));
     validatorCache.set(raw, validate);
   }
   return validate;
 }
 
 /** Collect relative-path $refs — committed entry documents must be self-contained bundles. */
-function collectRelativeRefs(node: unknown, out: string[]): void {
+function collectRelativeRefs(node: JsonValue, out: string[]): void {
   if (Array.isArray(node)) {
     for (const item of node) {
       collectRelativeRefs(item, out);
     }
     return;
   }
-  if (node === null || typeof node !== "object") {
+  if (!isJsonObject(node)) {
     return;
   }
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(node)) {
     if (
       key === "$ref" &&
-      typeof value === "string" &&
+      isString(value) &&
       !value.startsWith("#") &&
       !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
     ) {
@@ -69,17 +80,14 @@ describe("starter sites validate", () => {
         for (const name of ["project.schema.json", "document.schema.json"]) {
           const raw = readFileSync(join(dir, name), "utf8");
           const residual: string[] = [];
-          collectRelativeRefs(JSON.parse(raw), residual);
+          collectRelativeRefs(parseSchemaDocument(raw), residual);
           expect(residual, `${starter.id}/${name} carries relative $refs`).toEqual([]);
         }
       });
 
       test("project.json validates against the bundled entry schema", () => {
         const validate = compileSchema(readFileSync(join(dir, "project.schema.json"), "utf8"));
-        const project = JSON.parse(readFileSync(join(dir, "project.json"), "utf8")) as Record<
-          string,
-          unknown
-        >;
+        const project: unknown = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
         const valid = validate(project);
         expect(valid, `${starter.id}/project.json: ${JSON.stringify(validate.errors)}`).toBe(true);
       });
@@ -90,7 +98,7 @@ describe("starter sites validate", () => {
         let count = 0;
         for (const rel of glob.scanSync({ cwd: dir })) {
           count += 1;
-          const doc = JSON.parse(readFileSync(join(dir, rel), "utf8")) as Record<string, unknown>;
+          const doc: unknown = JSON.parse(readFileSync(join(dir, rel), "utf8"));
           const valid = validate(doc);
           expect(
             valid,

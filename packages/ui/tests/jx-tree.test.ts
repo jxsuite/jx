@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { documentStyleText, mount } from "@jxsuite/runtime";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
+import { isExpandedSignal } from "@jxsuite/schema/guards";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
@@ -17,7 +18,13 @@ import {
   onTreeToggle,
   syncTree,
 } from "../src/behaviors/tree.ts";
-import type { TreeState } from "../src/behaviors/tree.ts";
+import type {
+  TreeExpandDetail,
+  TreeMoveDetail,
+  TreeSelectDetail,
+  TreeState,
+  TreeTypeaheadDetail,
+} from "../src/behaviors/tree.ts";
 
 /** Let the runtime's queued `onMount` settle. */
 const flush = () =>
@@ -32,15 +39,6 @@ type TreeEl = HTMLElement & {
   padtop: number;
   padbottom: number;
 };
-type ItemEl = HTMLElement & {
-  value: string;
-  label: string;
-  level: number;
-  expanded: string;
-  selected: boolean;
-  disabled: boolean;
-  caret: boolean;
-};
 
 interface RowSpec {
   value: string;
@@ -54,29 +52,40 @@ interface RowSpec {
   children?: JxElement[];
 }
 
+/** The attributes one fixture row writes; a boolean attribute is present as `""` or absent. */
+interface RowAttributes {
+  value: string;
+  label: string;
+  level: string;
+  posinset?: string;
+  setsize?: string;
+  expanded?: string;
+  disabled?: "";
+}
+
 function row(spec: RowSpec): JxElement {
-  const attributes: Record<string, string> = {
+  const attributes: RowAttributes = {
     value: spec.value,
     label: spec.label,
     level: String(spec.level),
   };
   if (spec.posinset !== undefined) {
-    attributes["posinset"] = String(spec.posinset);
+    attributes.posinset = String(spec.posinset);
   }
   if (spec.setsize !== undefined) {
-    attributes["setsize"] = String(spec.setsize);
+    attributes.setsize = String(spec.setsize);
   }
   if (spec.expanded) {
-    attributes["expanded"] = spec.expanded;
+    attributes.expanded = spec.expanded;
   }
   if (spec.disabled) {
-    attributes["disabled"] = "";
+    attributes.disabled = "";
   }
-  const node: Record<string, unknown> = { attributes, tagName: "jx-tree-item" };
+  const node: JxElement = { attributes: { ...attributes }, tagName: "jx-tree-item" };
   if (spec.children) {
-    node["children"] = spec.children;
+    node.children = spec.children;
   }
-  return node as unknown as JxElement;
+  return node;
 }
 
 /** The outline every keyboard test walks: one open root, an open and a closed branch, two leaves. */
@@ -98,19 +107,28 @@ interface TreeSpec {
   label?: string;
 }
 
+/** The attributes the fixture tree writes; a boolean attribute is present as `""` or absent. */
+interface TreeAttributes {
+  label: string;
+  current: string;
+  multiple?: "";
+  padtop?: string;
+  padbottom?: string;
+}
+
 function treeDoc(spec: TreeSpec = {}): JxDocument {
-  const attributes: Record<string, string> = {
+  const attributes: TreeAttributes = {
     label: spec.label ?? "Document outline",
     current: spec.current ?? "body",
   };
   if (spec.multiple) {
-    attributes["multiple"] = "";
+    attributes.multiple = "";
   }
   if (spec.padtop !== undefined) {
-    attributes["padtop"] = String(spec.padtop);
+    attributes.padtop = String(spec.padtop);
   }
   if (spec.padbottom !== undefined) {
-    attributes["padbottom"] = String(spec.padbottom);
+    attributes.padbottom = String(spec.padbottom);
   }
   return {
     tagName: "div",
@@ -118,11 +136,11 @@ function treeDoc(spec: TreeSpec = {}): JxDocument {
       {
         tagName: "jx-tree",
         id: "tree",
-        attributes,
+        attributes: { ...attributes },
         children: (spec.rows ?? OUTLINE).map((one) => row(one)),
       },
     ],
-  } as unknown as JxDocument;
+  };
 }
 
 let dispose: (() => void) | null = null;
@@ -130,7 +148,7 @@ let dispose: (() => void) | null = null;
 interface Mounted {
   host: HTMLElement;
   tree: TreeEl;
-  rows: ItemEl[];
+  rows: HTMLElement[];
   changes: { detail: string; current: string }[];
   selects: { value: string; mode: string; anchor: string }[];
   moves: { from: string; key: string }[];
@@ -145,6 +163,8 @@ async function render(doc: JxDocument): Promise<Mounted> {
   document.body.append(host);
   ({ dispose } = await mount(doc, host));
   await flush();
+  /* SAFETY: every document treeDoc() builds renders exactly one jx-tree, which registerUi() in
+     beforeAll defined, and jx-tree.json declares every prop TreeEl names. */
   const tree = host.querySelector("jx-tree") as TreeEl;
   const changes: { detail: string; current: string }[] = [];
   const selects: { value: string; mode: string; anchor: string }[] = [];
@@ -156,30 +176,38 @@ async function render(doc: JxDocument): Promise<Mounted> {
   /* Every listener sits on an ANCESTOR of the tree, never on the dispatching element: each of these
      is documented as bubbling, and a listener on the target itself cannot tell the difference. */
   host.addEventListener("change", (e) => {
-    changes.push({
-      current: (e.target as TreeEl).current,
-      detail: String((e as CustomEvent).detail),
-    });
+    /* SAFETY: nothing in the host but the tree dispatches `change`, and tree.ts announces it from
+       the jx-tree itself, so the target is the element TreeEl describes. */
+    const target = e.target as TreeEl;
+    changes.push({ current: target.current, detail: detailText(e) });
   });
   host.addEventListener("select", (e) => {
-    selects.push((e as CustomEvent).detail as { value: string; mode: string; anchor: string });
+    /* SAFETY: tree.ts's announce() is the only dispatcher of `select` in the host, and it sends a
+       CustomEvent whose detail is a TreeSelectDetail. */
+    selects.push((e as CustomEvent<TreeSelectDetail>).detail);
   });
   host.addEventListener("move", (e) => {
-    moves.push((e as CustomEvent).detail as { from: string; key: string });
+    /* SAFETY: tree.ts's announce() is the only dispatcher of `move` in the host, and it sends a
+       CustomEvent whose detail is a TreeMoveDetail. */
+    moves.push((e as CustomEvent<TreeMoveDetail>).detail);
   });
   host.addEventListener("typeahead", (e) => {
-    seeks.push((e as CustomEvent).detail as { from: string; char: string });
+    /* SAFETY: tree.ts's announce() is the only dispatcher of `typeahead` in the host, and it sends
+       a CustomEvent whose detail is a TreeTypeaheadDetail. */
+    seeks.push((e as CustomEvent<TreeTypeaheadDetail>).detail);
   });
   host.addEventListener("expand", (e) => {
-    expands.push((e as CustomEvent).detail as { value: string; expanded: boolean });
+    /* SAFETY: tree.ts's announce() is the only dispatcher of `expand` in the host, and it sends a
+       CustomEvent whose detail is a TreeExpandDetail. */
+    expands.push((e as CustomEvent<TreeExpandDetail>).detail);
   });
   host.addEventListener("activate", (e) => {
-    activates.push(String((e as CustomEvent).detail));
+    activates.push(detailText(e));
   });
   // The row's INTERNAL protocol, which must stop at the tree.
   host.addEventListener("toggle", (e) => {
     // `toggle` is typed as the platform's ToggleEvent; the row's is a CustomEvent of its value.
-    toggles.push(String((e as unknown as CustomEvent).detail));
+    toggles.push(detailText(e));
   });
   return {
     activates,
@@ -187,12 +215,17 @@ async function render(doc: JxDocument): Promise<Mounted> {
     expands,
     host,
     moves,
-    rows: itemsOf(tree) as ItemEl[],
+    rows: itemsOf(tree),
     seeks,
     selects,
     toggles,
     tree,
   };
+}
+
+/** An event's `detail` as text: a CustomEvent's payload, and `"undefined"` for an event with none. */
+function detailText(e: Event): string {
+  return String("detail" in e ? e.detail : undefined);
 }
 
 interface Mods {
@@ -247,10 +280,10 @@ function rules(el?: HTMLElement): Map<string, string> {
   return out;
 }
 
-const carets = (rows: ItemEl[]) => rows.map((one) => one.getAttribute("tabindex"));
+const carets = (rows: HTMLElement[]) => rows.map((one) => one.getAttribute("tabindex"));
 
 /** Put the keyboard where a Tab press would: on the one row holding the caret. */
-function enter(rows: ItemEl[]): ItemEl {
+function enter(rows: HTMLElement[]): HTMLElement {
   const one = rows.find((each) => each.getAttribute("tabindex") === "0") ?? rows[0]!;
   one.focus();
   return one;
@@ -300,15 +333,16 @@ describe("jx-tree", () => {
 
   test("nothing lints a missing label, so the element is what asserts it", () => {
     // A bare `role="tree"` with no name is a silent defect everywhere but here.
-    const unnamed = {
+    const unnamed: JxDocument = {
       tagName: "div",
       children: [{ tagName: "div", attributes: { role: "tree" } }],
-    } as unknown as JxDocument;
+    };
     expect(findA11yDefects(unnamed)).toEqual([]);
 
     const doc = documents["jx-tree"]!;
     expect(doc.attributes!["aria-label"]).toBe("${state.label}");
-    expect((doc.state!["label"] as { default: string }).default).toBe("Tree");
+    const label = doc.state?.["label"];
+    expect(isExpandedSignal(label) ? label.default : undefined).toBe("Tree");
   });
 
   test("exactly one row holds the caret at rest, and a host write of .current re-syncs it", async () => {
@@ -543,7 +577,7 @@ describe("jx-tree", () => {
             tagName: "button",
             attributes: { slot: "actions", type: "button" },
             textContent: "Pin",
-          } as unknown as JxElement,
+          },
         ],
         expanded: "false",
         label: "header",
@@ -654,7 +688,7 @@ describe("jx-tree", () => {
       current: tree.current,
       selects: selects.length,
     };
-    for (const [name, mods] of [
+    const presses: [string, Mods][] = [
       ["x", { ctrl: true }],
       ["v", { ctrl: true }],
       ["c", { meta: true }],
@@ -663,7 +697,8 @@ describe("jx-tree", () => {
       ["F2", {}],
       ["Tab", {}],
       ["Escape", {}],
-    ] as [string, Mods][]) {
+    ];
+    for (const [name, mods] of presses) {
       const event = key(tree, name, mods);
       expect(event.defaultPrevented, `${name} must not be prevented`).toBe(false);
     }
@@ -680,7 +715,7 @@ describe("jx-tree", () => {
       { level: 1, label: "three", value: "three" },
     ];
     const { tree, selects } = await render(treeDoc({ current: "one", rows }));
-    const all = [...tree.querySelectorAll<ItemEl>("jx-tree-item")];
+    const all = [...tree.querySelectorAll<HTMLElement>("jx-tree-item")];
     expect(all.map((one) => one.getAttribute("tabindex"))).toEqual(["0", "-1", "-1"]);
     enter(all);
     key(tree, "ArrowDown");
@@ -699,7 +734,7 @@ describe("jx-tree", () => {
     const { tree } = await render(treeDoc({ current: "body" }));
     tree.querySelector('jx-tree-item[value="body"]')!.remove();
     await flush();
-    const left = [...tree.querySelectorAll<ItemEl>("jx-tree-item")];
+    const left = [...tree.querySelectorAll<HTMLElement>("jx-tree-item")];
     expect(left.map((one) => one.getAttribute("tabindex"))).toEqual(["0", "-1", "-1", "-1", "-1"]);
     expect(tree.current).toBe("body");
   });
@@ -734,8 +769,8 @@ describe("jx-tree, handing a caret move to its host", () => {
   };
 
   /** The host's answer: draw the row it decided on, and write `current` — in that order or not. */
-  function reveal(tree: TreeEl, value: string, label = value): ItemEl {
-    const item = document.createElement("jx-tree-item") as ItemEl;
+  function reveal(tree: TreeEl, value: string, label = value): HTMLElement {
+    const item = document.createElement("jx-tree-item");
     item.setAttribute("value", value);
     item.setAttribute("label", label);
     item.setAttribute("level", "1");
@@ -744,7 +779,7 @@ describe("jx-tree, handing a caret move to its host", () => {
   }
 
   /** A row that is in the page and cannot take focus — what a just-drawn row IS, in a browser. */
-  function refuseFocus(item: ItemEl): () => void {
+  function refuseFocus(item: HTMLElement): () => void {
     const own = item.focus.bind(item);
     Object.defineProperty(item, "focus", { configurable: true, value: () => {} });
     return () => {
@@ -935,7 +970,7 @@ describe("jx-tree, where there is nothing to do", () => {
   test("ArrowLeft on a top-level row has nowhere to step out to", async () => {
     const rows: RowSpec[] = [{ level: 1, label: "only", value: "only" }];
     const { tree, moves, changes } = await render(treeDoc({ current: "only", rows }));
-    enter([...tree.querySelectorAll<ItemEl>("jx-tree-item")]);
+    enter([...tree.querySelectorAll<HTMLElement>("jx-tree-item")]);
     const before = changes.length;
     key(tree, "ArrowLeft");
     expect(tree.current).toBe("only");
@@ -952,7 +987,7 @@ describe("jx-tree, where there is nothing to do", () => {
       { expanded: "false", level: 1, label: "docs", value: "docs" },
     ];
     const { tree, changes } = await render(treeDoc({ current: "src", rows }));
-    enter([...tree.querySelectorAll<ItemEl>("jx-tree-item")]);
+    enter([...tree.querySelectorAll<HTMLElement>("jx-tree-item")]);
     const before = changes.length;
     key(tree, "ArrowRight");
     expect(tree.current).toBe("src");
@@ -991,16 +1026,22 @@ describe("jx-tree, where there is nothing to do", () => {
     document.body.append(stranger);
     stranger.append(document.createElement("jx-tree-item"));
     const seen: string[] = [];
-    for (const [name, handler] of [
-      ["keydown", onTreeKeydown],
-      ["click", onTreeClick],
-      ["dblclick", onTreeDblClick],
-      ["toggle", onTreeToggle],
-      ["jx-ready", onTreeMount],
-    ] as [string, (state: TreeState, event: never) => void][]) {
-      stranger.addEventListener(name, (e) => {
-        handler(scope, e as never);
-      });
+    stranger.addEventListener("keydown", (e) => {
+      onTreeKeydown(scope, e);
+    });
+    stranger.addEventListener("click", (e) => {
+      onTreeClick(scope, e);
+    });
+    stranger.addEventListener("dblclick", (e) => {
+      onTreeDblClick(scope, e);
+    });
+    stranger.addEventListener("toggle", (e) => {
+      onTreeToggle(scope, e);
+    });
+    stranger.addEventListener("jx-ready", (e) => {
+      onTreeMount(scope, e);
+    });
+    for (const name of ["keydown", "click", "dblclick", "toggle", "jx-ready"]) {
       stranger.addEventListener(name, () => {
         seen.push(name);
       });
@@ -1031,12 +1072,12 @@ describe("jx-tree, where there is nothing to do", () => {
     };
     relearn();
     relearn();
-    expect(carets(itemsOf(tree) as ItemEl[])).toEqual(["0", "-1", "-1", "-1", "-1", "-1"]);
+    expect(carets(itemsOf(tree))).toEqual(["0", "-1", "-1", "-1", "-1", "-1"]);
 
     // And one watch, not two: the row set still repairs itself exactly once after a second mount.
     tree.querySelector('jx-tree-item[value="body"]')!.remove();
     await flush();
-    const left = [...tree.querySelectorAll<ItemEl>("jx-tree-item")];
+    const left = [...tree.querySelectorAll<HTMLElement>("jx-tree-item")];
     expect(left.filter((one) => one.getAttribute("tabindex") === "0")).toHaveLength(1);
   });
 
@@ -1047,16 +1088,14 @@ describe("jx-tree, where there is nothing to do", () => {
     const rows: RowSpec[] = [
       { level: 1, label: "alpha", value: "a" },
       {
-        children: [
-          { tagName: "span", attributes: { slot: "status" }, textContent: "beta" },
-        ] as unknown as JxElement[],
+        children: [{ tagName: "span", attributes: { slot: "status" }, textContent: "beta" }],
         label: "",
         level: 1,
         value: "b",
       },
     ];
     const { tree } = await render(treeDoc({ current: "a", rows }));
-    enter([...tree.querySelectorAll<ItemEl>("jx-tree-item")]);
+    enter([...tree.querySelectorAll<HTMLElement>("jx-tree-item")]);
     key(tree, "b");
     expect(tree.current).toBe("b");
   });

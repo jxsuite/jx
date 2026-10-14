@@ -30,6 +30,14 @@ export function modelUriFor(path: string): string {
   return ENTRY_SCHEMA_FILES.has(path) ? `file:///.jx/generated/${path}` : `file:///${path}`;
 }
 
+/** The two Monaco model URIs one pane's comparison of one file uses. */
+export interface DiffModelUris {
+  /** The committed (HEAD) side. */
+  head: string;
+  /** The working-tree side. */
+  work: string;
+}
+
 /**
  * The two model URIs a comparison's Monaco diff editor mounts at.
  *
@@ -50,9 +58,9 @@ export function modelUriFor(path: string): string {
  *
  * @param {string} paneId
  * @param {string} path - Project-relative file path
- * @returns {{ head: string; work: string }}
+ * @returns {DiffModelUris}
  */
-export function diffModelUrisFor(paneId: string, path: string): { head: string; work: string } {
+export function diffModelUrisFor(paneId: string, path: string): DiffModelUris {
   return {
     head: `file:///.jx/diff/${paneId}/head/${path}`,
     work: `file:///.jx/diff/${paneId}/work/${path}`,

@@ -6,6 +6,15 @@ import {
   parentCursorToIframe,
 } from "../src/canvas/iframe-overlay";
 
+/** The one element `root` holds for `selector`; a missing part fails the test right here. */
+function part(root: ParentNode, selector: string): HTMLElement {
+  const el = root.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`overlay layer has no ${selector} element`);
+  }
+  return el;
+}
+
 describe("canvasRectToParent", () => {
   test("maps an iframe rect straight through at zoom 1", () => {
     expect(canvasRectToParent({ height: 20, width: 100, x: 10, y: 5 })).toEqual({
@@ -77,8 +86,8 @@ describe("createOverlayLayer", () => {
   test("builds a non-interactive layer with hidden selection + hover boxes", () => {
     const layer = createOverlayLayer(document);
     expect(layer.root.style.pointerEvents).toBe("none");
-    const sel = layer.root.querySelector(".overlay-selection") as HTMLElement;
-    const hover = layer.root.querySelector(".overlay-hover") as HTMLElement;
+    const sel = part(layer.root, ".overlay-selection");
+    const hover = part(layer.root, ".overlay-hover");
     expect(sel.style.display).toBe("none");
     expect(hover.style.display).toBe("none");
   });
@@ -96,7 +105,7 @@ describe("createOverlayLayer", () => {
 
   test("setSelection positions the box, and null hides it", () => {
     const layer = createOverlayLayer(document);
-    const sel = layer.root.querySelector(".overlay-selection") as HTMLElement;
+    const sel = part(layer.root, ".overlay-selection");
 
     layer.setSelection({ height: 20, left: 10, top: 5, width: 100 });
     expect(sel.style.display).toBe("block");
@@ -111,10 +120,10 @@ describe("createOverlayLayer", () => {
 
   test("setSelection label renders inside the box (stylebook tag chip) and clears when omitted", () => {
     const layer = createOverlayLayer(document);
-    const sel = layer.root.querySelector(".overlay-selection") as HTMLElement;
+    const sel = part(layer.root, ".overlay-selection");
 
     layer.setSelection({ height: 20, left: 10, top: 5, width: 100 }, "<p>");
-    const label = sel.querySelector(".overlay-label") as HTMLElement;
+    const label = part(sel, ".overlay-label");
     expect(label).toBeTruthy();
     expect(label.textContent).toBe("<p>");
     expect(label.style.display).toBe("block");
@@ -132,7 +141,7 @@ describe("createOverlayLayer", () => {
 
   test("setHover positions the hover box independently", () => {
     const layer = createOverlayLayer(document);
-    const hover = layer.root.querySelector(".overlay-hover") as HTMLElement;
+    const hover = part(layer.root, ".overlay-hover");
     layer.setHover({ height: 8, left: 1, top: 2, width: 40 });
     expect(hover.style.display).toBe("block");
     expect(hover.style.left).toBe("1px");
@@ -152,7 +161,7 @@ describe("createOverlayLayer", () => {
 describe("setDropIndicator (Phase 4c)", () => {
   const drop = () => {
     const layer = createOverlayLayer(document);
-    return { box: layer.root.querySelector(".canvas-drop-indicator") as HTMLElement, layer };
+    return { box: part(layer.root, ".canvas-drop-indicator"), layer };
   };
 
   test("starts hidden", () => {

@@ -1,5 +1,6 @@
 /** Build.js — Configurable Bun.build pipeline */
 
+import { isFunction } from "@jxsuite/schema/guards";
 import type { BuildConfig } from "bun";
 
 /**
@@ -66,12 +67,11 @@ export async function rebuild(builds: BuildEntry[], changedFile: string) {
     if (!entry.match) {
       continue;
     }
-    const matches =
-      typeof entry.match === "function"
-        ? entry.match(changedFile)
-        : entry.match instanceof RegExp
-          ? entry.match.test(changedFile)
-          : false;
+    const matches = isFunction(entry.match)
+      ? entry.match(changedFile)
+      : entry.match instanceof RegExp
+        ? entry.match.test(changedFile)
+        : false;
     if (!matches) {
       continue;
     }

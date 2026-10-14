@@ -29,10 +29,13 @@ import { notify, resetNotifications } from "../src/services/notify";
 import { resolveRegion } from "../src/ui/regions";
 import { emptyContext } from "../src/commands/context";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 
 function host(): HTMLElement {
-  return document.querySelector("#bottom-dock") as HTMLElement;
+  const el = document.querySelector<HTMLElement>("#bottom-dock");
+  if (!el) {
+    throw new Error("the #bottom-dock host is missing");
+  }
+  return el;
 }
 
 /** The tab drawn as current. Exactly one, always. */
@@ -134,10 +137,10 @@ function openFormulaTab(): void {
       children: [],
       state: { total: { $expression: { operator: "+", target: 1, value: 2 } } },
       tagName: "div",
-    } as unknown as JxMutableNode,
+    },
     { id: "logic-tab" },
   );
-  tab.session.ui.editingFormula = { defName: "total", type: "def" } as never;
+  tab.session.ui.editingFormula = { defName: "total", type: "def" };
 }
 
 describe("Logic — the takeover that became a tab", () => {
@@ -146,7 +149,7 @@ describe("Logic — the takeover that became a tab", () => {
     setDockCollapsed("bottom", true);
     mountBottomDock();
     await flush(4);
-    expect(host().textContent?.trim()).toBe("");
+    expect(host().textContent.trim()).toBe("");
 
     openFormulaTab();
     await flush(4);
@@ -171,7 +174,7 @@ describe("Logic — the takeover that became a tab", () => {
     mountBottomDock();
     openFormulaTab();
     await flush(4);
-    (host().querySelector('[part="close"]') as HTMLElement).click();
+    host().querySelector<HTMLElement>('[part="close"]')!.click();
     await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
     // A reveal that re-fired on every repaint would be a dock you cannot close.
@@ -240,7 +243,7 @@ describe("Logic — the takeover that became a tab", () => {
     await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(false);
 
-    (host().querySelector('[part="close"]') as HTMLElement).click();
+    host().querySelector<HTMLElement>('[part="close"]')!.click();
     await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
 
@@ -313,7 +316,7 @@ describe("mounting", () => {
     await flush(4);
     // Focus must not land in a `display: none` box and a shot must not crop one — so
     // `view.setBottomDock { open: true }` is what makes the region addressable.
-    expect(host().textContent?.trim()).toBe("");
+    expect(host().textContent.trim()).toBe("");
     expect(resolveRegion("dock.bottom")).toBeNull();
   });
 
@@ -349,7 +352,7 @@ describe("mounting", () => {
   test("the close button collapses the dock", async () => {
     mountBottomDock();
     await flush(4);
-    (host().querySelector('[part="close"]') as HTMLElement).click();
+    host().querySelector<HTMLElement>('[part="close"]')!.click();
     await flush(4);
     expect(shell.docks.bottom.collapsed).toBe(true);
   });
@@ -360,7 +363,7 @@ describe("mounting", () => {
     await flush(4);
     expect(host().querySelectorAll('[part="strip"]')).toHaveLength(1);
     unmountBottomDock();
-    expect(host().textContent?.trim()).toBe("");
+    expect(host().textContent.trim()).toBe("");
     expect(Object.hasOwn(host().dataset, "jxRegion")).toBe(false);
     // And a render after unmount has no host to write to, rather than throwing.
     expect(() => renderBottomDock()).not.toThrow();

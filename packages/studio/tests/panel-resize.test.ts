@@ -56,9 +56,24 @@ const { DOCK_LEAD, bindSplit, syncSplits } = await import("../src/ui/panel-resiz
 // The grid is projected by the shell's own effect, not by the resize module.
 mountShell();
 
-const left = document.querySelector("#resize-left") as SplitElement;
-const right = document.querySelector("#resize-right") as SplitElement;
-const bottom = document.querySelector("#resize-bottom") as SplitElement;
+/** A `jx-split` element as the adapter drives it; anything else fails the test. */
+function asSplit(el: Element | null): SplitElement {
+  if (el?.localName !== "jx-split") {
+    throw new Error("expected a jx-split element");
+  }
+  /* SAFETY: `SplitElement` adds four numeric properties to a `jx-split` — value, min, max and
+     collapse — which `bindSplit` writes on every sync and the tests read back. A `jx-split` accepts
+     them whether or not the kit's definition is loaded (accessors when it is, own properties when it
+     is not), so the tag check above is the whole claim. */
+  return el as SplitElement;
+}
+
+/** A detached `jx-split`, for a test to place in a box of its own. */
+const newSplit = () => asSplit(document.createElement("jx-split"));
+
+const left = asSplit(document.querySelector("#resize-left"));
+const right = asSplit(document.querySelector("#resize-right"));
+const bottom = asSplit(document.querySelector("#resize-bottom"));
 
 /**
  * The element reporting a gesture: `input` on every move, `change` on the commit. With modifiers,
@@ -98,9 +113,9 @@ describe("import-time restore", () => {
   test("saved collapse flags restore shell state and #app classes", () => {
     expect(shell.docks.left.collapsed).toBe(true);
     expect(shell.docks.right.collapsed).toBe(true);
-    const app = document.querySelector("#app") as HTMLElement;
-    expect(app.classList.contains("left-collapsed")).toBe(true);
-    expect(app.classList.contains("right-collapsed")).toBe(true);
+    const app = document.querySelector("#app");
+    expect(app?.classList.contains("left-collapsed")).toBe(true);
+    expect(app?.classList.contains("right-collapsed")).toBe(true);
   });
 });
 
@@ -161,8 +176,7 @@ describe("a gesture the element reports", () => {
     report(left, (DOCK_LEAD.left + 350) / APP_W);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     report(left, (DOCK_LEAD.left + 350) / APP_W, "change");
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as { left?: number };
-    expect(saved.left).toBe(350);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}")).toMatchObject({ left: 350 });
   });
 });
 
@@ -191,6 +205,7 @@ describe("a window resize", () => {
 
 describe("bindSplit on its own", () => {
   function target(over: Partial<ResizeTarget> = {}): ResizeTarget & { written: number[] } {
+    const written: number[] = [];
     const t = {
       axis: "x" as const,
       max: () => 500,
@@ -202,7 +217,7 @@ describe("bindSplit on its own", () => {
       write: (v: number) => {
         t.written.push(v);
       },
-      written: [] as number[],
+      written,
       ...over,
     };
     return t;
@@ -211,7 +226,7 @@ describe("bindSplit on its own", () => {
   function fresh(): SplitElement {
     const box = document.createElement("div");
     stubRect(box, { height: 400, width: 1000 });
-    const el = document.createElement("jx-split") as SplitElement;
+    const el = newSplit();
     box.append(el);
     document.body.append(box);
     return el;
@@ -238,7 +253,7 @@ describe("bindSplit on its own", () => {
   });
 
   test("a track that cannot be measured writes nothing, rather than a share of zero", () => {
-    const el = document.createElement("jx-split") as SplitElement;
+    const el = newSplit();
     const orphan = document.createElement("div");
     orphan.append(el);
     // Not in the document: every ancestor measures 0×0, exactly as an unlaid-out one would.
@@ -267,11 +282,11 @@ describe("bindSplit on its own", () => {
     const el = fresh();
     const t = target({ read: () => 300 });
     const unbind = bindSplit(el, t);
-    (t as { read: () => number }).read = () => 400;
+    t.read = () => 400;
     syncSplits();
     expect(el.value).toEqual(near(0.4));
     unbind();
-    (t as { read: () => number }).read = () => 100;
+    t.read = () => 100;
     syncSplits();
     expect(el.value).toEqual(near(0.4));
   });
@@ -281,10 +296,10 @@ describe("the snap, and the modifiers it is given", () => {
   /* This is what `setupHandle` survived for, and why it no longer has to: the element reports the
      modifiers every `input` was made with, so a host's snap — and its bypass — can run in the same
      place the clamp does. */
-  function snapping(): { el: SplitElement; seen: SplitModifiers[]; written: number[] } {
+  function snapping() {
     const box = document.createElement("div");
     stubRect(box, { height: 400, width: 1000 });
-    const el = document.createElement("jx-split") as SplitElement;
+    const el = newSplit();
     box.append(el);
     document.body.append(box);
     const seen: SplitModifiers[] = [];
@@ -351,10 +366,10 @@ describe("a gesture START re-derives the shares", () => {
      a dock opening or a pane split changes with no event this adapter hears. So the four writes are
      redone on `pointerdown` and `keydown`, in the capture phase, before the element records where
      the gesture started; otherwise the first pixel of a drag is a jump. */
-  function bound(before?: (el: SplitElement) => void): { el: SplitElement; box: HTMLElement } {
+  function bound(before?: (el: SplitElement) => void) {
     const box = document.createElement("div");
     stubRect(box, { height: 400, width: 1000 });
-    const el = document.createElement("jx-split") as SplitElement;
+    const el = newSplit();
     box.append(el);
     document.body.append(box);
     before?.(el);
@@ -415,7 +430,7 @@ describe("a target the handle moves twice as fast as", () => {
   function centred(scale: number, track = 1000) {
     const box = document.createElement("div");
     stubRect(box, { height: 400, width: track });
-    const el = document.createElement("jx-split") as SplitElement;
+    const el = newSplit();
     box.append(el);
     document.body.append(box);
     let size = 400;
@@ -461,7 +476,7 @@ describe("a target the handle moves twice as fast as", () => {
     const leads: number[] = [];
     const box = document.createElement("div");
     stubRect(box, { height: 400, width: 800 });
-    const el = document.createElement("jx-split") as SplitElement;
+    const el = newSplit();
     box.append(el);
     document.body.append(box);
     bindSplit(el, {
@@ -487,10 +502,9 @@ describe("the fixed tracks the docks sit behind", () => {
      the two must agree or every share is off by a column. Read from the source of the sheet rather
      than the sheet, since the JSON is what a person edits. */
   test("agree with styles/shell-frame.json", async () => {
-    const frame = JSON.parse(
-      await Bun.file(new URL("../styles/shell-frame.json", import.meta.url)).text(),
-    ) as Record<string, unknown>;
-    const text = JSON.stringify(frame);
+    const source = await Bun.file(new URL("../styles/shell-frame.json", import.meta.url)).text();
+    // Parsed and re-serialised, so the assertions read the JSON's values rather than its layout.
+    const text = JSON.stringify(JSON.parse(source));
     expect(text).toContain(`[rail] ${DOCK_LEAD.left}px`);
     expect(text).toContain(`${DOCK_LEAD.bottom}px"`);
     expect(DOCK_LEAD.right).toBe(0);

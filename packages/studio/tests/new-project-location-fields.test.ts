@@ -16,6 +16,7 @@ import {
   installMockPlatform,
   mountOverlayLayers,
   npDismiss,
+  npLocation,
   npName,
   npPart,
   npPress,
@@ -43,6 +44,16 @@ const { initLayers } = await import("../src/ui/layers");
 
 mountOverlayLayers(document.body);
 initLayers();
+
+/** Pick `value` in the wizard's `<select>` inside the `part` field, the way a reader commits it. */
+function choose(part: string, value: string): void {
+  const select = npPart(part)?.querySelector('[part="control"]');
+  if (!(select instanceof HTMLSelectElement)) {
+    throw new Error(`the "${part}" field draws no <select>`);
+  }
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
 
 const REPOS: RepoInfo[] = [
   {
@@ -106,12 +117,12 @@ describe("path destinations", () => {
     let picks = 0;
     installMockPlatform({
       createDestination: "path",
-      pickDirectory: (() => {
+      pickDirectory: () => {
         picks += 1;
         return new Promise<string | null>((resolve) => {
           release = resolve;
         });
-      }) as never,
+      },
     });
     expect(locationView("s").canBrowse).toBe(true);
     expect(locationView("s").browseLabel).toBe("Browse…");
@@ -136,7 +147,7 @@ describe("path destinations", () => {
   test("a cancelled Browse… leaves the typed Location untouched", async () => {
     installMockPlatform({
       createDestination: "path",
-      pickDirectory: (async () => null) as never,
+      pickDirectory: async () => null,
     });
     setLocationParent("/home/dev/Sites");
     await browseLocation(() => {});
@@ -152,9 +163,9 @@ describe("path destinations", () => {
     const reason = 'Jx Studio could not look up where "Sites" is: Failed to fetch.';
     installMockPlatform({
       createDestination: "path",
-      pickDirectory: (async () => {
+      pickDirectory: async () => {
         throw new Error(reason);
-      }) as never,
+      },
     });
     setLocationParent("/home/dev/Typed");
     let repaints = 0;
@@ -181,11 +192,11 @@ describe("path destinations", () => {
   test("a failure with no message still says something", async () => {
     installMockPlatform({
       createDestination: "path",
-      pickDirectory: (async () => {
+      pickDirectory: async () => {
         const silent = new Error("placeholder");
         silent.message = "";
         throw silent;
-      }) as never,
+      },
     });
     await browseLocation(() => {});
     expect(locationView("s").error).toBe(
@@ -197,7 +208,7 @@ describe("path destinations", () => {
     installMockPlatform({
       createDestination: "path",
       // oxlint-disable-next-line eslint/prefer-promise-reject-errors -- the non-Error rejection IS the case under test: an RPC layer that rejects with a bare string.
-      pickDirectory: (() => Promise.reject("RPC timed out")) as never,
+      pickDirectory: () => Promise.reject("RPC timed out"),
     });
     await browseLocation(() => {});
     expect(locationView("s").error).toBe("RPC timed out");
@@ -207,7 +218,7 @@ describe("path destinations", () => {
     let next: () => Promise<string | null> = () => Promise.reject(new Error("could not open"));
     installMockPlatform({
       createDestination: "path",
-      pickDirectory: (() => next()) as never,
+      pickDirectory: () => next(),
     });
     await browseLocation(() => {});
     expect(locationView("s").error).toBe("could not open");
@@ -429,12 +440,8 @@ describe("the wizard on a repo platform", () => {
     npPress("Confirm");
     await flush(3);
 
-    const owner = npPart("owner")!.querySelector('[part="control"]') as HTMLSelectElement;
-    owner.value = "zoe";
-    owner.dispatchEvent(new Event("change", { bubbles: true }));
-    const visibility = npPart("visibility")!.querySelector('[part="control"]') as HTMLSelectElement;
-    visibility.value = "public";
-    visibility.dispatchEvent(new Event("change", { bubbles: true }));
+    choose("owner", "zoe");
+    choose("visibility", "public");
     await flush(2);
 
     npType(npSlug(), "picked");
@@ -460,7 +467,7 @@ describe("the wizard on a repo platform", () => {
     await flush(2);
     expect(npPart("destination-failure")?.textContent).toContain("Choose a location");
 
-    npType(npPart("location")!.querySelector('[part="input"]') as HTMLInputElement, "/tmp/sites");
+    npType(npLocation(), "/tmp/sites");
     await flush(2);
     expect(npPart("destination-failure")).toBeNull();
   });

@@ -182,6 +182,8 @@ describe("the pod reads what this writes", () => {
   test("the pod's inset names the variable, so renaming either side goes red", () => {
     /* JSON cannot import a constant, so `pane-context.json` and this module are two writers of one
        name — the join `pane-grid-surface.test.ts` makes for the cell's own part. */
+    /* SAFETY: `pane-context.json` is a committed surface document whose top-level `style` maps each
+       selector to a block of string declarations; a missing pod block reads as undefined below. */
     const doc = JSON.parse(readFileSync(join(SRC, "surfaces", "pane-context.json"), "utf8")) as {
       style: Record<string, Record<string, string>>;
     };

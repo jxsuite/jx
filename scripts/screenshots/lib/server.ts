@@ -315,7 +315,7 @@ export interface GitFixture {
 export const FIXTURE_RECIPE = "fixture.json";
 
 async function git(cwd: string, args: string[], at?: string): Promise<void> {
-  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
+  const env = { ...process.env };
   if (at) {
     env.GIT_AUTHOR_DATE = at;
     env.GIT_COMMITTER_DATE = at;
@@ -375,6 +375,9 @@ async function sealOverlayRepo(dest: string): Promise<void> {
  * constant.
  */
 export async function materialiseGitFixture(source: string, dest: string): Promise<void> {
+  /* SAFETY: overlayProject() calls this only for a directory carrying fixture.json, and the one such
+   * recipe in the tree, fixtures/repos/showcase, is authored as a GitFixture and is materialised end
+   * to end by server.test.ts, which asserts the commits and dirty set it describes. */
   const recipe = (await Bun.file(join(source, FIXTURE_RECIPE)).json()) as GitFixture;
   await rm(dest, { force: true, recursive: true });
   await mkdir(dest, { recursive: true });

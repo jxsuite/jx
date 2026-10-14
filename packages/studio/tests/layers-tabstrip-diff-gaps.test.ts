@@ -33,6 +33,7 @@ import { defaultCommands, noopCommandDeps } from "../src/commands/defaults";
 import { resetPanels } from "../src/panels/panel-registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
+import { CHILD_COUNT, VIEWPORT } from "./shared-fixtures";
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: () => () => {},
@@ -49,18 +50,21 @@ const {
 } = await import("../src/panels/layers-panel");
 const { dismissOverflowMenu, mount, unmount } = await import("../src/panels/tab-strip");
 
+/** What {@link captureErrors} collected, and how to stop collecting. */
+interface ErrorCapture {
+  messages: string[];
+  stop: () => void;
+}
+
 /** Errors happy-dom reports for a listener that threw — a dispatch never rethrows them. */
-function captureErrors(): { messages: string[]; stop: () => void } {
+function captureErrors(): ErrorCapture {
   const messages: string[] = [];
-  const onError = (e: Event) => messages.push((e as ErrorEvent).message ?? "error");
+  const onError = (e: Event) => messages.push(e instanceof ErrorEvent ? e.message : "error");
   window.addEventListener("error", onError);
   return { messages, stop: () => window.removeEventListener("error", onError) };
 }
 
 // ─── The Outline ──────────────────────────────────────────────────────────────
-
-/** A Navigator tall enough for ten rows, which is a real one at 24px a row. */
-const VIEWPORT = 240;
 
 let scroller: HTMLElement;
 let host: HTMLElement;
@@ -69,12 +73,21 @@ let treeTop: () => number;
 /** What the panel's `rerender` does — a real repaint, or a spy that stands in for one. */
 let onRerender: () => void;
 
+/** The first HTML element under `scope` matching `selector`, or a failure naming the selector. */
+function required(scope: ParentNode, selector: string): HTMLElement {
+  const found = scope.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return found;
+}
+
 /** Happy-dom performs no layout, so the box the window is computed from is stubbed by hand. */
 function place(rowCount: number): void {
-  const tree = host.querySelector<HTMLElement>('[part="tree"]');
+  const tree = host.querySelector('[part="tree"]');
   if (tree) {
-    (tree as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
-      ({ height: rowCount * OUTLINE_ROW_HEIGHT, top: treeTop() }) as DOMRect;
+    // A getter, not a snapshot: `treeTop` follows the scroller, which moves after this call.
+    tree.getBoundingClientRect = () => new DOMRect(0, treeTop(), 0, rowCount * OUTLINE_ROW_HEIGHT);
   }
 }
 
@@ -109,11 +122,11 @@ function setUpOutlineDom(): void {
     <div id="layer-dialog"></div>
   `;
   initLayers();
-  scroller = document.querySelector("#scroller") as HTMLElement;
+  scroller = required(document, "#scroller");
   scroller.style.overflowY = "auto";
   Object.defineProperty(scroller, "clientHeight", { configurable: true, value: VIEWPORT });
   stubRect(scroller, { height: VIEWPORT, top: 0 });
-  host = document.querySelector(".panel-body") as HTMLElement;
+  host = required(document, ".panel-body");
   view._layersCollapsed = new Set();
   view.dndCleanups = [];
   treeTop = () => -scroller.scrollTop;
@@ -122,13 +135,13 @@ function setUpOutlineDom(): void {
 
 describe("the Outline's walk off the end of its model", () => {
   /** The last row is expandable and its only child is TEXT — drawn, but never a tree item. */
-  const TAIL_DOC = {
+  const TAIL_DOC: JxMutableNode = {
     children: [
       { tagName: "p", textContent: "One" },
       { children: ["just words"], tagName: "section" },
     ],
     tagName: "div",
-  } as unknown as JxMutableNode;
+  };
 
   /** Root + p + section + the section's text row. */
   const ROW_COUNT = 4;
@@ -216,7 +229,6 @@ describe("the Outline's walk off the end of its model", () => {
 });
 
 describe("a keyboard jump the repaint still cannot draw", () => {
-  const CHILD_COUNT = 200;
   const ROW_COUNT = CHILD_COUNT + 1;
 
   function makeDoc(): JxMutableNode {
@@ -226,7 +238,7 @@ describe("a keyboard jump the repaint still cannot draw", () => {
         textContent: `Row ${index}`,
       })),
       tagName: "div",
-    } as JxMutableNode;
+    };
   }
 
   beforeEach(async () => {
@@ -368,18 +380,20 @@ describe("the tab strip", () => {
 
   function open(id: string) {
     return openTab({
-      document: { children: [], tagName: "div" } as JxMutableNode,
+      document: { children: [], tagName: "div" },
       documentPath: `/project/${id}.json`,
       id,
     });
   }
 
   function chips(): HTMLElement[] {
-    return [...stripHost.querySelectorAll('[part="tab"]')] as HTMLElement[];
+    return [...stripHost.querySelectorAll('[part="tab"]')].filter(
+      (el) => el instanceof HTMLElement,
+    );
   }
 
   function strip(): HTMLElement {
-    return stripHost.querySelector('[part="tabs"]') as HTMLElement;
+    return required(stripHost, '[part="tabs"]');
   }
 
   /** Happy-dom performs no layout (scrollWidth/clientWidth are 0); stub them to fake overflow. */
@@ -416,7 +430,7 @@ describe("the tab strip", () => {
       <div id="layer-dialog"></div>
     `;
     initLayers();
-    stripHost = document.querySelector("#tab-strip") as HTMLElement;
+    stripHost = required(document, "#tab-strip");
     closeAllTabs();
     workspace.closedTabs = [];
     mount(stripHost);
@@ -438,12 +452,12 @@ describe("the tab strip", () => {
     open("c");
     await flush();
 
-    (stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
+    required(stripHost, '[part="overflow"]:not([hidden])').click();
     await flush(3);
     expect(popovers()).toHaveLength(1);
 
     // A mousedown inside the menu is not "outside": the menu is there to be clicked.
-    const item = document.querySelector("#layer-popover jx-menu-item") as HTMLElement;
+    const item = required(document, "#layer-popover jx-menu-item");
     item.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     await flush();
     expect(popovers()).toHaveLength(1);
@@ -468,7 +482,7 @@ describe("the tab strip", () => {
     open("c");
     await flush();
 
-    const chevron = () => stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
+    const chevron = () => required(stripHost, '[part="overflow"]:not([hidden])');
     chevron().click();
     await flush(3);
     expect(document.querySelectorAll("#layer-popover jx-menu-item")).toHaveLength(3);

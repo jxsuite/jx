@@ -8,6 +8,7 @@
  * (specs/extensions.md §13).
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import type {
   DataConnectionsResponse,
@@ -18,7 +19,7 @@ import type {
   DataRowsQuery,
   DataRowsResult,
   DataRowUpdate,
-  SecretsSetRequest,
+  KeyValuePatch,
   SecretsSetResponse,
   StudioPlatform,
 } from "../types";
@@ -34,18 +35,18 @@ function platformOrNull(): StudioPlatform | null {
 
 /** True when the platform serves the data grid (the family's gating member is dataRows). */
 export function dataSurfaceAvailable(): boolean {
-  return typeof platformOrNull()?.dataRows === "function";
+  return isFunction(platformOrNull()?.dataRows);
 }
 
 /** True when the platform can store secret values (backs the "secret" form control). */
 export function secretsAvailable(): boolean {
-  return typeof platformOrNull()?.setSecrets === "function";
+  return isFunction(platformOrNull()?.setSecrets);
 }
 
 /** Connections with configured state and table names; null when the backend lacks the route. */
 export async function fetchConnections(): Promise<DataConnectionsResponse | null> {
   const platform = platformOrNull();
-  if (typeof platform?.dataConnections !== "function") {
+  if (!isFunction(platform?.dataConnections)) {
     return null;
   }
   return platform.dataConnections();
@@ -54,7 +55,7 @@ export async function fetchConnections(): Promise<DataConnectionsResponse | null
 /** Probe one connection; degrades to an error result instead of throwing. */
 export async function testConnection(connection: string): Promise<DataConnectionTestResult> {
   const platform = platformOrNull();
-  if (typeof platform?.dataConnectionTest !== "function") {
+  if (!isFunction(platform?.dataConnectionTest)) {
     return { error: "Connection tests are not supported by this backend", ok: false };
   }
   try {
@@ -70,7 +71,7 @@ export async function pushSchema(opts?: {
   dryRun?: boolean;
 }): Promise<DataPushResult> {
   const platform = platformOrNull();
-  if (typeof platform?.dataPush !== "function") {
+  if (!isFunction(platform?.dataPush)) {
     return { applied: false, errors: ["Schema push is not supported by this backend"], plan: [] };
   }
   try {
@@ -88,10 +89,10 @@ export async function pushSchema(opts?: {
 function requireMember<K extends keyof StudioPlatform>(name: K): NonNullable<StudioPlatform[K]> {
   const platform = platformOrNull();
   const member = platform?.[name];
-  if (member === undefined || member === null) {
+  if (member === undefined) {
     throw new Error(`The ${String(name)} surface is not supported by this backend`);
   }
-  return member as NonNullable<StudioPlatform[K]>;
+  return member;
 }
 
 /** Page a table's rows (grid callers handle errors per load). */
@@ -99,11 +100,13 @@ export function fetchRows(query: DataRowsQuery): Promise<DataRowsResult> {
   return requireMember("dataRows")(query);
 }
 
-export function insertRow(req: DataRowInsert): Promise<{ row: Record<string, unknown> }> {
+/** Insert one row; the platform answers with the row as stored. */
+export function insertRow(req: DataRowInsert) {
   return requireMember("dataInsertRow")(req);
 }
 
-export function updateRow(req: DataRowUpdate): Promise<{ row: Record<string, unknown> }> {
+/** Update one row; the platform answers with the row as stored. */
+export function updateRow(req: DataRowUpdate) {
   return requireMember("dataUpdateRow")(req);
 }
 
@@ -114,14 +117,14 @@ export function deleteRow(req: DataRowDelete): Promise<{ ok: boolean }> {
 /** Configured secret env-var NAMES; null when the backend has no secrets surface. */
 export async function listSecretNames(): Promise<string[] | null> {
   const platform = platformOrNull();
-  if (typeof platform?.listSecrets !== "function") {
+  if (!isFunction(platform?.listSecrets)) {
     return null;
   }
   return platform.listSecrets();
 }
 
 /** Write/remove secrets through the platform store (values flow in, names come back). */
-export function saveSecrets(req: SecretsSetRequest): Promise<SecretsSetResponse> {
+export function saveSecrets(req: KeyValuePatch): Promise<SecretsSetResponse> {
   return requireMember("setSecrets")(req);
 }
 
@@ -147,9 +150,10 @@ export function deriveSecretEnvName(
       .replaceAll(/[^A-Za-z0-9]+/g, "_")
       .replaceAll(/^_+|_+$/g, "")
       .toUpperCase();
-  const parts = [entryKey ?? sectionKey, fieldKey.replace(/Env$/, "")]
-    .map((part) => constant(part))
-    .filter(Boolean);
+  const parts = [entryKey ?? sectionKey, fieldKey.replace(/Env$/, "")].flatMap((part) => {
+    const segment = constant(part);
+    return segment ? [segment] : [];
+  });
   const name = parts.join("_") || "SECRET";
   return /^\d/.test(name) ? `JX_${name}` : name;
 }

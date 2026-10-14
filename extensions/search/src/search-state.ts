@@ -16,6 +16,10 @@
  */
 
 import { sidecarAssetPath } from "@jxsuite/schema/asset-paths";
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type * as ClientModule from "./client.ts";
+import type { QueryOptions, SearchResult, SearchResultGroup } from "./client.ts";
 
 /** The npm specifier of the headless browser client, bundled by the site build. */
 export const CLIENT_SPECIFIER = "npm:@jxsuite/search/client";
@@ -38,31 +42,47 @@ export interface SearchDef {
    * reader the English copy of the page they are on. `null` searches every language.
    */
   locale?: string | null;
-  default?: unknown;
-  [key: string]: unknown;
+  default?: JsonValue;
+  /** Any other key an author wrote on the def: document JSON this class does not read. */
+  [key: string]: JsonValue | undefined;
 }
 
 /** The context object hosts pass to `lower(def, context)`. */
 export interface LowerContext {
-  projectConfig?: { search?: { output?: string } } & Record<string, unknown>;
+  /** The project config. `lower` reads only the raw `search` section's `output`. */
+  projectConfig?: { search?: { output?: string } };
   root?: string;
-  route?: Record<string, unknown>;
+  /** The route being compiled (prototype-resolver.ts passes its source path and path params). */
+  route?: { sourcePath?: string; _pathParams?: Record<string, string> };
 }
+
+/** The core `Function` def a `Search` def lowers into, plus the `$bundle` host hint. */
+export interface LoweredSearchDef {
+  /** Client modules the site build must bundle; the host strips the key after reading it. */
+  $bundle: string[];
+  $prototype: "Function";
+  body: string;
+  timing: "client";
+  default?: JsonValue;
+}
+
+/** The part of the bundled client module `resolve` calls. */
+type SearchClient = Pick<typeof ClientModule, "preload" | "query">;
 
 /** True when running in a browser; node hosts degrade to empty results. */
 function inBrowser(): boolean {
-  return typeof document !== "undefined" && typeof fetch === "function";
+  return typeof document !== "undefined" && isFunction(globalThis.fetch);
 }
 
 /** Compile a def's `query` into a client JS expression (`$ref` → state path, literal → string). */
 function queryExpression(query: SearchDef["query"]): string {
-  if (typeof query === "object" && query !== null && typeof query.$ref === "string") {
+  if (isNonNullObject(query) && isString(query.$ref)) {
     const path = query.$ref.replace(/^#\//, "").split("/");
     if (path[0] === "state" && path.length > 1) {
       return ["state", ...path.slice(1)].join(".");
     }
   }
-  return JSON.stringify(typeof query === "string" ? query : "");
+  return JSON.stringify(isString(query) ? query : "");
 }
 
 export class Search {
@@ -73,26 +93,28 @@ export class Search {
   }
 
   /** Grouped search results for the configured query — browser only. */
-  async resolve(): Promise<unknown> {
+  async resolve(): Promise<SearchResultGroup[] | SearchResult[]> {
     if (!inBrowser()) {
       console.warn("Search resolves to [] outside the browser — search is a client interaction");
       return [];
     }
     const clientUrl = sidecarAssetPath(CLIENT_SPECIFIER);
-    const client = (await import(clientUrl)) as {
-      preload: (url?: string) => Promise<void>;
-      query: (
-        q: string,
-        opts?: { limit?: number; group?: boolean; locale?: string | null },
-      ) => unknown;
-    };
+    /*
+     * SAFETY: `clientUrl` is the sidecar asset path of CLIENT_SPECIFIER, which the site build
+     * bundles from ./client.ts (the `$bundle` hint `lower` emits), so the module it serves exports
+     * that file's `preload` and `query`.
+     */
+    const client = (await import(clientUrl)) as SearchClient;
     await client.preload(this.indexUrl());
-    const query = typeof this.config.query === "string" ? this.config.query : "";
-    return client.query(query, {
+    const query = isString(this.config.query) ? this.config.query : "";
+    const opts: QueryOptions = {
       group: this.config.group ?? true,
       limit: this.config.limit ?? 8,
-      ...(this.config.locale === undefined ? {} : { locale: this.config.locale }),
-    });
+    };
+    if (this.config.locale !== undefined) {
+      opts.locale = this.config.locale;
+    }
+    return client.query(query, opts);
   }
 
   /** The index URL: def override, then the project's `search.output`, then the default. */
@@ -105,7 +127,7 @@ export class Search {
    * bundled client + index, then queries reactively. `$bundle` registers the client module with the
    * sidecar bundler (extensions.md §8.3).
    */
-  static lower(def: SearchDef, context: LowerContext = {}): Record<string, unknown> {
+  static lower(def: SearchDef, context: LowerContext = {}): LoweredSearchDef {
     const indexUrl = def.index ?? context.projectConfig?.search?.output ?? "/search-index.json";
     const clientUrl = sidecarAssetPath(CLIENT_SPECIFIER);
     /*
@@ -113,11 +135,11 @@ export class Search {
      * `undefined` through JSON — the client reads "absent" as "the page's own language", which is
      * the default a search box should have and the one nobody has to configure.
      */
-    const opts = JSON.stringify({
-      group: def.group ?? true,
-      limit: def.limit ?? 8,
-      ...(def.locale === undefined ? {} : { locale: def.locale }),
-    });
+    const queryOptions: QueryOptions = { group: def.group ?? true, limit: def.limit ?? 8 };
+    if (def.locale !== undefined) {
+      queryOptions.locale = def.locale;
+    }
+    const opts = JSON.stringify(queryOptions);
     const body = [
       // Reading the ready flag makes the computed re-run when the client finishes loading.
       "void state.__jxSearchReady;",
@@ -131,12 +153,15 @@ export class Search {
       "const m = globalThis.__jxSearch.m;",
       `return m && m.isReady() ? m.query(${queryExpression(def.query)}, ${opts}) : [];`,
     ].join("\n");
-    return {
+    const lowered: LoweredSearchDef = {
       $bundle: [CLIENT_SPECIFIER],
       $prototype: "Function",
       body,
       timing: "client",
-      ...(def.default === undefined ? {} : { default: def.default }),
     };
+    if (def.default !== undefined) {
+      lowered.default = def.default;
+    }
+    return lowered;
   }
 }

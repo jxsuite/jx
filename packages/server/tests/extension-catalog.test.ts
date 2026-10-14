@@ -10,18 +10,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { buildExtensionCatalog } from "../src/extension-catalog.ts";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 interface FakeDep {
   name: string;
   /** Omit to write no exports entry for the manifest — the "declared but unresolvable" case. */
   exportsManifest?: boolean;
   jx?: boolean;
-  manifest?: Record<string, unknown> | null;
-  classes?: Record<string, Record<string, unknown>>;
+  manifest?: JsonObject | null;
+  classes?: Record<string, JsonObject>;
 }
 
 /** A project root with a package.json and a hand-built node_modules. */
-function project(deps: FakeDep[], projectJson: Record<string, unknown> = {}): string {
+function project(deps: FakeDep[], projectJson: JsonObject = {}): string {
   const root = mkdtempSync(join(tmpdir(), "jx-srv-catalog-"));
   const dependencies = Object.fromEntries(deps.map((d) => [d.name, "^1.0.0"]));
   writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies, name: "site" }));
@@ -35,18 +36,18 @@ function project(deps: FakeDep[], projectJson: Record<string, unknown> = {}): st
       classes[className] = `./src/${className}.class.json`;
       writeFileSync(join(dir, "src", `${className}.class.json`), JSON.stringify(descriptor));
     }
-    writeFileSync(
-      join(dir, "package.json"),
-      JSON.stringify({
-        exports:
-          dep.exportsManifest === false
-            ? { ".": "./src/index.js" }
-            : { ".": "./src/index.js", "./jx-extension.json": "./jx-extension.json" },
-        ...(dep.jx === false ? {} : { jx: "./jx-extension.json" }),
-        name: dep.name,
-        version: "1.0.0",
-      }),
-    );
+    const packageJson: JsonObject = {
+      exports:
+        dep.exportsManifest === false
+          ? { ".": "./src/index.js" }
+          : { ".": "./src/index.js", "./jx-extension.json": "./jx-extension.json" },
+    };
+    if (dep.jx !== false) {
+      packageJson.jx = "./jx-extension.json";
+    }
+    packageJson.name = dep.name;
+    packageJson.version = "1.0.0";
+    writeFileSync(join(dir, "package.json"), JSON.stringify(packageJson));
     if (dep.manifest !== null) {
       writeFileSync(
         join(dir, "jx-extension.json"),
@@ -67,7 +68,7 @@ function project(deps: FakeDep[], projectJson: Record<string, unknown> = {}): st
 async function withProject<T>(
   deps: FakeDep[],
   fn: (root: string) => Promise<T>,
-  projectJson?: Record<string, unknown>,
+  projectJson?: JsonObject,
 ): Promise<T> {
   const root = project(deps, projectJson);
   try {

@@ -39,15 +39,22 @@ import {
 } from "../src/workspace/pane-derive";
 import { DEFAULT_PANE_SPLIT, resetShellSurfaces, shell } from "../src/shell";
 import type { CanvasPanel } from "../src/types";
+import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `with-dom.js`, imported first, ran GlobalRegistrator.register(), which copies the
+   happy-dom window's members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns
+   `setURL`) among them; this `lib.dom` only lacks the declaration. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 interface FakeChannel {
-  posts: Record<string, unknown>[];
-  deliver: (m: Record<string, unknown>) => void;
+  posts: ParentToIframe[];
+  deliver: (m: IframeToParent) => void;
   /** Whether the host really disposed this channel — the only honest teardown signal there is. */
   disposed?: boolean;
 }
@@ -55,18 +62,18 @@ const channels: FakeChannel[] = [];
 
 void mock.module("../src/canvas/iframe-channel", () => ({
   postMessageChannel: () => {
-    let handler: ((m: Record<string, unknown>) => void) | null = null;
+    let handler: ((m: IframeToParent) => void) | null = null;
     const rec: FakeChannel = { deliver: (m) => handler?.(m), posts: [] };
     channels.push(rec);
     return {
       dispose: () => {
         rec.disposed = true;
       },
-      onMessage: (h: (m: Record<string, unknown>) => void) => {
+      onMessage: (h: (m: IframeToParent) => void) => {
         handler = h;
         return () => {};
       },
-      post: (m: Record<string, unknown>) => rec.posts.push(m),
+      post: (m: ParentToIframe) => rec.posts.push(m),
     };
   },
 }));
@@ -85,7 +92,7 @@ let resolveCalls = 0;
 /** The `documentPath` of the tab each resolution was asked FOR — see the last describe. */
 const resolvedFor: (string | null)[] = [];
 void mock.module("../src/canvas/canvas-live-render", () => ({
-  resolveCanvasDocument: (_doc: unknown, tab: { documentPath?: string } | null) => {
+  resolveCanvasDocument: (_doc: JxMutableNode, tab: { documentPath?: string } | null) => {
     resolveCalls += 1;
     resolvedFor.push(tab?.documentPath ?? null);
     return Promise.resolve({
@@ -145,12 +152,31 @@ async function splitIntoTwoCanvasPanes() {
  * mount in turn, which every case here used to do, is the one ordering in which the prepared-pass
  * cache could not be evicted.
  */
-function beginArtboard(paneId: string, gen: number, doc: object, tabId: string) {
+function beginArtboard(paneId: string, gen: number, doc: JxMutableNode, tabId: string) {
   const surface = surfaceForPane(paneId);
   const canvasEl = document.createElement("div");
   surface.wrap.append(canvasEl);
-  const mounted = mountIframeCanvas(gen, doc as never, canvasEl, null, tabId);
+  const mounted = mountIframeCanvas(gen, doc, canvasEl, null, tabId);
   return { canvasEl, channel: channels.at(-1)!, mounted, paneId, gen };
+}
+
+/**
+ * A panel record carrying only the members a test names, standing in for the artboard a real pass
+ * would have recorded after the suite drained the pane (`splitIntoTwoCanvasPanes`).
+ */
+function stubPanel(members: Partial<CanvasPanel>): CanvasPanel {
+  /* SAFETY: Only these members are read off a stub: the patch gate (`classifyOps`) reads `ready`,
+     `panelHostingCanvas` matches `canvas`, teardown (`releaseMountedPanels`, and a render pass's
+     own reset) calls `renderScope?.stop()` and then nulls it, and the `hit` handler reads
+     `mediaName` behind a truthiness test an absent name fails, exactly as an Edit panel's empty
+     one does. The layout members (`element`, `viewport`, `scrollContainer`, `_width`) are read
+     only by a render pass laying panels out, and a pass empties the panel list before that. */
+  return members as CanvasPanel;
+}
+
+/** A render scope that records being stopped; `run` executes its callback directly. */
+function stubScope(stop: () => void): NonNullable<CanvasPanel["renderScope"]> {
+  return { run: (fn) => fn(), stop };
 }
 
 /** Take a started artboard all the way to `ready` and record it on its pane. */
@@ -158,19 +184,21 @@ function settleArtboard(started: ReturnType<typeof beginArtboard>) {
   const { canvasEl, channel, gen, paneId } = started;
   channel.deliver({ kind: "ready" });
   channel.deliver({ gen, kind: "renderComplete" });
-  surfaceForPane(paneId).panels.push({ canvas: canvasEl, ready: true } as unknown as CanvasPanel);
+  surfaceForPane(paneId).panels.push(stubPanel({ canvas: canvasEl, ready: true }));
   return { canvasEl, channel };
 }
 
 /** Mount one artboard of `gen` onto a pane's stage and take it all the way to `ready`. */
-async function mountArtboard(paneId: string, gen: number, doc: object, tabId: string) {
+async function mountArtboard(paneId: string, gen: number, doc: JxMutableNode, tabId: string) {
   const started = beginArtboard(paneId, gen, doc, tabId);
   await started.mounted;
   return settleArtboard(started);
 }
 
-const renders = (channel: FakeChannel) => channel.posts.filter((p) => p.kind === "render");
-const patches = (channel: FakeChannel) => channel.posts.filter((p) => p.kind === "patch");
+const renders = (channel: FakeChannel) =>
+  channel.posts.flatMap((p) => (p.kind === "render" ? [p] : []));
+const patches = (channel: FakeChannel) =>
+  channel.posts.flatMap((p) => (p.kind === "patch" ? [p] : []));
 
 beforeEach(() => {
   channels.length = 0;
@@ -396,8 +424,8 @@ describe("one document on two stages", () => {
     console.log(
       `[two-pane hosts] one document on two stages: ${canvasPerf.patchedOps} patchedOps, ` +
         `${patches(wide.channel).length + patches(side.channel).length} host posts ` +
-        `(gen ${patches(wide.channel)[0]!.gen as number} / ` +
-        `${patches(side.channel)[0]!.gen as number}), ` +
+        `(gen ${patches(wide.channel)[0]!.gen} / ` +
+        `${patches(side.channel)[0]!.gen}), ` +
         `${canvasPerf.renderPreparations} preparations, ${canvasPerf.escalations} escalations`,
     );
   });
@@ -421,7 +449,7 @@ describe("a live frame survives the grid", () => {
     const sideFrame = side.canvasEl.querySelector("iframe");
     expect(homeFrame).toBeTruthy();
 
-    const gridEl = document.querySelector("#pane-grid") as HTMLElement;
+    const gridEl = document.querySelector<HTMLElement>("#pane-grid")!;
     /* The RECT rather than `clientWidth`: `jx-split` measures the box it divides for itself, which
        is what lets the 320px floor stay a pixel floor across a window resize with no listener. */
     stubRect(gridEl, { height: 800, width: 1000 });
@@ -434,7 +462,7 @@ describe("a live frame survives the grid", () => {
     // 2 · A multi-step splitter drag — five `shell.paneSplit` writes, five passes through the
     // Effect. This is the gesture that used to remove and re-insert the handle on every move.
     // The PANE splitter, by its part: the Edit column's two width handles are `jx-split`s too.
-    const splitter = gridEl.querySelector('jx-split[part="splitter"]') as HTMLElement;
+    const splitter = gridEl.querySelector<HTMLElement>('jx-split[part="splitter"]')!;
     splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
     for (const clientX of [520, 560, 600, 620, 640]) {
       splitter.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY: 0 }));
@@ -496,9 +524,8 @@ describe("unsplit actually releases", () => {
     sidePanels.splice(
       0,
       sidePanels.length,
-      ...[wide, narrow].map(
-        ({ canvasEl }) =>
-          ({ canvas: canvasEl, ready: true, renderScope: { stop: () => {} } }) as never,
+      ...[wide, narrow].map(({ canvasEl }) =>
+        stubPanel({ canvas: canvasEl, ready: true, renderScope: stubScope(() => {}) }),
       ),
     );
     expect(sidePanels).toHaveLength(2);
@@ -547,23 +574,23 @@ describe("unsplit actually releases", () => {
     let stopped = 0;
     let primaryStopped = 0;
     const sidePanels = surfaceForPane(SECONDARY_PANE).panels;
-    const panel = { ready: true, renderScope: { stop: () => (stopped += 1) } } as never;
+    const panel = stubPanel({ ready: true, renderScope: stubScope(() => (stopped += 1)) });
     sidePanels.splice(0, sidePanels.length, panel);
     const primaryPanels = surfaceForPane(PRIMARY_PANE).panels;
-    const primaryPanel = {
+    const primaryPanel = stubPanel({
       ready: true,
-      renderScope: { stop: () => (primaryStopped += 1) },
-    } as never;
+      renderScope: stubScope(() => (primaryStopped += 1)),
+    });
     primaryPanels.splice(0, primaryPanels.length, primaryPanel);
 
     closePane(SECONDARY_PANE);
     await flush();
 
     expect(stopped).toBe(1);
-    expect((panel as { renderScope: unknown }).renderScope).toBeNull();
+    expect(panel.renderScope).toBeNull();
     // Unsplitting is a LAYOUT action. It must not tear down the pane that stays.
     expect(primaryStopped).toBe(0);
-    expect((primaryPanel as { renderScope: unknown }).renderScope).not.toBeNull();
+    expect(primaryPanel.renderScope).not.toBeNull();
   });
 });
 
@@ -609,6 +636,7 @@ describe("a click inside an artboard focuses the pane that mounted it", () => {
 
     side.channel.deliver({
       hit: {
+        className: "",
         layoutFile: "layouts/base.json",
         layoutPath: ["children", 0],
         rect: { height: 20, width: 100, x: 0, y: 0 },

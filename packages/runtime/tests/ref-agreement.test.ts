@@ -3,6 +3,8 @@ import { compileOperandSource, evaluateOperand } from "../src/expression.ts";
 import { resolveRef } from "../src/runtime.ts";
 import type { JxScope } from "../src/types.ts";
 
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /*
  * Jx resolves a `$ref` three ways — `resolveRef` interpreting in the browser, `evaluateOperand`
  * interpreting inside an expression, and `compileOperandSource` lowering to JavaScript the compiler
@@ -15,19 +17,23 @@ import type { JxScope } from "../src/types.ts";
  * drift apart, which is exactly what happened.
  */
 
-const scope = () =>
-  ({
-    "a/b": "slash-key",
-    items: ["zero", "one"],
-    plain: "flat",
-    user: { name: "Ada" },
-    "user.name": "LITERAL",
-  }) as unknown as JxScope;
+const scope = (): JxScope => ({
+  "a/b": "slash-key",
+  items: ["zero", "one"],
+  plain: "flat",
+  user: { name: "Ada" },
+  "user.name": "LITERAL",
+});
 
 /** Evaluate the lowered source the way a built site would, with `state` in scope. */
-const runCompiled = (ref: string, state: JxScope): unknown => {
+const runCompiled = (ref: string, state: JxScope): JsonValue | undefined => {
   const source = compileOperandSource({ $ref: ref }, { statePrefix: "state" });
-  return new Function("state", `return ${source}`)(state) as unknown;
+  /* SAFETY: the lowered source is a member read rooted at `state`, and every value scope() holds is
+   * JSON (strings, a string array, a nested object), so the read yields one of them or undefined. */
+  const read = new Function("state", `return ${source}`) as (
+    state: JxScope,
+  ) => JsonValue | undefined;
+  return read(state);
 };
 
 describe("all three resolvers agree", () => {

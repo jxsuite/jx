@@ -19,12 +19,12 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
-import { relative as relativePath, resolve as resolvePath } from "node:path";
+import { relative, resolve } from "node:path";
 
-const raw = await new Promise((resolve) => {
+const raw = await new Promise((settle) => {
   let data = "";
   process.stdin.on("data", (chunk) => (data += chunk));
-  process.stdin.on("end", () => resolve(data));
+  process.stdin.on("end", () => settle(data));
 });
 
 let input;
@@ -54,9 +54,9 @@ const realOrSelf = (path) => {
   }
 };
 const root = realOrSelf(process.cwd());
-const target = realOrSelf(resolvePath(process.cwd(), file));
-const rel = relativePath(root, target);
-if (rel === "" || rel.startsWith("..") || resolvePath(root, rel) !== target) {
+const target = realOrSelf(resolve(process.cwd(), file));
+const rel = relative(root, target);
+if (rel === "" || rel.startsWith("..") || resolve(root, rel) !== target) {
   process.exit(0); // outside the source tree — not ours to police
 }
 

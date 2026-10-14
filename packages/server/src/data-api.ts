@@ -20,19 +20,26 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { Kysely, sql } from "kysely";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
+import { isBoolean, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { loadDevVars, parseDevVars } from "./dev-vars.ts";
+import { loadDevVars, parseDevVars, projectDevEnv } from "./dev-vars.ts";
+import type { ProjectDevEnv } from "./dev-vars.ts";
 import { resolveConnectorStandins } from "./jx-mounts.ts";
 import { writeFile } from "node:fs/promises";
 import type { Dialect } from "kysely";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { FormatEntry } from "@jxsuite/schema/format-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  ConnectorBlock,
+  FormatEntry,
+  SectionDeployOptions,
+} from "@jxsuite/schema/format-registry";
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 import type {
   DataColumnMeta,
   DataConnectionInfo,
   DataConnectionsResponse,
   DataConnectionTestResult,
+  DataConnectorInfo,
   DataPushRequest,
   DataPushResult,
   DataPushStep,
@@ -42,35 +49,69 @@ import type {
   DataRowsResult,
   DataRowUpdate,
   SecretsListResponse,
-  SecretsSetRequest,
+  KeyValuePatch,
   SecretsSetResponse,
 } from "@jxsuite/protocol";
 import { problem, problemTypeForStatus } from "./problem.ts";
 
 // ─── Local section shapes (structural — the connector owns the full types) ───
 
-/** One `connections` entry: identifiers and env-var names only, never secrets. */
-interface ConnectionDef {
-  provider?: string;
-  [key: string]: unknown;
-}
-
 /** One `data` entry (the slice this console needs). */
 interface TableDef {
   connection?: string;
   id?: string;
   timestamps?: boolean;
-  schema?: { properties?: Record<string, unknown> };
+  schema?: { properties?: JsonObject };
 }
 
 interface ProjectSections {
   config: ProjectConfig;
-  connections: Record<string, ConnectionDef>;
+  /**
+   * The `connections` section by name. Each entry is JSON holding identifiers and env-var names
+   * only, never secrets; `provider` names the connector serving it.
+   */
+  connections: Record<string, JsonObject>;
   tables: Record<string, TableDef>;
 }
 
-/** Loosely-typed Kysely database — dynamic tables are only known at runtime. */
-type Db = Kysely<Record<string, Record<string, unknown>>>;
+/**
+ * Loosely-typed Kysely database — dynamic tables are only known at runtime, and a row is the JSON
+ * object the console's wire carries (`DataRowsResult.rows` in @jxsuite/protocol).
+ */
+type Db = Kysely<Record<string, JsonObject>>;
+
+/**
+ * A row insert as it arrives over HTTP or RPC: nothing upstream has confirmed `values` is present,
+ * so a missing payload inserts an empty row rather than crashing.
+ */
+interface ArrivingRowInsert extends Omit<DataRowInsert, "values"> {
+  values?: JsonObject;
+}
+
+/** A row update as it arrives over HTTP or RPC; a missing `set` is refused as an empty update. */
+interface ArrivingRowUpdate extends Omit<DataRowUpdate, "set"> {
+  set?: JsonObject;
+}
+
+/**
+ * How this console reads a section owner's `deploySchema` answer (`SectionDeployResult`): its steps
+ * and warnings, each optional and defaulted where it is read.
+ */
+interface SectionDeployReading {
+  steps?: DataPushStep[];
+  warnings?: string[];
+}
+
+declare module "@jxsuite/schema/format-registry" {
+  /**
+   * A connector's `dialect` (specs/extensions.md §8) answers the Kysely dialect a connection opens
+   * with. The schema package cannot name Kysely's type, so this host, which opens the connections,
+   * states the role's contract.
+   */
+  interface CapabilityContracts {
+    dialect: { args: [connection: JsonObject, env: HostEnvironment]; result: Dialect };
+  }
+}
 
 /** A route-mappable failure (`status` becomes the HTTP status). */
 class ApiError extends Error {
@@ -80,13 +121,6 @@ class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
-}
-
-/** The shape of the connector `deploySchema` capability result. */
-interface DeployResult {
-  statements: string[];
-  applied: boolean;
-  warnings: string[];
 }
 
 // ─── Project + registry resolution ───────────────────────────────────────────
@@ -104,15 +138,21 @@ function getProject(projectRoot: string): ProjectSections {
   const path = resolve(projectRoot, "project.json");
   let config: ProjectConfig;
   try {
+    /* SAFETY: trust boundary. project.json is the project's own config, held to its per-project
+       schema by the editor and `jx validate`; the connections and data sections are narrowed
+       below, and unreadable or non-JSON text answers the 404 in the catch. */
     config = JSON.parse(readFileSync(path, "utf8")) as ProjectConfig;
   } catch (error) {
     throw new ApiError(404, `No project.json under "${projectRoot}"`, { cause: error });
   }
-  // Section keys are the connector's host wire contract (the same literals jx-mounts passes to
-  // The Data mount's options.sections) — JSON introspection, not a connector import.
-  const cfg = config as Record<string, unknown>;
-  const connections = (cfg.connections ?? {}) as Record<string, ConnectionDef>;
-  const tables = (cfg.data ?? {}) as Record<string, TableDef>;
+  /* Section keys are the connector's host wire contract (the same literals jx-mounts passes to
+     the Data mount's options.sections) — JSON introspection, not a connector import.
+     SAFETY: `connections` and `data` are the connector extension's sections, which its
+     Connections.class.json and Data.class.json descriptors declare as maps keyed by connection or
+     table name; every member this console reads from an entry is re-checked where it is read. */
+  const connections = (config.connections ?? {}) as Record<string, JsonObject>;
+  // SAFETY: as above, for the `data` section's table definitions.
+  const tables = (config.data ?? {}) as Record<string, TableDef>;
   return { config, connections, tables };
 }
 
@@ -129,11 +169,6 @@ function getRegistry(projectRoot: string, config: ProjectConfig): Promise<Extens
   return registry;
 }
 
-/** The mount environment: process.env merged under `.dev.vars` plus JX_PROJECT_ROOT. */
-function buildEnv(projectRoot: string): Record<string, unknown> {
-  return { ...process.env, ...loadDevVars(projectRoot), JX_PROJECT_ROOT: projectRoot };
-}
-
 /**
  * The registry entry serving a provider, after the dev `local: "<provider>"` stand-in rule
  * (specs/extensions.md §12) — identical to jx-mounts' resolution.
@@ -145,13 +180,11 @@ function providerEntry(registry: ExtensionRegistry, provider: string): FormatEnt
     throw new ApiError(400, `No connector provider "${provider}" is available`);
   }
   const { local } = entry.connector!;
-  return typeof local === "string"
-    ? (entries.find((e) => e.connector!.provider === local) ?? entry)
-    : entry;
+  return isString(local) ? (entries.find((e) => e.connector!.provider === local) ?? entry) : entry;
 }
 
 /** The connection def by name, 404 when undeclared. */
-function connectionDef(project: ProjectSections, name: string): ConnectionDef {
+function connectionDef(project: ProjectSections, name: string): JsonObject {
   const def = project.connections[name];
   if (!def) {
     throw new ApiError(404, `Unknown connection "${name}"`);
@@ -161,13 +194,9 @@ function connectionDef(project: ProjectSections, name: string): ConnectionDef {
 
 /** Tables of one connection (the data section filtered by connection name). */
 function tablesFor(project: ProjectSections, connection: string): Record<string, TableDef> {
-  const out: Record<string, TableDef> = {};
-  for (const [name, def] of Object.entries(project.tables)) {
-    if (def.connection === connection) {
-      out[name] = def;
-    }
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(project.tables).filter(([, def]) => def.connection === connection),
+  );
 }
 
 /**
@@ -194,11 +223,15 @@ async function withDb<T>(
   const def = connectionDef(project, connectionName);
   const registry = await getRegistry(projectRoot, project.config);
   const entry = providerEntry(registry, String(def.provider ?? ""));
-  const env = buildEnv(projectRoot);
-  const dialect = (await entry.call("dialect", { ...def, $name: connectionName }, env)) as Dialect;
-  const db = new Kysely<Record<string, Record<string, unknown>>>({ dialect });
+  const env = projectDevEnv(projectRoot);
+  // A provider that breaks the `dialect` contract fails at the first query.
+  const dialect = await entry.call("dialect", { ...def, $name: connectionName }, env);
+  const db: Db = new Kysely({ dialect });
+  /* The descriptor is extension JSON the registry does not validate, so `kind` may be absent
+     whatever ConnectorBlock declares. */
+  const declared: Partial<ConnectorBlock> = entry.connector!;
   try {
-    return await fn(db, String(entry.connector!.kind ?? "sqlite"));
+    return await fn(db, String(declared.kind ?? "sqlite"));
   } finally {
     await db.destroy();
   }
@@ -248,28 +281,20 @@ async function primaryKeys(db: Db, kind: string, table: string): Promise<Set<str
 }
 
 /** Light storage coercion for admin writes, keyed on the introspected column types. */
-function coerceValues(
-  values: Record<string, unknown>,
-  columns: DataColumnMeta[],
-): Record<string, unknown> {
+function coerceValues(values: JsonObject, columns: DataColumnMeta[]): JsonObject {
   const byName = new Map(columns.map((c) => [c.name, c]));
-  const out: Record<string, unknown> = {};
+  const out: JsonObject = {};
   for (const [key, raw] of Object.entries(values)) {
     const column = byName.get(key);
     if (!column) {
       throw new ApiError(400, `Unknown column "${key}"`);
     }
     const numeric = /int|real|double|numeric|decimal/i.test(column.type);
-    if (typeof raw === "boolean" && numeric) {
+    if (isBoolean(raw) && numeric) {
       out[key] = raw ? 1 : 0;
-    } else if (
-      typeof raw === "string" &&
-      numeric &&
-      raw.trim() !== "" &&
-      !Number.isNaN(Number(raw))
-    ) {
+    } else if (isString(raw) && numeric && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
       out[key] = Number(raw);
-    } else if (raw !== null && typeof raw === "object") {
+    } else if (isNonNullObject(raw)) {
       out[key] = JSON.stringify(raw);
     } else {
       out[key] = raw;
@@ -281,7 +306,7 @@ function coerceValues(
 /** Normalize a wire pk value against the pk column's type (integer pks arrive as strings). */
 function normalizePk(pk: string | number, columns: DataColumnMeta[]): string | number {
   const pkMeta = columns.find((c) => c.pk);
-  if (typeof pk === "string" && pkMeta && /int/i.test(pkMeta.type) && /^\d+$/.test(pk)) {
+  if (isString(pk) && pkMeta && /int/i.test(pkMeta.type) && /^\d+$/.test(pk)) {
     return Number(pk);
   }
   return pk;
@@ -295,10 +320,10 @@ function pkColumn(columns: DataColumnMeta[]): string {
 // ─── Connections ──────────────────────────────────────────────────────────────
 
 /** Env-var NAMES a connection references (keys ending in "Env") that resolve to no value. */
-function missingSecretNames(def: ConnectionDef, env: Record<string, unknown>): string[] {
+function missingSecretNames(def: JsonObject, env: ProjectDevEnv): string[] {
   const missing: string[] = [];
   for (const [key, value] of Object.entries(def)) {
-    if (key.endsWith("Env") && typeof value === "string" && value !== "" && env[value] == null) {
+    if (key.endsWith("Env") && isString(value) && value !== "" && env[value] == null) {
       missing.push(value);
     }
   }
@@ -317,7 +342,7 @@ export async function listDataConnections(projectRoot: string): Promise<DataConn
   const project = getProject(projectRoot);
   const registry = await getRegistry(projectRoot, project.config);
   const entries = registry.connectors();
-  const env = buildEnv(projectRoot);
+  const env = projectDevEnv(projectRoot);
   const names = Object.keys(project.connections);
 
   const connections: DataConnectionInfo[] = [];
@@ -342,16 +367,7 @@ export async function listDataConnections(projectRoot: string): Promise<DataConn
 
     connections.push({
       configured: missingSecrets.length === 0,
-      connector: entry
-        ? {
-            provider,
-            ...(entry.connector!.kind == null ? {} : { kind: String(entry.connector!.kind) }),
-            ...(entry.connector!.local == null ? {} : { local: String(entry.connector!.local) }),
-            ...(typeof entry.classDef.description === "string"
-              ? { description: entry.classDef.description }
-              : {}),
-          }
-        : null,
+      connector: entry ? connectorInfo(entry, provider) : null,
       isDefault: index === 0,
       missingSecrets,
       name,
@@ -361,6 +377,24 @@ export async function listDataConnections(projectRoot: string): Promise<DataConn
     });
   }
   return { connections };
+}
+
+/** The provider metadata a connection row shows, read off the serving entry's descriptor. */
+function connectorInfo(entry: FormatEntry, provider: string): DataConnectorInfo {
+  /* The descriptor is extension JSON the registry does not validate, so `kind` may be absent
+     whatever ConnectorBlock declares. */
+  const block: Partial<ConnectorBlock> = entry.connector!;
+  const info: DataConnectorInfo = { provider };
+  if (block.kind != null) {
+    info.kind = String(block.kind);
+  }
+  if (block.local != null) {
+    info.local = String(block.local);
+  }
+  if (isString(entry.classDef.description)) {
+    info.description = entry.classDef.description;
+  }
+  return info;
 }
 
 /**
@@ -378,13 +412,14 @@ export async function testDataConnection(
   const def = connectionDef(project, connection);
   const registry = await getRegistry(projectRoot, project.config);
   const entry = providerEntry(registry, String(def.provider ?? ""));
-  const env = buildEnv(projectRoot);
-  const result = (await entry.call(
-    "testConnection",
-    { ...def, $name: connection },
-    env,
-  )) as DataConnectionTestResult;
-  return { ok: result.ok === true, ...(result.error === undefined ? {} : { error: result.error }) };
+  const env = projectDevEnv(projectRoot);
+  // `ok` is compared with `=== true`, so only an explicit success counts.
+  const result = await entry.call("testConnection", { ...def, $name: connection }, env);
+  const outcome: DataConnectionTestResult = { ok: result.ok === true };
+  if (result.error !== undefined) {
+    outcome.error = result.error;
+  }
+  return outcome;
 }
 
 // ─── Push ─────────────────────────────────────────────────────────────────────
@@ -449,7 +484,7 @@ export async function pushDataSchema(
   }
   const targets = request.connection ? [request.connection] : Object.keys(project.connections);
   const registry = await getRegistry(projectRoot, project.config);
-  const env = buildEnv(projectRoot);
+  const env = projectDevEnv(projectRoot);
   const declared = new Set(Object.keys(project.tables));
 
   const plan: DataPushStep[] = [];
@@ -459,15 +494,13 @@ export async function pushDataSchema(
     const def = project.connections[name]!;
     try {
       const entry = providerEntry(registry, String(def.provider ?? ""));
-      const result = (await entry.call(
+      // A provider that throws, or answers without its statements, is reported below.
+      const result = await entry.call(
         "deploySchema",
         tablesFor(project, name),
-        {
-          ...def,
-          $name: name,
-        },
+        { ...def, $name: name },
         { dryRun, env },
-      )) as DeployResult;
+      );
       plan.push(...result.statements.map((s) => classifyStatement(s, declared, name)));
       warnings.push(...result.warnings);
     } catch (error) {
@@ -486,17 +519,22 @@ export async function pushDataSchema(
     const connectors = await resolveConnectorStandins(registry);
     for (const entry of sectionOwners) {
       const { key } = entry.project!;
-      const section = (project.config as Record<string, unknown>)[key];
+      const section = project.config[key];
       if (section === undefined || section === null) {
         continue;
       }
+      const options: SectionDeployOptions =
+        request.connection === undefined
+          ? { connectors, dryRun, env }
+          : { connection: request.connection, connectors, dryRun, env };
       try {
-        const result = (await entry.call("deploySchema", section, project.config, {
-          ...(request.connection === undefined ? {} : { connection: request.connection }),
-          connectors,
-          dryRun,
-          env,
-        })) as { steps?: DataPushStep[]; warnings?: string[] };
+        // A capability that throws is reported below.
+        const result: SectionDeployReading = await entry.call(
+          "deploySchema",
+          section,
+          project.config,
+          options,
+        );
         for (const step of result.steps ?? []) {
           step.kind ||= key;
           plan.push(step);
@@ -508,12 +546,14 @@ export async function pushDataSchema(
     }
   }
 
-  return {
-    applied: !dryRun && errors.length === 0,
-    plan,
-    ...(warnings.length > 0 ? { warnings } : {}),
-    ...(errors.length > 0 ? { errors } : {}),
-  };
+  const pushed: DataPushResult = { applied: !dryRun && errors.length === 0, plan };
+  if (warnings.length > 0) {
+    pushed.warnings = warnings;
+  }
+  if (errors.length > 0) {
+    pushed.errors = errors;
+  }
+  return pushed;
 }
 
 // ─── Rows (admin CRUD — intentionally permission-free, see the module header) ─
@@ -549,7 +589,7 @@ export async function queryDataRows(
     if (query.orderBy !== undefined) {
       qb = qb.orderBy(query.orderBy, query.dir === "desc" ? "desc" : "asc");
     }
-    const rows = (await qb.execute()) as Record<string, unknown>[];
+    const rows = await qb.execute();
     return { columns, rows, total };
   });
 }
@@ -561,12 +601,12 @@ export async function queryDataRows(
  *
  * @param {string} projectRoot
  * @param {DataRowInsert} request
- * @returns {Promise<{ row: Record<string, unknown> }>}
+ * @returns {Promise<{ row: JsonObject }>}
  */
 export async function insertDataRow(
   projectRoot: string,
-  request: DataRowInsert,
-): Promise<{ row: Record<string, unknown> }> {
+  request: ArrivingRowInsert,
+): Promise<{ row: JsonObject }> {
   const project = getProject(projectRoot);
   const connection = connectionForTable(project, request.table, request.connection);
   const declared = project.tables[request.table];
@@ -593,7 +633,7 @@ export async function insertDataRow(
       .values(row)
       .returningAll()
       .executeTakeFirst();
-    return { row: (inserted ?? row) as Record<string, unknown> };
+    return { row: inserted ?? row };
   });
 }
 
@@ -602,12 +642,12 @@ export async function insertDataRow(
  *
  * @param {string} projectRoot
  * @param {DataRowUpdate} request
- * @returns {Promise<{ row: Record<string, unknown> }>}
+ * @returns {Promise<{ row: JsonObject }>}
  */
 export async function updateDataRow(
   projectRoot: string,
-  request: DataRowUpdate,
-): Promise<{ row: Record<string, unknown> }> {
+  request: ArrivingRowUpdate,
+): Promise<{ row: JsonObject }> {
   const project = getProject(projectRoot);
   const connection = connectionForTable(project, request.table, request.connection);
   const declared = project.tables[request.table];
@@ -630,7 +670,7 @@ export async function updateDataRow(
     if (!updated) {
       throw new ApiError(404, "Not found");
     }
-    return { row: updated as Record<string, unknown> };
+    return { row: updated };
   });
 }
 
@@ -653,7 +693,7 @@ export async function deleteDataRow(
       .deleteFrom(request.table)
       .where(pkColumn(columns), "=", normalizePk(request.pk, columns))
       .executeTakeFirst();
-    if ((result.numDeletedRows ?? 0n) === 0n) {
+    if (result.numDeletedRows === 0n) {
       throw new ApiError(404, "Not found");
     }
     return { ok: true };
@@ -693,12 +733,12 @@ function assignmentKey(rawLine: string): string | null {
  * assignments are replaced in place, removed keys drop their line, and new keys append.
  *
  * @param {string} projectRoot
- * @param {SecretsSetRequest} request
+ * @param {KeyValuePatch} request
  * @returns {Promise<SecretsSetResponse>}
  */
 export async function setProjectSecrets(
   projectRoot: string,
-  request: SecretsSetRequest,
+  request: KeyValuePatch,
 ): Promise<SecretsSetResponse> {
   getProject(projectRoot);
   const set = request.set ?? {};
@@ -707,7 +747,7 @@ export async function setProjectSecrets(
     if (!SECRET_NAME.test(name)) {
       throw new ApiError(400, `Invalid secret name "${name}"`);
     }
-    if (typeof value !== "string" || value.includes("\n")) {
+    if (!isString(value) || value.includes("\n")) {
       throw new ApiError(400, `Secret "${name}" must be a single-line string`);
     }
   }
@@ -761,12 +801,15 @@ function resolveProjectRoot(url: URL, root: string, activeProjectRoot: string | 
 }
 
 /** Parse a JSON request body, 400 on malformed input. */
-async function jsonBody<T>(req: Request): Promise<T> {
-  const body = (await req.json().catch(() => null)) as T | null;
-  if (body === null || typeof body !== "object") {
+async function jsonBody<T extends object>(req: Request): Promise<T> {
+  const body: unknown = await req.json().catch(() => null);
+  if (!isNonNullObject(body)) {
     throw new ApiError(400, "Body must be JSON");
   }
-  return body;
+  /* SAFETY: each caller names its route's protocol body, which is what the Studio client posts;
+     only object-ness is checked here, and every member is re-checked where it is read (missing
+     payloads default, pks and secret values are type-tested, names go through connectionDef). */
+  return body as T;
 }
 
 /** A required string param, 400 when missing. */
@@ -826,16 +869,26 @@ export async function handleDataApi(
         return Response.json(await pushDataSchema(projectRoot, body));
       }
       case "GET /__studio/data/rows": {
-        const query: DataRowsQuery = {
-          table: requiredParam(url, "table"),
-          ...(url.searchParams.get("connection")
-            ? { connection: url.searchParams.get("connection")! }
-            : {}),
-          ...(intParam(url, "limit") === undefined ? {} : { limit: intParam(url, "limit")! }),
-          ...(intParam(url, "offset") === undefined ? {} : { offset: intParam(url, "offset")! }),
-          ...(url.searchParams.get("orderBy") ? { orderBy: url.searchParams.get("orderBy")! } : {}),
-          ...(url.searchParams.get("dir") === "desc" ? { dir: "desc" as const } : {}),
-        };
+        const query: DataRowsQuery = { table: requiredParam(url, "table") };
+        const connection = url.searchParams.get("connection");
+        if (connection) {
+          query.connection = connection;
+        }
+        const limit = intParam(url, "limit");
+        if (limit !== undefined) {
+          query.limit = limit;
+        }
+        const offset = intParam(url, "offset");
+        if (offset !== undefined) {
+          query.offset = offset;
+        }
+        const orderBy = url.searchParams.get("orderBy");
+        if (orderBy) {
+          query.orderBy = orderBy;
+        }
+        if (url.searchParams.get("dir") === "desc") {
+          query.dir = "desc";
+        }
         return Response.json(await queryDataRows(projectRoot, query));
       }
       case "POST /__studio/data/rows": {
@@ -847,21 +900,21 @@ export async function handleDataApi(
         return Response.json(await updateDataRow(projectRoot, body));
       }
       case "DELETE /__studio/data/rows": {
-        return Response.json(
-          await deleteDataRow(projectRoot, {
-            pk: requiredParam(url, "pk"),
-            table: requiredParam(url, "table"),
-            ...(url.searchParams.get("connection")
-              ? { connection: url.searchParams.get("connection")! }
-              : {}),
-          }),
-        );
+        const target: DataRowDelete = {
+          pk: requiredParam(url, "pk"),
+          table: requiredParam(url, "table"),
+        };
+        const connection = url.searchParams.get("connection");
+        if (connection) {
+          target.connection = connection;
+        }
+        return Response.json(await deleteDataRow(projectRoot, target));
       }
       case "GET /__studio/secrets": {
         return Response.json(await listSecretNames(projectRoot));
       }
       case "PUT /__studio/secrets": {
-        const body = await jsonBody<SecretsSetRequest>(req);
+        const body = await jsonBody<KeyValuePatch>(req);
         return Response.json(await setProjectSecrets(projectRoot, body));
       }
       default: {

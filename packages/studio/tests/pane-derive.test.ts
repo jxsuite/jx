@@ -46,10 +46,13 @@ import { makeContext } from "../src/commands/context";
 import { effectScope, toRaw } from "../src/reactivity";
 import { shell } from "../src/shell";
 import { transactDoc, mutateUpdateProperty } from "../src/tabs/transact";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { SerializableRect } from "../src/canvas/iframe-protocol";
 import type { DerivationDeps } from "../src/workspace/pane-derive";
 import type { PaneDerivation } from "../src/workspace/workspace";
 import type { GitDiffState } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { EffectScope } from "@vue/reactivity";
 
 // ─── Fixture ──────────────────────────────────────────────────────────────────
@@ -59,7 +62,7 @@ const opened: { paneId: string; path: string }[] = [];
 
 /** Every `loadDiff` it asked for, and what the fake platform hands back for the next one. */
 const diffsAsked: { path: string; fileStatus: string }[] = [];
-let nextDiff: GitDiffState | null = null;
+let nextDiff: Omit<GitDiffState, "filePath"> | null = null;
 
 /**
  * Every `fileExists` the locale companion asked for, and the files the fake disk actually holds.
@@ -130,7 +133,15 @@ function gitStatusFor(...paths: string[]): void {
 
 const PLAIN_DOC = { tagName: "div" };
 
-function open(id: string, document: Record<string, unknown> = PLAIN_DOC) {
+/** A layout hit carries the clicked box; nothing a derivation decides reads it. */
+const NO_RECT: SerializableRect = { height: 0, width: 0, x: 0, y: 0 };
+
+/** A loaded comparison of `filePath`: all a lens checks of it is which file it compares. */
+function diffOf(filePath: string): GitDiffState {
+  return { currentContent: "", fileStatus: "M", filePath, originalContent: "" };
+}
+
+function open(id: string, document: JxMutableNode = PLAIN_DOC) {
   return openTab({ document: { ...document }, documentPath: id, id });
 }
 
@@ -202,9 +213,9 @@ function localeCompanionOn(locale: string | null) {
 }
 
 /** A project declaring `tags`, default first — the shape `resolveI18n` answers for. */
-function multilingual(...tags: string[]): void {
+function multilingual(defaultLocale: string, ...others: string[]): void {
   resetStudioState({
-    projectConfig: { i18n: { defaultLocale: tags[0], locales: tags } },
+    projectConfig: { i18n: { defaultLocale, locales: [defaultLocale, ...others] } },
   });
 }
 
@@ -362,7 +373,7 @@ describe("derivedTarget answers each preset, and writes nothing", () => {
     const page = twoPanes();
     const derivation = lensOn("diff");
     // The Git panel has some OTHER file's comparison on screen. That is not this pane's subject.
-    derivation.diff = { filePath: "some/OTHER/file.md" } as never;
+    derivation.diff = diffOf("some/OTHER/file.md");
     shell.git.diffState = derivation.diff;
     gitStatusFor(page.documentPath!);
 
@@ -373,7 +384,7 @@ describe("derivedTarget answers each preset, and writes nothing", () => {
     });
 
     // With the right file's comparison in hand it is ready, and asks for nothing more.
-    derivation.diff = { filePath: "pages/index.json" } as never;
+    derivation.diff = diffOf("pages/index.json");
     expect(derivedTarget(SECONDARY_PANE)).toMatchObject({ diffPath: null, status: "ready" });
 
     // …and it FOLLOWS: the source pane switching tabs re-targets the comparison.
@@ -453,7 +464,7 @@ describe("derivedTarget answers each preset, and writes nothing", () => {
 describe("the component follow memoises on its ANSWER", () => {
   function withCard(): Tab {
     const page = twoPanes();
-    componentRegistry.push({ path: "components/card.json", tagName: "my-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     return page;
   }
 
@@ -583,7 +594,7 @@ describe("the component follow memoises on its ANSWER", () => {
 
   test("with nothing resolved yet and no component under the cursor, it says what to click", () => {
     const page = twoPanes();
-    componentRegistry.push({ path: "components/card.json", tagName: "my-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     page.session.selection = [["children", 1]];
     companionOn("component");
     expect(derivedTarget(SECONDARY_PANE)).toMatchObject({
@@ -798,7 +809,7 @@ describe("applyDerivation", () => {
       className: "",
       layoutFile: "layouts/base.json",
       layoutPath: ["children", 0],
-      rect: {} as never,
+      rect: NO_RECT,
       tagName: "header",
     };
     companionOn("layout");
@@ -855,7 +866,7 @@ describe("applyDerivation", () => {
   test("a diff lens loads the source document's comparison, once, and re-loads on a tab switch", async () => {
     twoPanes();
     gitStatusFor("pages/index.json", "pages/other.json");
-    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" } as GitDiffState;
+    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" };
     const derivation = lensOn("diff");
     derivation.diff = null;
 
@@ -893,7 +904,7 @@ describe("applyDerivation", () => {
        that follows a commit, discard, checkout or pull. */
     twoPanes();
     gitStatusFor("pages/index.json");
-    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" } as GitDiffState;
+    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" };
     const derivation = lensOn("diff");
     derivation.diff = null;
 
@@ -926,7 +937,7 @@ describe("applyDerivation", () => {
     twoPanes();
     gitStatusFor("pages/index.json", "pages/other.json");
     const derivation = lensOn("diff");
-    derivation.diff = { filePath: "pages/index.json" } as never;
+    derivation.diff = diffOf("pages/index.json");
     applyDerivation(SECONDARY_PANE, deps);
     // The right file's comparison in hand: nothing to clear, nothing to fetch.
     expect(derivation.diff).not.toBeNull();
@@ -940,7 +951,7 @@ describe("applyDerivation", () => {
 
     // …and so is a source document with no changes at all: there is nothing to draw, and the pane
     // Must not draw the last thing it happened to have.
-    derivation.diff = { filePath: "pages/other.json" } as never;
+    derivation.diff = diffOf("pages/other.json");
     shell.git.status = {
       ahead: 0,
       behind: 0,
@@ -1018,7 +1029,7 @@ describe("applyDerivation", () => {
   test("a load that lands after the pane was CLOSED writes nothing, and says nothing", async () => {
     twoPanes();
     gitStatusFor("pages/index.json");
-    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" } as GitDiffState;
+    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" };
     lensOn("diff").diff = null;
     const logged: unknown[] = [];
     const console_ = console.error;
@@ -1041,7 +1052,7 @@ describe("applyDerivation", () => {
   test("a load that lands after the pane stopped deriving writes nothing", async () => {
     twoPanes();
     gitStatusFor("pages/index.json");
-    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" } as GitDiffState;
+    nextDiff = { currentContent: "b", fileStatus: "M", originalContent: "a" };
     const derivation = lensOn("diff");
     derivation.diff = null;
     applyDerivation(SECONDARY_PANE, deps);
@@ -1119,7 +1130,7 @@ describe("applyDerivation", () => {
       className: "site-header",
       layoutFile: "layouts/marketing.json",
       layoutPath: ["children", 0, "children", 2],
-      rect: { height: 0, left: 0, top: 0, width: 0 } as never,
+      rect: NO_RECT,
       tagName: "header",
     };
     companionOn("layout");
@@ -1146,7 +1157,7 @@ describe("applyDerivation", () => {
       className: "",
       layoutFile: "layouts/base.json",
       layoutPath: ["children", 0],
-      rect: {} as never,
+      rect: NO_RECT,
       tagName: "header",
     };
     companionOn("layout");
@@ -1160,7 +1171,7 @@ describe("applyDerivation", () => {
       className: "",
       layoutFile: "layouts/base.json",
       layoutPath: ["children", 1],
-      rect: {} as never,
+      rect: NO_RECT,
       tagName: "footer",
     };
     applyDerivation(SECONDARY_PANE, deps);
@@ -1201,7 +1212,7 @@ describe("applyDerivation", () => {
       className: "",
       layoutFile: "layouts/marketing.json",
       layoutPath: ["children", 0],
-      rect: {} as never,
+      rect: NO_RECT,
       tagName: "header",
     };
     await frame();
@@ -1263,7 +1274,7 @@ describe("applyDerivation", () => {
       className: "",
       layoutFile: "layouts/base.json",
       layoutPath: ["children", 0],
-      rect: {} as never,
+      rect: NO_RECT,
       tagName: "header",
     };
     companionOn("layout");
@@ -1319,7 +1330,7 @@ describe("per-preset refusals are run-time, one sentence each", () => {
   test("Diff is refused for a file with no changes against HEAD, and offered for one that has", () => {
     twoPanes();
     // A diff of another file is loaded in the Git panel. That says nothing about THIS document.
-    shell.git.diffState = { filePath: "some/OTHER/file.md" } as never;
+    shell.git.diffState = diffOf("some/OTHER/file.md");
     gitStatusFor("some/OTHER/file.md");
     expect(presetRefusal("diff", PRIMARY_PANE, null)).toBe("a file with changes against HEAD");
 
@@ -1509,7 +1520,7 @@ describe("pane.derive and pane.pin", () => {
     page.capabilities.modes = ["design", "edit", "preview", "source"];
     gitStatusFor("pages/index.json");
     const reg = registry();
-    const modeAfter = async (preset: string, args: Record<string, unknown> = {}) => {
+    const modeAfter = async (preset: string, args: CommandArgValues = {}) => {
       clearPaneDerivation(SECONDARY_PANE);
       await reg.run("pane.derive", { preset, ...args });
       const derived = derivationOfPane(SECONDARY_PANE);
@@ -1592,7 +1603,7 @@ describe("pane.derive and pane.pin", () => {
   test("BOTH companion presets build companions — component is not a lens", async () => {
     const page = twoPanes();
     page.capabilities.modes = ["design", "edit", "preview", "source"];
-    componentRegistry.push({ path: "components/card.json", tagName: "my-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     page.session.selection = [["children", 0, "children", 0]];
     const reg = registry();
 

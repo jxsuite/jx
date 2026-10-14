@@ -51,6 +51,8 @@ async function split(
   row.style.display = "contents";
   const slot = document.createElement("div");
   slot.style.display = "contents";
+  /* SAFETY: registerUi() in beforeAll defined jx-split from its component document, which declares
+     every prop `JxSplit` lists, so createElement returns that upgraded element. */
   const el = document.createElement("jx-split") as JxSplit;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -66,18 +68,7 @@ async function split(
 
 /** Give an element a box, because happy-dom lays nothing out and a fraction needs one. */
 function measure(el: Element, width: number, height: number): void {
-  el.getBoundingClientRect = () =>
-    ({
-      bottom: height,
-      height,
-      left: 0,
-      right: width,
-      toJSON: () => ({}),
-      top: 0,
-      width,
-      x: 0,
-      y: 0,
-    }) as DOMRect;
+  el.getBoundingClientRect = () => new DOMRect(0, 0, width, height);
 }
 
 /** A pointer event with a coordinate, built by hand because happy-dom ships no PointerEvent. */
@@ -102,9 +93,15 @@ function key(name: string, shift = false): KeyboardEvent {
   });
 }
 
+/** The pointer ids a splitter took and released capture of, in call order. */
+interface CaptureLog {
+  taken: number[];
+  released: number[];
+}
+
 /** Record the capture calls, which happy-dom does not implement. */
-function captures(el: HTMLElement): { taken: number[]; released: number[] } {
-  const log = { released: [] as number[], taken: [] as number[] };
+function captures(el: HTMLElement): CaptureLog {
+  const log: CaptureLog = { released: [], taken: [] };
   let held = -1;
   Object.assign(el, {
     hasPointerCapture: (id: number) => held === id,
@@ -121,9 +118,17 @@ function captures(el: HTMLElement): { taken: number[]; released: number[] } {
   return log;
 }
 
+/** One record per `input` and per `change` an ancestor heard, in order. */
+interface Heard<T> {
+  input: T[];
+  change: T[];
+}
+
 /** What an ANCESTOR heard, as the value each event carried. */
-function heard(el: HTMLElement): { input: number[]; change: number[] } {
-  const out = { change: [] as number[], input: [] as number[] };
+function heard(el: HTMLElement): Heard<number> {
+  const out: Heard<number> = { change: [], input: [] };
+  /* SAFETY: split.ts dispatches `input` and `change` only from the jx-split host (`announce`), and
+     nothing else under `above` dispatches either, so every target here is the split. */
   const seen = (event: Event) => (event.target as JxSplit).value;
   const above = el.parentElement!.parentElement!.parentElement!;
   above.addEventListener("input", (e) => {
@@ -148,9 +153,8 @@ function rulesOf(el: HTMLElement): Map<string, string> {
   return out;
 }
 
-/** One property as the CASCADE resolves it. */
-const computed = (el: HTMLElement, prop: string) =>
-  (getComputedStyle(el) as unknown as Record<string, string>)[prop] ?? "";
+/** One property, by its CSS name, as the CASCADE resolves it. */
+const computed = (el: HTMLElement, prop: string) => getComputedStyle(el).getPropertyValue(prop);
 
 describe("jx-split announces itself", () => {
   test("is a separator, a tab stop, and says where it sits", async () => {
@@ -212,7 +216,7 @@ describe("jx-split announces itself", () => {
     expect(base).toContain("display: block");
     expect(base).toContain("flex: none");
     expect(base).toContain("touch-action: none");
-    expect(computed(el, "flexShrink")).toBe("0");
+    expect(computed(el, "flex-shrink")).toBe("0");
     expect(rulesOf(el).get("&[hidden]")).toBe("display: none");
     el.hidden = true;
     await tick();
@@ -584,7 +588,7 @@ describe("the modifiers a step carried", () => {
      it rides on the event as `detail` rather than living in the state, where it would be stale the
      moment the key was released. */
   const details = (el: HTMLElement) => {
-    const out = { change: [] as SplitModifiers[], input: [] as SplitModifiers[] };
+    const out: Heard<SplitModifiers> = { change: [], input: [] };
     const above = el.parentElement!.parentElement!.parentElement!;
     above.addEventListener("input", (e) => {
       out.input.push(splitModifiersOf(e));

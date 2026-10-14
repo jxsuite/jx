@@ -9,8 +9,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { emitProjectSchema } from "../src/project-schemas";
+import { CONVENTIONAL_PROJECT_CORE_REF, emitProjectSchema } from "../src/project-schemas";
 import { validateProjectFile } from "../src/validate-project";
+import type { JsonObject } from "../types";
 
 const CORE_FRAGMENT_SRC = resolve(import.meta.dir, "../schemas/project.core.schema.json");
 const PARSER_FRAGMENT_SRC = resolve(
@@ -18,7 +19,6 @@ const PARSER_FRAGMENT_SRC = resolve(
   "../../../extensions/parser/schemas/project.fragment.schema.json",
 );
 
-const CORE_REF = "./node_modules/@jxsuite/schema/schemas/project.core.schema.json";
 const PARSER_REF = "./node_modules/@jxsuite/parser/schemas/project.fragment.schema.json";
 
 const ROOTS: string[] = [];
@@ -26,7 +26,7 @@ const ROOTS: string[] = [];
 function makeProject(opts: {
   nodeModules?: boolean;
   fragments?: string[];
-  project?: Record<string, unknown>;
+  project?: JsonObject;
 }): string {
   const { nodeModules = true, fragments = [PARSER_REF], project = validProject() } = opts;
   const root = resolve(tmpdir(), `jx-validate-project-${Date.now()}-${ROOTS.length}`);
@@ -42,13 +42,13 @@ function makeProject(opts: {
     cpSync(PARSER_FRAGMENT_SRC, join(parserDir, "project.fragment.schema.json"));
   }
 
-  const entry = emitProjectSchema({ corePath: CORE_REF, fragments });
+  const entry = emitProjectSchema({ corePath: CONVENTIONAL_PROJECT_CORE_REF, fragments });
   writeFileSync(join(root, "project.schema.json"), `${JSON.stringify(entry, null, 2)}\n`);
   writeFileSync(join(root, "project.json"), `${JSON.stringify(project, null, 2)}\n`);
   return root;
 }
 
-function validProject(): Record<string, unknown> {
+function validProject(): JsonObject {
   return {
     $schema: "./project.schema.json",
     content: {

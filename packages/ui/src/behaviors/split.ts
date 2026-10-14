@@ -49,6 +49,9 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /** The tag this sidecar belongs to. */
 const HOST = "jx-split";
 
@@ -79,7 +82,6 @@ export interface SplitState {
   dragging: boolean;
   /** The position the toggle returns to; negative until a collapse has recorded one. */
   restore: number;
-  [key: string]: unknown;
 }
 
 /**
@@ -101,14 +103,16 @@ const NO_MODIFIERS: Readonly<SplitModifiers> = Object.freeze({
   shiftKey: false,
 });
 
-/** The four modifier flags off an event, each `true` only when it is exactly `true`. */
-function modifiersOf(event: object): SplitModifiers {
-  const flags = event as Partial<Record<keyof SplitModifiers, unknown>>;
+/**
+ * The four modifier flags off a pointer or key event, each `true` only when it is exactly `true`,
+ * because a synthetic event a test or a driver builds may carry none of them.
+ */
+function modifiersOf(event: Partial<SplitModifiers>): SplitModifiers {
   return {
-    altKey: flags.altKey === true,
-    ctrlKey: flags.ctrlKey === true,
-    metaKey: flags.metaKey === true,
-    shiftKey: flags.shiftKey === true,
+    altKey: event.altKey === true,
+    ctrlKey: event.ctrlKey === true,
+    metaKey: event.metaKey === true,
+    shiftKey: event.shiftKey === true,
   };
 }
 
@@ -123,20 +127,34 @@ function modifiersOf(event: object): SplitModifiers {
  * @param event The `input` or `change`.
  */
 export function splitModifiersOf(event: Event): SplitModifiers {
-  const { detail } = event as { detail?: unknown };
-  return detail !== null && typeof detail === "object" ? modifiersOf(detail) : { ...NO_MODIFIERS };
+  const detail = "detail" in event ? event.detail : undefined;
+  if (!isNonNullObject(detail)) {
+    return { ...NO_MODIFIERS };
+  }
+  /* A detail is whatever its dispatcher put there, so each flag is probed by name rather than
+     trusted to be a boolean: only an exact `true` counts, as it does off an event. */
+  return {
+    altKey: "altKey" in detail && detail.altKey === true,
+    ctrlKey: "ctrlKey" in detail && detail.ctrlKey === true,
+    metaKey: "metaKey" in detail && detail.metaKey === true,
+    shiftKey: "shiftKey" in detail && detail.shiftKey === true,
+  };
 }
 
-/** One live gesture: where it started, and the bounds it was measured against. */
-interface Drag {
+/** The range the value may take, and the track length it was converted against. */
+interface SplitBounds {
+  /** The track's length along the dragged axis, in pixels. */
+  length: number;
+  lo: number;
+  hi: number;
+}
+
+/** One live gesture: where it started, and the bounds it was measured against, once. */
+interface Drag extends SplitBounds {
   /** The pointer coordinate at `pointerdown`, along the dragged axis. */
   origin: number;
   /** The value at `pointerdown`. */
   start: number;
-  /** The track's length along that axis, measured once. */
-  length: number;
-  lo: number;
-  hi: number;
 }
 
 /**
@@ -167,13 +185,13 @@ function announce(host: HTMLElement, modifiers: SplitModifiers, ...names: string
 }
 
 /** A number, or the fallback when the scope holds something that is not one. */
-function finiteOr(value: unknown, fallback: number): number {
+function finiteOr(value: JsonValue | undefined, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
 
 /** A POSITIVE number, or the fallback. A step of zero is a key that does nothing. */
-function positiveOr(value: unknown, fallback: number): number {
+function positiveOr(value: JsonValue | undefined, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
@@ -262,10 +280,7 @@ export function trackOf(host: HTMLElement, vertical: boolean): number {
  * @param state The element's reactive scope.
  * @param host The element.
  */
-function boundsOf(
-  state: SplitState,
-  host: HTMLElement,
-): { lo: number; hi: number; length: number } {
+function boundsOf(state: SplitState, host: HTMLElement): SplitBounds {
   const length = trackOf(host, isVertical(state));
   const min = finiteOr(state.min, 0);
   const max = finiteOr(state.max, 1);
@@ -373,7 +388,7 @@ export function onSplitPointerDown(state: SplitState, event: PointerEvent): void
     origin: coordOf(isVertical(state), event),
     start: Number(state.value),
   });
-  if (typeof host.setPointerCapture === "function") {
+  if (isFunction(host.setPointerCapture)) {
     /* Capture on the HOST, which is also the element the listener is on: a drag that runs off the
        end of the splitter keeps arriving here instead of stopping at whatever it crossed. */
     try {
@@ -436,8 +451,9 @@ export function onSplitPointerUp(state: SplitState, event: PointerEvent): void {
   }
   state.dragging = false;
   if (
-    typeof host.releasePointerCapture === "function" &&
-    host.hasPointerCapture?.(event.pointerId)
+    isFunction(host.releasePointerCapture) &&
+    isFunction(host.hasPointerCapture) &&
+    host.hasPointerCapture(event.pointerId)
   ) {
     host.releasePointerCapture(event.pointerId);
   }

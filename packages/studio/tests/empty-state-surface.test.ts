@@ -7,8 +7,8 @@
  * region hands its box to.
  */
 import { flush } from "./harness";
-import { afterEach, describe, expect, mock, test } from "bun:test";
-import { html, render as litRender, nothing } from "lit-html";
+import { afterEach, describe, expect, test } from "bun:test";
+import { html, render, nothing } from "lit-html";
 import { createEmptyStateSurface, emptyState } from "../src/surfaces/empty-state";
 import type { EmptyStateSpec } from "../src/panels/empty-state";
 
@@ -83,7 +83,7 @@ describe("the empty-state document", () => {
       message: "Data lives here.",
     });
     const button = part(box, "empty-action")!;
-    expect(button.textContent?.trim()).toBe("Add a value");
+    expect(button.textContent.trim()).toBe("Add a value");
     control(button)!.click();
     await flush();
     expect(ran).toBe(1);
@@ -130,7 +130,7 @@ describe("the empty-state document", () => {
 
     expect(part(box, "empty")).toBe(before);
     expect(part(box, "empty-message")?.textContent).toBe("Second.");
-    expect(part(box, "empty-action")?.textContent?.trim()).toBe("Do it");
+    expect(part(box, "empty-action")?.textContent.trim()).toBe("Do it");
   });
 
   test("dispose gives the host back empty", async () => {
@@ -164,11 +164,11 @@ describe("the lit seam", () => {
     document.body.append(owner);
     hosts.push(owner);
 
-    litRender(html`${emptyState(owner, { message: "First." })}`, owner);
+    render(html`${emptyState(owner, { message: "First." })}`, owner);
     await flush();
     const first = part(owner, "empty");
 
-    litRender(html`${emptyState(owner, { message: "Second." })}`, owner);
+    render(html`${emptyState(owner, { message: "Second." })}`, owner);
     await flush();
 
     expect(owner.querySelectorAll('[part="empty"]')).toHaveLength(1);
@@ -184,15 +184,15 @@ describe("the lit seam", () => {
     document.body.append(owner);
     hosts.push(owner);
 
-    litRender(html`${emptyState(owner, { message: "Nothing here." })}`, owner);
+    render(html`${emptyState(owner, { message: "Nothing here." })}`, owner);
     await flush();
     const drawn = part(owner, "empty");
 
-    litRender(html`<p class="content">Something here.</p>`, owner);
+    render(html`<p class="content">Something here.</p>`, owner);
     await flush();
     expect(part(owner, "empty")).toBeNull();
 
-    litRender(html`${emptyState(owner, { message: "Nothing here again." })}`, owner);
+    render(html`${emptyState(owner, { message: "Nothing here again." })}`, owner);
     await flush();
     expect(part(owner, "empty")).toBe(drawn);
     expect(part(owner, "empty-message")?.textContent).toBe("Nothing here again.");
@@ -204,8 +204,8 @@ describe("the lit seam", () => {
     document.body.append(a, b);
     hosts.push(a, b);
 
-    litRender(html`${emptyState(a, { message: "A." })}`, a);
-    litRender(html`${emptyState(b, { message: "B." })}`, b);
+    render(html`${emptyState(a, { message: "A." })}`, a);
+    render(html`${emptyState(b, { message: "B." })}`, b);
     await flush();
 
     expect(part(a, "empty-message")?.textContent).toBe("A.");
@@ -216,22 +216,25 @@ describe("the lit seam", () => {
     const owner = document.createElement("div");
     document.body.append(owner);
     hosts.push(owner);
-    const ran = mock(() => {});
+    let ran = 0;
+    const go = (): void => {
+      ran += 1;
+    };
 
-    litRender(
-      html`${emptyState(owner, { actions: [{ label: "Go", run: ran }], message: "X." })}`,
+    render(
+      html`${emptyState(owner, { actions: [{ label: "Go", run: go }], message: "X." })}`,
       owner,
     );
     await flush();
-    litRender(nothing, owner);
-    litRender(
-      html`${emptyState(owner, { actions: [{ label: "Go", run: ran }], message: "X." })}`,
+    render(nothing, owner);
+    render(
+      html`${emptyState(owner, { actions: [{ label: "Go", run: go }], message: "X." })}`,
       owner,
     );
     await flush();
 
     control(part(owner, "empty-action"))!.click();
     await flush();
-    expect(ran).toHaveBeenCalledTimes(1);
+    expect(ran).toBe(1);
   });
 });

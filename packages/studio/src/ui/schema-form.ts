@@ -39,7 +39,16 @@
  * mount, updated rather than rebuilt on every repaint (specs/extensions.md §9.1).
  */
 
-import { isRef } from "@jxsuite/schema/guards";
+import {
+  isBoolean,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
+import type { ReadonlyJsonObject } from "@jxsuite/schema/project-schemas";
+import type { JsonObject, JsonValue, JxDocumentValue } from "@jxsuite/schema/types";
 import { createSchemaFormSurface } from "../surfaces/schema-form";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
@@ -58,15 +67,13 @@ import {
   slotCaps,
 } from "./value-source";
 import type { SlotMode } from "./value-source";
-import type { SignalOption } from "./dynamic-slot";
-import type { JsonValue } from "../types";
 import type {
   SchemaFormCellView,
   SchemaFormFieldView,
-  SchemaFormOption,
   SchemaFormRowView,
   SchemaFormSurface,
 } from "../surfaces/schema-form";
+import type { SurfaceOption } from "./surface";
 
 /** A (possibly nested) JSON Schema node, covering both object and property level keys. */
 export interface JsonSchema {
@@ -91,10 +98,19 @@ export interface JsonSchema {
   $ref?: string;
 }
 
+/**
+ * What a form commits: the properties that changed, each with its new value. `undefined` removes
+ * the property — a cleared field is absent from the record, not stored as an empty string.
+ */
+export type SchemaFormPatch = Record<string, JsonValue | undefined>;
+
 /** Host-provided context threaded to every control. */
 export interface SchemaFormContext {
-  /** Resolve a `#/$context/…` pointer (or legacy sentinel) against the host's project config. */
-  resolvePointer: (pointer: string, scope?: Record<string, unknown>) => unknown;
+  /**
+   * Resolve a `#/$context/…` pointer (or legacy sentinel) against the host's project config. A
+   * config section is document data, so the answer is whatever the config holds there.
+   */
+  resolvePointer: (pointer: string, scope?: JsonObject) => JxDocumentValue | JsonValue | undefined;
   /** Route params available for `$ref` bindings (e.g. from the document path). */
   params?: string[] | undefined;
   /**
@@ -117,8 +133,8 @@ export interface SchemaFormContext {
 export interface SchemaFormControlArgs {
   key: string;
   schema: JsonSchema;
-  value: unknown;
-  onChange: (next: unknown) => void;
+  value: JsonValue | undefined;
+  onChange: (next: JsonValue | undefined) => void;
   ctx: SchemaFormContext;
   /**
    * Ask the HOST to draw the form again, where it offered a way to.
@@ -153,7 +169,7 @@ export interface SchemaFormControlHandle {
 
 /** Options for {@link mountSchemaForm}. */
 export interface RenderFormOptions {
-  onChange: (patch: Record<string, unknown>) => void;
+  onChange: (patch: SchemaFormPatch) => void;
   context?: SchemaFormContext | undefined;
   /**
    * Per-field overrides from `$studio.settings.entry.ui`: a registered control name, and/or an
@@ -217,7 +233,9 @@ const CONTENT_REF = /^#\/content\/([^/]+)$/;
  * reading of `$ref` is how the picker ends up existing three times with three behaviours.
  */
 export function referenceTarget(schema: { $ref?: string } | undefined): string | null {
-  const match = typeof schema?.$ref === "string" ? CONTENT_REF.exec(schema.$ref) : null;
+  // The schema is project JSON, so the declared `string` is checked rather than trusted.
+  const ref = schema?.$ref;
+  const match = isString(ref) ? CONTENT_REF.exec(ref) : null;
   return match ? match[1]! : null;
 }
 
@@ -240,26 +258,30 @@ export const NULL_FORM_CONTEXT: SchemaFormContext = {
  * and sentinel strings resolve through the context's pointer resolver, applying object →
  * `Object.keys` and string[] → itself.
  *
- * @param {unknown} enumDef
+ * @param {JsonValue | undefined} enumDef
  * @param {SchemaFormContext | undefined} ctx
- * @param {Record<string, unknown>} [scope] - Scope for `{@param}` substitution (the form value)
+ * @param {JsonObject} [scope] - Scope for `{@param}` substitution (the form value)
  * @returns {string[] | undefined}
  */
 export function resolveFormEnum(
-  enumDef: unknown,
+  enumDef: JsonValue | undefined,
   ctx?: SchemaFormContext,
-  scope?: Record<string, unknown>,
+  scope?: JsonObject,
 ): string[] | undefined {
   if (Array.isArray(enumDef)) {
+    /* SAFETY: a form `enum` is a list of string choices — every select this engine draws is fed by
+       a settings fragment or collection schema that declares `type: "string"` beside its enum, and
+       each choice is only ever interpolated as text (an option label and value), which is what a
+       stray number would be read as too. */
     return enumDef as string[];
   }
   let pointer: string | undefined;
-  if (enumDef && typeof enumDef === "object") {
-    const ref = (enumDef as Record<string, unknown>).$ref;
-    if (typeof ref === "string") {
+  if (isJsonObject(enumDef)) {
+    const ref = enumDef.$ref;
+    if (isString(ref)) {
       pointer = ref;
     }
-  } else if (typeof enumDef === "string") {
+  } else if (isString(enumDef)) {
     // Legacy sentinel strings (e.g. "$contentTypes") resolve through the host's pointer resolver
     pointer = enumDef;
   }
@@ -270,7 +292,7 @@ export function resolveFormEnum(
   if (Array.isArray(resolved)) {
     return resolved.map(String);
   }
-  if (resolved && typeof resolved === "object") {
+  if (isJsonObject(resolved)) {
     return Object.keys(resolved);
   }
   return undefined;
@@ -296,7 +318,7 @@ function isBindableField(ps: JsonSchema): boolean {
 }
 
 /** Every pointer this form's host says a value may come from. */
-function refSourcesFor(ctx: SchemaFormContext): SignalOption[] {
+function refSourcesFor(ctx: SchemaFormContext): SurfaceOption[] {
   return [
     ...(ctx.signals ?? []).map((name) => ({ label: name, value: `#/state/${name}` })),
     ...(ctx.params ?? []).map((name) => ({ label: `$params/${name}`, value: `#/$params/${name}` })),
@@ -307,11 +329,11 @@ function refSourcesFor(ctx: SchemaFormContext): SignalOption[] {
 const NONE = "__none__";
 
 /** A value as a control reads it: a string, and never `"[object Object]"`. */
-function asText(value: unknown): string {
+function asText(value: JsonValue | undefined): string {
   if (value === undefined || value === null) {
     return "";
   }
-  return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+  return isNonNullObject(value) ? JSON.stringify(value, null, 2) : String(value);
 }
 
 // ─── Field validation (§16.1, inline tier) ───────────────────────────────────
@@ -328,13 +350,13 @@ function asText(value: unknown): string {
  * cannot see, so type-checking the reference itself would refuse every correct binding.
  *
  * @param {JsonSchema} schema
- * @param {unknown} value
+ * @param {JsonValue | undefined} value
  * @param {boolean} isRequired
  * @returns {string}
  */
 export function validateFieldValue(
   schema: JsonSchema,
-  value: unknown,
+  value: JsonValue | undefined,
   isRequired: boolean,
 ): string {
   if (isRef(value)) {
@@ -348,7 +370,7 @@ export function validateFieldValue(
     return `Choose one of: ${schema.enum.map(String).join(", ")}.`;
   }
   if (schema.type === "number" || schema.type === "integer") {
-    const n = typeof value === "number" ? value : Number(value);
+    const n = isNumber(value) ? value : Number(value);
     if (!Number.isFinite(n)) {
       return "Enter a number.";
     }
@@ -363,13 +385,14 @@ export function validateFieldValue(
     }
     return "";
   }
-  if (schema.type === "boolean" && typeof value !== "boolean") {
+  if (schema.type === "boolean" && !isBoolean(value)) {
     return "Must be true or false.";
   }
   if (schema.type === "array" && !Array.isArray(value)) {
     return "Must be a list.";
   }
-  if (schema.type === "object" && (typeof value !== "object" || Array.isArray(value))) {
+  // `null` is "empty" and answered above, so only a primitive or an array can fail here.
+  if (schema.type === "object" && !isJsonObject(value)) {
     return "Must be an object.";
   }
   return "";
@@ -392,9 +415,9 @@ interface FieldPlan {
   /** Item-property schemas, for an array-of-objects field. */
   itemProps?: Record<string, JsonSchema> | undefined;
   /** The rows currently held, so a cell edit can rebuild the array. */
-  rows?: Record<string, unknown>[] | undefined;
+  rows?: JsonObject[] | undefined;
   /** The ladder, when this position offers one. */
-  ladder?: { fieldKey: string; mode: SlotMode; offered: SlotMode[]; sources: SignalOption[] };
+  ladder?: { fieldKey: string; mode: SlotMode; offered: SlotMode[]; sources: SurfaceOption[] };
   /** A registered control owns the whole field; args are rebuilt for it on every repaint. */
   control?: SchemaFormMountedControl | undefined;
   /**
@@ -427,11 +450,7 @@ const TEXT_COMMIT_MS = 400;
 
 interface FormController {
   readonly host: HTMLElement;
-  readonly update: (
-    schema: JsonSchema,
-    value: Record<string, unknown>,
-    opts: RenderFormOptions,
-  ) => void;
+  readonly update: (schema: JsonSchema, value: JsonObject, opts: RenderFormOptions) => void;
   readonly dispose: () => void;
 }
 
@@ -452,14 +471,14 @@ export function resetSchemaForms(): void {
  * @param {string} formKey Stable identity for this form — the same key updates the standing mount
  *   instead of building a second one, which is what keeps the caret in a field across a repaint.
  * @param {JsonSchema} schema
- * @param {Record<string, unknown>} value The record being edited
+ * @param {JsonObject} value The record being edited
  * @param {RenderFormOptions} opts
  * @returns {HTMLElement} The form's own host, for a lit caller to place in its tree
  */
 export function mountSchemaForm(
   formKey: string,
   schema: JsonSchema,
-  value: Record<string, unknown>,
+  value: JsonObject,
   opts: RenderFormOptions,
 ): HTMLElement {
   sweep(formKey);
@@ -490,7 +509,7 @@ function sweep(exceptKey: string): void {
 
 function createController(): FormController {
   let schema: JsonSchema = {};
-  let value: Record<string, unknown> = {};
+  let value: JsonObject = {};
   let opts: RenderFormOptions = { onChange: () => {} };
   let ctx: SchemaFormContext = NULL_FORM_CONTEXT;
   const plans = new Map<string, FieldPlan>();
@@ -515,7 +534,7 @@ function createController(): FormController {
     run();
   };
 
-  const patch = (prop: string, next: unknown): void => {
+  const patch = (prop: string, next: JsonValue | undefined): void => {
     opts.onChange({ [prop]: next });
   };
 
@@ -546,7 +565,8 @@ function createController(): FormController {
       }
       case "json": {
         try {
-          patch(plan.prop, JSON.parse(raw) as unknown);
+          // SAFETY: `JSON.parse` with no reviver yields only JSON values, which is all a JsonValue is.
+          patch(plan.prop, JSON.parse(raw) as JsonValue);
         } catch {
           /* A half-typed object is not a refusal: the last parsable text is what the document
              keeps, and the field goes on showing what is actually in it. */
@@ -560,8 +580,8 @@ function createController(): FormController {
   };
 
   /** The field's items, each shallow-copied so a cell edit never writes through to the document. */
-  const cellRows = (plan: FieldPlan): Record<string, unknown>[] => {
-    const copies: Record<string, unknown>[] = [];
+  const cellRows = (plan: FieldPlan): JsonObject[] => {
+    const copies: JsonObject[] = [];
     for (const item of plan.rows ?? []) {
       copies.push({ ...item });
     }
@@ -574,10 +594,12 @@ function createController(): FormController {
       if (!plan?.itemProps) {
         return;
       }
-      const seed: Record<string, unknown> = {};
+      const seed: JsonObject = {};
       for (const [k, v] of Object.entries(plan.itemProps)) {
         if (v.default !== undefined) {
-          seed[k] = v.default;
+          /* SAFETY: an item schema is read from a JSON schema document, so the `default` it
+             declares is a JSON value. */
+          seed[k] = v.default as JsonValue;
         }
       }
       patch(field, [...cellRows(plan), seed]);
@@ -628,7 +650,7 @@ function createController(): FormController {
     },
   };
 
-  function writeCell(field: string, row: string, cell: string, next: unknown): void {
+  function writeCell(field: string, row: string, cell: string, next: JsonValue | undefined): void {
     const plan = plans.get(field);
     if (!plan?.itemProps) {
       return;
@@ -640,20 +662,23 @@ function createController(): FormController {
       return;
     }
     const cellSchema = plan.itemProps[cell];
+    /* SAFETY: the one non-JSON member this row can gain is an `undefined` for a cleared cell, and
+       every host's `onChange` persists the patch as JSON (the entry, the def and the project config
+       are all serialized), where an undefined member is simply omitted. */
     rows[idx] = {
       ...target,
       [cell]: coerceCell(cellSchema, next, plan.refCells?.has(`${field}/${row}/${cell}`) ?? false),
-    };
+    } as JsonObject;
     patch(field, rows);
   }
 
   /** A cell's committed string, as the item property's declared type. */
   function coerceCell(
     cellSchema: JsonSchema | undefined,
-    next: unknown,
+    next: JsonValue | undefined,
     isPointer: boolean,
-  ): unknown {
-    if (typeof next === "boolean") {
+  ): JsonValue | undefined {
+    if (isBoolean(next)) {
       return next;
     }
     const raw = String(next);
@@ -687,7 +712,7 @@ function createController(): FormController {
       opener: anchor,
       region: "value-source",
       rows: offered.map((rung) => ({
-        checked: (rung === mode ? "true" : "false") as "true" | "false",
+        checked: rung === mode ? ("true" as const) : ("false" as const),
         destructive: false,
         disabled: false,
         dividerAbove: false,
@@ -695,12 +720,14 @@ function createController(): FormController {
         title: VALUE_SOURCE_LABELS[rung],
       })),
       run: (id) => {
-        const next = id as SlotMode;
-        if (next === mode) {
+        // The menu's rows are `offered`, so an id is always one of its rungs.
+        const next = offered.find((rung) => rung === id);
+        if (next === undefined || next === mode) {
           return;
         }
         /* Leaving From data… seeds an empty Fixed value stash with the property's declared default,
            so unbind-restores-default survives a detour through Mixed text. */
+        // SAFETY: the field schema is read from JSON, so the `default` it declares is a JSON value.
         const literalDefault = plan.schema.default as JsonValue | undefined;
         if (
           mode === "ref" &&
@@ -715,7 +742,7 @@ function createController(): FormController {
             fieldKey,
             mode,
             next,
-            cloneValue(value[plan.prop] as JsonValue | undefined),
+            cloneValue(value[plan.prop]),
             slotModeSeed(next, { extraSignals: sources, literalDefault, stateDefs: [] }),
           ),
         );
@@ -853,7 +880,7 @@ function createController(): FormController {
 /** Every row the document draws, and the plan that reads each one's gestures back. */
 function deriveFields(
   schema: JsonSchema,
-  value: Record<string, unknown>,
+  value: JsonObject,
   opts: RenderFormOptions,
   ctx: SchemaFormContext,
   plans: Map<string, FieldPlan>,
@@ -877,8 +904,8 @@ interface DeriveArgs {
   opts: RenderFormOptions;
   plans: Map<string, FieldPlan>;
   required: boolean;
-  sources: SignalOption[];
-  value: Record<string, unknown>;
+  sources: SurfaceOption[];
+  value: JsonObject;
 }
 
 function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaFormFieldView {
@@ -938,7 +965,10 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     const mode = effectiveSlotMode(fieldKey, current);
     /* A From data… rung with nothing to point at is a dead end — but this engine only ladders a
        field once the host has named a source, so the rung always has something in it. */
-    const offered = slotCaps({ schema: configFieldSchema(ps) });
+    /* SAFETY: `JsonSchema` names only the keywords this engine acts on; the node itself is a schema
+       read from JSON (a settings fragment, a collection or plugin schema), so it and every keyword
+       it carries beyond the named ones are JSON, which is all the ladder's walk reads it as. */
+    const offered = slotCaps({ schema: configFieldSchema(ps as ReadonlyJsonObject) });
     plan.ladder = { fieldKey, mode, offered, sources };
     row.hasChip = true;
     row.sourceLabel = VALUE_SOURCE_LABELS[mode];
@@ -1002,7 +1032,10 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     }
   }
 
-  const enumValues = resolveFormEnum(opts.ui?.[prop]?.enum ?? ps.enum, ctx, value);
+  /* SAFETY: both sources are read from JSON — the descriptor's `$studio.settings.entry.ui` and the
+     field schema — so whichever `enum` is present is a JSON value. */
+  const enumSource = (opts.ui?.[prop]?.enum ?? ps.enum) as JsonValue | undefined;
+  const enumValues = resolveFormEnum(enumSource, ctx, value);
   if (enumValues) {
     plan.commit = "select";
     plan.debounceMs = 0;
@@ -1041,7 +1074,7 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
     row.kind = "json";
     row.value = current !== undefined ? JSON.stringify(current, null, 2) : "";
     row.placeholder = ps.description ?? "JSON Schema defining the data shape…";
-    row.chips = shapeChips(current);
+    row.chips = schemaPropertyChips(current);
     row.hasChips = row.chips.length > 0;
     return row;
   }
@@ -1066,17 +1099,19 @@ function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaForm
 }
 
 /** The property chips above a JSON-Schema field: what shape is in there right now. */
-function shapeChips(current: unknown): { key: string; label: string }[] {
-  if (!current || typeof current !== "object") {
+function schemaPropertyChips(current: JsonValue | undefined): { key: string; label: string }[] {
+  // An array names no `properties`, so it has no chips either.
+  if (!isJsonObject(current)) {
     return [];
   }
-  const held = current as Record<string, unknown>;
-  if (held.$ref || typeof held.properties !== "object" || held.properties === null) {
+  const { properties } = current;
+  if (current.$ref || properties === null || !isNonNullObject(properties)) {
     return [];
   }
-  return Object.entries(held.properties as Record<string, Record<string, unknown>>).map(
-    ([key, spec]) => ({ key, label: `${key}: ${String(spec.type ?? "any")}` }),
-  );
+  return Object.entries(properties).map(([key, spec]) => ({
+    key,
+    label: `${key}: ${String((isJsonObject(spec) ? spec.type : undefined) ?? "any")}`,
+  }));
 }
 
 /** An array whose items have a declared shape: one row per item, one cell per property. */
@@ -1088,7 +1123,10 @@ function arrayOfObjects(
   row: SchemaFormFieldView,
 ): SchemaFormFieldView {
   const held = args.value[prop];
-  const rows = Array.isArray(held) ? (held as Record<string, unknown>[]) : [];
+  /* SAFETY: the caller dispatches here only for a property whose schema declares
+     `items.type: "object"`, so a conforming record holds an object per item; a malformed item is
+     still drawn as the row it should be, as it always was, rather than silently dropped. */
+  const rows = Array.isArray(held) ? (held as JsonObject[]) : [];
   plan.commit = "none";
   plan.itemProps = itemProps;
   plan.rows = rows;
@@ -1102,7 +1140,7 @@ function arrayOfObjects(
 function deriveRow(
   prop: string,
   key: string,
-  item: Record<string, unknown>,
+  item: JsonObject,
   itemProps: Record<string, JsonSchema>,
   args: DeriveArgs,
   plan: FieldPlan,
@@ -1122,7 +1160,7 @@ function deriveCell(
   rowKey: string,
   cellKey: string,
   cellSchema: JsonSchema,
-  held: unknown,
+  held: JsonValue | undefined,
   args: DeriveArgs,
   plan: FieldPlan,
 ): SchemaFormCellView {
@@ -1160,13 +1198,18 @@ function deriveCell(
       return cell;
     }
   }
-  const enumValues = resolveFormEnum(cellSchema.enum, args.ctx, args.value);
+  // SAFETY: an item property's schema is read from JSON, so its `enum` is a JSON value.
+  const enumValues = resolveFormEnum(
+    cellSchema.enum as JsonValue | undefined,
+    args.ctx,
+    args.value,
+  );
   if (enumValues) {
     cell.kind = "select";
     cell.value = held !== undefined ? String(held) : NONE;
     cell.options = [
       { label: "—", value: NONE },
-      ...enumValues.map((v: string): SchemaFormOption => ({ label: v, value: v })),
+      ...enumValues.map((v: string): SurfaceOption => ({ label: v, value: v })),
     ];
     return cell;
   }

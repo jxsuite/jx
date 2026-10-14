@@ -27,6 +27,7 @@
 
 import { renderHead } from "./head-merger.ts";
 import type { ComposedPage } from "./compose.ts";
+import type { JxDocument } from "@jxsuite/schema/types";
 
 /** What a host must tell the shell about its own origin. */
 export interface ShellOptions {
@@ -63,8 +64,8 @@ function attr(value: string): string {
  * `<` is escaped as `\u003c`, which JSON.parse restores and an HTML parser cannot mistake for the
  * start of a tag — so no value inside the document, however it was authored, can close the block.
  */
-function jsonPayload(value: unknown): string {
-  return JSON.stringify(value).replaceAll("<", String.raw`\u003c`);
+function jsonPayload(doc: JxDocument): string {
+  return JSON.stringify(doc).replaceAll("<", String.raw`\u003c`);
 }
 
 /** The document for one composed page. */

@@ -1,7 +1,7 @@
 {
   "name": "system-and-foreign-fields",
   "description": "Messages chat-state never writes itself, as a restore or another consumer can push them: a system message (passed through as { role, content }), fields the wire does not know about (not sent), a missing timestamp, and a restored assistant with an empty toolCalls array (dropped like a placeholder).",
-  "shapes": ["system-role", "foreign-fields-ignored", "placeholder-dropped"],
+  "scenarios": ["system-role", "foreign-fields-ignored", "placeholder-dropped"],
   "messages": [
     {
       "id": "sys_1",

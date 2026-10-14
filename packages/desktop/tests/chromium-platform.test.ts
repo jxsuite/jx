@@ -1,114 +1,125 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import type { StudioPlatform } from "@jxsuite/studio/types";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type * as ImportClient from "@jxsuite/studio/import-client";
+import { decodeRequest } from "./_rpc-frame";
+import type { ReceivedMessage } from "./_rpc-frame";
 
 // ─── Embedded mock RPC server ──────────────────────────────────────────────
 
-const responses: Record<string, unknown> = {
-  addPackage: null,
-  codeService: null,
-  createDirectory: null,
-  deleteFile: null,
-  discoverComponents: [{ path: "btn.json", props: [], tagName: "my-btn" }],
-  fetchPluginSchema: { properties: {}, type: "object" },
-  gitBranches: { branches: ["main", "dev"], current: "main" },
-  gitCheckout: null,
-  gitCommit: null,
-  gitCreateBranch: null,
-  gitDiff: "diff --git a/file",
-  gitDiscard: null,
-  gitFetch: null,
-  gitLog: [{ author: "Test", date: "2025-01-01", hash: "abc123", message: "init" }],
-  gitPull: null,
-  gitPush: null,
-  gitShow: "file at ref",
-  gitStage: null,
-  gitStatus: { ahead: 0, behind: 0, branch: "main", files: [] },
-  gitUnstage: null,
-  getProjectRoot: { root: "/abs/proj" },
-  readFileBytes: { data: "/9j/4AAQ" },
-  setWindowProject: { config: { name: "Test" }, deduped: false },
-  getRecentProjects: [{ name: "Recent", root: "/abs/recent", timestamp: 7 }],
-  getSettings: { aiApiKey: "sk-abc" },
-  pickDirectory: { path: "/picked/parent" },
-  saveRecentProjects: null,
-  patchSettings: { aiApiKey: "sk-abc", theme: "dark" },
-  listDirectory: [
-    {
-      modified: "2025-01-01",
-      name: "file.json",
-      path: "file.json",
-      size: 42,
-      type: "file",
+/** The canned reply for each method, keyed by method name; a test may swap one for its duration. */
+const responses = new Map<string, JsonValue>(
+  Object.entries<JsonValue>({
+    addPackage: null,
+    codeService: null,
+    createDirectory: null,
+    deleteFile: null,
+    discoverComponents: [{ path: "btn.json", props: [], tagName: "my-btn" }],
+    fetchPluginSchema: { properties: {}, type: "object" },
+    gitBranches: { branches: ["main", "dev"], current: "main" },
+    gitCheckout: null,
+    gitCommit: null,
+    gitCreateBranch: null,
+    gitDiff: "diff --git a/file",
+    gitDiscard: null,
+    gitFetch: null,
+    gitLog: [{ author: "Test", date: "2025-01-01", hash: "abc123", message: "init" }],
+    gitPull: null,
+    gitPush: null,
+    gitShow: "file at ref",
+    gitStage: null,
+    gitStatus: { ahead: 0, behind: 0, branch: "main", files: [] },
+    gitUnstage: null,
+    getProjectRoot: { root: "/abs/proj" },
+    readFileBytes: { data: "/9j/4AAQ" },
+    setWindowProject: { config: { name: "Test" }, deduped: false },
+    getRecentProjects: [{ name: "Recent", root: "/abs/recent", timestamp: 7 }],
+    getSettings: { aiApiKey: "sk-abc" },
+    pickDirectory: { path: "/picked/parent" },
+    saveRecentProjects: null,
+    patchSettings: { aiApiKey: "sk-abc", theme: "dark" },
+    listDirectory: [
+      {
+        modified: "2025-01-01",
+        name: "file.json",
+        path: "file.json",
+        size: 42,
+        type: "file",
+      },
+    ],
+    // Format-host proxies (descriptor-contributed settings + Monaco schema registration)
+    fetchProjectSchemas: { document: { $ref: "doc/v1" }, project: { $ref: "project/v2" } },
+    listExtensions: [{ name: "@jxsuite/parser", specifier: "@jxsuite/parser" }],
+    listExtensionCatalog: [
+      {
+        installed: true,
+        name: "@jxsuite/feed",
+        sections: [{ key: "feed" }],
+        source: "first-party",
+      },
+    ],
+    listFormats: [{ extensions: [".md"], mediaType: "text/markdown", name: "Markdown" }],
+    listPackages: [{ name: "lodash", version: "^4.0.0" }],
+    dependenciesNeedInstall: true,
+    installDependencies: { ok: true },
+    packageVersions: [{ current: "^4.0.0", latest: "4.17.21", name: "lodash" }],
+    setPackageVersions: { ok: true },
+    locateFile: "found/file.json",
+    openProject: {
+      config: { name: "Test" },
+      handle: { name: "Test", projectConfig: { name: "Test" }, root: "." },
     },
-  ],
-  // Format-host proxies (descriptor-contributed settings + Monaco schema registration)
-  fetchProjectSchemas: { document: { $ref: "doc/v1" }, project: { $ref: "project/v2" } },
-  listExtensions: [{ name: "@jxsuite/parser", specifier: "@jxsuite/parser" }],
-  listExtensionCatalog: [
-    { installed: true, name: "@jxsuite/feed", sections: [{ key: "feed" }], source: "first-party" },
-  ],
-  listFormats: [{ extensions: [".md"], mediaType: "text/markdown", name: "Markdown" }],
-  listPackages: [{ name: "lodash", version: "^4.0.0" }],
-  dependenciesNeedInstall: true,
-  installDependencies: { ok: true },
-  packageVersions: [{ current: "^4.0.0", latest: "4.17.21", name: "lodash" }],
-  setPackageVersions: { ok: true },
-  locateFile: "found/file.json",
-  openProject: {
-    config: { name: "Test" },
-    handle: { name: "Test", projectConfig: { name: "Test" }, root: "." },
-  },
-  removePackage: null,
-  renameFile: null,
-  resolveSiteContext: { sitePath: "." },
-  searchFiles: [{ name: "match.json", path: "match.json", type: "file" }],
-  uploadFile: null,
-  writeFile: null,
-  // Data surface + secrets (desktop twins of /__studio/data/* + /__studio/secrets)
-  dataConnections: { connections: [{ isDefault: true, name: "main" }] },
-  dataConnectionTest: { ok: true },
-  dataPush: { applied: false, plan: [{ kind: "createTable", summary: "Create" }] },
-  dataRows: { columns: [{ name: "id", pk: true, type: "text" }], rows: [], total: 0 },
-  dataInsertRow: { row: { id: "n" } },
-  dataUpdateRow: { row: { id: "n", title: "t" } },
-  dataDeleteRow: { ok: true },
-  listSecrets: { names: ["MAIN_URL"] },
-  setSecrets: { names: ["MAIN_URL"], ok: true },
-  // Build Site — compile, then open the OUTPUT on the origin the backend names.
-  buildSite: { errors: [], files: 12, routes: 4, url: "http://127.0.0.1:45678" },
-  // View: Open in Browser — no build, and the reply says whether a tab already took the route.
-  previewSite: {
-    errors: [],
-    files: 0,
-    mode: "live",
-    reused: true,
-    routes: 4,
-    url: "http://127.0.0.1:51000",
-  },
-  setPreviewOverlay: null,
-  clearPreviewOverlay: null,
-  // About screen. A system-packaged build has no update feed, so it reports no status.
-  appInfo: { channel: "system", hash: "unknown", version: "1.4.1" },
-  // Multi-window
-  pickProject: { name: "Sibling", root: "/proj/sibling" },
-  openProjectInNewWindow: { focused: false },
-  newWindow: null,
-  openExternal: { ok: true },
-};
+    removePackage: null,
+    renameFile: null,
+    resolveSiteContext: { sitePath: "." },
+    searchFiles: [{ name: "match.json", path: "match.json", type: "file" }],
+    uploadFile: null,
+    writeFile: null,
+    // Data surface + secrets (desktop twins of /__studio/data/* + /__studio/secrets)
+    dataConnections: { connections: [{ isDefault: true, name: "main" }] },
+    dataConnectionTest: { ok: true },
+    dataPush: { applied: false, plan: [{ kind: "createTable", summary: "Create" }] },
+    dataRows: { columns: [{ name: "id", pk: true, type: "text" }], rows: [], total: 0 },
+    dataInsertRow: { row: { id: "n" } },
+    dataUpdateRow: { row: { id: "n", title: "t" } },
+    dataDeleteRow: { ok: true },
+    listSecrets: { names: ["MAIN_URL"] },
+    setSecrets: { names: ["MAIN_URL"], ok: true },
+    // Build Site — compile, then open the OUTPUT on the origin the backend names.
+    buildSite: { errors: [], files: 12, routes: 4, url: "http://127.0.0.1:45678" },
+    // View: Open in Browser — no build, and the reply says whether a tab already took the route.
+    previewSite: {
+      errors: [],
+      files: 0,
+      mode: "live",
+      reused: true,
+      routes: 4,
+      url: "http://127.0.0.1:51000",
+    },
+    setPreviewOverlay: null,
+    clearPreviewOverlay: null,
+    // About screen. A system-packaged build has no update feed, so it reports no status.
+    appInfo: { channel: "system", hash: "unknown", version: "1.4.1" },
+    // Multi-window
+    pickProject: { name: "Sibling", root: "/proj/sibling" },
+    openProjectInNewWindow: { focused: false },
+    newWindow: null,
+    openExternal: { ok: true },
+  }),
+);
 
 // Track forced errors for specific methods
 const forcedErrors = new Map<string, string>();
 
 // Every request the platform actually sent, so a test can assert both that one RPC was used and
 // That another one was NOT (the folder chooser must never fire two dialogs).
-const methodLog: { method: string; params?: Record<string, unknown> }[] = [];
+const methodLog: ReceivedMessage[] = [];
 
 /* Sockets the mock launcher can speak FIRST on. The chromium launcher pushes filesystem events and
    focus requests, which are not answers to anything the shell asked, so a test needs the same. */
 const clients: { send: (data: string) => void; close: () => void }[] = [];
 
-function pushToClient(frame: Record<string, unknown>) {
+function pushToClient(frame: JsonObject) {
   for (const client of clients) {
     client.send(JSON.stringify(frame));
   }
@@ -127,11 +138,7 @@ const server = Bun.serve({
       clients.push(ws);
     },
     message(ws, raw) {
-      const msg = JSON.parse(raw as string) as {
-        id: number;
-        method: string;
-        params?: Record<string, unknown>;
-      };
+      const msg = decodeRequest(raw);
       methodLog.push({ method: msg.method, params: msg.params });
 
       const forcedError = forcedErrors.get(msg.method);
@@ -143,8 +150,7 @@ const server = Bun.serve({
 
       // Dynamic response for readFile based on path
       if (msg.method === "readFile") {
-        const params = msg.params as { path?: string } | undefined;
-        if (params?.path === "project.json") {
+        if (msg.params?.path === "project.json") {
           ws.send(
             JSON.stringify({
               id: msg.id,
@@ -157,8 +163,8 @@ const server = Bun.serve({
         return;
       }
 
-      if (msg.method in responses) {
-        ws.send(JSON.stringify({ id: msg.id, result: responses[msg.method] }));
+      if (responses.has(msg.method)) {
+        ws.send(JSON.stringify({ id: msg.id, result: responses.get(msg.method) }));
       } else {
         ws.send(
           JSON.stringify({
@@ -184,14 +190,15 @@ Object.defineProperty(globalThis, "location", {
 // Happy-dom (loaded by studio test preload) replaces globalThis.WebSocket with
 // A version that cannot connect to real servers. Detect and fix this by falling
 // Back to a thin wrapper around Bun's native TCP WebSocket upgrade.
-const wsStr = globalThis.WebSocket?.toString() ?? "";
+const wsStr = globalThis.WebSocket.toString();
 if (wsStr.includes("WebSocketImplementation") || wsStr.includes("DOMException")) {
   const saved = globalThis.WebSocket;
   // Bun supports native WebSocket via its internal implementation.
   // We can get a working one by deleting happy-dom's override — Bun re-exposes the built-in.
   // @ts-expect-error -- deleting a required global; Bun re-exposes its built-in WebSocket
   delete globalThis.WebSocket;
-  if (!globalThis.WebSocket) {
+  // A presence probe: the delete above is what can leave the global absent despite its type.
+  if (!("WebSocket" in globalThis)) {
     // Fallback: re-assign — shouldn't happen in Bun but just in case
     globalThis.WebSocket = saved;
   }
@@ -201,8 +208,8 @@ if (wsStr.includes("WebSocketImplementation") || wsStr.includes("DOMException"))
 
 // The NDJSON stream client is exercised by studio's import-client tests; here only the plumbing
 // (endpoint token, directory resolution, callback threading) matters.
-const streamImportCalls: unknown[][] = [];
-const streamImport = mock((...args: unknown[]) => {
+const streamImportCalls: Parameters<typeof ImportClient.streamImport>[] = [];
+const streamImport = mock((...args: Parameters<typeof ImportClient.streamImport>) => {
   streamImportCalls.push(args);
   return Promise.resolve({ config: { name: "Imported" }, root: "/imported" });
 });
@@ -271,10 +278,10 @@ describe("chromium desktop platform", () => {
    * on a resolution path this host has never needed.
    */
   test("declares NO assetSpace: the loopback already serves the site URL space", () => {
-    // Through the INTERFACE: the factory returns an INFERRED type (see `platform.ts`), so a
-    // Property it deliberately does not set is not on that type at all. The assertion is about
-    // What a host MAY declare, and this one declaring nothing.
-    expect((platform as unknown as StudioPlatform).assetSpace).toBeUndefined();
+    // On the OBJECT: the factory returns an INFERRED type (see `platform.ts`), so a property it
+    // Deliberately does not set is not on that type at all. The assertion is about what a host MAY
+    // Declare, and this one declaring nothing: the key is absent, not merely undefined.
+    expect("assetSpace" in platform).toBe(false);
   });
 
   test("canvasUrl carries the per-process rpcToken read from the shell URL", () => {
@@ -311,23 +318,24 @@ describe("chromium desktop platform", () => {
   });
 
   test("pickDirectory uses the portal RPC even when a browser chooser is available", async () => {
-    interface PickerGlobal {
-      showDirectoryPicker?: unknown;
-    }
-    const had = "showDirectoryPicker" in (globalThis as PickerGlobal);
-    const saved = (globalThis as PickerGlobal).showDirectoryPicker;
-    (globalThis as PickerGlobal).showDirectoryPicker = () => {
-      throw new Error("the native portal must win on this build");
-    };
+    // A WICG API the DOM lib does not declare, so it is installed and restored by descriptor.
+    const saved = Object.getOwnPropertyDescriptor(globalThis, "showDirectoryPicker");
+    Object.defineProperty(globalThis, "showDirectoryPicker", {
+      configurable: true,
+      value: () => {
+        throw new Error("the native portal must win on this build");
+      },
+      writable: true,
+    });
     try {
       methodLog.length = 0;
       await expect(platform.pickDirectory!()).resolves.toBe("/picked/parent");
       expect(methodLog).toEqual([{ method: "pickDirectory", params: undefined }]);
     } finally {
-      if (had) {
-        (globalThis as PickerGlobal).showDirectoryPicker = saved;
+      if (saved) {
+        Object.defineProperty(globalThis, "showDirectoryPicker", saved);
       } else {
-        delete (globalThis as PickerGlobal).showDirectoryPicker;
+        Reflect.deleteProperty(globalThis, "showDirectoryPicker");
       }
     }
   });
@@ -368,10 +376,10 @@ describe("chromium desktop platform", () => {
       },
       onProgress,
     );
-    expect(result).toEqual({ config: { name: "Imported" }, root: "/imported" } as never);
+    expect(result).toEqual({ config: { name: "Imported" }, root: "/imported" });
     const [endpoint, opts, cb] = streamImportCalls[0]!;
     expect(endpoint).toBe("/__studio__/import-site?token=CHROMIUM_TOK");
-    expect((opts as { directory: string }).directory).toBe("/abs/dest");
+    expect(opts.directory).toBe("/abs/dest");
     expect(cb).toBe(onProgress);
   });
 
@@ -399,10 +407,11 @@ describe("chromium desktop platform", () => {
     // The project server 403s a token-less /__jx_resolve__; the platform must thread the token.
     const originalFetch = globalThis.fetch;
     const seen: { url: string; init?: RequestInit }[] = [];
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const answer = async (input: RequestInfo | URL, init?: RequestInit) => {
       seen.push({ init, url: String(input) });
       return Response.json([{ data: { sku: "a" }, id: "A" }]);
-    }) as typeof fetch;
+    };
+    globalThis.fetch = Object.assign(answer, { preconnect: originalFetch.preconnect });
     try {
       const result = await platform.resolveClass!({ $src: "x" });
       expect(result).toEqual([{ data: { sku: "a" }, id: "A" }]);
@@ -416,8 +425,8 @@ describe("chromium desktop platform", () => {
 
   test("resolveClass throws on a non-OK response", async () => {
     const originalFetch = globalThis.fetch;
-    // Via unknown: a bare arrow lacks fetch's `preconnect` sibling, so the direct cast is rejected.
-    globalThis.fetch = (async () => new Response("no", { status: 403 })) as unknown as typeof fetch;
+    const answer = async () => new Response("no", { status: 403 });
+    globalThis.fetch = Object.assign(answer, { preconnect: originalFetch.preconnect });
     try {
       expect(platform.resolveClass!({ $src: "x" })).rejects.toThrow("Class resolution failed: 403");
     } finally {
@@ -602,28 +611,28 @@ describe("chromium desktop platform", () => {
 
   test("listFormats returns the registered format metadata", async () => {
     const formats = await platform.listFormats!();
-    expect(formats).toEqual([
+    expect(formats).toEqual<JsonValue>([
       { extensions: [".md"], mediaType: "text/markdown", name: "Markdown" },
     ]);
   });
 
   test("listExtensionCatalog returns what this backend can offer", async () => {
     const catalog = await platform.listExtensionCatalog!();
-    expect(catalog).toEqual([
+    expect(catalog).toEqual<JsonValue>([
       {
         installed: true,
         name: "@jxsuite/feed",
         sections: [{ key: "feed" }],
         source: "first-party",
       },
-    ] as never);
+    ]);
   });
 
   test("listExtensions returns the extensions payload", async () => {
     const extensions = await platform.listExtensions!();
-    expect(extensions).toEqual([
+    expect(extensions).toEqual<JsonValue>([
       { name: "@jxsuite/parser", specifier: "@jxsuite/parser" },
-    ] as never);
+    ]);
   });
 
   test("fetchProjectSchemas returns the pre-bundled project/document schemas", async () => {
@@ -803,7 +812,7 @@ describe("chromium desktop platform", () => {
     });
     // Studio offers the New Window branch only when BOTH members exist, because picking with
     // `openProject()` would re-root the very window the user said to keep.
-    expect(typeof platform.openProjectInNewWindow).toBe("function");
+    expect(platform.openProjectInNewWindow).toBeFunction();
   });
 
   test("openProjectInNewWindow reports whether a window opened or one was raised", async () => {
@@ -947,14 +956,14 @@ describe("chromium desktop platform", () => {
      case above. Branching only on a caught error would leave the click doing nothing at all whenever
      the desktop answers but has no opener to hand the URL to. */
   test("a resolved refusal ({ ok: false }) also falls back to a new browser tab", async () => {
-    responses.openExternal = { ok: false };
+    responses.set("openExternal", { ok: false });
     const before = windowOpen.mock.calls.length;
     try {
       getPreviewNavigateHandler()!("https://example.com/refused/");
       await until(() => windowOpen.mock.calls.length > before);
       expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/refused/");
     } finally {
-      responses.openExternal = { ok: true };
+      responses.set("openExternal", { ok: true });
     }
   });
 });

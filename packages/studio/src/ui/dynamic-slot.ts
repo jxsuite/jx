@@ -23,8 +23,10 @@ import { cloneValue } from "../tabs/doc-op-apply";
 import { activeTab } from "../workspace/workspace";
 import { slotMode } from "./value-source";
 
+import type { JxDocumentValue } from "@jxsuite/schema/types";
 import type { JsonValue } from "../types";
 import type { SlotMode } from "./value-source";
+import type { SurfaceOption } from "./surface";
 
 export type { SlotCapsSource, SlotMode, SlotPosition } from "./value-source";
 export { slotCaps, slotMode } from "./value-source";
@@ -96,7 +98,10 @@ function isTextEditRung(mode: SlotMode): boolean {
  * The rung to render this field at: the one it is already being edited at when a text edit could
  * explain the difference, otherwise whatever the document value says. Records its answer.
  */
-export function effectiveSlotMode(fieldKey: string, value: unknown): SlotMode {
+export function effectiveSlotMode(
+  fieldKey: string,
+  value: JxDocumentValue | JsonValue | undefined,
+): SlotMode {
   const key = fieldScopeKey(fieldKey);
   const sniffed = slotMode(value);
   const previous = slotModeRendered.get(key);
@@ -108,18 +113,12 @@ export function effectiveSlotMode(fieldKey: string, value: unknown): SlotMode {
   return mode;
 }
 
-/** One pointer the From data… rung may offer, as a picker option. */
-export interface SignalOption {
-  value: string;
-  label: string;
-}
-
 /** Where a rung's seed value comes from — the subset of a slot's options that decides one. */
 export interface SlotSeedSources {
   /** State keys the position may point at; the first is what a fresh binding lands on. */
   stateDefs: readonly string[];
   /** Extra pointers beyond `#/state/*` — route params, `$map/item`. */
-  extraSignals?: readonly SignalOption[] | null;
+  extraSignals?: readonly SurfaceOption[] | null;
   /** What Fixed value restores to. */
   literalDefault?: JsonValue | undefined;
 }

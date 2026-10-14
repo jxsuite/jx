@@ -12,6 +12,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 
 const SITES_DIR = join(import.meta.dirname, "..", "sites");
 const CREDITS_PATH = join(import.meta.dirname, "..", "CREDITS.md");
@@ -35,9 +36,63 @@ export interface PexelsPhoto {
   photographer: string;
   photographer_url: string;
   url: string;
-  alt?: string;
-  avg_color?: string;
+  alt?: string | null;
+  avg_color?: string | null;
   src: { original: string; large2x: string; large: string };
+}
+
+/** One page of Pexels API v1 search results. */
+export interface PexelsSearchPage {
+  photos: PexelsPhoto[];
+}
+
+/** A committed images.json manifest: a site id and the photo slots it needs. */
+export function isImagesManifest(value: unknown): value is ImagesManifest {
+  return (
+    isJsonObject(value) &&
+    isString(value.site) &&
+    (value.thumbnail === undefined || isString(value.thumbnail)) &&
+    Array.isArray(value.images) &&
+    value.images.every((spec) => isImageSpec(spec))
+  );
+}
+
+function isImageSpec(value: unknown): value is ImageSpec {
+  return (
+    isJsonObject(value) &&
+    isString(value.role) &&
+    isString(value.query) &&
+    (value.orientation === undefined ||
+      value.orientation === "landscape" ||
+      value.orientation === "portrait" ||
+      value.orientation === "square") &&
+    (value.photoId === undefined || isNumber(value.photoId))
+  );
+}
+
+/** A Pexels API v1 photo resource, checked for every member this script reads or declares. */
+export function isPexelsPhoto(value: unknown): value is PexelsPhoto {
+  return (
+    isJsonObject(value) &&
+    isNumber(value.id) &&
+    isString(value.photographer) &&
+    isString(value.photographer_url) &&
+    isString(value.url) &&
+    (value.alt === undefined || value.alt === null || isString(value.alt)) &&
+    (value.avg_color === undefined || value.avg_color === null || isString(value.avg_color)) &&
+    isJsonObject(value.src) &&
+    isString(value.src.original) &&
+    isString(value.src.large2x) &&
+    isString(value.src.large)
+  );
+}
+
+function isPexelsSearchPage(value: unknown): value is PexelsSearchPage {
+  return (
+    isJsonObject(value) &&
+    Array.isArray(value.photos) &&
+    value.photos.every((photo) => isPexelsPhoto(photo))
+  );
 }
 
 /** Pexels "square" isn't a real orientation — map it to landscape for the search, crop on download. */
@@ -108,12 +163,20 @@ export function upsertCreditsBlock(existing: string, site: string, block: string
   return `${header}\n\n${section}\n`;
 }
 
-async function pexelsGet<T>(url: string, key: string): Promise<T> {
+async function pexelsGet<T>(
+  url: string,
+  key: string,
+  accept: (body: unknown) => body is T,
+): Promise<T> {
   const res = await fetch(url, { headers: { Authorization: key } });
   if (!res.ok) {
     throw new Error(`Pexels ${res.status} for ${url}`);
   }
-  return (await res.json()) as T;
+  const body: unknown = await res.json();
+  if (!accept(body)) {
+    throw new Error(`Pexels returned an unexpected response body for ${url}`);
+  }
+  return body;
 }
 
 async function download(url: string, dest: string): Promise<void> {
@@ -143,7 +206,11 @@ async function main(): Promise<void> {
     console.error(`No images.json at ${manifestPath}`);
     process.exit(1);
   }
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as ImagesManifest;
+  const manifest: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
+  if (!isImagesManifest(manifest)) {
+    console.error(`Malformed images.json at ${manifestPath}`);
+    process.exit(1);
+  }
   const imagesDir = join(siteDir, "public", "images");
   await mkdir(imagesDir, { recursive: true });
 
@@ -152,9 +219,9 @@ async function main(): Promise<void> {
   for (const spec of manifest.images) {
     let photo: PexelsPhoto;
     if (spec.photoId && !force) {
-      photo = await pexelsGet<PexelsPhoto>(`${PEXELS_API}/photos/${spec.photoId}`, key);
+      photo = await pexelsGet(`${PEXELS_API}/photos/${spec.photoId}`, key, isPexelsPhoto);
     } else {
-      const data = await pexelsGet<{ photos: PexelsPhoto[] }>(buildSearchUrl(spec), key);
+      const data = await pexelsGet(buildSearchUrl(spec), key, isPexelsSearchPage);
       if (data.photos.length === 0) {
         throw new Error(`No Pexels results for "${spec.query}" (role ${spec.role})`);
       }

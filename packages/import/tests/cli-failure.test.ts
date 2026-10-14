@@ -3,8 +3,9 @@
  * not process.exit, so the finally-cleanup in the orchestrator can run).
  */
 import { describe, expect, mock, test } from "bun:test";
+import type { ImportSiteOptions, ImportSiteResult } from "../src/run.ts";
 
-const importSite = mock((_opts: Record<string, unknown>) =>
+const importSite = mock((_opts: ImportSiteOptions): Promise<ImportSiteResult> =>
   Promise.reject(new Error('Directory "/x" is not empty')),
 );
 void mock.module("../src/run.ts", () => ({ importSite }));
@@ -17,8 +18,7 @@ console.log = () => {};
 
 process.argv = [process.argv[0] ?? "bun", "cli.ts", "https://clone.example/", "--no-crawl"];
 
-const cliEntry = "../src/cli";
-const cliModule = (await import(cliEntry)) as { ready?: Promise<unknown> };
+const cliModule = await import("../src/cli");
 await cliModule.ready;
 
 describe("jx-import CLI on pipeline failure", () => {
@@ -27,8 +27,8 @@ describe("jx-import CLI on pipeline failure", () => {
     expect(process.exitCode).toBe(1);
     process.exitCode = 0;
     // Single-page default outDir derives from the hostname when --out is omitted.
-    const opts = importSite.mock.calls[0]?.[0] as { maxDepth: number; outDir: string };
-    expect(opts.maxDepth).toBe(0);
-    expect(opts.outDir).toContain("jx-imports/clone.example");
+    const opts = importSite.mock.calls[0]?.[0];
+    expect(opts?.maxDepth).toBe(0);
+    expect(opts?.outDir).toContain("jx-imports/clone.example");
   });
 });

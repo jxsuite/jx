@@ -29,6 +29,7 @@ import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { pathKey } from "../src/store";
 import { view } from "../src/view";
 import { NAVIGATOR_PANEL_IDS, shell } from "../src/shell";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
 import type { OutlineActions } from "../src/surfaces/panel-outline";
@@ -83,7 +84,7 @@ function makeDoc(): JxMutableNode {
           $prototype: "Array",
           items: { $ref: "#/state/things" },
           map: { tagName: "li", textContent: "item" },
-        } as unknown as JxMutableNode[],
+        },
         tagName: "ul",
       },
       {
@@ -93,7 +94,7 @@ function makeDoc(): JxMutableNode {
           beta: { $ref: "./beta.json" },
         },
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { tagName: "img" },
     ],
     tagName: "div",
@@ -111,9 +112,42 @@ function at(path: JxPath): HTMLElement {
   return needRow(host, pathKey(path));
 }
 
+/** The first HTML element under `scope` matching `selector`, or a failure naming the selector. */
+function required(scope: ParentNode, selector: string): HTMLElement {
+  const found = scope.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return found;
+}
+
+/** A row's rename field, or a failure: the `$switch` case that draws it is a native `<input>`. */
+function titleInput(scope: ParentNode): HTMLInputElement {
+  const found = scope.querySelector('[part="title-input"]');
+  if (!(found instanceof HTMLInputElement)) {
+    throw new Error("no rename input is drawn");
+  }
+  return found;
+}
+
+/**
+ * The element children of `node`, as the live array so a test may splice it, or a failure when the
+ * slot is a bare repeater or holds a text child.
+ */
+function elementsOf(node: JxMutableNode | string | undefined): JxMutableNode[] {
+  const children = node === undefined || isString(node) ? undefined : node.children;
+  if (
+    !Array.isArray(children) ||
+    !children.every((child): child is JxMutableNode => !isString(child))
+  ) {
+    throw new Error("expected a node whose children are all elements");
+  }
+  return children;
+}
+
 /** A row's badge, which carries both its text and which of the six drawings it gets. */
 function badgeOf(el: HTMLElement): HTMLElement {
-  return el.querySelector('[part="badge"]') as HTMLElement;
+  return required(el, '[part="badge"]');
 }
 
 /** A row's name. */
@@ -205,7 +239,7 @@ describe("the rows and their badges", () => {
     resetWorkspaceWithTab({
       children: [{ attributes: { name: "footer" }, tagName: "slot" }],
       tagName: "div",
-    } as JxMutableNode);
+    });
     await draw();
     const slot = badgeOf(at(["children", 0]));
     expect(slot.dataset.kind).toBe("slot");
@@ -249,7 +283,7 @@ describe("selection and collapse", () => {
 
   test("clicking the chevron collapses, hides descendants, and turns the glyph", async () => {
     await draw();
-    const toggle = () => at(["children", 0]).querySelector('[part="twisty"]') as HTMLElement;
+    const toggle = () => required(at(["children", 0]), '[part="twisty"]');
     expect(toggle().querySelector("jx-icon")).not.toBeNull();
 
     click(toggle());
@@ -266,13 +300,13 @@ describe("selection and collapse", () => {
 
   test("a row with nothing under it draws no chevron", async () => {
     await draw();
-    const toggle = at(["children", 4]).querySelector('[part="twisty"]') as HTMLElement;
+    const toggle = required(at(["children", 4]), '[part="twisty"]');
     expect(toggle.children).toHaveLength(0);
   });
 
   test("clicking the label is not a collapse", async () => {
     await draw();
-    click(at(["children", 0]).querySelector('[part="label"]') as HTMLElement);
+    click(required(at(["children", 0]), '[part="label"]'));
     await flush();
     expect(view._layersCollapsed!.size).toBe(0);
   });
@@ -314,7 +348,7 @@ describe("the move verbs", () => {
     const acts = await buttons(["children", 0]);
     acts["selection.moveDown"]!.click();
     await flush();
-    const children = activeTab.value!.doc.document.children as JxMutableNode[];
+    const children = elementsOf(activeTab.value!.doc.document);
     expect(children[0]!.tagName).toBe("p");
     expect(children[1]!.tagName).toBe("section");
   });
@@ -323,7 +357,7 @@ describe("the move verbs", () => {
     const acts = await buttons(["children", 1]);
     acts["selection.moveUp"]!.click();
     await flush();
-    const children = activeTab.value!.doc.document.children as JxMutableNode[];
+    const children = elementsOf(activeTab.value!.doc.document);
     expect(children[0]!.tagName).toBe("p");
     expect(children[1]!.tagName).toBe("section");
   });
@@ -333,9 +367,9 @@ describe("the move verbs", () => {
     expect(isRefusing(acts, "selection.moveIn")).toBe(false);
     acts["selection.moveIn"]!.click();
     await flush();
-    const children = activeTab.value!.doc.document.children as JxMutableNode[];
+    const children = elementsOf(activeTab.value!.doc.document);
     expect(children.length).toBe(4);
-    const sectionChildren = (children[0] as JxMutableNode).children as JxMutableNode[];
+    const sectionChildren = elementsOf(children[0]);
     expect(sectionChildren.length).toBe(3);
     expect(sectionChildren[2]!.textContent).toBe("First");
     expect(children.map((c) => c.textContent)).not.toContain("First");
@@ -352,9 +386,9 @@ describe("the move verbs", () => {
     expect(isRefusing(acts, "selection.moveOut")).toBe(false);
     acts["selection.moveOut"]!.click();
     await flush();
-    const children = activeTab.value!.doc.document.children as JxMutableNode[];
+    const children = elementsOf(activeTab.value!.doc.document);
     expect(children[1]!.tagName).toBe("h2");
-    expect(((children[0] as JxMutableNode).children as JxMutableNode[]).length).toBe(1);
+    expect(elementsOf(children[0]).length).toBe(1);
   });
 
   test("the row's inline cluster is the four moves; Duplicate and Delete ride in ⋮", async () => {
@@ -370,7 +404,7 @@ describe("the move verbs", () => {
 
   test("delete removes the node, from the ⋮ menu", async () => {
     await buttons(["children", 1]);
-    (at(["children", 1]).querySelector('[part="overflow"]') as HTMLElement).click();
+    required(at(["children", 1]), '[part="overflow"]').click();
     await flush(3);
     expect(overflowItems().map((el) => el.dataset.commandId)).toEqual([
       "selection.duplicate",
@@ -379,7 +413,7 @@ describe("the move verbs", () => {
     overflowItems()[1]!.click();
     await flush(3);
 
-    const children = activeTab.value!.doc.document.children as JxMutableNode[];
+    const children = elementsOf(activeTab.value!.doc.document);
     expect(children.length).toBe(4);
     expect(children.map((c) => c.tagName)).not.toContain("p");
     // The menu closes behind the verb it ran.
@@ -410,7 +444,7 @@ describe("inline rename", () => {
     );
     await flush(2);
 
-    const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
+    const input = titleInput(at(["children", 1]));
     expect(input).not.toBeNull();
     /* The name is still the row's `label` — `jx-tree-item` writes it to `aria-label`, so the row
        goes on naming itself to a reader while it is being renamed — and the row says it is being
@@ -425,19 +459,19 @@ describe("inline rename", () => {
     input.dispatchEvent(new Event("blur"));
     await flush(2);
 
-    const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
+    const node = elementsOf(activeTab.value!.doc.document)[1]!;
     expect(node.$title).toBe("Hero paragraph");
     expect(at(["children", 1]).querySelector('[part="title-input"]')).toBeNull();
     expect(textOf(at(["children", 1]), "label")).toBe("Hero paragraph");
   });
 
   test("an empty value clears $title, and the placeholder says what the row falls back to", async () => {
-    const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
+    const node = elementsOf(activeTab.value!.doc.document)[1]!;
     node.$title = "Old";
     await draw();
     startLayerTitleEdit(["children", 1], () => {});
     await flush(2);
-    const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
+    const input = titleInput(at(["children", 1]));
     expect(input.value).toBe("Old");
     // What the row would say with no title of its own: its own text.
     expect(input.getAttribute("placeholder")).toBe("First");
@@ -454,7 +488,7 @@ describe("inline rename", () => {
     await draw();
     startLayerTitleEdit(["children", 1], rerender);
     await flush(2);
-    const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
+    const input = titleInput(at(["children", 1]));
     input.value = "Should not stick";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(
@@ -462,7 +496,7 @@ describe("inline rename", () => {
     );
     await flush(2);
 
-    const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
+    const node = elementsOf(activeTab.value!.doc.document)[1]!;
     expect(node.$title).toBeUndefined();
     expect(rerender).toHaveBeenCalledTimes(1);
     expect(at(["children", 1]).querySelector('[part="title-input"]')).toBeNull();
@@ -521,7 +555,7 @@ describe("keyed rows", () => {
         { $props: {}, children: [{ tagName: "p", textContent: "keep me" }], tagName: "target" },
       ],
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
 
     await draw();
     const stable = at(["children", 1, "children", 0]);
@@ -529,9 +563,9 @@ describe("keyed rows", () => {
     const template = at(["children", 0, "children", 0, "map"]);
     template.style.display = "none";
 
-    const doc = activeTab.value!.doc.document as unknown as { children: { children: unknown[] }[] };
-    const arr = doc.children[0]!.children.splice(0, 1)[0]!;
-    doc.children[1]!.children.push(arr);
+    const [wrap, target] = elementsOf(activeTab.value!.doc.document);
+    const arr = elementsOf(wrap).splice(0, 1)[0]!;
+    elementsOf(target).push(arr);
     await draw();
 
     const after = at(["children", 1, "children", 0]);
@@ -544,9 +578,12 @@ describe("keyed rows", () => {
 describe("the empty state", () => {
   test("a page with nothing on it teaches what the Outline lists, and opens Insert", async () => {
     shell.leftTab = "layers";
-    resetWorkspaceWithTab({ children: [], tagName: "div" } as JxMutableNode, {
-      id: "empty-doc-tab",
-    });
+    resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      {
+        id: "empty-doc-tab",
+      },
+    );
     // Content mode drops the root row, so the tree really is empty.
     activeTab.value!.doc.mode = "content";
     await draw();
@@ -555,7 +592,7 @@ describe("the empty state", () => {
       "This page is empty. Everything you add to it is listed here, in order.",
     );
 
-    (host.querySelector('[part="empty-action"]') as HTMLElement).click();
+    required(host, '[part="empty-action"]').click();
     await flush();
     /* `"insert"` — and the second assertion is the one that matters.
        This test asserted `"blocks"` while its own title said "opens Insert", so it PASSED for three
@@ -564,7 +601,8 @@ describe("the empty state", () => {
        Naming the id alone would only re-encode whatever the code does, so the id is also checked
        against the declared set — that is the assertion a rename cannot satisfy by accident. */
     expect(shell.leftTab).toBe("insert");
-    expect([...NAVIGATOR_PANEL_IDS] as string[]).toContain(shell.leftTab);
+    const declared: readonly string[] = NAVIGATOR_PANEL_IDS;
+    expect(declared).toContain(shell.leftTab);
   });
 });
 
@@ -575,7 +613,7 @@ describe("the mounted surface", () => {
        document can render, so a first mount is genuinely asynchronous. Whichever half wins, the
        container must end up empty; a mount that settled after its handle was disposed would leave
        an Outline standing under whatever the Navigator painted next. */
-    const content = host.querySelector(".panel-content") as HTMLElement;
+    const content = required(host, ".panel-content");
     const handle = mountOutlineSurface(
       content,
       {
@@ -616,7 +654,7 @@ describe("the mounted surface", () => {
   });
 
   test("a mount that outlives its container reports itself disconnected", async () => {
-    const content = host.querySelector(".panel-content") as HTMLElement;
+    const content = required(host, ".panel-content");
     const handle = mountOutlineSurface(
       content,
       {

@@ -18,9 +18,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSite } from "../src/site/site-build";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { importMapAssetsInHtml } from "../src/site/client-runtime";
 
-function writeJSON(root: string, path: string, obj: unknown) {
+function writeJSON(root: string, path: string, obj: JsonValue) {
   const full = resolve(root, path);
   mkdirSync(resolve(full, ".."), { recursive: true });
   writeFileSync(full, JSON.stringify(obj, null, 2), "utf8");

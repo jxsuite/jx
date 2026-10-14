@@ -21,7 +21,8 @@ import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-s
 import { getPlatform } from "../src/platform";
 import { projectState, setProjectState } from "../src/store";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
-import type { DirEntry, FsEvent, FsResyncReason } from "../src/types";
+import type { DirEntry, FsEvent, FsResyncReason, ReferencesResult } from "../src/types";
+import type { UsageQuery } from "../src/services/references";
 
 const entry = (path: string, type: "file" | "directory" = "file"): DirEntry => ({
   name: path.split("/").pop() ?? path,
@@ -109,8 +110,7 @@ describe("startFsSync", () => {
   test("is a no-op when the platform has no watcher", () => {
     installMockPlatform();
     const stop = startFsSync({ renderLeftPanel: () => {} });
-    expect(typeof stop).toBe("function");
-    stop();
+    expect(() => stop()).not.toThrow();
   });
 
   test("debounces a burst into one render and reloads on content change", async () => {
@@ -138,7 +138,7 @@ describe("startFsSync", () => {
 
   test("drops the usage cache on any event, including the ones the tree suppresses", async () => {
     let handler: (events: FsEvent[]) => void = () => {};
-    const findReferences = mock(async () => ({
+    const findReferences = mock(async (_target: UsageQuery): Promise<ReferencesResult> => ({
       errors: [],
       files: [],
       filesReferencing: 0,
@@ -147,7 +147,7 @@ describe("startFsSync", () => {
       tagName: null,
     }));
     installMockPlatform({
-      findReferences: findReferences as never,
+      findReferences,
       subscribeFileEvents: (h) => {
         handler = h;
         return () => {};
@@ -167,6 +167,7 @@ describe("startFsSync", () => {
     handler([{ isDir: false, path: "a.json", type: "change" }]);
     await loadUsages({ path: "a.json" });
     expect(findReferences).toHaveBeenCalledTimes(2);
+    expect(findReferences).toHaveBeenLastCalledWith({ path: "a.json" });
     stop();
   });
 
@@ -323,12 +324,12 @@ describe("relistLoadedDirs", () => {
       ["pages", [entry("pages/stale.json")]],
       ["gone", [entry("gone/x.json")]],
     ]);
-    const fresh: Record<string, DirEntry[]> = {
-      ".": [entry("pages", "directory"), entry("README.md")],
-      pages: [entry("pages/a.json")],
-    };
+    const fresh = new Map<string, DirEntry[]>([
+      [".", [entry("pages", "directory"), entry("README.md")]],
+      ["pages", [entry("pages/a.json")]],
+    ]);
     await relistLoadedDirs(dirs, async (dir) => {
-      const listing = fresh[dir];
+      const listing = fresh.get(dir);
       if (!listing) {
         throw new Error(`ENOENT ${dir}`);
       }
@@ -354,7 +355,7 @@ describe("relistLoadedDirs", () => {
 
   test("keeps at most eight listings in flight", async () => {
     const dirs = new Map<string, DirEntry[]>(
-      Array.from({ length: 20 }, (_, i) => [`d${i}`, []] as [string, DirEntry[]]),
+      Array.from({ length: 20 }, (_, i): [string, DirEntry[]] => [`d${i}`, []]),
     );
     let inFlight = 0;
     let peak = 0;
@@ -446,8 +447,10 @@ describe("relistLoadedDirs", () => {
 
   test("an empty cache lists nothing", async () => {
     const list = mock(async () => []);
-    await relistLoadedDirs(new Map(), list);
+    const dirs = new Map<string, DirEntry[]>();
+    await relistLoadedDirs(dirs, list);
     expect(list).not.toHaveBeenCalled();
+    expect(dirs.size).toBe(0);
   });
 });
 
@@ -537,7 +540,8 @@ describe("startFsSync resync", () => {
   }
 
   function context() {
-    const calls = { content: [] as string[][], drops: 0, renders: 0 };
+    const content: string[][] = [];
+    const calls = { content, drops: 0, renders: 0 };
     const ctx = {
       invalidateDerivedCaches: () => {
         calls.drops += 1;

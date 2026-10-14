@@ -120,6 +120,7 @@ describe("objectKey", () => {
 
   test("every result is a parseable object literal", () => {
     for (const key of ["count", "user.name", "0", "a-b", "has space", '"', "\\", ""]) {
+      // SAFETY: the body is `return {<key>: 1}`, so the call yields an object literal whose one property holds 1.
       const literal = new Function(`return {${objectKey(key)}: 1}`)() as Record<string, number>;
       expect(literal[key]).toBe(1);
     }
@@ -189,7 +190,7 @@ describe("the interpreter and the emitted accessor agree", () => {
     "missing",
     "",
   ])("%p reads the same value both ways", (path) => {
-    const compiled = new Function("s", `return ${refAccessor("s", path)}`)(state) as unknown;
+    const compiled: unknown = new Function("s", `return ${refAccessor("s", path)}`)(state);
     expect(compiled).toEqual(readPath(state, path));
   });
 

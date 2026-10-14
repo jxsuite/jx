@@ -32,7 +32,10 @@
  */
 import { clearSeededSettings, installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
+import { isJsonObject, isJsonPrimitive, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { afterEach, beforeEach, describe, expect, mock, setSystemTime, test } from "bun:test";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,20 +44,20 @@ import { join } from "node:path";
 
 let nextRounds: StreamEvent[][] = [];
 /** Every request the assistant sent, as the wire it carried. */
-let sentRequests: unknown[][] = [];
+let sentRequests: JsonValue[][] = [];
 /** The frozen clock, advanced by one step per request and per turn. */
 let clock = 0;
 
 function tick() {
-  clock += STEP_MS;
+  clock += CLOCK_TICK_MS;
   setSystemTime(new Date(clock));
 }
 
 function fakeClient(rounds: StreamEvent[][]): StreamingClient {
   let call = 0;
   return {
-    async *streamChat(messages: unknown) {
-      sentRequests.push(plain(messages) as unknown[]);
+    async *streamChat(messages) {
+      sentRequests.push(plain(messages));
       const events = rounds[call] ?? [{ stopReason: "stop", type: "done" }];
       call += 1;
       tick();
@@ -62,7 +65,7 @@ function fakeClient(rounds: StreamEvent[][]): StreamingClient {
         yield event;
       }
     },
-  } as unknown as StreamingClient;
+  };
 }
 
 void mock.module("@jxsuite/ai", () => ({
@@ -102,12 +105,12 @@ const UPDATE = process.env.JX_UPDATE_GOLDENS === "1";
 const REGENERATE = "JX_UPDATE_GOLDENS=1 bun test --isolate tests/ai-session-corpus.test.ts";
 /** 2026-01-01T00:00:00Z. */
 const BASE_TIME = Date.UTC(2026, 0, 1);
-const STEP_MS = 1000;
+/** How far `tick()` advances the frozen clock: once per request and once per turn. */
+const CLOCK_TICK_MS = 1000;
 const STORE_PREFIX = "jx-ai-chat";
 
-type JsonObject = Record<string, unknown>;
-
-interface SessionFixture {
+/** A JSON document on disk, so it is itself a JSON object (compared and laid out as one). */
+interface SessionFixture extends JsonObject {
   name: string;
   description: string;
   /** `workspace.projectRoot` while loading; "" is the unscoped store (no project open). */
@@ -124,23 +127,29 @@ interface LoadedFixture {
 
 // ─── Golden plumbing ─────────────────────────────────────────────────────────
 
-function isObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** A JSON-only copy: reactive proxies unwrapped, `undefined` members dropped as storage drops them. */
-function plain(value: unknown): unknown {
+/**
+ * A JSON-only copy: reactive proxies unwrapped, `undefined` members dropped as storage drops them.
+ * Every caller holds a list (messages, sessions, a request's wire), the shape `streamChat`
+ * receives.
+ */
+function plain(value: readonly object[]): JsonValue[] {
+  /* SAFETY: JSON.parse returns only JSON values, and the text it reads is JSON.stringify of an
+     array, which serializes as an array (undefined members become null), never as anything else. */
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- JSON normalization is the point
-  return JSON.parse(JSON.stringify(value)) as unknown;
+  return JSON.parse(JSON.stringify(value)) as JsonValue[];
 }
 
-function show(value: unknown): string {
+function show(value: JsonValue | undefined): string {
   const text = value === undefined ? "undefined" : JSON.stringify(value);
   return text.length > 160 ? `${text.slice(0, 157)}...` : text;
 }
 
 /** The first path at which `actual` departs from `expected`, or null when they are equal. */
-function firstDifference(expected: unknown, actual: unknown, path = "$"): string | null {
+function firstDifference(
+  expected: JsonValue | undefined,
+  actual: JsonValue | undefined,
+  path = "$",
+): string | null {
   if (Object.is(expected, actual)) {
     return null;
   }
@@ -160,7 +169,7 @@ function firstDifference(expected: unknown, actual: unknown, path = "$"): string
     }
     return null;
   }
-  if (isObject(expected) && isObject(actual)) {
+  if (isJsonObject(expected) && isJsonObject(actual)) {
     for (const key of new Set([...Object.keys(expected), ...Object.keys(actual)])) {
       if (!(key in actual)) {
         return `${path}.${key}: missing, the golden has ${show(expected[key])}`;
@@ -178,7 +187,12 @@ function firstDifference(expected: unknown, actual: unknown, path = "$"): string
   return `${path}: the golden has ${show(expected)}, got ${show(actual)}`;
 }
 
-function assertGolden(file: string, field: string, expected: unknown, actual: unknown) {
+function assertGolden(
+  file: string,
+  field: string,
+  expected: JsonValue | undefined,
+  actual: JsonValue | undefined,
+) {
   const difference = firstDifference(expected, actual, `$.${field}`);
   if (difference) {
     throw new Error(
@@ -189,34 +203,34 @@ function assertGolden(file: string, field: string, expected: unknown, actual: un
   }
 }
 
-const WIDTH = 100;
-
-function isPrimitive(value: unknown): boolean {
-  return value === null || typeof value !== "object";
-}
+/**
+ * The line width a session fixture is laid out at: oxfmt's, so a regenerated golden is already
+ * formatted.
+ */
+const SESSION_PRINT_WIDTH = 100;
 
 /**
  * The one-line form of a value, or null when it must break. Mirrors how oxfmt lays JSON out, so a
  * regenerated golden is already formatted: an array of two or more multi-key objects always
  * breaks.
  */
-function inlineForm(value: unknown): string | null {
-  if (isPrimitive(value)) {
+function inlineForm(value: JsonValue): string | null {
+  if (isJsonPrimitive(value)) {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
     if (value.length === 0) {
       return "[]";
     }
-    const multiKey = (v: unknown) =>
-      (Array.isArray(v) && v.length > 1) || (isObject(v) && Object.keys(v).length > 1);
+    const multiKey = (v: JsonValue) =>
+      (Array.isArray(v) && v.length > 1) || (isJsonObject(v) && Object.keys(v).length > 1);
     if (value.length > 1 && value.every((v) => multiKey(v))) {
       return null;
     }
     const parts = value.map((v) => inlineForm(v));
     return parts.every((p) => p !== null) ? `[${parts.join(", ")}]` : null;
   }
-  const entries = Object.entries(value as JsonObject);
+  const entries = Object.entries(value);
   if (entries.length === 0) {
     return "{}";
   }
@@ -227,12 +241,12 @@ function inlineForm(value: unknown): string | null {
   return parts.every((p) => p !== null) ? `{ ${parts.join(", ")} }` : null;
 }
 
-function layout(value: unknown, level: number, prefix: number, suffix: number): string {
+function layout(value: JsonValue, level: number, prefix: number, suffix: number): string {
   const inline = inlineForm(value);
-  if (inline !== null && level * 2 + prefix + inline.length + suffix <= WIDTH) {
+  if (inline !== null && level * 2 + prefix + inline.length + suffix <= SESSION_PRINT_WIDTH) {
     return inline;
   }
-  if (isPrimitive(value)) {
+  if (isJsonPrimitive(value)) {
     return JSON.stringify(value);
   }
   const pad = "  ".repeat(level + 1);
@@ -241,7 +255,7 @@ function layout(value: unknown, level: number, prefix: number, suffix: number): 
     const items = value.map((v, i) => pad + layout(v, level + 1, 0, i < value.length - 1 ? 1 : 0));
     return `[\n${items.join(",\n")}\n${close}]`;
   }
-  const entries = Object.entries(value as JsonObject);
+  const entries = Object.entries(value);
   const items = entries.map(([k, v], i) => {
     const key = `${JSON.stringify(k)}: `;
     return pad + key + layout(v, level + 1, key.length, i < entries.length - 1 ? 1 : 0);
@@ -250,6 +264,9 @@ function layout(value: unknown, level: number, prefix: number, suffix: number): 
 }
 
 function readFixture(fixture: LoadedFixture): SessionFixture {
+  /* SAFETY: every file under fixtures/ai-sessions is written by writeFixture (or authored to match
+     it) as a SessionFixture; the corpus test asserts its name and description before reading the
+     rest, so a file of another shape fails there by name. */
   return JSON.parse(readFileSync(fixture.path, "utf8")) as SessionFixture;
 }
 
@@ -274,7 +291,7 @@ const ID_PATTERNS: [RegExp, string][] = [
  * string is checked whole and by its last `:` segment, because a payload key ends with its session
  * id, and a key is normalized wherever it appears (object key or snapshot tuple).
  */
-function normalize(value: unknown): unknown {
+function normalize<T extends JsonValue>(value: T): T {
   const seen = new Map<string, Map<string, string>>();
   const id = (text: string) => {
     for (const [pattern, prefix] of ID_PATTERNS) {
@@ -291,25 +308,28 @@ function normalize(value: unknown): unknown {
   };
   const key = (text: string) =>
     text.replace(/(^|:)([^:]+)$/, (_all, sep: string, last: string) => `${sep}${id(last)}`);
-  const visit = (v: unknown): unknown => {
-    if (typeof v === "string") {
+  const visit = (v: JsonValue): JsonValue => {
+    if (isString(v)) {
       return key(v);
     }
     if (Array.isArray(v)) {
       return v.map((item) => visit(item));
     }
-    if (isObject(v)) {
+    if (isJsonObject(v)) {
       return Object.fromEntries(Object.entries(v).map(([k, item]) => [key(k), visit(item)]));
     }
     return v;
   };
-  return visit(value);
+  /* SAFETY: visit rewrites only string contents and object keys, so it returns the shape it was
+     given: a string for a string, an array of the same length for an array, an object for an object,
+     and every other JSON value untouched. No caller passes a string literal type. */
+  return visit(value) as T;
 }
 
 // ─── Storage ─────────────────────────────────────────────────────────────────
 
-function isRaw(value: unknown): value is { $raw: string } {
-  return isObject(value) && typeof value.$raw === "string" && Object.keys(value).length === 1;
+function isRaw(value: JsonValue): value is { $raw: string } {
+  return isJsonObject(value) && isString(value.$raw) && Object.keys(value).length === 1;
 }
 
 function seed(storage: JsonObject) {
@@ -319,8 +339,8 @@ function seed(storage: JsonObject) {
 }
 
 /** The session store's keys, in insertion order, each value parsed (or kept raw when corrupt). */
-function snapshot(): [string, unknown][] {
-  const entries: [string, unknown][] = [];
+function snapshot(): [string, JsonValue][] {
+  const entries: [string, JsonValue][] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key?.startsWith(STORE_PREFIX)) {
@@ -328,7 +348,8 @@ function snapshot(): [string, unknown][] {
     }
     const text = localStorage.getItem(key) ?? "";
     try {
-      entries.push([key, JSON.parse(text) as unknown]);
+      // SAFETY: JSON.parse returns only JSON values; text that is not JSON throws into the catch.
+      entries.push([key, JSON.parse(text) as JsonValue]);
     } catch {
       entries.push([key, { $raw: text }]);
     }
@@ -336,7 +357,7 @@ function snapshot(): [string, unknown][] {
   return entries;
 }
 
-const sortedObject = (entries: [string, unknown][]) =>
+const sortedObject = (entries: [string, JsonValue][]) =>
   Object.fromEntries(entries.toSorted(([a], [b]) => a.localeCompare(b)));
 
 // ─── The loader, observed ────────────────────────────────────────────────────
@@ -364,8 +385,10 @@ function observeRestore(data: SessionFixture): JsonObject {
   }
   observed.storage = after;
 
-  const normalized = normalize(observed) as JsonObject;
-  const afterStorage = sortedObject(normalized.storage as [string, unknown][]);
+  const normalized = normalize(observed);
+  /* SAFETY: observed.storage was set to snapshot()'s [key, value] tuples just above, and normalize
+     maps arrays element-wise and rewrites only strings, so the tuples keep their shape. */
+  const afterStorage = sortedObject(normalized.storage as [string, JsonValue][]);
   const seededEntries = Object.entries(data.storage);
   const seeded = normalize(sortedObject(seededEntries));
   const unchanged = firstDifference(seeded, afterStorage);
@@ -376,7 +399,7 @@ function observeRestore(data: SessionFixture): JsonObject {
 // ─── The round trip ──────────────────────────────────────────────────────────
 
 /** One tool call's events, as a provider streams them. */
-function callEvents(id: string, name: string, args: object): StreamEvent[] {
+function callEvents(id: string, name: string, args: JsonObject): StreamEvent[] {
   return [
     { id, name, type: "tool_call_start" },
     { args: JSON.stringify(args), id, type: "tool_call_delta" },
@@ -507,7 +530,7 @@ describe("a payload the current build saves", () => {
     const fixture = corpus.find((f) => f.file === ROUND_TRIP)!;
     expect(fixture).toBeDefined();
     const live = await driveConversation();
-    const saved = sortedObject(normalize(snapshot()) as [string, unknown][]);
+    const saved = sortedObject(normalize(snapshot()));
 
     const data = readFixture(fixture);
     if (UPDATE) {
@@ -517,7 +540,7 @@ describe("a payload the current build saves", () => {
     assertGolden(ROUND_TRIP, "storage", data.storage, saved);
 
     // The send path sealed the call Stop left unanswered, directly after the message requesting it.
-    const lastRequest = sentRequests.at(-1) as { role: string; tool_call_id?: string }[];
+    const lastRequest = sentRequests.at(-1) ?? [];
     const requester = lastRequest.findIndex((e) => JSON.stringify(e).includes('"call_link"'));
     expect(lastRequest[requester + 1]).toMatchObject({ role: "tool", tool_call_id: "call_link" });
 
@@ -603,14 +626,16 @@ describe("today's loader reads each persisted shape exactly as frozen", () => {
 
 describe("the @jxsuite/ai transcript corpus agrees with Studio's repair", () => {
   test("sealed-orphan.json is what pruneOrphanToolMessages writes for its unanswered call", () => {
-    const transcript = JSON.parse(readFileSync(AI_SEALED, "utf8")) as { messages: JsonObject[] };
+    /* SAFETY: sealed-orphan.json is one of @jxsuite/ai's v1 transcript fixtures, a `messages` list
+       of persisted live messages; that corpus's own tests read it in this shape. */
+    const transcript = JSON.parse(readFileSync(AI_SEALED, "utf8")) as { messages: LiveMessage[] };
     const chat = createChatState();
     for (const msg of structuredClone(transcript.messages)) {
       if (!String(msg.id).startsWith("sealed_")) {
-        chat.messages.push(msg as unknown as (typeof chat.messages)[number]);
+        chat.messages.push(msg);
       }
     }
     expect(pruneOrphanToolMessages(chat)).toEqual({ dropped: 0, moved: 0, sealed: 1 });
-    expect(firstDifference(transcript.messages, plain(chat.messages))).toBeNull();
+    expect(firstDifference(plain(transcript.messages), plain(chat.messages))).toBeNull();
   });
 });

@@ -35,6 +35,8 @@ async function toast(
   action: HTMLElement | null = null,
 ): Promise<Raised> {
   const box = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-toast, so createElement returns the upgraded
+     element, and jx-toast.json declares the open, variant and timeout props ToastEl names. */
   const el = document.createElement("jx-toast") as ToastEl;
   for (const [key, value] of Object.entries(attrs)) {
     el.setAttribute(key, value);
@@ -48,6 +50,9 @@ async function toast(
   document.body.append(box);
   const closes: string[] = [];
   box.addEventListener("close", (event) => {
+    /* SAFETY: the box holds only this toast and its plain slotted action button, and the one
+       `close` that reaches it is the CustomEvent closeToast() dispatches with
+       `detail: { reason }`. */
     closes.push(String((event as CustomEvent<{ reason: string }>).detail.reason));
   });
   await flush();
@@ -118,6 +123,8 @@ describe("jx-toast", () => {
     const seen: string[] = [];
     for (const variant of ["info", "positive", "negative", "warning"]) {
       const { el } = await toast({ open: "", variant });
+      /* SAFETY: jx-toast.json renders its `glyph` part as a jx-icon, registered by registerUi() in
+         beforeAll, and jx-icon declares `name` as an element property. */
       const glyph = part(el, "glyph") as HTMLElement & { name: string };
       expect(ICON_NAMES, `${variant} draws ${glyph.name}`).toContain(glyph.name);
       seen.push(glyph.name);

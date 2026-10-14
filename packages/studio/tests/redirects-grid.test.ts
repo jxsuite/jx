@@ -8,18 +8,16 @@
  */
 import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { render } from "lit-html";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { FakeTabulator, tabulatorMockModule } from "./tabulator-mock";
-import type { TemplateResult } from "lit-html";
-import type { StudioPlatform } from "../src/types";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { CommandArgValues } from "../src/commands/command-args";
 import type { GridEditBatch } from "../src/grid/grid-source";
 import type { RedirectRule } from "../src/grid/redirects";
+import type { PromptDialogOptions } from "../src/ui/layers";
 
 void mock.module("tabulator-tables", () => tabulatorMockModule);
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
-
-/** Drives whatever `showDialog` renders. Null means "cancel by resolving null". */
-let dialogDriver: ((host: HTMLElement, done: (value: unknown) => void) => void) | null = null;
 
 void mock.module("../src/ui/layers.js", () => ({
   /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
@@ -28,37 +26,14 @@ void mock.module("../src/ui/layers.js", () => ({
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},
-  // The media picker asks which layer its anchor sits in; these fields are in a panel.
-  renderPopover: (template: unknown) => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    render(template as never, host);
-    return { dismiss: () => host.remove(), host, update: () => {} };
-  },
   showConfirmDialog: async () => true,
   /* The tab strip's close is a three-way (studio-ui-guidelines.md §8.7) now; this partial mock
      has to name it. */
   showSaveDiscardDialog: async () => "discard",
-  showDialog: (templateFn: (done: (value: unknown) => void) => TemplateResult) =>
-    new Promise((resolve) => {
-      const host = document.createElement("div");
-      host.className = "test-dialog-host";
-      document.body.append(host);
-      const done = (value: unknown) => {
-        host.remove();
-        resolve(value);
-      };
-      render(templateFn(done), host);
-      if (dialogDriver) {
-        dialogDriver(host, done);
-      } else {
-        done(null);
-      }
-    }),
   /* The paste box IS the prompt dialog with a multiline field (studio-ui-guidelines.md §12.5), so
      the driver here is the prompt's answer rather than a template to render. What the flow asked
      for is kept, because "multiline" is the difference between a paste box and a one-line field. */
-  showPromptDialog: async (headline: string, opts: Record<string, unknown> = {}) => {
+  showPromptDialog: async (headline: string, opts: PromptDialogOptions = {}) => {
     lastPrompt = { headline, opts };
     return promptAnswer;
   },
@@ -68,14 +43,22 @@ void mock.module("../src/ui/layers.js", () => ({
   overlayIdleBlockers: () => [],
 }));
 
+/** One `showPromptDialog` call, as the flow made it. */
+interface PromptCall {
+  headline: string;
+  opts: PromptDialogOptions;
+}
+
 /** What the mocked prompt answers, and what it was asked for. */
 let promptAnswer: string | null = null;
-let lastPrompt: { headline: string; opts: Record<string, unknown> } = { headline: "", opts: {} };
+let lastPrompt: PromptCall = { headline: "", opts: {} };
 void mock.module("../src/ui/progress-modal.js", () => ({
   showProgressModal: () => ({ done: () => {}, fail: () => {}, setStatus: () => {} }),
 }));
 
 const { closeAllTabs, workspace } = await import("../src/workspace/workspace");
+const { createCommandRegistry } = await import("../src/commands/registry");
+const { emptyContext, makeContext } = await import("../src/commands/context");
 const { problems, resetNotifications, toasts } = await import("../src/services/notify");
 const { resetProjectConfigDocument } = await import("../src/tabs/project-config");
 const {
@@ -108,11 +91,13 @@ function setup(
   return state;
 }
 
-/** What `project.json` holds on disk, parsed. */
-function writtenConfig(state: { files: Map<string, string> }) {
-  return JSON.parse(state.files.get("project.json")!) as {
-    redirects?: Record<string, unknown>;
-  };
+/** The `redirects` block `project.json` holds on disk, parsed; undefined when it has none. */
+function writtenRedirects(state: { files: Map<string, string> }): JsonValue | undefined {
+  const config: JsonValue = JSON.parse(state.files.get("project.json")!);
+  if (!isJsonObject(config)) {
+    throw new Error("project.json on disk is not a JSON object");
+  }
+  return config["redirects"];
 }
 
 const emptyBatch = (): GridEditBatch => ({ cells: [], deletes: [], inserts: [] });
@@ -123,12 +108,8 @@ beforeEach(() => {
   resetNotifications();
   resetProjectConfigDocument();
   FakeTabulator.reset();
-  dialogDriver = null;
   promptAnswer = null;
   lastPrompt = { headline: "", opts: {} };
-  for (const host of document.querySelectorAll(".test-dialog-host")) {
-    host.remove();
-  }
 });
 
 // ─── Columns and rows ─────────────────────────────────────────────────────────
@@ -176,7 +157,7 @@ describe("commit", () => {
       cells: [{ baseline: "/new", field: "destination", rowKey: "0", value: "/newer" }],
     });
     expect(result.cells).toEqual([{ field: "destination", ok: true, rowKey: "0" }]);
-    expect(writtenConfig(state).redirects).toEqual({ "/old": "/newer" });
+    expect(writtenRedirects(state)).toEqual({ "/old": "/newer" });
   });
 
   test("a renamed source keeps its row, because rows are keyed by position", async () => {
@@ -185,7 +166,7 @@ describe("commit", () => {
       ...emptyBatch(),
       cells: [{ baseline: "/old", field: "source", rowKey: "0", value: " /older " }],
     });
-    expect(writtenConfig(state).redirects).toEqual({ "/older": "/new" });
+    expect(writtenRedirects(state)).toEqual({ "/older": "/new" });
   });
 
   test("a non-301 status expands to the object spelling; a 301 collapses back", async () => {
@@ -194,7 +175,7 @@ describe("commit", () => {
       ...emptyBatch(),
       cells: [{ baseline: "302", field: "status", rowKey: "0", value: "301" }],
     });
-    expect(writtenConfig(state).redirects).toEqual({ "/old": "/new" });
+    expect(writtenRedirects(state)).toEqual({ "/old": "/new" });
   });
 
   test("inserts and deletes land together, and an emptied table leaves no redirects key", async () => {
@@ -205,7 +186,7 @@ describe("commit", () => {
       deletes: [{ rowKey: "0" }],
       inserts: [{ cells: { destination: "/b", source: "/a", status: "308" }, tempKey: "t1" }],
     });
-    expect(writtenConfig(state).redirects).toEqual({ "/a": { destination: "/b", status: 308 } });
+    expect(writtenRedirects(state)).toEqual({ "/a": { destination: "/b", status: 308 } });
     // Every arm reports, or the buffer never lets the row go.
     expect(result.inserts).toEqual([{ ok: true, tempKey: "t1" }]);
     expect(result.deletes).toEqual([{ ok: true, rowKey: "0" }]);
@@ -213,7 +194,7 @@ describe("commit", () => {
     resetStudioState({ projectConfig: JSON.parse(state.files.get("project.json")!) });
     resetProjectConfigDocument();
     await createRedirectsSource().commit({ ...emptyBatch(), deletes: [{ rowKey: "0" }] });
-    expect(writtenConfig(state).redirects).toBeUndefined();
+    expect(writtenRedirects(state)).toBeUndefined();
   });
 
   test("a blank source, a blank destination, a bad status and a duplicate are all refused", async () => {
@@ -232,7 +213,7 @@ describe("commit", () => {
       expect(result.inserts[0]!.ok).toBeFalse();
       expect(result.inserts[0]!.error).toContain(expected);
       // Nothing written: a half-applied redirect map is a site with some old URLs broken.
-      expect(writtenConfig(state).redirects).toEqual({ "/old": "/new" });
+      expect(writtenRedirects(state)).toEqual({ "/old": "/new" });
       resetProjectConfigDocument();
     }
   });
@@ -247,7 +228,7 @@ describe("commit", () => {
     expect(result.cells[0]!.ok).toBeFalse();
     expect(result.deletes[0]!.ok).toBeFalse();
     expect(result.inserts[0]!.ok).toBeFalse();
-    expect(writtenConfig(state).redirects).toEqual({ "/keep": "/kept", "/old": "/new" });
+    expect(writtenRedirects(state)).toEqual({ "/keep": "/kept", "/old": "/new" });
   });
 
   test("refresh is a no-op: rows are read from the live document every time", async () => {
@@ -280,7 +261,7 @@ describe("commit", () => {
         writeFile: async () => {
           throw new Error("disk full");
         },
-      } as unknown as Partial<StudioPlatform>,
+      },
       {},
     );
     const result = await createRedirectsSource().commit({
@@ -314,7 +295,7 @@ describe("saving through the controller", () => {
     await controller.save();
     await flush();
 
-    expect(writtenConfig(state).redirects).toEqual({ "/a": "/b", "/old": "/new" });
+    expect(writtenRedirects(state)).toEqual({ "/a": "/b", "/old": "/new" });
     expect(controller.buffer.state.inserts.size).toBe(0);
     expect(controller.buffer.isDirty()).toBeFalse();
     expect(controller.buffer.dirtyCount()).toBe(0);
@@ -341,7 +322,7 @@ describe("saving through the controller", () => {
     await controller.save();
     await flush();
 
-    expect(writtenConfig(state).redirects).toEqual({ "/keep": "/kept-2" });
+    expect(writtenRedirects(state)).toEqual({ "/keep": "/kept-2" });
     expect(controller.buffer.isDirty()).toBeFalse();
     expect(controller.buffer.state.deletes.size).toBe(0);
     expect(controller.buffer.state.pending.size).toBe(0);
@@ -382,7 +363,7 @@ describe("routes", () => {
         listDirectory: async () => {
           throw new Error("EACCES");
         },
-      } as unknown as Partial<StudioPlatform>,
+      },
       {},
     );
     expect(await projectRoutes()).toEqual({ complete: false, routes: [] });
@@ -470,7 +451,7 @@ describe("import", () => {
     );
     expect(staged).toBe(1);
     expect(controller.buffer.isDirty()).toBeTrue();
-    expect(writtenConfig(state).redirects).toEqual({ "/old": "/new" });
+    expect(writtenRedirects(state)).toEqual({ "/old": "/new" });
 
     const skipped = problems.find((p) => p.key === "redirects.import");
     expect(skipped!.detail).toContain("Already in the table, skipped: /old.");
@@ -517,7 +498,15 @@ describe("import", () => {
 
 describe("commands", () => {
   const byId = (id: string) => redirectsCommands().find((command) => command.id === id)!;
-  const openCtx = { project: { open: true } } as never;
+  const openCtx = makeContext({ project: { open: true } });
+
+  /** Run a record against an open project, as the registry does once `args` are coerced. */
+  function runRecord(id: string, args?: CommandArgValues): void | Promise<void> {
+    /* SAFETY: a stored record is `AnyCommand`, whose args are erased to `never`. redirects.open and
+       redirects.validate declare no `args` and are handed undefined; redirects.import declares one
+       optional `text` string, which is the only key a caller here passes. */
+    return byId(id).run(openCtx, args as never);
+  }
 
   test("all three are project-level palette verbs gated on an open project", () => {
     const records = redirectsCommands();
@@ -530,7 +519,7 @@ describe("commands", () => {
       expect(record.level).toBe("project");
       expect(record.menus).toEqual(["palette"]);
       expect(record.when!(openCtx)).toBeTrue();
-      expect(record.when!({ project: { open: false } } as never)).toBeFalse();
+      expect(record.when!(makeContext({ project: { open: false } }))).toBeFalse();
       // Only the check projects to the assistant: opening the table is a surface for a person, and
       // Importing waits on a paste dialog (rules 1 and 2 of studio-ui-guidelines.md §12.4).
       expect([record.id, record.aiTool?.name]).toEqual([
@@ -542,7 +531,7 @@ describe("commands", () => {
 
   test("redirects.open opens the table and validates what it opened", async () => {
     setup({ "/about": "/contact" });
-    await byId("redirects.open").run(openCtx, undefined as never);
+    await runRecord("redirects.open");
     await flush();
     expect(workspace.tabs.has(REDIRECTS_TAB_ID)).toBeTrue();
     expect(problems.find((p) => p.key === "redirects.shadow:/about")).toBeDefined();
@@ -550,25 +539,25 @@ describe("commands", () => {
 
   test("redirects.validate says so when there is nothing to fix", async () => {
     setup({ "/old": "/new" });
-    await byId("redirects.validate").run(openCtx, undefined as never);
+    await runRecord("redirects.validate");
     expect(problems.filter((p) => p.source === "Redirects")).toEqual([]);
   });
 
   test("validate_redirects reports the filed list as data, or the clean sentence", async () => {
     /* `validate_redirects` is this record — a declaration makes a tool — and the report is the
        Problems store by this source: the only way to check redirects without reading the routes. */
+    /* SAFETY: the stored record's `A` is erased to `never`; redirects.validate declares no `args`,
+       so the bridge hands its `report` undefined, exactly as here. */
     const facts = { after: openCtx, args: undefined as never, before: openCtx };
     setup({ "/about": "/contact" });
-    await byId("redirects.validate").run(openCtx, undefined as never);
-    const report = byId("redirects.validate").aiTool!.report(facts) as {
-      data: { key?: string; message: string }[];
-      summary: string;
-    };
-    expect(report.summary).toBe("Filed 1 redirect problem in Problems.");
-    expect(report.data.map((finding) => finding.key)).toEqual(["redirects.shadow:/about"]);
+    await runRecord("redirects.validate");
+    expect(byId("redirects.validate").aiTool!.report(facts)).toMatchObject({
+      data: [{ key: "redirects.shadow:/about" }],
+      summary: "Filed 1 redirect problem in Problems.",
+    });
 
     setup({ "/old": "/new" });
-    await byId("redirects.validate").run(openCtx, undefined as never);
+    await runRecord("redirects.validate");
     expect(byId("redirects.validate").aiTool!.report(facts)).toEqual({
       data: [],
       summary: "No redirect problems: no chains, loops or shadowed rules.",
@@ -577,7 +566,7 @@ describe("commands", () => {
 
   test("redirects.import takes its text as an argument, for automation and the assistant", async () => {
     setup();
-    await byId("redirects.import").run(openCtx, { text: "/a /b 302\n/c /d\n" } as never);
+    await runRecord("redirects.import", { text: "/a /b 302\n/c /d\n" });
     const controller = await openRedirectsGrid();
     expect(controller.buffer.dirtyCount()).toBeGreaterThan(0);
     expect([...controller.buffer.state.inserts.values()].map((row) => row.source)).toEqual([
@@ -589,15 +578,17 @@ describe("commands", () => {
   test("redirects.import with no text asks, and a dismissed dialog imports nothing", async () => {
     setup();
     promptAnswer = null; // Dismissed.
-    await byId("redirects.import").run(openCtx, {} as never);
+    await runRecord("redirects.import", {});
     expect(workspace.tabs.has(REDIRECTS_TAB_ID)).toBeFalse();
   });
 
   test("registerRedirectsCommands puts all three into a registry", () => {
-    const ids: string[] = [];
-    registerRedirectsCommands({
-      registerAll: (commands: readonly { id: string }[]) => ids.push(...commands.map((c) => c.id)),
-    } as never);
-    expect(ids).toHaveLength(3);
+    const registry = createCommandRegistry({ getContext: emptyContext });
+    registerRedirectsCommands(registry);
+    expect([...registry.list()].map((record) => record.id).toSorted()).toEqual([
+      "redirects.import",
+      "redirects.open",
+      "redirects.validate",
+    ]);
   });
 });

@@ -100,7 +100,7 @@ const TEST_OBS = "observability accessor — only its own tests read the private
  * Four reasons are shared, because they are genuinely one decision made many times. The rest say
  * their own piece, and several of them name a defect somebody still has to choose about.
  */
-const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
+const KNOWN_UNREACHABLE = {
   "account-status.ts": { resetAccountStatus: TEST_RESET },
   "account/action-flow.ts": { resetActionFlow: TEST_RESET },
   "account/action-required.ts": { resetActionReports: TEST_RESET },
@@ -189,6 +189,9 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "the File System Access API open path. Every shipped host opens through the platform " +
       "adapter and the tree, so the browser file picker has no entry point — it is the fallback " +
       "for a host with no adapter, and no such host exists",
+    hasOpenFilePicker:
+      "the `showOpenFilePicker` feature test, called only by `openFile` above, so it is " +
+      "unreachable for exactly the same reason and goes live the day that path does",
   },
   "files/media-usage.ts": {
     retryMediaUsages:
@@ -449,7 +452,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "`view.focusPane { id }`, and a bare toggle would be exactly the delta-shaped verb " +
       "studio.md §13.5's idempotence rule forbids — so this may be wrong to wire at all",
   },
-};
+} satisfies Record<string, Record<string, string>>;
 
 /**
  * Modules under `src/` that nothing imports at all — dead in the same way, one level up.
@@ -526,9 +529,11 @@ describe("reachability", () => {
     // Anyone write one down, and a bare name reads exactly like a line somebody skipped — which is
     // How a finished feature (`publish/deploy-checklist.ts`) sat here for a phase looking like debt.
     // A reason short enough to be a shrug is not a decision, so there is a floor on it.
-    const unexplained = [...LEDGER]
-      .filter(([, reason]) => reason.trim().length < 40)
-      .map(([key, reason]) => `${key} — ${reason.trim() === "" ? "(no reason)" : reason}`);
+    const unexplained = [...LEDGER].flatMap(([key, reason]) =>
+      reason.trim().length < 40
+        ? [`${key} — ${reason.trim() === "" ? "(no reason)" : reason}`]
+        : [],
+    );
     expect(
       unexplained,
       "every KNOWN_UNREACHABLE entry needs a reason saying why it is still here: wire it, " +

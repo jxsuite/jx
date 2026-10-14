@@ -55,13 +55,28 @@ import {
   workspace,
 } from "../src/workspace/workspace";
 import { mountCanvasStage } from "../src/surfaces/canvas-stage";
-import type { CanvasPanelEntry } from "../src/canvas/canvas-utils";
+import type { CanvasPanelEntry, UnboundCanvasPanel } from "../src/canvas/canvas-utils";
 import type { CanvasPanel } from "../src/types";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
    app (`src/canvas/canvas-surface.ts`); the array identity is stable, so a module-level
    binding still sees what the render mutated. */
 const canvasPanels = activeCanvasSurface().panels;
+
+/**
+ * A panel record carrying only the members a test's geometry reads.
+ *
+ * @param members The members the code under test reads; the rest stay absent.
+ */
+function stubPanel(members: Partial<UnboundCanvasPanel>): CanvasPanel {
+  /* SAFETY: a surface's `panels` already holds unbound records in production (`canvasPanelEntry`
+     Places them there before `bindCanvasPanels` fills their nodes), and every reader exercised
+     Here either reads only `_width` and `mediaName` (`fitToScreen` sums `_width || 800`,
+     `panelOfSurface` matches `mediaName`) or checks a node before using it (`isPanelBound`,
+     `editZoomAnchor`'s `panels[0]?.canvas`, `updateActivePanelHeaders`' `p.element?.`,
+     `revealScroller`'s `scrollContainer ?? null`). So no member a stub omits is ever dereferenced. */
+  return members as CanvasPanel;
+}
 
 /** The primary pane's surface — every geometry helper takes one explicitly now. */
 function primary() {
@@ -209,9 +224,9 @@ async function drawBoard(
 describe("canvasPanelEntry", () => {
   test("binds all panel DOM nodes once the stage has drawn", async () => {
     const { panel } = await drawBoard("md", "Tablet (768px)");
-    expect(panel.element?.getAttribute("part")).toBe("panel");
-    expect(panel.viewport?.getAttribute("part")).toBe("panel-viewport");
-    expect(panel.canvas?.getAttribute("part")).toBe("panel-canvas");
+    expect(panel.element.getAttribute("part")).toBe("panel");
+    expect(panel.viewport.getAttribute("part")).toBe("panel-viewport");
+    expect(panel.canvas.getAttribute("part")).toBe("panel-canvas");
     expect(panel.mediaName).toBe("md");
     expect(panel._width).toBe(768);
     expect(panel.ready).toBe(false);
@@ -219,9 +234,9 @@ describe("canvasPanelEntry", () => {
 
   test("sets data-media attribute and label header", async () => {
     const { panel } = await drawBoard("md", "Tablet (768px)");
-    expect(panel.element?.dataset.media).toBe("md");
-    const header = panel.element?.querySelector('[part="panel-header"]');
-    expect(header?.textContent?.trim()).toBe("Tablet (768px)");
+    expect(panel.element.dataset.media).toBe("md");
+    const header = panel.element.querySelector('[part="panel-header"]');
+    expect(header?.textContent.trim()).toBe("Tablet (768px)");
   });
 
   test("applies pixel widths to viewport and canvas when not full-width", async () => {
@@ -230,16 +245,16 @@ describe("canvasPanelEntry", () => {
        content zoom, and an inline write beats a declaration by construction. The lit shell needed a
        comment promising nobody would bind that property; this needs none. */
     const { panel } = await drawBoard("md", "Tablet");
-    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("768px");
-    expect(panel.element?.style.getPropertyValue("--panel-canvas-w")).toBe("768px");
+    expect(panel.element.style.getPropertyValue("--panel-viewport-w")).toBe("768px");
+    expect(panel.element.style.getPropertyValue("--panel-canvas-w")).toBe("768px");
   });
 
   test("full-width panel omits viewport width and header", async () => {
     const { panel } = await drawBoard(null, null, true, null);
-    expect(panel.element?.dataset.fullWidth).toBe("");
-    expect(panel.element?.querySelector('[part="panel-header"]')).toBeNull();
-    expect(panel.element?.dataset.media).toBeUndefined();
-    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("");
+    expect(panel.element.dataset.fullWidth).toBe("");
+    expect(panel.element.querySelector('[part="panel-header"]')).toBeNull();
+    expect(panel.element.dataset.media).toBeUndefined();
+    expect(panel.element.style.getPropertyValue("--panel-viewport-w")).toBe("");
     expect(panel.mediaName).toBe("");
     expect(panel._width).toBeNull();
   });
@@ -248,8 +263,8 @@ describe("canvasPanelEntry", () => {
     // "Full width" means "as wide as the box you are in": the viewport fills it and the DOCUMENT
     // Inside still renders at the declared width, which is what Edit's column is.
     const { panel } = await drawBoard("base", null, true, 640);
-    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("");
-    expect(panel.element?.style.getPropertyValue("--panel-canvas-w")).toBe("640px");
+    expect(panel.element.style.getPropertyValue("--panel-viewport-w")).toBe("");
+    expect(panel.element.style.getPropertyValue("--panel-canvas-w")).toBe("640px");
   });
 
   /** Mount a panel the way a render does — into a pane's stage, which is what addresses it. */
@@ -264,7 +279,10 @@ describe("canvasPanelEntry", () => {
   }
 
   function clickHeader(panel: CanvasPanel) {
-    const header = panel.element!.querySelector('[part="panel-header"]') as HTMLElement;
+    const header = panel.element.querySelector('[part="panel-header"]');
+    if (!(header instanceof HTMLElement)) {
+      throw new Error("a labelled board draws a panel header");
+    }
     header.click();
   }
 
@@ -346,6 +364,8 @@ describe("centerCanvas", () => {
 describe("applyTransform", () => {
   test("no-op without panzoom wrapper", () => {
     applyTransform(primary());
+    // Nothing else on the stage is transformed in the wrapper's place.
+    expect(primary().wrap.style.transform).toBe("");
     expect(overlaysRenderer).not.toHaveBeenCalled();
   });
 
@@ -360,10 +380,11 @@ describe("applyTransform", () => {
   });
 
   test("stylebook mode needs no per-mode overlay redraw (iframe overlays live in the wrap)", () => {
-    makePanzoomWrap();
+    const wrap = makePanzoomWrap();
     setPaneMode("stylebook");
     overlaysRenderer.mockClear();
     applyTransform(primary());
+    expect(wrap.style.transform).toBe("translate(0px, 0px) scale(1)");
     expect(overlaysRenderer).toHaveBeenCalled();
   });
 });
@@ -381,7 +402,7 @@ describe("fitToScreen", () => {
     defineMetric(primary().wrap, "clientWidth", 1000);
     defineMetric(primary().wrap, "clientHeight", 600);
     stubRect(wrap, { height: 300, width: 1056 });
-    canvasPanels.push({ _width: 400 } as never, { _width: 600 } as never);
+    canvasPanels.push(stubPanel({ _width: 400 }), stubPanel({ _width: 600 }));
 
     fitToScreen({ surface: primary() });
 
@@ -400,7 +421,7 @@ describe("fitToScreen", () => {
     defineMetric(primary().wrap, "clientWidth", 1);
     defineMetric(primary().wrap, "clientHeight", 600);
     stubRect(wrap, { height: 300 });
-    canvasPanels.push({} as never);
+    canvasPanels.push(stubPanel({}));
     fitToScreen({ surface: primary() });
     expect(paneZoom()).toBe(0.05);
   });
@@ -472,7 +493,7 @@ describe("declared fit", () => {
     // A viewport far too short for the artboard: "page" would fit to this, "width" must not.
     defineMetric(primary().wrap, "clientHeight", 100);
     stubRect(wrap, { height: 600, width: 1312 });
-    canvasPanels.push({ _width: 1280 } as never);
+    canvasPanels.push(stubPanel({ _width: 1280 }));
 
     setFit("width");
 
@@ -491,7 +512,7 @@ describe("fitOnCanvasEntry", () => {
     defineMetric(primary().wrap, "clientWidth", 700);
     defineMetric(primary().wrap, "clientHeight", 600);
     stubRect(wrap, { height: 0, width: 1312 });
-    canvasPanels.push({ _width: 1280 } as never);
+    canvasPanels.push(stubPanel({ _width: 1280 }));
 
     fitOnCanvasEntry(primary());
 
@@ -504,7 +525,7 @@ describe("fitOnCanvasEntry", () => {
     defineMetric(primary().wrap, "clientWidth", 2000);
     defineMetric(primary().wrap, "clientHeight", 1200);
     stubRect(wrap, { height: 0, width: 432 });
-    canvasPanels.push({ _width: 400 } as never);
+    canvasPanels.push(stubPanel({ _width: 400 }));
 
     fitOnCanvasEntry(primary());
 
@@ -516,7 +537,7 @@ describe("fitOnCanvasEntry", () => {
     defineMetric(primary().wrap, "clientWidth", 2000);
     defineMetric(primary().wrap, "clientHeight", 1200);
     stubRect(wrap, { height: 0, width: 432 });
-    canvasPanels.push({ _width: 400 } as never);
+    canvasPanels.push(stubPanel({ _width: 400 }));
 
     fitToScreen({ surface: primary() });
 
@@ -526,7 +547,7 @@ describe("fitOnCanvasEntry", () => {
   test("honours a numeric fit the author declared for this document", () => {
     const wrap = makePanzoomWrap();
     defineMetric(primary().wrap, "clientWidth", 700);
-    canvasPanels.push({ _width: 1280 } as never);
+    canvasPanels.push(stubPanel({ _width: 1280 }));
     setUserZoom(0.5);
 
     fitOnCanvasEntry(primary());
@@ -539,7 +560,7 @@ describe("fitOnCanvasEntry", () => {
     // A hidden or not-yet-laid-out pane would otherwise fit to the 5% floor.
     makePanzoomWrap();
     defineMetric(primary().wrap, "clientWidth", 0);
-    canvasPanels.push({ _width: 1280 } as never);
+    canvasPanels.push(stubPanel({ _width: 1280 }));
 
     fitOnCanvasEntry(primary());
 
@@ -587,8 +608,8 @@ function makeEditPanel(columnWidth = 800) {
   primary().wrap.append(sc);
   stubRect(column, { width: columnWidth });
   defineMetric(iframe, "offsetHeight", 500);
-  const panel = { _width: null, canvas, viewport } as unknown as CanvasPanel;
-  canvasPanels.push(panel as never);
+  const panel = stubPanel({ _width: null, canvas, viewport });
+  canvasPanels.push(panel);
   return { canvas, column, iframe, panel, viewport };
 }
 
@@ -681,10 +702,10 @@ describe("setEditZoom / requestEditZoom", () => {
     const tab = tabInMode("edit");
     const { canvas } = makeEditPanel(600);
     const frames: FrameRequestCallback[] = [];
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
       frames.push(cb);
       return frames.length;
-    }) as typeof requestAnimationFrame;
+    };
 
     requestEditZoom(2);
     requestEditZoom(2.5);
@@ -706,27 +727,34 @@ describe("setEditZoom / requestEditZoom", () => {
 
 // ─── observeCenterUntilStable ─────────────────────────────────────────────────
 
-class FakeResizeObserver {
+class FakeResizeObserver implements ResizeObserver {
   static instances: FakeResizeObserver[] = [];
-  cb: () => void;
+  cb: ResizeObserverCallback;
   observed: Element[] = [];
   disconnected = false;
-  constructor(cb: () => void) {
+  constructor(cb: ResizeObserverCallback) {
     this.cb = cb;
     FakeResizeObserver.instances.push(this);
   }
   observe(el: Element) {
     this.observed.push(el);
   }
+  unobserve(el: Element) {
+    this.observed = this.observed.filter((observed) => observed !== el);
+  }
   disconnect() {
     this.disconnected = true;
+  }
+  /** Deliver a resize, as the platform would after a layout. */
+  fire() {
+    this.cb([], this);
   }
 }
 
 describe("observeCenterUntilStable", () => {
   beforeEach(() => {
     FakeResizeObserver.instances = [];
-    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.ResizeObserver = FakeResizeObserver;
   });
 
   test("no-op without panzoom wrapper", () => {
@@ -746,7 +774,7 @@ describe("observeCenterUntilStable", () => {
     expect(surfaceForPane("primary").panX).toBe(200);
 
     surfaceForPane("primary").panX = 0;
-    ro.cb();
+    ro.fire();
     expect(surfaceForPane("primary").panX).toBe(200);
     expect(wrap.style.transform).toContain("translate(200px, 0px)");
   });
@@ -756,7 +784,7 @@ describe("observeCenterUntilStable", () => {
     observeCenterUntilStable(primary());
     const ro = FakeResizeObserver.instances[0]!;
     surfaceForPane("primary").needsCenter = false;
-    ro.cb();
+    ro.fire();
     expect(ro.disconnected).toBe(true);
     expect(surfaceForPane("primary").centerObserver).toBeNull();
   });
@@ -780,12 +808,12 @@ function makeRenderedPanel(opts: { scrollContainer?: HTMLElement | null } = {}) 
   const target = document.createElement("p");
   root.append(target);
   canvas.append(root);
-  const panel = {
+  const panel = stubPanel({
     canvas,
     mediaName: "base",
     scrollContainer: opts.scrollContainer ?? null,
-  } as unknown as CanvasPanel;
-  canvasPanels.push(panel as never);
+  });
+  canvasPanels.push(panel);
   return { canvas, panel, target };
 }
 
@@ -794,10 +822,10 @@ describe("panToParentRect", () => {
     makePanzoomWrap();
     stubRect(primary().wrap, { height: 600, top: 0 });
 
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
       cb(performance.now() + 1000);
       return 0;
-    }) as typeof requestAnimationFrame;
+    };
 
     surfaceForPane("primary").panY = 50;
     panToParentRect({ height: 0, top: 0 });
@@ -843,7 +871,7 @@ describe("panToParentRect", () => {
   test("does not ease the scroll — the point it answers with must be true on return", () => {
     const scrollContainer = document.createElement("div");
     const scrollTo = mock((_opts: ScrollToOptions) => {});
-    (scrollContainer as unknown as { scrollTo: typeof scrollTo }).scrollTo = scrollTo;
+    Object.defineProperty(scrollContainer, "scrollTo", { configurable: true, value: scrollTo });
     makeRenderedPanel({ scrollContainer });
     stubRect(primary().wrap, { height: 600, top: 0 });
     stubRect(scrollContainer, { height: 600, top: 0 });
@@ -877,10 +905,10 @@ describe("panToParentRect", () => {
     makeRenderedPanel();
     makePanzoomWrap();
     stubRect(primary().wrap, { height: 600, top: 0 });
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
       cb(performance.now() + 1000);
       return 0;
-    }) as typeof requestAnimationFrame;
+    };
 
     surfaceForPane("primary").panY = 0;
     panToParentRect({ height: 0, top: 900 });
@@ -913,11 +941,13 @@ describe("revealScroller", () => {
   test("answers for the surface it is given, not the focused one", () => {
     const sideScroller = document.createElement("div");
     const side = surfaceForPane("secondary");
-    side.panels.push({
-      canvas: document.createElement("div"),
-      mediaName: "base",
-      scrollContainer: sideScroller,
-    } as unknown as CanvasPanel);
+    side.panels.push(
+      stubPanel({
+        canvas: document.createElement("div"),
+        mediaName: "base",
+        scrollContainer: sideScroller,
+      }),
+    );
     // The FOCUSED pane has a scroller of its own, and a different one.
     const primaryScroller = document.createElement("div");
     makeRenderedPanel({ scrollContainer: primaryScroller });
@@ -935,16 +965,17 @@ describe("updateActivePanelHeaders", () => {
     const base = canvasPanelEntry("base", "Base (320px)", false, 320);
     const md = canvasPanelEntry("md", "Tablet (768px)", false, 768);
     await drawBoards([base, md]);
-    canvasPanels.push(base.panel as never, md.panel as never);
+    canvasPanels.push(base.panel, md.panel);
     return { base: base.panel, md: md.panel };
   }
 
   /* `data-active`, not a class — and read as the ATTRIBUTE it now is. Which board is current is a
      fact about the pane's session that changes without the stage being rebuilt, so it is written
      from outside the document, exactly as the pan transform is. */
-  const active = (panel: { element?: Element | null }) =>
-    (panel.element?.querySelector('[part="panel-header"]') as HTMLElement | null)?.dataset
-      .active !== undefined;
+  const active = (panel: { element?: Element | null }) => {
+    const header = panel.element?.querySelector('[part="panel-header"]');
+    return header instanceof HTMLElement && header.dataset.active !== undefined;
+  };
 
   test("marks the base header active when activeMedia is null", async () => {
     resetWorkspaceWithTab();
@@ -981,7 +1012,7 @@ describe("updateActivePanelHeaders", () => {
     resetWorkspaceWithTab();
     const noLabel = canvasPanelEntry(null, null, true);
     await drawBoards([noLabel]);
-    canvasPanels.push(noLabel.panel as never, { element: null, mediaName: "md" } as never);
+    canvasPanels.push(noLabel.panel, stubPanel({ element: null, mediaName: "md" }));
     expect(() => updateActivePanelHeaders()).not.toThrow();
   });
 });
@@ -1028,6 +1059,15 @@ describe("a lens shares the tab and none of its geometry", () => {
     return { a, side, sideWrap };
   }
 
+  /** The lens {@link lensBeside} installed on the secondary pane. */
+  function lensDerivation() {
+    const { derived } = workspace.panes[1]!;
+    if (derived?.kind !== "lens") {
+      throw new Error("lensBeside() installs a lens derivation on the secondary pane");
+    }
+    return derived;
+  }
+
   afterEach(() => {
     surfaceForPane(SECONDARY_PANE).panels.length = 0;
     unregisterCanvasSurface(SECONDARY_PANE);
@@ -1036,7 +1076,7 @@ describe("a lens shares the tab and none of its geometry", () => {
   test("the zoom pod in a lens reports the LENS's scale", () => {
     const { a, side } = lensBeside("breakpoint", "md");
     a.session.ui.zoom = 2;
-    (workspace.panes[1]!.derived as { zoom: number }).zoom = 0.4;
+    lensDerivation().zoom = 0.4;
 
     expect(stageZoom(side)).toBeCloseTo(0.4, 10);
     expect(stageZoom(primary())).toBe(2);
@@ -1051,7 +1091,7 @@ describe("a lens shares the tab and none of its geometry", () => {
 
     setUserZoom(0.5, side);
 
-    expect((workspace.panes[1]!.derived as { zoom: number }).zoom).toBeCloseTo(0.5, 10);
+    expect(lensDerivation().zoom).toBeCloseTo(0.5, 10);
     expect(a.session.ui.zoom).toBe(2);
     // …and it is the number the stage actually draws at.
     applyTransform(side);
@@ -1080,13 +1120,14 @@ describe("a lens shares the tab and none of its geometry", () => {
     const base = canvasPanelEntry("base", "Base (320px)", false, 320);
     const md = canvasPanelEntry("md", "Tablet (768px)", false, 768);
     await drawBoards([base, md]);
-    side.panels.push(base.panel as never, md.panel as never);
+    side.panels.push(base.panel, md.panel);
 
     updateActivePanelHeaders(side);
 
-    const active = (panel: { element?: Element | null }) =>
-      (panel.element?.querySelector('[part="panel-header"]') as HTMLElement | null)?.dataset
-        .active !== undefined;
+    const active = (panel: { element?: Element | null }) => {
+      const header = panel.element?.querySelector('[part="panel-header"]');
+      return header instanceof HTMLElement && header.dataset.active !== undefined;
+    };
     expect(active(md.panel)).toBe(true);
     expect(active(base.panel)).toBe(false);
   });
@@ -1154,7 +1195,7 @@ describe("the pan-zoom axis is per stage", () => {
     b.session.ui.zoom = 2;
 
     // Exactly what the side pane's `+` runs: its own tab's zoom, times 1.2, on its own surface.
-    setUserZoom((b.session.ui.zoom ?? 1) * 1.2, side);
+    setUserZoom(b.session.ui.zoom * 1.2, side);
 
     expect(b.session.ui.zoom).toBeCloseTo(2.4, 10);
     // It used to land HERE — the primary's document, at a factor computed from the side pane's.
@@ -1181,7 +1222,7 @@ describe("the pan-zoom axis is per stage", () => {
     defineMetric(side.wrap, "clientWidth", 700);
     defineMetric(side.wrap, "clientHeight", 600);
     stubRect(sideWrap, { height: 0, width: 1312 });
-    side.panels.push({ _width: 1280 } as never);
+    side.panels.push(stubPanel({ _width: 1280 }));
 
     fitOnCanvasEntry(side);
 
@@ -1195,10 +1236,10 @@ describe("the pan-zoom axis is per stage", () => {
     a.session.ui.canvasMode = "edit";
     b.session.ui.canvasMode = "edit";
     const frames: FrameRequestCallback[] = [];
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
       frames.push(cb);
       return frames.length;
-    }) as typeof requestAnimationFrame;
+    };
 
     a.session.ui.editZoom = 1;
     b.session.ui.editZoom = 1;

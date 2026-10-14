@@ -33,7 +33,7 @@ function file(path: string, over: Partial<DirEntry> = {}): DirEntry {
  * A platform whose `listDirectory` answers with `entries` and records the directories it was asked
  * about.
  */
-function listing(entries: DirEntry[]): { dirs: string[] } {
+function listing(entries: DirEntry[]) {
   const dirs: string[] = [];
   installMockPlatform({
     listDirectory: async (dir: string) => {
@@ -138,8 +138,10 @@ describe("loadMediaMeta", () => {
 describe("recordImageSize", () => {
   test("a measurement is news once", () => {
     seedMediaMeta([file("public/hero.jpg", { size: 1024 })]);
-    expect(recordImageSize("public/hero.jpg", 1200, 800)).toBe(true);
-    expect(recordImageSize("public/hero.jpg", 1200, 800)).toBe(false);
+    const first = recordImageSize("public/hero.jpg", 1200, 800);
+    const repeated = recordImageSize("public/hero.jpg", 1200, 800);
+    expect(first).toBe(true);
+    expect(repeated).toBe(false);
     expect(peekMediaMeta("public/hero.jpg")).toMatchObject({ height: 800, width: 1200 });
   });
 

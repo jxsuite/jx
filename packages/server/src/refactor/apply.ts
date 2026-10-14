@@ -10,6 +10,7 @@
 
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import { stat, writeFile } from "node:fs/promises";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { isUnder } from "./paths.ts";
 import { rewriteDocRefs, rewriteTagName } from "./refs.ts";
@@ -99,9 +100,9 @@ export async function applyRename(opts: ApplyRenameOptions): Promise<RenameRepor
   if (!isDir) {
     try {
       const { doc } = await loadDoc(absTo, opts.registry);
-      const oldTag = (doc as { tagName?: unknown }).tagName;
+      const oldTag = isJsonObject(doc) ? doc.tagName : undefined;
       const newTag = deriveTag(absTo);
-      if (typeof oldTag === "string" && oldTag.includes("-") && newTag !== oldTag) {
+      if (isString(oldTag) && oldTag.includes("-") && newTag !== oldTag) {
         if (newTag.includes("-")) {
           tagRename = { from: oldTag, to: newTag };
         } else {

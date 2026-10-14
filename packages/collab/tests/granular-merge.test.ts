@@ -11,11 +11,19 @@
  */
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { isString } from "@jxsuite/schema/guards";
 import { applyDocOpsToY, LOCAL_ORIGIN, yEventsToDocOps } from "../src/op-bridge.ts";
-import { seedStructure, structureMap, yDocToJson } from "../src/schema.ts";
-import { applyDocOpToDoc } from "../src/ops.ts";
+import {
+  resolveYPath,
+  seedStructure,
+  structureMap,
+  yDocToJson,
+  yValueToJson,
+} from "../src/schema.ts";
+import { applyDocOpToDoc, childArray } from "../src/ops.ts";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/ops.ts";
+import type { YStructureValue } from "../src/schema.ts";
 
 /** Two replicas seeded from the same document, wired to exchange updates on demand. */
 function pair(document: JxMutableNode) {
@@ -34,6 +42,42 @@ function pair(document: JxMutableNode) {
       Y.applyUpdate(a, fromB);
     },
   };
+}
+
+/** The root's first child in a plain tree; every fixture here roots at an element with children. */
+function firstChildOf(tree: JxMutableNode): JxMutableNode | string {
+  const [child] = childArray(tree);
+  if (child === undefined) {
+    throw new TypeError("fixture root has no children");
+  }
+  return child;
+}
+
+/** The replica's first child as JSON, where the fixture put an element there. */
+function firstElement(doc: Y.Doc): JxMutableNode {
+  const child = firstChildOf(yDocToJson(doc));
+  if (isString(child)) {
+    throw new TypeError("fixture's first child is a bare string, not an element");
+  }
+  return child;
+}
+
+/** The replica's first child as JSON, where the fixture put a bare string there. */
+function firstText(doc: Y.Doc): string {
+  const child = firstChildOf(yDocToJson(doc));
+  if (!isString(child)) {
+    throw new TypeError("fixture's first child is an element, not a bare string");
+  }
+  return child;
+}
+
+/** The replica's first element child as the live node Y.Map, for identity checks. */
+function firstNodeMap(doc: Y.Doc): Y.Map<YStructureValue> {
+  const node = resolveYPath(doc, ["children", 0]);
+  if (!(node instanceof Y.Map)) {
+    throw new TypeError("fixture's first child is not a node Y.Map");
+  }
+  return node;
 }
 
 const PARAGRAPH: JxMutableNode = {
@@ -61,17 +105,15 @@ describe("concurrent text edits in one paragraph", () => {
 
     sync();
 
-    const textA = (yDocToJson(a).children as JxMutableNode[])[0]!.textContent as string;
-    const textB = (yDocToJson(b).children as JxMutableNode[])[0]!.textContent as string;
-    expect(textA).toBe(textB); // Converged.
-    expect(textA).toContain("dear"); // A's insertion survived.
-    expect(textA.endsWith("!")).toBe(true); // B's survived too.
+    const textA = firstElement(a).textContent;
+    expect(textA).toBe(firstElement(b).textContent); // Converged.
+    // A's insertion and B's append both survived, each at its own position.
+    expect(textA).toBe("Hello dear world!");
   });
 
   test("the Y.Text node keeps its identity across a whole-value commit", () => {
     const { a } = pair(PARAGRAPH);
-    const node = structureMap(a).get("children") as Y.Array<unknown>;
-    const paragraph = node.get(0) as Y.Map<unknown>;
+    const paragraph = firstNodeMap(a);
     const before = paragraph.get("textContent");
     applyDocOpsToY(
       a,
@@ -79,8 +121,10 @@ describe("concurrent text edits in one paragraph", () => {
       LOCAL_ORIGIN,
     );
     // Same Y.Text instance, edited in place. A fresh one would orphan every concurrent insert.
-    expect(paragraph.get("textContent")).toBe(before);
-    expect((paragraph.get("textContent") as Y.Text).toString()).toBe("Hello there world");
+    const after = paragraph.get("textContent");
+    expect(after).toBe(before);
+    expect(after).toBeInstanceOf(Y.Text);
+    expect(yValueToJson(after)).toBe("Hello there world");
   });
 
   test("a bare-string child merges per character too", () => {
@@ -96,10 +140,10 @@ describe("concurrent text edits in one paragraph", () => {
       LOCAL_ORIGIN,
     );
     sync();
-    const textA = (yDocToJson(a).children as string[])[0]!;
-    expect(textA).toBe((yDocToJson(b).children as string[])[0]!);
-    expect(textA).toContain("prose");
-    expect(textA).toContain("here");
+    const textA = firstText(a);
+    expect(textA).toBe(firstText(b));
+    // Both concurrent edits to the one bare-string child survived.
+    expect(textA).toBe("shared prose text here");
   });
 
   test("switching text to a $ref replaces wholesale (no shared structure to preserve)", () => {
@@ -116,17 +160,10 @@ describe("concurrent text edits in one paragraph", () => {
       ],
       LOCAL_ORIGIN,
     );
-    const paragraph = (structureMap(a).get("children") as Y.Array<unknown>).get(
-      0,
-    ) as Y.Map<unknown>;
-    expect(paragraph.get("textContent")).not.toBeInstanceOf(Y.Text);
-    expect(yValueOf(a)).toEqual({ $ref: "#/state/title" });
+    expect(firstNodeMap(a).get("textContent")).not.toBeInstanceOf(Y.Text);
+    expect(firstElement(a).textContent).toEqual({ $ref: "#/state/title" });
   });
 });
-
-function yValueOf(doc: Y.Doc) {
-  return (yDocToJson(doc).children as JxMutableNode[])[0]!.textContent;
-}
 
 describe("concurrent style edits on one element", () => {
   test("different properties both survive", () => {
@@ -144,12 +181,10 @@ describe("concurrent style edits on one element", () => {
       LOCAL_ORIGIN,
     );
     sync();
-    const styleA = (yDocToJson(a).children as JxMutableNode[])[0]!.style as Record<string, string>;
-    expect(styleA).toEqual(
-      (yDocToJson(b).children as JxMutableNode[])[0]!.style as Record<string, string>,
-    );
-    expect(styleA.padding).toBe("4px"); // B's new property survived A's write.
-    expect(styleA.color).toBe("blue"); // And the contended one converged.
+    const styleA = firstElement(a).style;
+    expect(styleA).toEqual(firstElement(b).style);
+    // B's new property survived A's write, and the contended one converged on A's value.
+    expect(styleA).toEqual({ color: "blue", padding: "4px" });
   });
 
   test("a removed property is a real delete, not a stale leftover", () => {
@@ -159,8 +194,7 @@ describe("concurrent style edits on one element", () => {
       [{ key: "style", op: "set-key", path: ["children", 0], value: { padding: "4px" } }],
       LOCAL_ORIGIN,
     );
-    const style = (yDocToJson(a).children as JxMutableNode[])[0]!.style as Record<string, string>;
-    expect(style).toEqual({ padding: "4px" });
+    expect(firstElement(a).style).toEqual({ padding: "4px" });
   });
 
   test("nested media and pseudo blocks merge per property as well", () => {
@@ -187,18 +221,13 @@ describe("concurrent style edits on one element", () => {
       LOCAL_ORIGIN,
     );
     sync();
-    const styleA = (yDocToJson(a).children as JxMutableNode[])[0]!.style as Record<
-      string,
-      Record<string, string>
-    >;
-    expect(styleA).toEqual(
-      (yDocToJson(b).children as JxMutableNode[])[0]!.style as Record<
-        string,
-        Record<string, string>
-      >,
-    );
-    expect(styleA["@--sm"]!.padding).toBe("1px");
-    expect(styleA["&:hover"]!.color).toBe("red");
+    const styleA = firstElement(a).style;
+    expect(styleA).toEqual(firstElement(b).style);
+    // A's padding inside the media block and B's new pseudo block both survived.
+    expect(styleA).toEqual({
+      "&:hover": { color: "red" },
+      "@--sm": { margin: "0", padding: "1px" },
+    });
   });
 
   test("a nested block collapsing to a plain value replaces the Y.Map, not merges into it", () => {
@@ -214,8 +243,7 @@ describe("concurrent style edits on one element", () => {
       [{ key: "style", op: "set-key", path, value: { "@--sm": "0" } }],
       LOCAL_ORIGIN,
     );
-    const style = (yDocToJson(a).children as JxMutableNode[])[0]!.style as Record<string, unknown>;
-    expect(style).toEqual({ "@--sm": "0" });
+    expect(firstElement(a).style).toEqual({ "@--sm": "0" });
   });
 });
 
@@ -223,13 +251,12 @@ describe("inbound events collapse back to whole-value ops", () => {
   /** Capture the ops a remote transaction produces, the way collab-session does. */
   function opsFromRemote(doc: Y.Doc, mutate: () => void): JxDocOp[] | null {
     let captured: JxDocOp[] | null = null;
-    const observer = (events: Y.YEvent<never>[]) => {
+    const observer = (events: Y.YEvent<Y.AbstractType<unknown>>[]) => {
       captured = yEventsToDocOps(events);
     };
-    type DeepObserver = Parameters<Y.Map<unknown>["observeDeep"]>[0];
-    structureMap(doc).observeDeep(observer as unknown as DeepObserver);
+    structureMap(doc).observeDeep(observer);
     mutate();
-    structureMap(doc).unobserveDeep(observer as unknown as DeepObserver);
+    structureMap(doc).unobserveDeep(observer);
     return captured;
   }
 
@@ -274,6 +301,17 @@ describe("inbound events collapse back to whole-value ops", () => {
     ]);
   });
 
+  test("a schema-version-1 peer's plain-string child still converts to an insert", () => {
+    // Before prose moved to Y.Text, a bare-string child was stored as a plain string in the array.
+    const { b } = pair(PARAGRAPH);
+    const children = resolveYPath(b, ["children"]);
+    if (!(children instanceof Y.Array)) {
+      throw new TypeError("fixture root has no children Y.Array");
+    }
+    const ops = opsFromRemote(b, () => children.insert(1, ["legacy text"]));
+    expect(ops).toEqual([{ index: 1, node: "legacy text", op: "insert-child", parentPath: [] }]);
+  });
+
   test("those ops replay onto a plain document tree unchanged", () => {
     // The op log stays whole-value, so the SAME applier the canvas and history use still works.
     const { a, b } = pair(PARAGRAPH);
@@ -288,7 +326,11 @@ describe("inbound events collapse back to whole-value ops", () => {
     for (const op of ops) {
       applyDocOpToDoc(plain, op);
     }
-    expect((plain.children as JxMutableNode[])[0]!.textContent).toBe("Replayed");
+    expect(firstChildOf(plain)).toEqual({
+      style: { color: "red" },
+      tagName: "p",
+      textContent: "Replayed",
+    });
   });
 });
 
@@ -316,13 +358,10 @@ describe("undo keeps a peer's concurrent edit", () => {
     undo.undo();
     sync();
 
-    const styleA = (yDocToJson(a).children as JxMutableNode[])[0]!.style as Record<string, string>;
-    expect(styleA).toEqual(
-      (yDocToJson(b).children as JxMutableNode[])[0]!.style as Record<string, string>,
-    );
+    const styleA = firstElement(a).style;
+    expect(styleA).toEqual(firstElement(b).style);
     // A's undo reverts A's own colour change; B's padding is untouched. Origin-scoped undo is the
     // Reason this holds, and it is why the Y.UndoManager delegate stays.
-    expect(styleA.color).toBe("red");
-    expect(styleA.padding).toBe("4px");
+    expect(styleA).toEqual({ color: "red", padding: "4px" });
   });
 });

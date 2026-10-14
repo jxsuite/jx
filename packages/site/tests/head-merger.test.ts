@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { mergeHead, renderHead } from "../src/head-merger.ts";
+import type { AuthoredHeadEntry } from "../src/head-merger.ts";
+import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxHeadEntry } from "@jxsuite/schema/types";
 
 // ─── mergeHead ──────────────────────────────────────────────────────────────
 
 describe("mergeHead", () => {
   test("auto-injects charset and viewport defaults", () => {
-    const result = mergeHead() as any[];
+    const result = mergeHead();
     const charsetEntry = result.find(
       (e) => e.tagName === "meta" && e.attributes?.charset === "utf8",
     );
@@ -16,16 +18,16 @@ describe("mergeHead", () => {
   });
 
   test("injects title from context", () => {
-    const result = mergeHead([], [], [], { title: "My Page" }) as any[];
+    const result = mergeHead([], [], [], { title: "My Page" });
     const titleEntry = result.find((e) => e.tagName === "title");
     expect(titleEntry).toBeDefined();
-    expect((titleEntry as any).children).toEqual(["My Page"]);
+    expect(titleEntry?.children).toEqual(["My Page"]);
   });
 
   test("uses siteName as fallback title", () => {
-    const result = mergeHead([], [], [], { siteName: "Jx Site" }) as any[];
+    const result = mergeHead([], [], [], { siteName: "Jx Site" });
     const titleEntry = result.find((e) => e.tagName === "title");
-    expect((titleEntry as any).children).toEqual(["Jx Site"]);
+    expect(titleEntry?.children).toEqual(["Jx Site"]);
   });
 
   test("later layers override earlier ones (page > layout > site)", () => {
@@ -35,25 +37,25 @@ describe("mergeHead", () => {
         tagName: "meta",
       },
     ];
-    const layout: any[] = [];
+    const layout: JxHeadEntry[] = [];
     const page = [
       {
         attributes: { content: "Page desc", name: "description" },
         tagName: "meta",
       },
     ];
-    const result = mergeHead(site, layout, page) as any[];
+    const result = mergeHead(site, layout, page);
     const desc = result.find((e) => e.attributes?.name === "description");
-    expect((desc as any).attributes.content).toBe("Page desc");
+    expect(desc?.attributes?.content).toBe("Page desc");
   });
 
   test("deduplicates <meta charset>", () => {
     const site = [{ attributes: { charset: "utf8" }, tagName: "meta" }];
     const page = [{ attributes: { charset: "utf-16" }, tagName: "meta" }];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const charsets = result.filter((e) => e.attributes?.charset);
     expect(charsets).toHaveLength(1);
-    expect((charsets[0] as any).attributes.charset).toBe("utf-16");
+    expect(charsets[0]?.attributes?.charset).toBe("utf-16");
   });
 
   test("deduplicates <link> by rel+href", () => {
@@ -69,7 +71,7 @@ describe("mergeHead", () => {
         tagName: "link",
       },
     ];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const links = result.filter((e) => e.tagName === "link" && e.attributes?.href === "/style.css");
     expect(links).toHaveLength(1);
   });
@@ -77,7 +79,7 @@ describe("mergeHead", () => {
   test("deduplicates <script> by src", () => {
     const site = [{ attributes: { src: "/app.js" }, tagName: "script" }];
     const page = [{ attributes: { src: "/app.js" }, tagName: "script" }];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const scripts = result.filter((e) => e.tagName === "script" && e.attributes?.src === "/app.js");
     expect(scripts).toHaveLength(1);
   });
@@ -95,24 +97,24 @@ describe("mergeHead", () => {
         tagName: "meta",
       },
     ];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const og = result.filter((e) => e.attributes?.property === "og:title");
     expect(og).toHaveLength(1);
-    expect((og[0] as any).attributes.content).toBe("Page Title");
+    expect(og[0]?.attributes?.content).toBe("Page Title");
   });
 
   test("adds canonical URL when pageUrl and siteUrl provided", () => {
     const result = mergeHead([], [], [], {
       pageUrl: "/about",
       siteUrl: "https://example.com",
-    }) as any[];
+    });
     const canonical = result.find((e) => e.tagName === "link" && e.attributes?.rel === "canonical");
     expect(canonical).toBeDefined();
-    expect((canonical as any).attributes.href).toBe("https://example.com/about");
+    expect(canonical?.attributes?.href).toBe("https://example.com/about");
   });
 
   test("does not add canonical without both URLs", () => {
-    const result = mergeHead([], [], [], { pageUrl: "/about" }) as any[];
+    const result = mergeHead([], [], [], { pageUrl: "/about" });
     const canonical = result.find((e) => e.tagName === "link" && e.attributes?.rel === "canonical");
     expect(canonical).toBeUndefined();
   });
@@ -122,11 +124,11 @@ describe("mergeHead", () => {
       pageUrl: "/about",
       siteName: "Example Site",
       siteUrl: "https://example.com",
-    }) as any[];
+    });
     const ogUrl = result.find((e) => e.attributes?.property === "og:url");
     const ogSite = result.find((e) => e.attributes?.property === "og:site_name");
-    expect((ogUrl as any).attributes.content).toBe("https://example.com/about");
-    expect((ogSite as any).attributes.content).toBe("Example Site");
+    expect(ogUrl?.attributes?.content).toBe("https://example.com/about");
+    expect(ogSite?.attributes?.content).toBe("Example Site");
   });
 
   test("author-supplied og:url and og:site_name win over auto values", () => {
@@ -144,19 +146,19 @@ describe("mergeHead", () => {
       pageUrl: "/about",
       siteName: "Example Site",
       siteUrl: "https://example.com",
-    }) as any[];
+    });
     const ogUrl = result.filter((e) => e.attributes?.property === "og:url");
     const ogSite = result.filter((e) => e.attributes?.property === "og:site_name");
     expect(ogUrl).toHaveLength(1);
-    expect((ogUrl[0] as any).attributes.content).toBe("https://canonical.example/");
+    expect(ogUrl[0]?.attributes?.content).toBe("https://canonical.example/");
     expect(ogSite).toHaveLength(1);
-    expect((ogSite[0] as any).attributes.content).toBe("Custom Name");
+    expect(ogSite[0]?.attributes?.content).toBe("Custom Name");
   });
 
   test("respects custom charset from context", () => {
-    const result = mergeHead([], [], [], { charset: "utf-16" }) as any[];
+    const result = mergeHead([], [], [], { charset: "utf-16" });
     const charset = result.find((e) => e.attributes?.charset);
-    expect((charset as any).attributes.charset).toBe("utf-16");
+    expect(charset?.attributes?.charset).toBe("utf-16");
   });
 
   test("handles empty arrays gracefully", () => {
@@ -167,7 +169,7 @@ describe("mergeHead", () => {
   test("deduplicates <style> tags by content", () => {
     const site = [{ children: ["body { color: red; }"], tagName: "style" }];
     const page = [{ children: ["body { color: red; }"], tagName: "style" }];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const styles = result.filter((e) => e.tagName === "style");
     expect(styles).toHaveLength(1);
   });
@@ -175,7 +177,7 @@ describe("mergeHead", () => {
   test("keeps distinct <style> tags with different content", () => {
     const site = [{ children: ["body { color: red; }"], tagName: "style" }];
     const page = [{ children: [".card { padding: 1rem; }"], tagName: "style" }];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const styles = result.filter((e) => e.tagName === "style");
     expect(styles).toHaveLength(2);
   });
@@ -183,7 +185,7 @@ describe("mergeHead", () => {
   test("deduplicates unknown/custom tags by full JSON key", () => {
     const site = [{ attributes: { foo: "bar" }, tagName: "custom-tag" }];
     const page = [{ attributes: { foo: "bar" }, tagName: "custom-tag" }];
-    const result = mergeHead(site, [], page) as any[];
+    const result = mergeHead(site, [], page);
     const custom = result.filter((e) => e.tagName === "custom-tag");
     expect(custom).toHaveLength(1);
   });
@@ -197,7 +199,7 @@ describe("mergeHead", () => {
  */
 describe("link deduplication", () => {
   const links = (entries: JxHeadEntry[]) =>
-    (mergeHead([], [], entries) as JxHeadEntry[]).filter((e) => e.tagName === "link");
+    mergeHead([], [], entries).filter((e) => e.tagName === "link");
 
   test("two alternates sharing an href but differing in hreflang both survive", () => {
     // `x-default` conventionally points at the SAME href as the default locale's alternate.
@@ -250,13 +252,11 @@ describe("link deduplication", () => {
     const out = links([
       { attributes: { href: "https://mine.example/x", rel: "canonical" }, tagName: "link" },
     ]).filter((e) => e.attributes?.rel === "canonical");
-    const merged = (
-      mergeHead(
-        [],
-        [],
-        [{ attributes: { href: "https://mine.example/x", rel: "canonical" }, tagName: "link" }],
-        { pageUrl: "/x", siteUrl: "https://auto.example" },
-      ) as JxHeadEntry[]
+    const merged = mergeHead(
+      [],
+      [],
+      [{ attributes: { href: "https://mine.example/x", rel: "canonical" }, tagName: "link" }],
+      { pageUrl: "/x", siteUrl: "https://auto.example" },
     ).filter((e) => e.tagName === "link" && e.attributes?.rel === "canonical");
     expect(out).toHaveLength(1);
     expect(merged).toHaveLength(1);
@@ -264,9 +264,9 @@ describe("link deduplication", () => {
   });
 
   test("the canonical is still auto-injected when the page declares none", () => {
-    const merged = (
-      mergeHead([], [], [], { pageUrl: "/x", siteUrl: "https://auto.example" }) as JxHeadEntry[]
-    ).filter((e) => e.tagName === "link" && e.attributes?.rel === "canonical");
+    const merged = mergeHead([], [], [], { pageUrl: "/x", siteUrl: "https://auto.example" }).filter(
+      (e) => e.tagName === "link" && e.attributes?.rel === "canonical",
+    );
     expect(merged).toHaveLength(1);
     expect(merged[0]!.attributes!.href).toBe("https://auto.example/x");
   });
@@ -301,8 +301,12 @@ describe("renderHead", () => {
     expect(html).toContain('<script src="/app.js"></script>');
   });
 
+  test("renders a null entry as nothing", () => {
+    expect(renderHead([null, { children: ["T"], tagName: "title" }])).toBe("\n  <title>T</title>");
+  });
+
   test("handles string entries", () => {
-    const html = renderHead(["<!-- custom -->" as any]);
+    const html = renderHead(["<!-- custom -->"]);
     expect(html).toContain("<!-- custom -->");
   });
 
@@ -357,10 +361,10 @@ describe("mergeHead singletons and alternates", () => {
       [{ children: ["Site"], tagName: "title" }],
       [{ children: ["Layout"], tagName: "title" }],
       [{ children: ["Page"], tagName: "title" }],
-    ) as any[];
+    );
     const titles = result.filter((entry) => entry.tagName === "title");
     expect(titles).toHaveLength(1);
-    expect(titles[0].children).toEqual(["Jx Site"]);
+    expect(titles[0]?.children).toEqual(["Jx Site"]);
   });
 
   test("the resolved page title outranks a <title> any level authored", () => {
@@ -368,21 +372,25 @@ describe("mergeHead singletons and alternates", () => {
        layout's, else the site name — so it is applied last on purpose. */
     const result = mergeHead([], [], [{ children: ["Page"], tagName: "title" }], {
       title: "Resolved",
-    }) as any[];
+    });
     const titles = result.filter((entry) => entry.tagName === "title");
     expect(titles).toHaveLength(1);
-    expect(titles[0].children).toEqual(["Resolved"]);
+    expect(titles[0]?.children).toEqual(["Resolved"]);
   });
 
   test("an author charset replaces the auto-injected one rather than joining it", () => {
-    const result = mergeHead([{ attributes: { charset: "iso-8859-1" }, tagName: "meta" }]) as any[];
+    const result = mergeHead([{ attributes: { charset: "iso-8859-1" }, tagName: "meta" }]);
     const charsets = result.filter((entry) => entry.attributes?.charset);
     expect(charsets).toHaveLength(1);
-    expect(charsets[0].attributes.charset).toBe("iso-8859-1");
+    expect(charsets[0]?.attributes?.charset).toBe("iso-8859-1");
   });
 
   test("a malformed entry is keyed by its own value rather than crashing the merge", () => {
-    const result = mergeHead([null as any, "junk" as any, null as any]) as any[];
+    /* Parsed JSON is where such entries come from: the parser types `$head` as declared, not as
+       written, so a raw string and a `null` reach the merge typed as entries. */
+    const { $head = [] } = parseJxDocument('{"$head":[null,"junk",null]}', "pages/index.json");
+    // The merge hands back what was authored, so its output is read at the authored width.
+    const result: readonly AuthoredHeadEntry[] = mergeHead($head);
     expect(result.filter((entry) => entry === null)).toHaveLength(1);
   });
 
@@ -393,9 +401,13 @@ describe("mergeHead singletons and alternates", () => {
         { href: "https://example.com/fr/", hreflang: "fr" },
         { href: "https://example.com/", hreflang: "x-default" },
       ],
-    }) as any[];
+    });
     const alternates = result.filter((entry) => entry.attributes?.rel === "alternate");
-    expect(alternates.map((entry) => entry.attributes.hreflang)).toEqual(["en", "fr", "x-default"]);
+    expect(alternates.map((entry) => entry.attributes?.hreflang)).toEqual([
+      "en",
+      "fr",
+      "x-default",
+    ]);
   });
 
   test("an author-supplied alternate for the same link wins", () => {
@@ -407,9 +419,9 @@ describe("mergeHead singletons and alternates", () => {
     };
     const result = mergeHead([], [], [authored], {
       alternates: [{ href: "/fr/", hreflang: "fr" }],
-    }) as any[];
+    });
     const alternates = result.filter((entry) => entry.attributes?.rel === "alternate");
     expect(alternates).toHaveLength(1);
-    expect(alternates[0].attributes.title).toBe("Français");
+    expect(alternates[0]?.attributes?.title).toBe("Français");
   });
 });

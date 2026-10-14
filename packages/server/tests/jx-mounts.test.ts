@@ -12,26 +12,39 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { handleJxMounts, resetJxMounts } from "../src/jx-mounts";
 import { loadDevVars, parseDevVars } from "../src/dev-vars";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-jx-mounts__");
 
-function writeFile(relPath: string, content: string | object) {
-  const abs = resolve(TMP, relPath);
-  mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+/** What the fixture extension's echo mount (mount-ext/echo.ts below) answers with. */
+interface EchoBody {
+  basePath: string;
+  root: string;
+  secret: string | null;
+  sections: string[];
 }
 
-function call(method: string, path: string, body?: unknown): Promise<Response | null> {
+/** A row of the fixture's `comments` collection as the data mount returns it. */
+interface CommentRow {
+  id: number;
+  approved: boolean;
+  message: string;
+}
+
+function writeFile(relPath: string, content: string | JsonObject) {
+  const abs = resolve(TMP, relPath);
+  mkdirSync(resolve(abs, ".."), { recursive: true });
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
+}
+
+function call(method: string, path: string, body?: JsonObject): Promise<Response | null> {
   const url = `http://localhost:3000${path}`;
-  return handleJxMounts(
-    new Request(url, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
-    new URL(url),
-    TMP,
-  );
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return handleJxMounts(new Request(url, init), new URL(url), TMP);
 }
 
 beforeAll(() => {
@@ -145,11 +158,11 @@ describe("handleJxMounts", () => {
   test("fixture mounts get merged env (.dev.vars + JX_PROJECT_ROOT) and section manifests", async () => {
     const response = await call("GET", "/_jx/echo/anything");
     expect(response).not.toBeNull();
-    const body = (await response!.json()) as Record<string, unknown>;
+    const body: EchoBody = await response!.json();
     expect(body.basePath).toBe("/_jx/echo");
     expect(body.root).toBe(TMP);
     expect(body.secret).toBe("shh");
-    expect((body.sections as string[]).toSorted()).toEqual(["connections", "data"]);
+    expect(body.sections.toSorted()).toEqual(["connections", "data"]);
   });
 
   test("D1 connections are stood in by local sqlite with auto-sync on first touch", async () => {
@@ -161,13 +174,13 @@ describe("handleJxMounts", () => {
       message: "hello dev",
     });
     expect(created!.status).toBe(201);
-    const row = (await created!.json()) as Record<string, unknown>;
+    const row: CommentRow = await created!.json();
     expect(row.approved).toBe(true);
     expect(existsSync(dbFile)).toBe(true);
 
     const filter = encodeURIComponent(JSON.stringify({ approved: true }));
     const listed = await call("GET", `/_jx/data/comments?filter=${filter}`);
-    const rows = (await listed!.json()) as Record<string, unknown>[];
+    const rows: CommentRow[] = await listed!.json();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.message).toBe("hello dev");
 
@@ -177,7 +190,7 @@ describe("handleJxMounts", () => {
     const removed = await call("DELETE", `/_jx/data/comments/${row.id}`);
     expect(removed!.status).toBe(200);
     const after = await call("GET", "/_jx/data/comments");
-    expect((await after!.json()) as unknown[]).toHaveLength(0);
+    expect(await after!.json()).toHaveLength(0);
   });
 
   test("fail-closed without an auth mount: non-public rules are denied", async () => {
@@ -230,20 +243,18 @@ describe("dev-vars", () => {
 describe("auth mount dispatch (@jxsuite/auth)", () => {
   const AUTH_TMP = `${TMP}-auth`;
 
-  function authCall(method: string, path: string, body?: unknown, cookie = "") {
+  function authCall(method: string, path: string, body?: JsonObject, cookie = "") {
     const url = `http://localhost:3000${path}`;
-    return handleJxMounts(
-      new Request(url, {
-        method,
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        headers: {
-          "Content-Type": "application/json",
-          ...(cookie ? { cookie } : {}),
-        },
-      }),
-      new URL(url),
-      AUTH_TMP,
-    );
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (cookie) {
+      headers.set("cookie", cookie);
+    }
+    const init: RequestInit = { method };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+    init.headers = headers;
+    return handleJxMounts(new Request(url, init), new URL(url), AUTH_TMP);
   }
 
   beforeAll(() => {
@@ -309,6 +320,6 @@ describe("auth mount dispatch (@jxsuite/auth)", () => {
     // Public read passes without a session.
     const listed = await authCall("GET", "/_jx/data/comments");
     expect(listed!.status).toBe(200);
-    expect(((await listed!.json()) as unknown[]).length).toBe(1);
+    expect(await listed!.json()).toHaveLength(1);
   });
 });

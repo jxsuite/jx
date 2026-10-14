@@ -13,10 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
-
-interface WorkerModule {
-  default: { fetch: (req: Request, env: unknown) => Promise<Response> };
-}
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** Stands in for Cloudflare's ASSETS binding; its body proves the chain continued past us. */
 const ENV = {
@@ -26,10 +23,14 @@ const ENV = {
   },
 };
 
+interface WorkerModule {
+  default: { fetch: (req: Request, env: typeof ENV) => Promise<Response> };
+}
+
 let root = "";
 let worker: WorkerModule["default"] | null = null;
 
-function writeJson(path: string, value: unknown) {
+function writeJson(path: string, value: JsonValue) {
   const full = join(root, path);
   mkdirSync(join(full, ".."), { recursive: true });
   writeFileSync(full, JSON.stringify(value), "utf8");
@@ -63,6 +64,8 @@ beforeAll(async () => {
   await buildSite(root, { verbose: false });
   const bundled = join(root, "dist/worker.js");
   if (existsSync(bundled)) {
+    /* SAFETY: `dist/worker.js` is the Hono worker this build just emitted; its default export is
+       the app, whose `fetch(request, env)` reads only `env.ASSETS` for the static fallthrough. */
     worker = ((await import(bundled)) as WorkerModule).default;
   }
 });

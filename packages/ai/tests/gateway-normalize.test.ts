@@ -15,22 +15,32 @@ import { describe, expect, it } from "bun:test";
 import { problemDetails } from "@jxsuite/protocol";
 import { fetchFailureFrame, normalizeOpenAIStream } from "../src/gateway/normalize.ts";
 import type { StreamEvent } from "../src/streaming-client.ts";
+import type { JsonObject } from "../src/core-types.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** One SSE chunk: a JSON chunk to serialize, or a line's text sent as written. */
+type SseChunk = JsonObject | string;
+
+/** Whether a chunk is text to send as written rather than JSON to serialize. */
+function isVerbatim(chunk: SseChunk): chunk is string {
+  return typeof chunk === "string";
+}
+
 /** An SSE body of `data:` lines, one per chunk (a string is sent as written). */
-function sse(...chunks: (object | string)[]): string {
+function sse(...chunks: SseChunk[]): string {
   return chunks
-    .map((chunk) => `data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`)
+    .map((chunk) => `data: ${isVerbatim(chunk) ? chunk : JSON.stringify(chunk)}\n\n`)
     .join("");
 }
 
 /** A chat-completions chunk carrying one choice. */
-const choice = (delta: object, finish?: string | null): object => ({
+const choice = (delta: JsonObject, finish?: string | null): JsonObject => ({
   choices: [{ delta, finish_reason: finish ?? null, index: 0 }],
 });
 
-const CHUNKINGS: Record<string, (bytes: Uint8Array) => Uint8Array[]> = {
+/** Every way the same body is split into reads: whole, one line at a time, one byte at a time. */
+const CHUNKINGS = {
   bytes: (bytes) => Array.from(bytes, (_, index) => bytes.subarray(index, index + 1)),
   lines: (bytes) => {
     const chunks: Uint8Array[] = [];
@@ -47,7 +57,7 @@ const CHUNKINGS: Record<string, (bytes: Uint8Array) => Uint8Array[]> = {
     return chunks;
   },
   whole: (bytes) => (bytes.length > 0 ? [bytes] : []),
-};
+} satisfies Record<string, (bytes: Uint8Array) => Uint8Array[]>;
 
 /** A 200 upstream whose body arrives in `chunks`. */
 function upstream(chunks: Uint8Array[]): Response {
@@ -77,11 +87,17 @@ async function collect(frames: AsyncIterable<StreamEvent>): Promise<StreamEvent[
 /** The frames, as the wire bytes the proxy writes, so member order counts. */
 const wire = (frames: StreamEvent[]): string[] => frames.map((frame) => JSON.stringify(frame));
 
+/** An upstream double, and the read count at each cancel its reader received. */
+interface FailingUpstream {
+  response: Response;
+  cancels: number[];
+}
+
 /**
  * A 200 upstream whose reader yields `first`, then rejects with `error`. A plain object stands in
  * for the Response, as in the server's own suite: a real one would surface the rejection early.
  */
-function failingUpstream(first: string, error: unknown): { response: Response; cancels: number[] } {
+function failingUpstream(first: string, error: Error): FailingUpstream {
   const cancels: number[] = [];
   let reads = 0;
   const reader = {
@@ -98,7 +114,9 @@ function failingUpstream(first: string, error: unknown): { response: Response; c
     },
   };
   const response = { body: { getReader: () => reader }, ok: true, status: 200 };
-  return { cancels, response: response as unknown as Response };
+  /* SAFETY: normalizeOpenAIStream reads only `ok` and `body.getReader()` of a 200 response, and
+     only `read()` and `cancel()` of that reader, which are exactly the members built above. */
+  return { cancels, response: response as Response };
 }
 
 // ─── A 200 stream ────────────────────────────────────────────────────────────
@@ -356,12 +374,15 @@ describe("normalizeOpenAIStream: an upstream that refuses", () => {
   });
 
   it("a body that cannot be read says the status text", async () => {
-    const response = {
-      ok: false,
+    const unreadable = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("gone"));
+      },
+    });
+    const response = new Response(unreadable, {
       status: 500,
       statusText: "Internal Server Error",
-      text: () => Promise.reject(new Error("gone")),
-    } as unknown as Response;
+    });
     const frames = await collect(normalizeOpenAIStream(response));
     expect(frames).toEqual([
       {
@@ -420,11 +441,12 @@ describe("normalizeOpenAIStream: a read that fails mid-stream", () => {
     const frames = await collect(normalizeOpenAIStream(response));
     expect(frames[0]).toEqual({ type: "delta", content: "a" });
     expect(frames).toHaveLength(2);
-    const error = frames[1] as { message: string; problem: { type: string }; type: string };
-    expect(error.type).toBe("error");
-    // The engine's own sentence; the server's golden (null-chunk) pins its exact text.
-    expect(error.message).toStartWith("Stream error: ");
-    expect(error.problem.type).toBe(problemDetails("upstreamFailure").type);
+    expect(frames[1]).toMatchObject({
+      // The engine's own sentence; the server's golden (null-chunk) pins its exact text.
+      message: expect.stringMatching(/^Stream error: /),
+      problem: { type: problemDetails("upstreamFailure").type },
+      type: "error",
+    });
   });
 });
 
@@ -433,11 +455,14 @@ describe("normalizeOpenAIStream: a read that fails mid-stream", () => {
    the read loop, whose catch cancelled the upstream; the upstream must not outlive its reader now
    either. */
 describe("normalizeOpenAIStream: a consumer that stops reading", () => {
+  /** A 200 upstream, and how many times its body has been cancelled so far. */
+  interface CountedUpstream {
+    response: Response;
+    cancels: () => number;
+  }
+
   /** A 200 upstream that sends `chunks` and then either ends or waits, counting its cancels. */
-  function countedUpstream(
-    chunks: string[],
-    end: boolean,
-  ): { response: Response; cancels: () => number } {
+  function countedUpstream(chunks: string[], end: boolean): CountedUpstream {
     const encoder = new TextEncoder();
     let cancels = 0;
     let next = 0;

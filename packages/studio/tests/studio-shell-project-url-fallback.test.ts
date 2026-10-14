@@ -11,11 +11,11 @@ const SITE = "/abs/empty-site";
 
 await bootStudio({
   overrides: {
-    resolveSiteContext: (async () => ({
+    resolveSiteContext: async () => ({
       fileRelPath: "project.json",
       projectConfig: { name: "EmptySite" },
       sitePath: SITE,
-    })) as any,
+    }),
   },
   seedFiles: {
     "project.json": JSON.stringify({ name: "EmptySite" }),
@@ -28,7 +28,7 @@ await waitFor(() => activeTab.value?.id === "project.json");
 describe("?project= with no home page", () => {
   test("opens project.json itself when no pages/index.* candidate exists", () => {
     expect(activeTab.value?.id).toBe("project.json");
-    expect((activeTab.value!.doc.document as any).name).toBe("EmptySite");
+    expect(activeTab.value?.doc.document["name"]).toBe("EmptySite");
   });
 
   test("defaults the canvas to stylebook mode for project.json", () => {

@@ -42,6 +42,8 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { FENCE } from "./docs/lib/spec-status.ts";
+import type { MarkdownRewrite } from "./lib/unwrap-prose.ts";
 import { unwrapProse } from "./lib/unwrap-prose.ts";
 
 /** `## 18\.` — the editor is stopping the line re-parsing as an ordered-list item. */
@@ -49,8 +51,6 @@ const ESCAPED_HEADING = /^(#{1,6}\s+\d+(?:\.\d+)*[a-z]?)\\\./;
 
 /** `RESERVED\_KEYS` — the editor is stopping the underscore reading as emphasis. Never needed. */
 const ESCAPED_INNER_UNDERSCORE = /(\w)\\_(?=\w)/g;
-
-const FENCE = /^\s*(```|~~~)/;
 
 /**
  * Paths the sweep never touches, mirroring `.oxfmtrc.json`'s `ignorePatterns`.
@@ -61,19 +61,13 @@ const FENCE = /^\s*(```|~~~)/;
  */
 const NEVER = [/(?:^|\/)CHANGELOG\.md$/, /(?:^|\/)_[a-z_]*fixtures?[a-z_]*\//, /^vendor\//];
 
-export interface NormalizeResult {
-  text: string;
-  /** 1-based lines that changed, for a `--check` report that points somewhere. */
-  lines: number[];
-}
-
 /**
  * Remove the escapes a visual Markdown editor inserts.
  *
  * @param {string} source
- * @returns {NormalizeResult}
+ * @returns {MarkdownRewrite}
  */
-export function normalizeMarkdown(source: string): NormalizeResult {
+export function normalizeMarkdown(source: string): MarkdownRewrite {
   const lines = source.split("\n");
   const changed: number[] = [];
   let inFence = false;

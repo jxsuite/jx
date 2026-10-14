@@ -173,12 +173,9 @@ describe("planImageFamilies", () => {
 describe("names without an extension", () => {
   test("groups a CDN path that carries no file extension", () => {
     // A transform URL often has no extension at all; the stem is then the whole pathname.
-    expect(familyKey("https://cdn.test/image/abc123")).toBe(
-      familyKey("https://cdn.test/image/abc123"),
-    );
-    expect(familyKey("https://cdn.test/image/abc123")).not.toBe(
-      familyKey("https://cdn.test/image/def456"),
-    );
+    const key = familyKey("https://cdn.test/image/abc123");
+    expect(key).toBe(familyKey("https://cdn.test/image/abc123"));
+    expect(key).not.toBe(familyKey("https://cdn.test/image/def456"));
   });
 
   test("does not mistake a dot in a directory for an extension", () => {

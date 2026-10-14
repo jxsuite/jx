@@ -16,9 +16,9 @@ import {
   platformErrorInfo,
   retryHint,
 } from "../src/platform-errors";
+import { JOIN_OFFER } from "./shared-fixtures";
 
 const INSTALL_URL = "https://github.com/apps/jx/installations/new";
-const JOIN = { href: "https://example.test/join", id: "join", label: "Join", primary: true };
 
 describe("platformErrorInfo", () => {
   test("derives the code from a problem type", () => {
@@ -68,11 +68,11 @@ describe("platformErrorInfo", () => {
 
 describe("installUrlOf", () => {
   test("answers for either shape, and only with a URL to offer", () => {
-    const shapes = [
+    const encodings = [
       { installUrl: INSTALL_URL, type: "https://jxsuite.com/problems/needs-installation-access" },
       { code: "needs_installation_access", installUrl: INSTALL_URL },
     ];
-    for (const structured of shapes) {
+    for (const structured of encodings) {
       const error = Object.assign(new Error("blocked"), structured);
       expect(installUrlOf(error)).toBe(INSTALL_URL);
     }
@@ -92,18 +92,18 @@ describe("installUrlOf", () => {
 
 describe("the action-required refusal", () => {
   test("carries its actions, heading and retry hint through, from either shape", () => {
-    const shapes = [
+    const encodings = [
       { type: "https://jxsuite.com/problems/action-required" },
       { code: "action_required" },
     ];
-    for (const structured of shapes) {
+    for (const structured of encodings) {
       const error = Object.assign(new Error("needs a step"), structured, {
-        actions: [JOIN],
+        actions: [JOIN_OFFER],
         heading: "Join first",
         retry: "repeat",
       });
       expect(platformErrorInfo(error)).toEqual({
-        actions: [JOIN],
+        actions: [JOIN_OFFER],
         code: "action-required",
         heading: "Join first",
         retry: "repeat",
@@ -128,7 +128,7 @@ describe("the action-required refusal", () => {
   });
 
   test("any other failure is not one, whatever members it carries", () => {
-    const error = Object.assign(new Error("x"), { actions: [JOIN], code: "forbidden" });
+    const error = Object.assign(new Error("x"), { actions: [JOIN_OFFER], code: "forbidden" });
     expect(isActionRequired(error)).toBe(false);
     expect(isActionRequired(null)).toBe(false);
   });
@@ -138,7 +138,7 @@ describe("offeredActions", () => {
   test("keeps each well-formed action, and only the members of the right type", () => {
     expect(
       offeredActions([
-        JOIN,
+        JOIN_OFFER,
         { href: 3, id: "ask", label: "Ask", primary: "yes" },
         { href: "", id: "plain", label: "Plain" },
         { id: "", label: "No id" },
@@ -147,7 +147,7 @@ describe("offeredActions", () => {
         null,
         "join",
       ]),
-    ).toEqual([JOIN, { id: "ask", label: "Ask" }, { id: "plain", label: "Plain" }]);
+    ).toEqual([JOIN_OFFER, { id: "ask", label: "Ask" }, { id: "plain", label: "Plain" }]);
   });
 
   test("anything but a list is no actions", () => {

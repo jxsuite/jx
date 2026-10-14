@@ -8,7 +8,7 @@
  */
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { pinClock, unpinClock } from "../src/services/clock";
+import { MINUTE, pinClock, unpinClock } from "../src/services/clock";
 import { relativeDate } from "../src/panels/git-panel";
 import { lastOpenedLabel } from "../src/surfaces/welcome";
 import { relativeTime } from "../src/panels/ai-chat/sessions-view";
@@ -21,7 +21,6 @@ import {
 } from "../src/recent-projects";
 
 const NOW = Date.parse("2026-01-15T09:30:00Z");
-const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
@@ -60,8 +59,8 @@ describe("git-panel relativeDate", () => {
 
   test("the same commit reads the same on every call while the clock is pinned", () => {
     const iso = ago(2 * MINUTE);
-    expect(relativeDate(iso)).toBe("2m ago");
-    expect(relativeDate(iso)).toBe("2m ago");
+    const readings = [relativeDate(iso), relativeDate(iso)];
+    expect(readings).toEqual(["2m ago", "2m ago"]);
   });
 });
 

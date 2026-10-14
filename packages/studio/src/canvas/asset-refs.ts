@@ -53,6 +53,9 @@ export function assetContextFor(
   const space = over?.space ?? "site";
   const mount = contentMountFor(
     documentPath,
+    /* SAFETY: `content` is the parser extension's opaque project section, which its project
+       fragment schema defines as a map of section entries; contentMountFor reads only each entry's
+       optional `source` and skips an entry without one. */
     projectState?.projectConfig?.content as Record<string, ContentSectionEntry> | undefined,
     projectLocales(),
   );
@@ -61,13 +64,16 @@ export function assetContextFor(
   if (space === "site" && !mount) {
     return null;
   }
-  return {
+  const context: AssetContext = {
     documentDir: dirOfPath(documentPath ?? ""),
-    ...(over?.fileBaseUrl === undefined ? {} : { fileBaseUrl: over.fileBaseUrl }),
     lanes: BUILD_LANES,
     mounts: mount ? [mount] : [],
     space,
   };
+  if (over?.fileBaseUrl !== undefined) {
+    context.fileBaseUrl = over.fileBaseUrl;
+  }
+  return context;
 }
 
 /**
@@ -100,6 +106,15 @@ export function previewAssetSrc(value: string): string {
 }
 
 /**
+ * The registered host's media declarations: its asset space, and the base project files serve
+ * under.
+ */
+export interface HostAssetDeclarations {
+  space?: "site" | "repo" | undefined;
+  fileBaseUrl: string;
+}
+
+/**
  * What the registered host says about media — the platform's `assetSpace`, and the base project
  * files are served under.
  *
@@ -108,14 +123,14 @@ export function previewAssetSrc(value: string): string {
  * The canvas pipeline builds the same two values from the same two places; the difference is only
  * that it already has the document in hand.
  *
- * @returns {{ space?: "site" | "repo"; fileBaseUrl: string }} The host's declarations
+ * @returns {HostAssetDeclarations} The host's declarations
  */
-export function hostAssetDeclarations(): {
-  space?: "site" | "repo" | undefined;
-  fileBaseUrl: string;
-} {
-  return {
+export function hostAssetDeclarations(): HostAssetDeclarations {
+  const declarations: HostAssetDeclarations = {
     fileBaseUrl: documentBase(projectState?.projectRoot),
-    ...(hasPlatform() ? { space: getPlatform().assetSpace } : {}),
   };
+  if (hasPlatform()) {
+    declarations.space = getPlatform().assetSpace;
+  }
+  return declarations;
 }

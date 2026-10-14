@@ -77,7 +77,7 @@ describe("the settings pane surface", () => {
        package renders (studio-ui-guidelines.md §9.4), and the document never writes into it — a
        section renderer does. */
     const island = surface.body()!;
-    expect(island).toBe(host.querySelector('[part="body"]') as HTMLElement);
+    expect(host.querySelector('[part="body"]')).toBe(island);
     expect(island.childElementCount).toBe(0);
     expect(panel.contains(island)).toBe(true);
 
@@ -97,7 +97,7 @@ describe("the settings pane surface", () => {
     );
     // The island is the SAME element: a selection change is an assignment, not a rebuild, which is
     // What lets a section keep the caret in a half-typed field across an idle redraw.
-    expect(surface.body()).toBe(host.querySelector('[part="body"]') as HTMLElement);
+    expect(host.querySelector('[part="body"]')).toBe(surface.body());
 
     surface.dispose();
   });

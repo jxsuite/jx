@@ -138,10 +138,8 @@ describe("view.setActivity", () => {
   });
 
   test("its enum is exactly the declared panel set", () => {
-    const schema = registry.get("view.setActivity")?.args as {
-      properties: { tab: { enum: string[] } };
-    };
-    expect(schema.properties.tab.enum).toEqual([...NAVIGATOR_PANEL_IDS]);
+    const tab = registry.get("view.setActivity")?.args?.properties?.["tab"];
+    expect(tab?.enum).toEqual([...NAVIGATOR_PANEL_IDS]);
   });
 
   test("needs an open project", () => {
@@ -202,9 +200,11 @@ describe("the Bottom dock's three verbs", () => {
   });
 
   test("an undeclared tab is a refusal naming the declared set", () => {
-    expect(() => registry.get("view.setBottomTab")!.run(ctx, { tab: "deploy" } as never)).toThrow(
-      /problems/,
-    );
+    /* SAFETY: a registered record is an AnyCommand, whose argument type is erased to `never`; this
+       call deliberately skips the registry's coercion to hand the record's own `run` an undeclared
+       tab, which is the refusal under test. */
+    const run = () => registry.get("view.setBottomTab")!.run(ctx, { tab: "deploy" } as never);
+    expect(run).toThrow(/problems/);
     expect(shell.bottomTab).not.toBe("deploy");
   });
 });
@@ -251,6 +251,8 @@ describe("view.setNavigator / view.setRightPanel / view.setAssistant", () => {
     currentTab = "style";
     void registry.run("view.setAssistant", { open: false });
     expect(setInspectorTab).not.toHaveBeenCalled();
+    // Nor does closing ever collapse the dock that hosts it.
+    expect(shell.docks.right.collapsed).toBe(false);
   });
 
   test("a missing `open` is a refusal, not a toggle", () => {
@@ -315,6 +317,8 @@ describe("the enums do not drift from what the shell renders", () => {
   /** The `value:` literals a panel module declares, in source order. */
   function declaredValues(file: string): string[] {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    /* SAFETY: capture group 1 is not optional in the pattern, so every match `matchAll` yields
+       carries it. */
     return [...source.matchAll(/value:\s*"([\w-]+)"/g)].map((m) => m[1] as string);
   }
 

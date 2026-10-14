@@ -60,7 +60,7 @@ function writeEchoExtension(root: string) {
   );
 }
 
-let devServer: { port: number; stop: (force?: boolean) => void };
+let devServer: Awaited<ReturnType<typeof createDevServer>>;
 let projectServer: ProjectServerHandle;
 /**
  * Where the New Project modal "chose" to put the project. It has to sit under the home directory
@@ -115,14 +115,14 @@ beforeAll(async () => {
   writeFileSync(join(ownedProject, "project.json"), JSON.stringify({ name: "My Site" }));
   writeFileSync(join(ownedProject, "owned.txt"), "owned data");
 
-  devServer = (await createDevServer({
+  devServer = await createDevServer({
     allowedRoots: [EXTERNAL_ROOT],
     builds: [],
     port: 0,
     root: SERVER_ROOT,
     studio: true,
     watch: false,
-  })) as unknown as { port: number; stop: (force?: boolean) => void };
+  });
 
   projectServer = createProjectServer({
     resolveSession: () => ({ handlers: {}, projectRoot: PS_PROJECT }),
@@ -131,7 +131,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  devServer.stop(true);
+  void devServer.stop(true);
   projectServer.stop();
   rmSync(FIXTURES, { force: true, recursive: true });
   rmSync(createdParent, { force: true, recursive: true });
@@ -144,9 +144,7 @@ describe("dev server — extension mounts (/_jx)", () => {
   test("dispatches a claimed path to the project's mount", async () => {
     const res = await fetch(`http://localhost:${devServer.port}/_jx/echo/anything`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { basePath: string; root: string };
-    expect(body.basePath).toBe("/_jx/echo");
-    expect(body.root).toBe(SERVER_ROOT);
+    expect(await res.json()).toEqual({ basePath: "/_jx/echo", root: SERVER_ROOT });
   });
 
   test("an unclaimed /_jx path falls through to a 404", async () => {
@@ -162,8 +160,7 @@ describe("dev server — import-site delegation", () => {
       method: "POST",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("Invalid JSON");
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("Invalid JSON") });
   });
 });
 
@@ -171,8 +168,7 @@ describe("dev server — AI proxy delegation", () => {
   test("routes /__studio/ai/models to the AI handler", async () => {
     const res = await fetch(`http://localhost:${devServer.port}/__studio/ai/models`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { models: unknown[] };
-    expect(Array.isArray(body.models)).toBe(true);
+    expect(await res.json()).toMatchObject({ models: expect.any(Array) });
   });
 });
 
@@ -204,8 +200,7 @@ describe("dev server — absolute paths under the active project", () => {
       `http://localhost:${devServer.port}/__studio/files?dir=${encodeURIComponent(ownedProject)}`,
     );
     expect(listing.status).toBe(200);
-    const names = ((await listing.json()) as { name: string }[]).map((e) => e.name);
-    expect(names).toContain("project.json");
+    expect(await listing.json()).toContainEqual(expect.objectContaining({ name: "project.json" }));
   });
 
   test("activate still refuses a home directory that holds no project", async () => {
@@ -229,9 +224,7 @@ describe("dev server — absolute paths under the active project", () => {
       method: "POST",
     });
     expect(activate.status).toBe(200);
-    const body = (await activate.json()) as { ok: boolean; root: string };
-    expect(body.ok).toBe(true);
-    expect(body.root).toBe(EXTERNAL_ROOT);
+    expect(await activate.json()).toMatchObject({ ok: true, root: EXTERNAL_ROOT });
     // Files from the allowed external root are now served through the project fallback.
     const res = await fetch(`http://localhost:${devServer.port}/external.txt`);
     expect(res.status).toBe(200);
@@ -246,8 +239,7 @@ describe("dev server — create-project at a chosen destination", () => {
       method: "POST",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("A destination folder is required.");
+    expect(await res.json()).toMatchObject({ error: "A destination folder is required." });
     expect(existsSync(join(SERVER_ROOT, "unwanted"))).toBe(false);
   });
 
@@ -261,22 +253,19 @@ describe("dev server — create-project at a chosen destination", () => {
       method: "POST",
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { config: { name: string }; root: string };
+    const madeRoot = join(createdParent, "made-here");
     // Outside the server root, so the root comes back absolute rather than root-relative.
-    expect(body.root).toBe(join(createdParent, "made-here"));
-    expect(body.config.name).toBe("Made Here");
+    expect(await res.json()).toMatchObject({ config: { name: "Made Here" }, root: madeRoot });
     expect(existsSync(join(createdParent, "made-here", "project.json"))).toBe(true);
 
     // The server remembered the new root, so the activate Studio sends next is permitted even
     // Though the project sits under neither the server root nor allowedRoots.
     const activate = await fetch(`http://localhost:${devServer.port}/__studio/activate`, {
-      body: JSON.stringify({ root: body.root }),
+      body: JSON.stringify({ root: madeRoot }),
       method: "POST",
     });
     expect(activate.status).toBe(200);
-    const activated = (await activate.json()) as { ok: boolean; root: string };
-    expect(activated.ok).toBe(true);
-    expect(activated.root).toBe(join(createdParent, "made-here"));
+    expect(await activate.json()).toMatchObject({ ok: true, root: madeRoot });
   });
 
   test("still refuses to activate a directory it never created", async () => {
@@ -305,9 +294,10 @@ describe("project server — coverage gaps", () => {
       headers: { connection: "upgrade", upgrade: "websocket" },
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { detail: string; type: string };
-    expect(body.detail).toBe("Upgrade failed");
-    expect(body.type).toBe("https://jxsuite.com/problems/invalid-request");
+    expect(await res.json()).toMatchObject({
+      detail: "Upgrade failed",
+      type: "https://jxsuite.com/problems/invalid-request",
+    });
   });
 
   test("answers the AI models listing under the studio namespace, with the token", async () => {
@@ -315,8 +305,7 @@ describe("project server — coverage gaps", () => {
       `${projectServer.url}/__studio__/ai/models?token=${projectServer.rpcToken}`,
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { models: unknown[] };
-    expect(Array.isArray(body.models)).toBe(true);
+    expect(await res.json()).toMatchObject({ models: expect.any(Array) });
   });
 
   /*
@@ -331,9 +320,7 @@ describe("project server — coverage gaps", () => {
   test("dispatches /_jx to the project's extension mounts", async () => {
     const res = await fetch(`${projectServer.url}/_jx/echo/anything`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { basePath: string; root: string };
-    expect(body.basePath).toBe("/_jx/echo");
-    expect(body.root).toBe(PS_PROJECT);
+    expect(await res.json()).toEqual({ basePath: "/_jx/echo", root: PS_PROJECT });
   });
 
   test("an unclaimed /_jx path falls through to a 404", async () => {

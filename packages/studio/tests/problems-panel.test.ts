@@ -26,7 +26,11 @@ import { setActiveRegistry } from "../src/commands/active-registry";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext, makeContext } from "../src/commands/context";
 import type { CommandContext } from "../src/commands/context";
-import type { NavigatorPanelContext, PanelRecord } from "../src/panels/panel-registry";
+import type {
+  NavigatorPanelContext,
+  NavigatorPanelDeps,
+  PanelRecord,
+} from "../src/panels/panel-registry";
 
 let ctx: CommandContext = emptyContext();
 const ran: { id: string; args: unknown }[] = [];
@@ -66,7 +70,9 @@ function buildRegistry() {
 
 /** What the Bottom dock hands a tab: no deps, no document — Problems is a project-level list. */
 const PANEL_CTX: NavigatorPanelContext = {
-  deps: {} as never,
+  /* SAFETY: problems-panel.ts's `render` takes no context and its `afterRender` ignores the one it
+     is handed (`_ctx`), so not one NavigatorPanelDeps member is ever read off this empty object. */
+  deps: {} as NavigatorPanelDeps,
   doc: null,
   rerender: () => {},
 };
@@ -132,8 +138,26 @@ function part(name: string): HTMLElement | null {
   return host.querySelector(`[part="${name}"]`);
 }
 
+/** A part that must be drawn; its absence fails the test here rather than on a null read. */
+function requiredPart(name: string): HTMLElement {
+  const el = part(name);
+  if (!el) {
+    throw new Error(`no [part="${name}"] was drawn`);
+  }
+  return el;
+}
+
+/** The native `<button>` a kit button (`jx-button`, `jx-action-button`) draws as its `control`. */
+function control(scope: ParentNode, selector = '[part="control"]'): HTMLButtonElement {
+  const el = scope.querySelector(selector);
+  if (!(el instanceof HTMLButtonElement)) {
+    throw new Error(`${selector} is not a drawn <button>`);
+  }
+  return el;
+}
+
 function rows(): HTMLElement[] {
-  return [...host.querySelectorAll('[part="row"]')] as HTMLElement[];
+  return [...host.querySelectorAll<HTMLElement>('[part="row"]')];
 }
 
 describe("groupProblems", () => {
@@ -211,7 +235,7 @@ describe("rendering", () => {
   test("clicking a path hands that file to the opener", async () => {
     notify.error("bad", { path: "pages/index.md" });
     await paint();
-    (part("file-path") as HTMLElement).click();
+    requiredPart("file-path").click();
     await flush();
     expect(opened).toEqual(["pages/index.md"]);
   });
@@ -219,22 +243,22 @@ describe("rendering", () => {
   test("dismissing a row takes it off the store", async () => {
     notify.error("go away");
     await paint();
-    (host.querySelector('[part="dismiss"] [part="control"]') as HTMLElement).click();
+    control(host, '[part="dismiss"] [part="control"]').click();
     expect(problems).toHaveLength(0);
   });
 
   test("the dismiss button names the row it dismisses", async () => {
     notify.error("go away");
     await paint();
-    const control = host.querySelector('[part="dismiss"] [part="control"]') as HTMLElement;
-    expect(control.getAttribute("aria-label")).toBe("Dismiss: go away");
+    const dismiss = control(host, '[part="dismiss"] [part="control"]');
+    expect(dismiss.getAttribute("aria-label")).toBe("Dismiss: go away");
   });
 
   test("Clear takes the whole list", async () => {
     notify.error("one");
     notify.error("two");
     await paint();
-    const clear = host.querySelector('[part="clear"] [part="control"]') as HTMLElement;
+    const clear = control(host, '[part="clear"] [part="control"]');
     expect(clear.textContent).toContain("Clear 2");
     clear.click();
     expect(problems).toHaveLength(0);
@@ -270,7 +294,7 @@ describe("the list keeps itself current", () => {
     notify.error("two");
     await paint();
     expect(rows()).toHaveLength(2);
-    (host.querySelector('[part="dismiss"] [part="control"]') as HTMLElement).click();
+    control(host, '[part="dismiss"] [part="control"]').click();
     await flush(2);
     expect(rows()).toHaveLength(1);
     expect(host.querySelector('[part="clear"] [part="control"]')?.textContent).toContain("Clear 1");
@@ -283,7 +307,7 @@ describe("the list keeps itself current", () => {
     expect(part("action")).toBeNull();
     setActiveRegistry(buildRegistry());
     await flush(2);
-    expect(part("action")?.textContent?.trim()).toBe("Save");
+    expect(part("action")?.textContent.trim()).toBe("Save");
   });
 });
 
@@ -291,10 +315,10 @@ describe("the recovery button is the command record", () => {
   test("its label is the command's title, and clicking it runs the command with its args", async () => {
     notify.error("Save failed", { action: "file.save", actionArgs: { path: "a.md" } });
     await paint();
-    const action = part("action")!;
-    expect(action.textContent?.trim()).toBe("Save");
-    expect((action.querySelector('[part="control"]') as HTMLButtonElement).disabled).toBe(false);
-    (action.querySelector('[part="control"]') as HTMLElement).click();
+    const action = requiredPart("action");
+    expect(action.textContent.trim()).toBe("Save");
+    expect(control(action).disabled).toBe(false);
+    control(action).click();
     await flush();
     expect(ran).toEqual([{ args: { path: "a.md" }, id: "file.save" }]);
   });
@@ -303,8 +327,8 @@ describe("the recovery button is the command record", () => {
     ctx = makeContext({ document: { open: false } });
     notify.error("Save failed", { action: "file.save" });
     await paint();
-    const action = part("action")!;
-    expect((action.querySelector('[part="control"]') as HTMLButtonElement).disabled).toBe(true);
+    const action = requiredPart("action");
+    expect(control(action).disabled).toBe(true);
     expect(action.getAttribute("title")).toContain("requires an open document");
   });
 
@@ -331,9 +355,9 @@ describe("the recovery button is the command record", () => {
   test("a click on a row whose command has gone is inert, not a throw", async () => {
     notify.error("Save failed", { action: "file.save" });
     await paint();
-    const control = host.querySelector('[part="action"] [part="control"]') as HTMLElement;
+    const button = control(host, '[part="action"] [part="control"]');
     setActiveRegistry(null);
-    control.click();
+    button.click();
     await flush();
     expect(ran).toEqual([]);
   });

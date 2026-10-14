@@ -43,6 +43,7 @@
 import { Glob } from "bun";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { CliReport } from "../../../scripts/lib/cli-report.ts";
 
 const SRC = join(import.meta.dir, "..", "src");
 
@@ -177,7 +178,8 @@ export function emittedClasses(source: string): Set<string> {
     for (const k of m[1]!.matchAll(
       /[{,]?\s*(?:"([^"\n]+)"|'([^'\n]+)'|([A-Za-z_$][\w$-]*))\s*:/g,
     )) {
-      const name = k[1] ?? k[2] ?? k[3];
+      // The one alternative that matched: a double-quoted, single-quoted or bare key (never empty).
+      const name = k.slice(1).find(Boolean);
       if (name) {
         names.add(name);
       }
@@ -236,7 +238,7 @@ export function selfQueries(file: string, source: string): Finding[] {
  * whose `afterRender` mounts a document is the seam, not a survival. Only `html`-tagged templates
  * count, which is what {@link litTemplateCount} measures.
  */
-export const LIT_TEMPLATE_AUTHORS: Record<string, string> = {
+export const LIT_TEMPLATE_AUTHORS = {
   "grid/cell-editors.ts":
     "renders INTO Tabulator's cells. `Edit.edit()` appends the editor and reads its own subtree in " +
     "the same synchronous statement, so a mount that resolves a microtask later is always too late",
@@ -250,7 +252,7 @@ export const LIT_TEMPLATE_AUTHORS: Record<string, string> = {
   "shell/tree.ts":
     "the four #layer-* hosts. Their rules are a LINKED stylesheet because the frame must be laid " +
     "out by the first paint, which is why surfaces/shell.json carries no style key",
-};
+} satisfies Record<string, string>;
 
 /**
  * How many `html`-tagged templates a module writes. An imported `nothing` is not one.
@@ -265,7 +267,7 @@ export function litTemplateCount(source: string): number {
   return (source.match(/(?:^|[\s(,=[{:?>&|!;])html`/g) ?? []).length;
 }
 
-export const EXCLUDED: Record<string, string> = {
+export const EXCLUDED = {
   "canvas/canvas-patcher.ts":
     "classifies document ops so that nothing re-renders; contains no DOM and no markup",
   "canvas/canvas-utils.ts":
@@ -280,12 +282,12 @@ export const EXCLUDED: Record<string, string> = {
   "panels/drag-ghost.ts":
     "one reused position:fixed element moved every pointermove, deliberately outside the scaled wrap",
   "utils/geometry.ts": "the measurement funnel; tests/geometry.test.ts already guards it",
-};
+} satisfies Record<string, string>;
 
 /** Everything under these prefixes is excluded for the reason on the prefix. */
-const EXCLUDED_PREFIXES: Record<string, string> = {
+const EXCLUDED_PREFIXES = {
   "canvas/iframe-": "runs in the canvas realm, rendered by the runtime rather than by lit",
-};
+} satisfies Record<string, string>;
 
 function isExcluded(file: string): boolean {
   return (
@@ -375,8 +377,13 @@ export function analyze(root = SRC): Report {
     if (q.length > 0) {
       selfQueryBy.set(file, q.length);
     }
-    liveBindings.push(...s.filter(() => (LIVE_BINDING_DEBT[file] ?? 0) === 0));
-    selfQuery.push(...q.filter(() => (SELF_QUERY_DEBT[file] ?? 0) === 0));
+    // A file with no allowance (no entry, or one ratcheted to 0) reports every site it has.
+    if (!LIVE_BINDING_DEBT[file]) {
+      liveBindings.push(...s);
+    }
+    if (!SELF_QUERY_DEBT[file]) {
+      selfQuery.push(...q);
+    }
   }
 
   // Over budget in a file that has one: report the excess, named.
@@ -437,7 +444,7 @@ export function reportLines(
 }
 
 /** The whole report, and whether it is a failure. */
-export function report(r: Report): { lines: string[]; failed: boolean } {
+export function report(r: Report): CliReport {
   const lines = [
     ...reportLines(
       r.liveBindings,

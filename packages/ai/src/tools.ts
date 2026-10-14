@@ -17,12 +17,14 @@
 
 import type {
   AiWrite,
+  JsonObject,
   JsonValue,
   SessionFacts,
   ToolContext,
   ToolResult,
   WriteLedger,
 } from "./core-types.ts";
+import type { OpenAITool } from "./messages/types.ts";
 
 export type {
   Actor,
@@ -44,8 +46,20 @@ export interface JSONSchema {
   type?: string;
   properties?: Record<string, JSONSchema>;
   required?: string[];
-  [key: string]: unknown;
+  /** Any other keyword: a JSON value, or a subschema (`items`, `anyOf`) or a map of them. */
+  [keyword: string]:
+    | JsonValue
+    | JSONSchema
+    | readonly JSONSchema[]
+    | Record<string, JSONSchema>
+    | undefined;
 }
+
+/**
+ * A call's arguments: the JSON object a model sent, as {@link invokeTool} decodes it, or one a host
+ * builds in code, which may leave a member `undefined` (the validator reports it as such).
+ */
+export type ToolArguments = Readonly<Record<string, JsonValue | undefined>>;
 
 export interface ToolDefinition {
   name: string;
@@ -58,19 +72,19 @@ export interface ToolDefinition {
    * made only such calls does not spend the turn's work budget.
    */
   interactive?: boolean;
-  execute: (args: object, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
+  execute: (args: ToolArguments, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
 }
 
 export interface ToolRegistry {
   register: (tool: ToolDefinition) => void;
   list: () => ToolDefinition[];
   listForLLM: () => object[];
-  validate: (toolName: string, args: object) => { valid: boolean; errors?: string[] };
+  validate: (toolName: string, args: ToolArguments) => { valid: boolean; errors?: string[] };
   /**
    * Run a tool with the call's context; a registry that wraps another forwards `ctx` unchanged.
    * Omitted, the call gets a detached context ({@link createToolContext}).
    */
-  execute: (toolName: string, args: object, ctx?: ToolContext) => Promise<ToolResult>;
+  execute: (toolName: string, args: ToolArguments, ctx?: ToolContext) => Promise<ToolResult>;
   getDefinition: (toolName: string) => ToolDefinition | undefined;
 }
 
@@ -79,11 +93,14 @@ export interface ToolRegistry {
 /**
  * Create a successful tool result.
  *
- * @param {unknown} data - Result data
+ * @param {ToolResult["data"]} data - Result data
  * @param {string} [summary] - Human-readable summary
  * @returns {ToolResult}
  */
-export function toolSuccess(data: unknown, summary?: string): ToolResult {
+export function toolSuccess(data: ToolResult["data"], summary?: string): ToolResult {
+  /* SAFETY: the only mismatch is `summary: undefined` against the optional `summary`. An absent
+     summary has always been carried as an explicit `undefined` member, which every reader treats
+     as absent and JSON drops, so the result keeps the shape this function has always returned. */
   return { success: true, data, summary } as ToolResult;
 }
 
@@ -112,8 +129,8 @@ export function toolError(error: string): ToolResult {
  *   (default false). Only enable if the parameter schema is OpenAI-strict-compliant
  *   (additionalProperties:false everywhere, all properties in `required`, every property typed).
  * @param {boolean} [opts.interactive] - The call suspends the turn on a person (`ask_user`)
- * @param {(args: object, ctx: ToolContext) => Promise<ToolResult> | ToolResult} opts.execute - The
- *   tool implementation, handed the call's context
+ * @param {(args: ToolArguments, ctx: ToolContext) => Promise<ToolResult> | ToolResult} opts.execute -
+ *   The tool implementation, handed the call's context
  * @returns {ToolDefinition}
  */
 export function createToolDefinition({
@@ -131,17 +148,14 @@ export function createToolDefinition({
   strict?: boolean;
   llmStrict?: boolean;
   interactive?: boolean;
-  execute: (args: object, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
+  execute: (args: ToolArguments, ctx: ToolContext) => Promise<ToolResult> | ToolResult;
 }): ToolDefinition {
-  return {
-    name,
-    description,
-    parameters,
-    strict,
-    llmStrict,
-    ...(interactive === undefined ? {} : { interactive }),
-    execute,
-  };
+  const definition: ToolDefinition = { name, description, parameters, strict, llmStrict, execute };
+  // After `execute` rather than before it: a definition serializes without its function either way.
+  if (interactive !== undefined) {
+    definition.interactive = interactive;
+  }
+  return definition;
 }
 
 // ─── ToolContext ─────────────────────────────────────────────────────────────
@@ -213,6 +227,13 @@ export function createToolContext(init: Partial<ToolContext> = {}): ToolContext 
   };
 }
 
+/** A call's own signal, and the unlinking {@link linkCallSignal} hands back with it. */
+export interface CallSignalLink {
+  readonly signal: AbortSignal;
+  /** Unlink the call from its turn, once the call settles. */
+  release: () => void;
+}
+
 /**
  * A call's own signal, linked to its turn's: it aborts when the turn does, with the turn's reason,
  * and {@link release} unlinks it once the call settles, so a Stop later in the turn reaches no call
@@ -222,12 +243,9 @@ export function createToolContext(init: Partial<ToolContext> = {}): ToolContext 
  * webviews and the Worker's ES2023 typing agree.
  *
  * @param {AbortSignal} turn
- * @returns {{ readonly signal: AbortSignal; release(): void }}
+ * @returns {CallSignalLink}
  */
-export function linkCallSignal(turn: AbortSignal): {
-  readonly signal: AbortSignal;
-  release: () => void;
-} {
+export function linkCallSignal(turn: AbortSignal): CallSignalLink {
   const call = new AbortController();
   if (turn.aborted) {
     call.abort(turn.reason);
@@ -283,20 +301,22 @@ export function createToolRegistry() {
      * @returns {object[]}
      */
     listForLLM() {
-      return [..._tools.values()].map((t) => ({
-        type: "function",
-        function: {
+      return [..._tools.values()].map((t): OpenAITool => {
+        const fn: OpenAITool["function"] = {
           name: t.name,
           description: t.description,
           parameters: t.parameters,
-          // OpenAI strict mode is opt-in per tool via `llmStrict`, NOT the `strict` field — that one
-          // Drives the registry's own argument validation below. They are different concerns:
-          // OpenAI strict requires every object to set additionalProperties:false and list all
-          // Properties in `required`, which the Jx tools deliberately don't (e.g. set_property's
-          // `value` is polymorphic and optional). GPT-5.x rejects the schema otherwise.
-          ...(t.llmStrict === true ? { strict: true } : {}),
-        },
-      }));
+        };
+        /* OpenAI strict mode is opt-in per tool via `llmStrict`, NOT the `strict` field: that one
+           drives the registry's own argument validation below. They are different concerns:
+           OpenAI strict requires every object to set additionalProperties:false and list all
+           properties in `required`, which the Jx tools deliberately don't (e.g. set_property's
+           `value` is polymorphic and optional). GPT-5.x rejects the schema otherwise. */
+        if (t.llmStrict === true) {
+          fn.strict = true;
+        }
+        return { type: "function", function: fn };
+      });
     },
 
     /**
@@ -317,10 +337,10 @@ export function createToolRegistry() {
      * layered on with a proper validator library if needed.
      *
      * @param {string} toolName
-     * @param {object} args
+     * @param {ToolArguments} args
      * @returns {{ valid: boolean; errors?: string[] }}
      */
-    validate(toolName: string, args: object) {
+    validate(toolName: string, args: ToolArguments) {
       const tool = _tools.get(toolName);
       if (!tool) {
         return { valid: false, errors: [`Unknown tool: "${toolName}"`] };
@@ -331,24 +351,23 @@ export function createToolRegistry() {
       }
 
       const schema = tool.parameters;
-      if (!schema || !schema.properties) {
+      if (!schema.properties) {
         return { valid: true };
       }
 
       const errors: string[] = [];
       const props = schema.properties;
       const required = schema.required || [];
-      const argRecord = args as Record<string, unknown>;
 
       // Check required properties
       for (const key of required) {
-        if (!(key in args) || argRecord[key] === undefined || argRecord[key] === null) {
+        if (!(key in args) || args[key] === undefined || args[key] === null) {
           errors.push(`Missing required argument: "${key}"`);
         }
       }
 
       // Check property types (basic)
-      for (const [key, value] of Object.entries(argRecord)) {
+      for (const [key, value] of Object.entries(args)) {
         const propSchema = props[key];
         if (!propSchema) {
           // Unknown property — warn but don't fail (LLM might send extra)
@@ -360,14 +379,14 @@ export function createToolRegistry() {
           continue;
         }
 
-        const actualType = Array.isArray(value) ? "array" : typeof value;
+        const actualType = argumentType(value);
 
         // Number / integer type validation with string coercion
         if (expectedType === "number" || expectedType === "integer") {
-          if (actualType === "number") {
+          if (isOfType(value, "number")) {
             continue;
           }
-          if (actualType === "string") {
+          if (isOfType(value, "string")) {
             if (!Number.isNaN(Number(value))) {
               continue;
             }
@@ -396,11 +415,11 @@ export function createToolRegistry() {
      * Execute a tool by name. Validates arguments before execution.
      *
      * @param {string} toolName
-     * @param {object} args
+     * @param {ToolArguments} args
      * @param {ToolContext} [ctx] - The call's context; omitted, a detached one
      * @returns {Promise<ToolResult>}
      */
-    async execute(toolName: string, args: object, ctx: ToolContext = createToolContext()) {
+    async execute(toolName: string, args: ToolArguments, ctx: ToolContext = createToolContext()) {
       const tool = _tools.get(toolName);
       if (!tool) {
         return toolError(`Unknown tool: "${toolName}"`);
@@ -415,7 +434,7 @@ export function createToolRegistry() {
       try {
         return await tool.execute(args, ctx);
       } catch (error) {
-        return toolError(`Tool "${toolName}" execution error: ${(error as Error).message}`);
+        return toolError(`Tool "${toolName}" execution error: ${messageOf(error)}`);
       }
     },
   };
@@ -446,8 +465,79 @@ export interface InvokeOutcome {
  * @returns {ToolResult}
  */
 export function normalizeToolResult(result: ToolResult): ToolResult {
+  /* SAFETY: `success`, `error` and `summary` are a boolean and strings, which the round trip keeps
+     as they were (an undefined one is dropped, and each is optional but `success`); `data` becomes
+     its JSON form, and ToolResult does not constrain `data`. */
   // oxlint-disable-next-line unicorn/prefer-structured-clone -- the JSON round trip is the point
   return JSON.parse(JSON.stringify(result)) as ToolResult;
+}
+
+/**
+ * The `message` of what a tool, a registry or a JSON round trip threw, as the result texts quote
+ * it.
+ *
+ * @param {unknown} cause - What was thrown
+ * @returns {string}
+ */
+function messageOf(cause: unknown): string {
+  /* SAFETY: only `message` is read. Every throw in reach is an Error (JSON.parse's SyntaxError,
+     parseArguments' TypeError, a tool's own Error); a tool that throws a non-null non-Error reads
+     it as undefined, which the result text has always quoted as "undefined". */
+  return (cause as Error).message;
+}
+
+/** The types an argument's mismatch sentence names by `typeof`, each with the value it names. */
+interface PrimitiveTypes {
+  string: string;
+  number: number;
+  boolean: boolean;
+  undefined: undefined;
+}
+
+/** The {@link PrimitiveTypes} names, in the order {@link argumentType} tries them. */
+const PRIMITIVE_TYPES = [
+  "string",
+  "number",
+  "boolean",
+  "undefined",
+] as const satisfies readonly (keyof PrimitiveTypes)[];
+
+/**
+ * True when an argument is of the named primitive type.
+ *
+ * @param {JsonValue | undefined} value - An argument, as sent
+ * @param {keyof PrimitiveTypes} type - The type to test for
+ * @returns {boolean}
+ */
+function isOfType<T extends keyof PrimitiveTypes>(
+  value: JsonValue | undefined,
+  type: T,
+): value is PrimitiveTypes[T] {
+  return typeof value === type;
+}
+
+/**
+ * True when a JSON value is an object: not `null`, and not an array.
+ *
+ * @param {JsonValue | undefined} value - Parsed arguments
+ * @returns {boolean}
+ */
+function isArgumentObject(value: JsonValue | undefined): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The type an argument's mismatch sentence names: its `typeof`, except that an array is `array`.
+ * `null` is `object`, as `typeof` has always named it here.
+ *
+ * @param {JsonValue | undefined} value - An argument, as sent
+ * @returns {string}
+ */
+function argumentType(value: JsonValue | undefined): string {
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  return PRIMITIVE_TYPES.find((type) => isOfType(value, type)) ?? "object";
 }
 
 /**
@@ -457,13 +547,15 @@ export function normalizeToolResult(result: ToolResult): ToolResult {
  * array, a number) is refused with its own sentence rather than reaching the registry, where a
  * validator reading a property of `null` threw a message about the validator.
  */
-function parseArguments(text: string): object {
+function parseArguments(text: string): ToolArguments {
   if (!text) {
     return {};
   }
-  const parsed = JSON.parse(text) as unknown;
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    const type = parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed;
+  /* SAFETY: JSON.parse without a reviver only ever produces null, booleans, numbers, strings,
+     arrays and plain objects, which is exactly JsonValue. */
+  const parsed = JSON.parse(text) as JsonValue;
+  if (!isArgumentObject(parsed)) {
+    const type = parsed === null ? "null" : argumentType(parsed);
     throw new TypeError(`arguments must be a JSON object, got ${type}`);
   }
   return parsed;
@@ -496,14 +588,14 @@ export async function invokeTool(
     executed = true;
     result = await registry.execute(call.name, args, ctx);
   } catch (error) {
-    result = toolError(`Failed to parse arguments: ${(error as Error).message}`);
+    result = toolError(`Failed to parse arguments: ${messageOf(error)}`);
   }
   try {
     return { status: "done", result: normalizeToolResult(result), executed };
   } catch (error) {
     /* A result JSON cannot carry (a cycle, a BigInt) cannot be sent back to the model either. It
        used to throw out of the turn; the model is told instead, and the turn goes on. */
-    const reason = (error as Error).message;
+    const reason = messageOf(error);
     return {
       status: "done",
       result: toolError(

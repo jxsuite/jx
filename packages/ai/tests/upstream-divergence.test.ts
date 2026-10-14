@@ -60,7 +60,7 @@ const NAMES = readdirSync(FIXTURES)
  *
  * An abort mid-stream is NOT a divergence: both sides end with `done: cancelled`.
  */
-const EXPECTED_DIVERGENCE: Record<string, string[]> = {
+const EXPECTED_DIVERGENCE = {
   // 1. Upstream HTTP errors: the message format, and the proxy's `problem`.
   "http-401-error-object": ["$[0].message", "$[0].problem"],
   "http-403-cloudflare-errors": ["$[0].message", "$[0].problem"],
@@ -70,14 +70,15 @@ const EXPECTED_DIVERGENCE: Record<string, string[]> = {
   // 2. Mid-stream failures: only the proxy's `problem`.
   "null-chunk": ["$[1].problem"],
   "reset-mid-stream": ["$[3].problem"],
-};
+} satisfies Record<string, string[]>;
 
 // ─── Fixture loading (mirrored from packages/server/tests/ai-upstream-fixtures.test.ts) ──────────
 
-interface Fault {
-  name: string;
-  message: string;
-}
+/**
+ * The `X-Fixture-Error` directive: the name and message of the Error the body's last read rejects
+ * with.
+ */
+type Fault = Pick<Error, "message" | "name">;
 
 interface UpstreamFixture {
   status: number;
@@ -136,7 +137,7 @@ function parseFixture(raw: string): UpstreamFixture {
 }
 
 /** Where the body's chunk boundaries fall. The events must not depend on it. */
-const CHUNKINGS: Record<string, (bytes: Uint8Array) => Uint8Array[]> = {
+const CHUNKINGS = {
   bytes: (bytes) => Array.from(bytes, (_, index) => bytes.subarray(index, index + 1)),
   lines: (bytes) => {
     const chunks: Uint8Array[] = [];
@@ -153,7 +154,10 @@ const CHUNKINGS: Record<string, (bytes: Uint8Array) => Uint8Array[]> = {
     return chunks;
   },
   whole: (bytes) => (bytes.length > 0 ? [bytes] : []),
-};
+} satisfies Record<string, (bytes: Uint8Array) => Uint8Array[]>;
+
+/** One way of splitting a body into reads. */
+type Chunking = keyof typeof CHUNKINGS;
 
 /**
  * The upstream Response a fixture describes, its body delivered in `chunks`. A fault is injected by
@@ -183,7 +187,8 @@ function upstreamResponse(fixture: UpstreamFixture, chunks: Uint8Array[]): Respo
   if (fault) {
     const inner = stream.getReader();
     const reader = {
-      cancel: (reason?: unknown) => inner.cancel(reason),
+      // The client cancels with no reason, so none is forwarded.
+      cancel: () => inner.cancel(),
       read: async () => {
         const result = await inner.read();
         if (result.done) {
@@ -200,33 +205,60 @@ function upstreamResponse(fixture: UpstreamFixture, chunks: Uint8Array[]): Respo
 
 // ─── Golden comparison (mirrored from packages/server/tests/ai-upstream-fixtures.test.ts) ────────
 
-function member(path: string, key: string | number): string {
-  if (typeof key === "number") {
-    return `${path}[${key}]`;
-  }
+/**
+ * A value as the golden comparison walks it: JSON, except that a member may be present and
+ * `undefined`, which a frame can carry and the member-order check must still see.
+ */
+type Walked = null | boolean | number | string | undefined | Walked[] | WalkedObject;
+
+/** An object the comparison walks, member by member. */
+interface WalkedObject {
+  [key: string]: Walked;
+}
+
+/** The path of an array element. */
+function element(path: string, index: number): string {
+  return `${path}[${index}]`;
+}
+
+/** The path of an object member: dotted when the key is an identifier, bracketed otherwise. */
+function member(path: string, key: string): string {
   return /^[A-Za-z_$][\w$]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
 }
 
-function show(value: unknown): string {
+function show(value: Walked): string {
   return value === undefined ? "(absent)" : JSON.stringify(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: Walked): value is WalkedObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A frame as the value it is compared as. The spread copies every own member, in order, and keeps
+ * one whose value is `undefined`, so a comparison still sees it exactly as it was emitted.
+ */
+function frameValue(frame: StreamEvent): WalkedObject {
+  return { ...frame };
+}
+
+/** A run's result as the value it is compared and recorded as. */
+function resultValue(result: ClientResult): WalkedObject {
+  return { frames: result.frames.map((frame) => frameValue(frame)) };
 }
 
 /**
  * The first place `actual` departs from `expected`, as `<JSON path>: expected …, received …`, or
  * null when they are identical. Member order counts.
  */
-function firstDifference(actual: unknown, expected: unknown, path = "$"): string | null {
+function firstDifference(actual: Walked, expected: Walked, path = "$"): string | null {
   if (Object.is(actual, expected)) {
     return null;
   }
   if (Array.isArray(actual) && Array.isArray(expected)) {
     const length = Math.max(actual.length, expected.length);
     for (let index = 0; index < length; index += 1) {
-      const difference = firstDifference(actual[index], expected[index], member(path, index));
+      const difference = firstDifference(actual[index], expected[index], element(path, index));
       if (difference !== null) {
         return difference;
       }
@@ -251,7 +283,7 @@ function firstDifference(actual: unknown, expected: unknown, path = "$"): string
 }
 
 /** Compare with `<file>`, or (with JX_UPDATE_GOLDENS=1) rewrite it. */
-function checkGolden(file: string, actual: unknown): void {
+function checkGolden(file: string, actual: WalkedObject): void {
   const text = `${JSON.stringify(actual, null, 2)}\n`;
   if (UPDATE) {
     if (!existsSync(file) || readFileSync(file, "utf8") !== text) {
@@ -271,13 +303,13 @@ function checkGolden(file: string, actual: unknown): void {
 }
 
 /** Every leaf path where two frame lists disagree, member order ignored, in a stable order. */
-function differingPaths(server: unknown, client: unknown, path = "$"): string[] {
+function differingPaths(server: Walked, client: Walked, path = "$"): string[] {
   if (Object.is(server, client)) {
     return [];
   }
   if (Array.isArray(server) && Array.isArray(client)) {
     return Array.from({ length: Math.max(server.length, client.length) }, (_, index) =>
-      differingPaths(server[index], client[index], member(path, index)),
+      differingPaths(server[index], client[index], element(path, index)),
     ).flat();
   }
   if (isRecord(server) && isRecord(client)) {
@@ -300,16 +332,14 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-async function runClient(fixture: UpstreamFixture, chunking: string): Promise<ClientResult> {
+async function runClient(fixture: UpstreamFixture, chunking: Chunking): Promise<ClientResult> {
   const split = CHUNKINGS[chunking];
-  if (!split) {
-    throw new Error(`Unknown chunking ${chunking}`);
-  }
   const calls: string[] = [];
-  globalThis.fetch = ((url: string) => {
+  const answer = (url: string | URL | Request) => {
     calls.push(String(url));
     return Promise.resolve(upstreamResponse(fixture, split(fixture.body)));
-  }) as unknown as typeof fetch;
+  };
+  globalThis.fetch = Object.assign(answer, { preconnect: realFetch.preconnect });
 
   const client = createOpenAIStreamingClient({
     apiKey: "sk-fixture",
@@ -330,14 +360,14 @@ async function runClient(fixture: UpstreamFixture, chunking: string): Promise<Cl
 }
 
 /** The proxy's frames for a fixture, from its committed golden. */
-function serverFrames(name: string): unknown {
+function serverFrames(name: string): Walked {
   const file = join(FIXTURES, `${name}.server.json`);
   if (!existsSync(file)) {
     throw new Error(
       `${basename(file)} is missing: record the server goldens first, from packages/server`,
     );
   }
-  const golden: unknown = JSON.parse(readFileSync(file, "utf8"));
+  const golden: Walked = JSON.parse(readFileSync(file, "utf8"));
   return isRecord(golden) ? golden.frames : undefined;
 }
 
@@ -356,16 +386,16 @@ describe("upstream SSE fixtures through createOpenAIStreamingClient", () => {
     it(name, async () => {
       const fixture = parseFixture(readFixture(name));
       const whole = await runClient(fixture, "whole");
-      for (const chunking of ["lines", "bytes"]) {
+      for (const chunking of ["lines", "bytes"] as const) {
         const result = await runClient(fixture, chunking);
-        const difference = firstDifference(result, whole);
+        const difference = firstDifference(resultValue(result), resultValue(whole));
         expect(
           difference === null
             ? null
             : `chunking "${chunking}" departs from "whole" at ${difference}`,
         ).toBeNull();
       }
-      checkGolden(join(FIXTURES, `${name}.client.json`), whole);
+      checkGolden(join(FIXTURES, `${name}.client.json`), resultValue(whole));
     });
   }
 });
@@ -375,7 +405,10 @@ describe("proxy and client divergence", () => {
     const divergence: Record<string, string[]> = {};
     for (const name of NAMES) {
       const { frames } = await runClient(parseFixture(readFixture(name)), "whole");
-      const paths = differingPaths(serverFrames(name), frames);
+      const paths = differingPaths(
+        serverFrames(name),
+        frames.map((frame) => frameValue(frame)),
+      );
       if (paths.length > 0) {
         divergence[name] = paths;
       }

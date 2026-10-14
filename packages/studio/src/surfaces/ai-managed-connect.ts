@@ -27,9 +27,8 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import connectDoc from "./ai-managed-connect.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("ai-managed-connect", connectDoc as unknown as JxDocument);
+registerSurface("ai-managed-connect", connectDoc);
 
 /** What the offer says right now. Every field is the flow's wording, never a state it derives. */
 export interface ManagedConnectView {
@@ -63,7 +62,7 @@ interface ManagedConnectFlags {
 }
 
 interface ManagedConnectScope
-  extends Record<string, unknown>, ManagedConnectView, ManagedConnectActions, ManagedConnectFlags {}
+  extends ManagedConnectView, ManagedConnectActions, ManagedConnectFlags {}
 
 /** The view plus the flag the document switches on. */
 function derive(view: ManagedConnectView): ManagedConnectView & ManagedConnectFlags {
@@ -87,7 +86,7 @@ export function createManagedConnectSurface(
 ): ManagedConnectSurface {
   const host = document.createElement("div");
   host.style.display = "contents";
-  const scope = reactive({ ...derive(view), ...actions }) as ManagedConnectScope;
+  const scope: ManagedConnectScope = reactive<ManagedConnectScope>({ ...derive(view), ...actions });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;

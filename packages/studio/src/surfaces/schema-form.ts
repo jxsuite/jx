@@ -29,14 +29,15 @@
  * @docs extending/ui-kit
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import schemaFormDoc from "./schema-form.json";
-import type { SurfaceHandle } from "../ui/surface";
+import type { KeyedLabel, SurfaceHandle, SurfaceOption } from "../ui/surface";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 
-registerSurface("schema-form", schemaFormDoc as unknown as JxDocument);
+registerSurface("schema-form", schemaFormDoc);
 
 /** Which of the nine controls a row draws. The flow picks it; the document switches on it. */
 export type SchemaFormFieldKind =
@@ -49,12 +50,6 @@ export type SchemaFormFieldKind =
   | "json"
   | "rows"
   | "control";
-
-/** A control a row offers as a closed list, in the shape the kit's select reads. */
-export interface SchemaFormOption {
-  value: string;
-  label: string;
-}
 
 /** One cell of an array-of-objects row: a single declared property of one item. */
 export interface SchemaFormCellView {
@@ -70,7 +65,7 @@ export interface SchemaFormCellView {
   kind: "text" | "select" | "checkbox" | "number" | "control";
   value: string;
   checked: boolean;
-  options: SchemaFormOption[];
+  options: SurfaceOption[];
 }
 
 /** One item of an array-of-objects field. */
@@ -82,12 +77,6 @@ export interface SchemaFormRowView {
   /** The remove button's accessible name; it is icon-only. */
   removeLabel: string;
   cells: SchemaFormCellView[];
-}
-
-/** A read of the shape a JSON field currently holds: `title: string`. */
-export interface SchemaFormChipView {
-  key: string;
-  label: string;
 }
 
 /** One property of the schema, as the document draws it. Every field is already decided. */
@@ -106,7 +95,7 @@ export interface SchemaFormFieldView {
   checked: boolean;
   placeholder: string;
   /** Choices for `select`, suggestions for `pointer`. */
-  options: SchemaFormOption[];
+  options: SurfaceOption[];
   /** Whether the pointer rung has anything to suggest; with none it is a field alone. */
   hasOptions: boolean;
   /** Bounds off the property schema, so the control refuses out-of-range input itself. */
@@ -138,7 +127,7 @@ export interface SchemaFormFieldView {
   /** The position permits exactly one rung, so the chip states it and refuses to open. */
   sourceLocked: boolean;
   /** The chips above a JSON field, naming the shape it holds. */
-  chips: SchemaFormChipView[];
+  chips: KeyedLabel[];
   hasChips: boolean;
   rows: SchemaFormRowView[];
   /** The add button's accessible name on an array-of-objects field. */
@@ -179,7 +168,7 @@ export interface SchemaFormSurface {
 /** A control host the document drew, reported as the runtime created it. */
 export type ControlHostSink = (id: string, host: HTMLElement) => void;
 
-interface SchemaFormScope extends Record<string, unknown>, SchemaFormView, SchemaFormActions {
+interface SchemaFormScope extends SchemaFormView, SchemaFormActions {
   /** The Mixed text placeholder, held in state because the literal is itself a template. */
   templatePlaceholder: string;
 }
@@ -194,20 +183,21 @@ interface SchemaFormScope extends Record<string, unknown>, SchemaFormView, Schem
  * node that needs filling.
  */
 function controlIdOf(part: string, state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: Record<string, unknown> } | undefined)?.item;
+  const map = state?.["$map"];
+  const item = isJsonObject(map) && isJsonObject(map["item"]) ? map["item"] : undefined;
   const id =
     part === "control-host"
       ? item?.["key"]
       : part === "cell-control-host"
         ? item?.["id"]
         : undefined;
-  return typeof id === "string" ? id : "";
+  return isString(id) ? id : "";
 }
 
 /** A node definition's `part`, as written in the document. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -226,11 +216,11 @@ export function createSchemaFormSurface(
 ): SchemaFormSurface {
   const host = document.createElement("div");
   host.style.display = "contents";
-  const scope = reactive({
+  const scope: SchemaFormScope = reactive<SchemaFormScope>({
     ...view,
     ...actions,
     templatePlaceholder: "${state.…}",
-  }) as SchemaFormScope;
+  });
 
   /** `null` while a mount is in flight — which is a standing surface, not a missing one. */
   let handle: SurfaceHandle | null = null;

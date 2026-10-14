@@ -19,21 +19,21 @@
 
 import coreDocumentSchema from "@jxsuite/schema/schema.json";
 import coreProjectSchema from "@jxsuite/schema/project-schema.json";
-
-type ValidateFn = ((doc: unknown) => boolean) & {
-  errors?: { instancePath?: string; message?: string; params?: Record<string, unknown> }[] | null;
-};
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import type { ValidateFunction } from "ajv/dist/2020.js";
+import type { CandidateDocument } from "./ai-write-report";
 
 /** Which of the two entry documents a validator covers. */
 type SchemaKind = "document" | "project";
 
-const CORE: Record<SchemaKind, object> = {
-  document: coreDocumentSchema as object,
-  project: coreProjectSchema as object,
+const CORE: Record<SchemaKind, JsonObject> = {
+  document: coreDocumentSchema,
+  project: coreProjectSchema,
 };
 
-const active: Record<SchemaKind, object> = { ...CORE };
-const compiling: Record<SchemaKind, Promise<ValidateFn | null> | null> = {
+const active: Record<SchemaKind, JsonObject> = { ...CORE };
+const compiling: Record<SchemaKind, Promise<ValidateFunction | null> | null> = {
   document: null,
   project: null,
 };
@@ -49,9 +49,9 @@ let reportedFailure = false;
  * unavailable or the schema will not compile.
  *
  * @param {SchemaKind} kind - Which entry document to compile
- * @returns {Promise<ValidateFn | null>} The compiled validator, or null when unavailable
+ * @returns {Promise<ValidateFunction | null>} The compiled validator, or null when unavailable
  */
-function getValidator(kind: SchemaKind): Promise<ValidateFn | null> {
+function getValidator(kind: SchemaKind): Promise<ValidateFunction | null> {
   compiling[kind] ??= (async () => {
     try {
       // The generated schemas are JSON Schema draft 2020-12, so they need Ajv's 2020 build —
@@ -62,7 +62,7 @@ function getValidator(kind: SchemaKind): Promise<ValidateFn | null> {
       const { default: addFormats } = await import("ajv-formats");
       const ajv = new Ajv2020({ allErrors: true, strict: false, allowUnionTypes: true });
       addFormats(ajv);
-      return ajv.compile(active[kind]) as ValidateFn;
+      return ajv.compile(active[kind]);
     } catch (error) {
       if (!reportedFailure) {
         reportedFailure = true;
@@ -78,14 +78,9 @@ function getValidator(kind: SchemaKind): Promise<ValidateFn | null> {
   return compiling[kind];
 }
 
-/** A payload half that is usable as a JSON Schema — a non-empty, non-array object. */
-function asSchema(value: unknown): object | undefined {
-  return typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length > 0
-    ? (value as object)
-    : undefined;
+/** Whether a payload half is usable as a JSON Schema — a non-empty, non-array object. */
+function isSchemaObject(value: unknown): value is JsonObject {
+  return isJsonObject(value) && Object.keys(value).length > 0;
 }
 
 /**
@@ -107,8 +102,10 @@ export function applyProjectSchemas(
    * an error envelope under `document` would not fail loudly — it would install a validator that
    * calls every document valid, and every consumer would go on trusting it.
    */
-  const document = asSchema(schemas?.document) ?? CORE.document;
-  const project = asSchema(schemas?.project) ?? CORE.project;
+  const documentHalf = schemas?.document;
+  const projectHalf = schemas?.project;
+  const document = isSchemaObject(documentHalf) ? documentHalf : CORE.document;
+  const project = isSchemaObject(projectHalf) ? projectHalf : CORE.project;
   const applied = document !== CORE.document || project !== CORE.project;
   if (document === active.document && project === active.project) {
     return applied;
@@ -140,13 +137,13 @@ const ERROR_PROPERTY_KEYS = ["unevaluatedProperty", "additionalProperty", "missi
  * Format ajv errors the way the agent loop consumes them (see ai-tools.ts
  * `translateValidationError`).
  *
- * @param {ValidateFn} validate - The validator that just ran
+ * @param {ValidateFunction} validate - The validator that just ran
  * @returns {string[]} One formatted string per error
  */
-function formatErrors(validate: ValidateFn): string[] {
+function formatErrors(validate: ValidateFunction): string[] {
   return (validate.errors || []).map((e) => {
-    const key = ERROR_PROPERTY_KEYS.find((name) => typeof e.params?.[name] === "string");
-    const property = key ? ` (${String(e.params?.[key])})` : "";
+    const key = ERROR_PROPERTY_KEYS.find((name) => isString(e.params[name]));
+    const property = key ? ` (${String(e.params[key])})` : "";
     return `${e.instancePath || "(root)"}: ${e.message}${property}`;
   });
 }
@@ -154,10 +151,10 @@ function formatErrors(validate: ValidateFn): string[] {
 /**
  * Validate a Jx document against the active document schema.
  *
- * @param {unknown} doc - Parsed document
+ * @param {CandidateDocument} doc - Parsed document
  * @returns {Promise<string[]>} Formatted error strings; empty when valid or validation unavailable
  */
-export async function validateDoc(doc: unknown): Promise<string[]> {
+export async function validateDoc(doc: CandidateDocument): Promise<string[]> {
   const validate = await getValidator("document");
   if (!validate || validate(doc)) {
     return [];
@@ -176,7 +173,7 @@ export async function validateDoc(doc: unknown): Promise<string[]> {
  * @param doc - Parsed document
  * @returns The errors, `[]` when valid, or `null` when no validator could be compiled
  */
-export async function validateDocOrNull(doc: unknown): Promise<string[] | null> {
+export async function validateDocOrNull(doc: CandidateDocument): Promise<string[] | null> {
   const validate = await getValidator("document");
   if (!validate) {
     return null;
@@ -190,10 +187,10 @@ export async function validateDocOrNull(doc: unknown): Promise<string[] | null> 
  * extension's fragment), so this is the only gate that catches a typo'd section key or a misshapen
  * extension section before the write lands.
  *
- * @param {unknown} config - Parsed project.json
+ * @param {ProjectConfig | JsonValue} config - Parsed project.json
  * @returns {Promise<string[]>} Formatted error strings; empty when valid or validation unavailable
  */
-export async function validateProjectConfig(config: unknown): Promise<string[]> {
+export async function validateProjectConfig(config: ProjectConfig | JsonValue): Promise<string[]> {
   const validate = await getValidator("project");
   if (!validate || validate(config)) {
     return [];

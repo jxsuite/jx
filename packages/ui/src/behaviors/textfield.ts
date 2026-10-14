@@ -12,6 +12,23 @@
  * @docs extending/ui-kit
  */
 
+/** The reactive scope a `jx-textfield` document hands its sidecar. */
+export interface TextfieldState {
+  /** The field's text. */
+  value?: string;
+  /** This element's own id stem, minted at mount. */
+  uid?: string;
+}
+
+/** The reactive scope a `jx-field` row hands its sidecar. */
+export interface FieldRowState {
+  /** This row's own id stem, minted at mount. */
+  uid?: string;
+}
+
+/** A kit control a `jx-field` row names, through the properties its definition observes. */
+type NameableControl = Element & { labelledby?: string; describedby?: string };
+
 /** The element's own native control. */
 function controlOf(host: HTMLElement): HTMLInputElement | HTMLTextAreaElement | null {
   return host.querySelector<HTMLInputElement | HTMLTextAreaElement>('[part="input"]');
@@ -63,12 +80,12 @@ function hostOf(event: Event): HTMLElement | null {
  * @param state The element's reactive scope, whose `value` this empties.
  * @param event The click on the clear button.
  */
-export function clearField(state: Record<string, unknown>, event: Event): void {
+export function clearField(state: TextfieldState, event: Event): void {
   const host = hostOf(event);
   if (!host) {
     return;
   }
-  state["value"] = "";
+  state.value = "";
   focusField(host);
   host.dispatchEvent(new Event("input", { bubbles: true }));
   host.dispatchEvent(new Event("change", { bubbles: true }));
@@ -85,19 +102,24 @@ let minted = 0;
  *
  * @param state The element's reactive scope, whose `uid` this writes.
  */
-export function mintFieldId(state: Record<string, unknown>): void {
+export function mintFieldId(state: TextfieldState): void {
   minted += 1;
-  state["uid"] = `jx-tf-${minted}`;
+  state.uid = `jx-tf-${minted}`;
 }
 
 let namedRows = 0;
 
 /** Whether an element's DEFINITION says it can be named — that it observes `labelledby`. */
 function observesNaming(el: Element): boolean {
-  const def = customElements.get(el.localName) as
-    | { observedAttributes?: readonly string[] }
-    | undefined;
-  return def?.observedAttributes?.includes("labelledby") === true;
+  const def = customElements.get(el.localName);
+  /* `observedAttributes` is a static member the platform reads off the constructor, which the DOM
+     types do not declare, so it is probed by name and shape. */
+  return (
+    def !== undefined &&
+    "observedAttributes" in def &&
+    Array.isArray(def.observedAttributes) &&
+    def.observedAttributes.includes("labelledby")
+  );
 }
 
 /**
@@ -141,24 +163,23 @@ function observesNaming(el: Element): boolean {
  * @param state The row's reactive scope, whose `uid` this writes.
  * @param host The `jx-field` element, whose slotted control this names.
  */
-export function nameFieldControl(state: Record<string, unknown>, host: HTMLElement): void {
+export function nameFieldControl(state: FieldRowState, host: HTMLElement): void {
   namedRows += 1;
   const uid = `jx-field-${namedRows}`;
-  state["uid"] = uid;
+  state.uid = uid;
 
   /* The row's OWN parts, found among its children rather than by a descendant query. Both spellings
      return the same node for a rendered row — the row's own parts precede everything slotted, so
      nothing in the suite can tell them apart — but a `[part]` lookup that may descend is one
      refactor away from reaching into a nested row's parts. */
   const own = (name: string) => [...host.children].find((el) => el.getAttribute("part") === name);
-  const control = own("control")?.firstElementChild;
+  const control: NameableControl | null | undefined = own("control")?.firstElementChild;
   if (!control || !observesNaming(control)) {
     return;
   }
-  const target = control as unknown as Record<string, unknown>;
-  target["labelledby"] ||= `${uid}-label`;
+  control.labelledby ||= `${uid}-label`;
   const help = own("help");
   if (help && (help.firstElementChild !== null || help.textContent !== "")) {
-    target["describedby"] ||= `${uid}-help`;
+    control.describedby ||= `${uid}-help`;
   }
 }

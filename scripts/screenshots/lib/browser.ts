@@ -15,7 +15,7 @@ export function findChromium(): string | null {
     "google-chrome",
     "google-chrome-stable",
     "chrome",
-  ].filter(Boolean) as string[];
+  ].filter((bin): bin is string => Boolean(bin));
 
   for (const bin of candidates) {
     const found = Bun.which(bin);
@@ -50,7 +50,7 @@ export const DETERMINISM_ARGS = [
  * timezone is a rendering input wherever a date is formatted; `LANG` picks fontconfig's and ICU's
  * defaults the same way.
  */
-export const DETERMINISM_ENV: Record<string, string> = {
+export const DETERMINISM_ENV = {
   LANG: "C.UTF-8",
   LC_ALL: "C.UTF-8",
   TZ: "UTC",

@@ -27,6 +27,8 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 
+import type { CliReport } from "./lib/cli-report.ts";
+
 export const CREDENTIALS_ENV = "SNAPCRAFT_STORE_CREDENTIALS";
 export const EXPIRY_WARNING_DAYS = 30;
 const DEFAULT_CHANNELS = "stable";
@@ -43,7 +45,13 @@ export interface SnapcraftCli {
   whoami: () => Promise<CommandResult>;
 }
 
-export function parseArgs(argv: string[]): { files: string[]; channels: string } {
+/** What one invocation publishes: the `.snap` files, and the comma-separated channels they go to. */
+export interface PublishArgs {
+  files: string[];
+  channels: string;
+}
+
+export function parseArgs(argv: string[]): PublishArgs {
   let channels = DEFAULT_CHANNELS;
   const files: string[] = [];
   for (const arg of argv) {
@@ -101,15 +109,10 @@ export function daysUntilExpiry(whoamiOutput: string, now: Date): number | null 
   return Math.floor((expires - now.getTime()) / DAY_MS);
 }
 
-export interface PublishResult {
-  failed: boolean;
-  lines: string[];
-}
-
 export async function publishSnaps(
   cli: SnapcraftCli,
   { files, channels, now = new Date() }: { files: string[]; channels: string; now?: Date },
-): Promise<PublishResult> {
+): Promise<CliReport> {
   const lines: string[] = [];
   for (const file of files) {
     if (!existsSync(file)) {

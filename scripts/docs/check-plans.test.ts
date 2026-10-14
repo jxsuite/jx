@@ -23,9 +23,7 @@ import {
 import type { PlanDoc, PlanRegistry } from "./lib/plans.ts";
 import { parsePlanSource } from "./lib/plans.ts";
 import { parseSpecSource } from "./lib/spec-status.ts";
-
-/** Built at runtime so no line of this file is itself a plan citation the real gate would see. */
-const PLAN = "plan:";
+import { PLAN } from "./test-fixtures.ts";
 
 const exercised = new Set<ViolationCode>();
 

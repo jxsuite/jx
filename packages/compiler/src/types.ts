@@ -4,9 +4,8 @@
  */
 export type { HeadMergeContext } from "@jxsuite/site/head-merger";
 
-export interface SiteRoute {
-  urlPattern: string;
-  sourcePath?: string;
-  _pathParams?: Record<string, string>;
-  [key: string]: unknown;
-}
+/**
+ * `SiteRoute` is owned by `@jxsuite/site/context`, whose `injectContext` is the consumer that reads
+ * it; the site build hands the same route to both, so there is one declaration of its shape.
+ */
+export type { SiteRoute } from "@jxsuite/site/context";

@@ -22,6 +22,7 @@
 
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 
 export { COLLAB_SUBPROTOCOL } from "./negotiate.ts";
 
@@ -79,8 +80,18 @@ export class EnvelopeError extends Error {
   }
 }
 
+/**
+ * A parsed control payload: an object whose `type` is a string. That is all the envelope checks;
+ * each receiver dispatches on `type` and skips a kind it does not know.
+ */
+function isControlMessage(value: unknown): value is ControlMessage {
+  return isNonNullObject(value) && "type" in value && isString(value.type);
+}
+
 export function encodeFrame(frame: CollabFrame): Uint8Array {
   const encoder = encoding.createEncoder();
+  // Read before the switch: a caller outside the type system may pass a kind the union does not name.
+  const { type: kind } = frame;
   switch (frame.type) {
     case "doc-sync": {
       encoding.writeVarUint(encoder, FRAME_DOC_SYNC);
@@ -105,7 +116,7 @@ export function encodeFrame(frame: CollabFrame): Uint8Array {
       break;
     }
     default: {
-      throw new EnvelopeError(`unknown-frame:${(frame as CollabFrame).type}`);
+      throw new EnvelopeError(`unknown-frame:${kind}`);
     }
   }
   return encoding.toUint8Array(encoder);
@@ -129,8 +140,8 @@ export function decodeFrame(data: Uint8Array): CollabFrame {
         return { path: decoding.readVarString(decoder), type: "doc-close" };
       }
       case FRAME_CONTROL: {
-        const message = JSON.parse(decoding.readVarString(decoder)) as ControlMessage;
-        if (typeof message !== "object" || typeof message.type !== "string") {
+        const message: unknown = JSON.parse(decoding.readVarString(decoder));
+        if (!isControlMessage(message)) {
           throw new EnvelopeError("malformed-control");
         }
         return { message, type: "control" };

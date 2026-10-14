@@ -1,13 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { compileClient } from "../src/targets/compile-client";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxAttributeValue, JxDocument } from "@jxsuite/schema/types";
 
-/** Cast a test fixture to a document — fixtures intentionally use partial shapes. */
-const asDoc = (d: unknown) => d as JxDocument;
+/** A document whose children include primitives the schema rejects but the compiler must render. */
+interface PrimitiveChildrenFixture {
+  children: (string | number | boolean | null | undefined)[];
+  tagName: string;
+}
+
+function primitiveChildrenDoc(fixture: PrimitiveChildrenFixture): JxDocument {
+  /*
+   * SAFETY: The schema allows only elements and strings as children, so this fixture is
+   * deliberately outside JxDocument; compileClient walks children with runtime checks (skipping
+   * null/undefined, stringifying other primitives), which is exactly what these tests exercise.
+   */
+  return fixture as JxDocument;
+}
 
 describe("compileClient", () => {
   test("children inside <pre> are concatenated without the readability indent", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           tagName: "pre",
@@ -26,7 +38,7 @@ describe("compileClient", () => {
         { tagName: "p", children: [{ tagName: "b", textContent: "a" }, "b"] },
       ],
       state: { unused: 0 },
-    } as unknown as JxDocument;
+    };
     const { html } = compileClient(doc, { title: "T" });
     expect(html).toContain(
       "<pre><code><span>const</span><span> x = 1;</span>\n<span>return x;</span></code></pre>",
@@ -91,7 +103,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(counter), {
+    const result = compileClient(counter, {
       reactivitySrc: "https://esm.sh/@vue/reactivity@3.5.32",
       title: "Counter",
     });
@@ -137,7 +149,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
     const js = result.files[0]!.content;
 
     // Should use "World" as the default, not the full object
@@ -157,7 +169,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
 
     // H1 should have data-bind and :textContent binding
     expect(result.html).toContain("data-bind");
@@ -181,7 +193,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
 
     expect(result.html).toContain('@click="doSomething"');
     expect(result.html).toContain("data-bind");
@@ -200,7 +212,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
 
     // Should create an anonymous handler in the `on` object
     expect(result.html).toContain("data-bind");
@@ -222,7 +234,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
 
     // Static style should be inline
     expect(result.html).toContain("font-size: 1rem");
@@ -241,7 +253,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
     const js = result.files[0]!.content;
 
     // Should skip nameType (schema-only), include count
@@ -259,7 +271,7 @@ describe("compileClient", () => {
       tagName: "div",
     };
 
-    const result = compileClient(asDoc(doc), { title: "Test" });
+    const result = compileClient(doc, { title: "Test" });
 
     // The <p> should NOT have data-bind (it's fully static)
     expect(result.html).toContain("<p>Static text</p>");
@@ -283,7 +295,7 @@ describe("compileClient — prototypes", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("localStorage");
     expect(js).toContain("user-prefs");
@@ -297,7 +309,7 @@ describe("compileClient — prototypes", () => {
       state: { token: { $prototype: "SessionStorage", key: "auth-token" } },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("sessionStorage");
     expect(js).toContain("auth-token");
@@ -317,7 +329,7 @@ describe("compileClient — prototypes", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("method:");
     expect(js).toContain("POST");
@@ -334,7 +346,7 @@ describe("compileClient — prototypes", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("undefined");
     expect(js).toContain("const url = `");
@@ -348,7 +360,7 @@ describe("compileClient — prototypes", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("document.cookie");
     expect(js).toContain("sid");
@@ -361,7 +373,7 @@ describe("compileClient — prototypes", () => {
       state: { data: { $prototype: "Request", manual: true, url: "/api" } },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("manual Request");
     expect(js).not.toContain("fetch(url");
@@ -370,7 +382,7 @@ describe("compileClient — prototypes", () => {
 
 describe("compileClient — mapped arrays", () => {
   test("generates lit-html imports for mapped arrays", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -384,7 +396,7 @@ describe("compileClient — mapped arrays", () => {
       state: { items: [{ name: "A" }] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("import { html, render } from 'lit-html'");
     expect(js).toContain(".map((item, index)");
@@ -409,7 +421,7 @@ describe("compileClient — mapped arrays", () => {
       state: { items: [{ name: "A" }] },
       tagName: "div",
     };
-    const { files, html } = compileClient(asDoc(doc), { title: "Test" });
+    const { files, html } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     // Whole children region rendered via one lit binding on the <ul>, no extra wrapper element.
     expect(js).toContain("import { html, render } from 'lit-html'");
@@ -434,14 +446,14 @@ describe("compileClient — mapped arrays", () => {
       state: { a: [], b: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     // Both arrays live in a single lit children binding (one part per parent — no collision).
     expect(js.match(/\.map\(\(item, index\)/g)?.length).toBe(2);
   });
 
   test("mapped array with static items array", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -454,13 +466,13 @@ describe("compileClient — mapped arrays", () => {
       ],
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain('["one","two"]');
   });
 
   test("mapped array with nested children in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -480,14 +492,14 @@ describe("compileClient — mapped arrays", () => {
       state: { todos: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("<span>");
     expect(js).toContain("<button>");
   });
 
   test("mapped array with style in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -505,7 +517,7 @@ describe("compileClient — mapped arrays", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("color: red");
     expect(js).toContain("font-weight: bold");
@@ -525,7 +537,7 @@ describe("compileClient — $ref bindings and attributes", () => {
       state: { link: "/home" },
       tagName: "div",
     };
-    const { html, files } = compileClient(asDoc(doc), { title: "Test" });
+    const { html, files } = compileClient(doc, { title: "Test" });
     expect(html).toContain(':attr.href="link"');
     expect(files[0]!.content).toContain("() => state.link");
   });
@@ -542,7 +554,7 @@ describe("compileClient — $ref bindings and attributes", () => {
       state: { id: 5 },
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain(":attr.href=");
     expect(html).toContain("data-bind");
   });
@@ -553,7 +565,7 @@ describe("compileClient — $ref bindings and attributes", () => {
       state: { val: "hello" },
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain(':value="val"');
   });
 
@@ -563,7 +575,7 @@ describe("compileClient — $ref bindings and attributes", () => {
       state: { x: 10 },
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain(":title=");
   });
 
@@ -573,7 +585,7 @@ describe("compileClient — $ref bindings and attributes", () => {
       state: { user: { name: "Alice" } },
       tagName: "div",
     };
-    const { html, files } = compileClient(asDoc(doc), { title: "Test" });
+    const { html, files } = compileClient(doc, { title: "Test" });
     expect(html).toContain(':text-content="user_name"');
     expect(files[0]!.content).toContain("state.user.name");
   });
@@ -589,7 +601,7 @@ describe("compileClient — module structure", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("import { compute, transform } from './helpers.js'");
   });
@@ -603,13 +615,13 @@ describe("compileClient — module structure", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("import { reactive, effect, computed }");
   });
 
   test("hydrate includes render branch when lit-html is used", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -623,7 +635,7 @@ describe("compileClient — module structure", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("'render'");
     expect(js).toContain("render(bind[key](), el)");
@@ -631,7 +643,7 @@ describe("compileClient — module structure", () => {
 
   test("custom modulePath reflected in output", () => {
     const doc = { children: [], tagName: "div" };
-    const { html, files } = compileClient(asDoc(doc), {
+    const { html, files } = compileClient(doc, {
       modulePath: "scripts/main.js",
       title: "Test",
     });
@@ -640,13 +652,13 @@ describe("compileClient — module structure", () => {
   });
 
   test("null/undefined children are handled gracefully", () => {
-    const doc = { children: [null, undefined, "text"], tagName: "div" };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const doc = primitiveChildrenDoc({ children: [null, undefined, "text"], tagName: "div" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain("text");
   });
 
   test("self-closing tags in mapped array", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -660,20 +672,20 @@ describe("compileClient — module structure", () => {
       state: { images: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("<img>");
   });
 
   test("primitive number child node renders as text", () => {
-    const doc = { children: [42], tagName: "div" };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const doc = primitiveChildrenDoc({ children: [42], tagName: "div" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain("42");
   });
 
   test("primitive boolean child node renders as text", () => {
-    const doc = { children: [true], tagName: "div" };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const doc = primitiveChildrenDoc({ children: [true], tagName: "div" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain("true");
   });
 });
@@ -685,7 +697,7 @@ describe("compileClient — template string state entries", () => {
       state: { $count: 5, $label: "${$count} items" },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     // Should be a computed, not a plain state entry
     expect(js).toContain("computed(");
@@ -700,7 +712,7 @@ describe("compileClient — innerHTML and textContent edge cases", () => {
       state: {},
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain("<b>bold</b>");
   });
 
@@ -720,7 +732,7 @@ describe("compileClient — innerHTML and textContent edge cases", () => {
       },
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     // Should still render the span (with empty inner content on throw)
     expect(html).toContain("<span");
   });
@@ -728,7 +740,7 @@ describe("compileClient — innerHTML and textContent edge cases", () => {
 
 describe("compileClient — mapped array advanced features", () => {
   test("self-closing input tag in mapped array", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -742,7 +754,7 @@ describe("compileClient — mapped array advanced features", () => {
       state: { fields: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("<input");
     // Self-closing should NOT have </input>
@@ -750,7 +762,7 @@ describe("compileClient — mapped array advanced features", () => {
   });
 
   test("attributes in map template (static and dynamic)", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -768,7 +780,7 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain('data-x="static"');
     expect(js).toContain("data-y=");
@@ -776,7 +788,7 @@ describe("compileClient — mapped array advanced features", () => {
   });
 
   test("dynamic style value (template string) in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -794,7 +806,7 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("color:");
     expect(js).toContain("item.color");
@@ -802,7 +814,7 @@ describe("compileClient — mapped array advanced features", () => {
   });
 
   test("event handler with $ref in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -823,14 +835,14 @@ describe("compileClient — mapped array advanced features", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("@click=");
     expect(js).toContain("on.$handler");
   });
 
   test("event handler with Function $prototype in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -851,14 +863,14 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("@click=");
     expect(js).toContain("items.splice(index, 1)");
   });
 
   test("contentEditable on mapped array item", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -876,13 +888,13 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain('contenteditable="true"');
   });
 
   test("textContent as $ref object in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -899,13 +911,13 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [], label: "hello" },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("state.label");
   });
 
   test("innerHTML in map template", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -922,7 +934,7 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("<b>");
     expect(js).toContain("item.html");
@@ -944,7 +956,7 @@ describe("compileClient — $src function handlers", () => {
       },
       tagName: "div",
     };
-    const { files } = compileClient(asDoc(doc), { title: "Test" });
+    const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     // Should import and have a handler that calls it directly
     expect(js).toContain("import { doSomething } from './actions.js'");
@@ -964,7 +976,7 @@ describe("compileClient — refToBindingKey edge cases", () => {
       state: { val: "x" },
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     // Should convert slashes to underscores for the non-standard ref
     expect(html).toContain(':text-content="custom_path_value"');
   });
@@ -972,7 +984,7 @@ describe("compileClient — refToBindingKey edge cases", () => {
 
 describe("compileClient — self-closing element with mapped array", () => {
   test("self-closing tag with mapped array returns void element markup", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         {
           children: {
@@ -988,7 +1000,7 @@ describe("compileClient — self-closing element with mapped array", () => {
       },
       tagName: "div",
     };
-    const { html } = compileClient(asDoc(doc), { title: "Test" });
+    const { html } = compileClient(doc, { title: "Test" });
     expect(html).toContain("<input");
     expect(html).not.toContain("</input>");
   });
@@ -999,7 +1011,7 @@ describe("compileClient — self-closing element with mapped array", () => {
 describe("compileClient — $props in a map template", () => {
   test("emits lit property bindings for a template-valued $prop", () => {
     const result = compileClient(
-      asDoc({
+      {
         children: {
           $prototype: "Array",
           items: { $ref: "#/state/rows" },
@@ -1008,7 +1020,7 @@ describe("compileClient — $props in a map template", () => {
         state: { rows: { default: [{ name: "A" }] } },
         tagName: "div",
         title: "T",
-      }),
+      },
       {},
     );
 
@@ -1022,7 +1034,7 @@ describe("compileClient — $props in a map template", () => {
     /** @param {string} ref */
     const propFor = (ref: string) => {
       const result = compileClient(
-        asDoc({
+        {
           children: {
             $prototype: "Array",
             items: { $ref: "#/state/rows" },
@@ -1031,7 +1043,7 @@ describe("compileClient — $props in a map template", () => {
           state: { a: { b: 2 }, n: 1, rows: { default: [{}] } },
           tagName: "div",
           title: "T",
-        }),
+        },
         {},
       );
       return result.files[0]!.content.match(/\.p="[^"]*"/)?.[0];
@@ -1049,7 +1061,7 @@ describe("compileClient — $props in a map template", () => {
 
   test("emits a static $prop as a literal", () => {
     const result = compileClient(
-      asDoc({
+      {
         children: {
           $prototype: "Array",
           items: { $ref: "#/state/rows" },
@@ -1058,7 +1070,7 @@ describe("compileClient — $props in a map template", () => {
         state: { rows: { default: [{}] } },
         tagName: "div",
         title: "T",
-      }),
+      },
       {},
     );
 
@@ -1067,7 +1079,7 @@ describe("compileClient — $props in a map template", () => {
 
   test("a map body without $props is unchanged", () => {
     const result = compileClient(
-      asDoc({
+      {
         children: {
           $prototype: "Array",
           items: { $ref: "#/state/rows" },
@@ -1076,7 +1088,7 @@ describe("compileClient — $props in a map template", () => {
         state: { rows: { default: [{}] } },
         tagName: "div",
         title: "T",
-      }),
+      },
       {},
     );
 
@@ -1086,9 +1098,9 @@ describe("compileClient — $props in a map template", () => {
 
 describe("compileClient — boolean attributes (spec.md §8.3)", () => {
   /** The prerendered markup for one element carrying `attributes`. */
-  function markup(attributes: Record<string, unknown>) {
+  function markup(attributes: Record<string, JxAttributeValue>) {
     return compileClient(
-      asDoc({ children: [{ attributes, tagName: "details" }], state: { unused: 0 } }),
+      { children: [{ attributes, tagName: "details" }], state: { unused: 0 } },
       { title: "T" },
     ).html;
   }
@@ -1125,10 +1137,10 @@ describe("compileClient — boolean attributes (spec.md §8.3)", () => {
 
   test("the hydration script removes an attribute a binding flips false", () => {
     const { files } = compileClient(
-      asDoc({
+      {
         children: [{ attributes: { open: "${state.isOpen}" }, tagName: "details" }],
         state: { isOpen: true },
-      }),
+      },
       { title: "T" },
     );
     const js = files[0]!.content;
@@ -1145,7 +1157,7 @@ describe("compileClient — boolean attributes inside a repeater template", () =
    */
   test("presence and enumerated attributes are emitted by their own families", () => {
     const { files } = compileClient(
-      asDoc({
+      {
         children: [
           {
             $prototype: "Array",
@@ -1157,7 +1169,7 @@ describe("compileClient — boolean attributes inside a repeater template", () =
           },
         ],
         state: { rows: [1, 2] },
-      }),
+      },
       { title: "T" },
     );
     const js = files[0]!.content;
@@ -1168,7 +1180,7 @@ describe("compileClient — boolean attributes inside a repeater template", () =
 
   test("a false presence attribute leaves nothing behind", () => {
     const { files } = compileClient(
-      asDoc({
+      {
         children: [
           {
             $prototype: "Array",
@@ -1177,7 +1189,7 @@ describe("compileClient — boolean attributes inside a repeater template", () =
           },
         ],
         state: { rows: [1] },
-      }),
+      },
       { title: "T" },
     );
     expect(files[0]!.content).not.toContain("open");

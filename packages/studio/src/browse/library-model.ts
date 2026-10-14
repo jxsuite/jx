@@ -140,6 +140,9 @@ export function categoryFor(dir: string, ext: string): string {
  * @returns {string | null}
  */
 export function contentTypeFor(filePath: string): string | null {
+  /* SAFETY: `content` is the parser extension's opaque project section, which its project fragment
+     schema defines as a map of section entries; the loop reads only the optional `source`, and skips
+     an entry without one. */
   const content = (projectState?.projectConfig?.content ?? {}) as Record<
     string,
     ContentSectionEntry
@@ -199,7 +202,7 @@ async function walk(
       name: entry.name,
       path: entry.path,
       size: entry.size,
-      type: category === "Content" ? (contentTypeFor(entry.path) ?? ext ?? "file") : ext || "file",
+      type: category === "Content" ? (contentTypeFor(entry.path) ?? ext) : ext || "file",
     });
   }
   // Siblings in parallel, depth serialized per branch: the platform counts every call as in-flight,
@@ -278,7 +281,7 @@ export const LIBRARY_LAYOUT_LABELS: Readonly<Record<LibraryLayout, string>> = {
 
 /** Whether a string names a layout — the guard behind `library.setLayout`'s argument. */
 export function isLibraryLayout(value: string): value is LibraryLayout {
-  return (LIBRARY_LAYOUTS as readonly string[]).includes(value);
+  return LIBRARY_LAYOUTS.some((layout) => layout === value);
 }
 
 /** Layouts that draw a live preview per item. Table and Board draw text, and stay cheap. */
@@ -345,11 +348,20 @@ export function libraryLocales(files: readonly LibraryFile[]): string[] {
   return projectLocales().filter((tag) => present.has(tag));
 }
 
+/** One Calendar day: the files whose derived date is `date`. */
+export interface LibraryDay {
+  date: string;
+  files: LibraryFile[];
+}
+
 /** Calendar buckets, newest day first, plus the files no date could be derived for. */
-export function groupByDate(files: readonly LibraryFile[]): {
-  days: { date: string; files: LibraryFile[] }[];
+export interface LibraryDateGroups {
+  days: LibraryDay[];
   undated: LibraryFile[];
-} {
+}
+
+/** Calendar buckets, newest day first, plus the files no date could be derived for. */
+export function groupByDate(files: readonly LibraryFile[]): LibraryDateGroups {
   const byDay = new Map<string, LibraryFile[]>();
   const undated: LibraryFile[] = [];
   for (const file of files) {
@@ -366,7 +378,7 @@ export function groupByDate(files: readonly LibraryFile[]): {
     }
   }
   const days = [...byDay.entries()]
-    .map(([date, dayFiles]) => ({ date, files: dayFiles }))
+    .map(([date, dayFiles]): LibraryDay => ({ date, files: dayFiles }))
     .toSorted((a, b) => b.date.localeCompare(a.date));
   return { days, undated };
 }

@@ -3,12 +3,13 @@ import { createMockCollabHub, settleCollab } from "./collab-mock";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { resetCollabForTests } from "../src/collab/collab-session";
 import { collabState } from "../src/collab/collab-state";
+import type { TabCollabState } from "../src/collab/collab-state";
 import { presenceProjection, statusTitle } from "../src/collab/presence-chips";
 import { createOverlayLayer } from "../src/canvas/iframe-overlay";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { CollabAwarenessState } from "@jxsuite/collab/awareness-types";
 import { afterEach, describe, expect, test } from "bun:test";
+import { PARAGRAPH_DOC } from "./shared-fixtures";
 
-const DOC: JxMutableNode = { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" };
 const PATH = "pages/presence.json";
 
 afterEach(() => {
@@ -19,14 +20,14 @@ afterEach(() => {
 describe("presence chips", () => {
   test("project nothing while the platform offers no collaboration at all", () => {
     installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: PATH, id: PATH });
     expect(presenceProjection(tab)).toBeNull();
     expect(presenceProjection(null)).toBeNull();
   });
 
   test("project the sync status and one colored chip per peer", () => {
     installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: PATH, id: PATH });
     const state = collabState(tab);
     state.status = "synced";
     state.active = true;
@@ -66,7 +67,7 @@ describe("presence chips", () => {
 
   test("offline status is projected as itself", () => {
     installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: PATH, id: PATH });
     const state = collabState(tab);
     state.status = "offline";
     expect(presenceProjection(tab)?.status).toBe("offline");
@@ -87,9 +88,13 @@ describe("overlay presence boxes", () => {
     ]);
     const boxes = [...overlay.root.querySelectorAll(".overlay-presence")];
     expect(boxes).toHaveLength(2);
-    expect((boxes[0] as HTMLElement).style.left).toBe("10px");
-    expect(boxes[0]?.querySelector(".overlay-presence-tag")?.textContent).toBe("Octo Cat");
-    expect((boxes[0] as HTMLElement).style.outline).toContain("#e5484d");
+    const [first] = boxes;
+    if (!(first instanceof HTMLElement)) {
+      throw new TypeError("the first presence box is not an HTMLElement");
+    }
+    expect(first.style.left).toBe("10px");
+    expect(first.querySelector(".overlay-presence-tag")?.textContent).toBe("Octo Cat");
+    expect(first.style.outline).toContain("#e5484d");
 
     overlay.setPresence([]);
     expect(overlay.root.querySelectorAll(".overlay-presence")).toHaveLength(0);
@@ -101,7 +106,7 @@ describe("selection publishing", () => {
   test("the local structural selection rides awareness for peers to draw", async () => {
     const hub = createMockCollabHub();
     installMockPlatform({ collab: hub.capability });
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: PATH, id: PATH });
     await settleCollab();
     expect(collabState(tab).active).toBe(true);
 
@@ -109,18 +114,14 @@ describe("selection publishing", () => {
     tab.session.selection = [["children", 0]];
     await settleCollab();
 
-    const states = [...peer.awareness.getStates().values()] as {
-      structuralSelection?: (string | number)[][] | null;
-      focusedPath?: string | null;
-    }[];
+    // Every state on this awareness was published by a Studio session, under the shared contract.
+    const states: Partial<CollabAwarenessState>[] = [...peer.awareness.getStates().values()];
     const published = states.find((s) => s.focusedPath === PATH);
     expect(published?.structuralSelection).toEqual([["children", 0]]);
 
     tab.session.selection = [];
     await settleCollab();
-    const cleared = [...peer.awareness.getStates().values()] as {
-      structuralSelection?: unknown;
-    }[];
+    const cleared: Partial<CollabAwarenessState>[] = [...peer.awareness.getStates().values()];
     expect(cleared.some((s) => s.structuralSelection === null)).toBe(true);
     peer.destroy();
   });
@@ -132,9 +133,9 @@ describe("selection publishing", () => {
    was a three-second grey line, which is exactly what a bug looks like. */
 
 describe("collab honesty", () => {
-  function chips(patch: Record<string, unknown>) {
+  function chips(patch: Partial<TabCollabState>) {
     installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+    const tab = openTab({ document: structuredClone(PARAGRAPH_DOC), documentPath: PATH, id: PATH });
     Object.assign(collabState(tab), patch);
     return presenceProjection(tab)!;
   }

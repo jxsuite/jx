@@ -26,10 +26,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import gitPanelDoc from "./git-panel.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("git-panel", gitPanelDoc as unknown as JxDocument);
+registerSurface("git-panel", gitPanelDoc);
 
 /** One changed file, as the document draws it. Every field is a value: no records, no closures. */
 export interface GitFileRowView {
@@ -72,12 +71,6 @@ export interface GitCommitView {
   meta: string;
 }
 
-/** One row of the branch picker. `__new__` is a row like any other; the flow knows what it means. */
-export interface GitBranchOption {
-  value: string;
-  label: string;
-}
-
 /** What the panel says the surface should be showing right now. */
 export interface GitPanelValues {
   /**
@@ -104,7 +97,7 @@ export interface GitPanelValues {
   branchName: string;
   /** What the picker currently holds. Not always {@link branchName} — see the adapter's note. */
   branchValue: string;
-  branchOptions: GitBranchOption[];
+  branchOptions: SurfaceOption[];
   /** `changes` or `history` — `shell.git.subTab`, which names the `$switch` case. */
   subTab: string;
   /** "Local Changes (6)" — the count is part of the tab's label, not a badge of its own. */
@@ -159,7 +152,7 @@ export interface GitPanelSurfaceHandle {
 }
 
 /** The scope the document reads: the projection, plus everything a control can ask for. */
-interface GitPanelScope extends Record<string, unknown>, GitPanelValues, GitPanelActions {}
+interface GitPanelScope extends GitPanelValues, GitPanelActions {}
 
 /** Write a projection into the scope. Assignment by assignment, so an unchanged field is inert. */
 function project(scope: GitPanelScope, values: GitPanelValues): void {
@@ -237,10 +230,10 @@ export function mountGitPanelSurface(
   values: GitPanelValues,
   actions: GitPanelActions,
 ): GitPanelSurfaceHandle {
-  const scope = reactive<GitPanelScope>({
+  const scope: GitPanelScope = reactive<GitPanelScope>({
     ...emptyValues(),
     ...actions,
-  }) as GitPanelScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -258,8 +251,7 @@ export function mountGitPanelSurface(
        answer is simply whether this handle is still wanted — answering no would start a second
        mount racing the first. Once mounted, the question is whether the root is still where it was
        put: a Navigator that painted another panel cleared this document out from under it. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

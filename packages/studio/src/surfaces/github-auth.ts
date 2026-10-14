@@ -27,13 +27,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import githubAuthDoc from "./github-auth.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { DialogLayerHandle, SurfaceHandle } from "../ui/surface";
 
-registerSurface("github-auth", githubAuthDoc as unknown as JxDocument);
+registerSurface("github-auth", githubAuthDoc);
 
 export interface GithubAuthSurfaceOptions {
   /** Where the dialog is mounted — the dialog layer, handed in so this never reaches back. */
@@ -48,16 +47,7 @@ export interface GithubAuthSurfaceOptions {
   onClosed: () => void;
 }
 
-export interface GithubAuthSurfaceHandle {
-  /** The slot in the dialog layer that carries the region. */
-  host: HTMLElement;
-  /** Resolves with the `jx-dialog` element once it has rendered and been opened. */
-  ready: Promise<HTMLElement>;
-  /** Close the dialog (the platform restores focus) and dispose the document. Idempotent. */
-  close: () => void;
-}
-
-interface GithubAuthScope extends Record<string, unknown> {
+interface GithubAuthScope {
   userCode: string;
   verificationUri: string;
   cancel: () => void;
@@ -65,7 +55,7 @@ interface GithubAuthScope extends Record<string, unknown> {
 }
 
 /** Put the code up. The handle's `ready` resolves once the dialog is showing. */
-export function openGithubAuthSurface(options: GithubAuthSurfaceOptions): GithubAuthSurfaceHandle {
+export function openGithubAuthSurface(options: GithubAuthSurfaceOptions): DialogLayerHandle {
   const slot = document.createElement("div");
   /* The layer is `pointer-events: none` so a click passes through it when nothing is up, and every
      slot in it turns them back on for its own content. `pointer-events` INHERITS, and the top layer
@@ -90,26 +80,32 @@ export function openGithubAuthSurface(options: GithubAuthSurfaceOptions): Github
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive<GithubAuthScope>({
+  const scope: GithubAuthScope = reactive<GithubAuthScope>({
     cancel: () => {
       options.onCancel();
     },
     closed: finish,
     userCode: options.userCode,
     verificationUri: options.verificationUri,
-  }) as GithubAuthScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("github-auth", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `github-auth.json`'s root definition is a `jx-dialog` element, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -125,7 +121,7 @@ export function openGithubAuthSurface(options: GithubAuthSurfaceOptions): Github
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

@@ -57,18 +57,33 @@ type EventBody = HarnessEvent extends infer E
     : never
   : never;
 
+/** True when a member name of a usage frame is one of the counts {@link Usage} names. */
+function isUsageField(key: string): key is keyof Usage {
+  return (
+    key === "inputTokens" ||
+    key === "outputTokens" ||
+    key === "cachedInputTokens" ||
+    key === "reasoningTokens"
+  );
+}
+
+/** True when a count a backend's usage frame carries is a number, which the frame does not prove. */
+function isCount(value: unknown): value is number {
+  return typeof value === "number";
+}
+
 /** Two usage counts summed field by field; a field either one reports is reported. */
 function addUsage(total: Usage | null, next: Usage): Usage {
   if (total === null) {
     return { ...next };
   }
-  const sum: Record<string, number> = { ...total };
+  const sum: Usage = { ...total };
   for (const [key, value] of Object.entries(next)) {
-    if (typeof value === "number") {
+    if (isUsageField(key) && isCount(value)) {
       sum[key] = (sum[key] ?? 0) + value;
     }
   }
-  return sum as unknown as Usage;
+  return sum;
 }
 
 /**
@@ -103,7 +118,8 @@ function createEventQueue() {
     },
     async *read(): AsyncGenerator<HarnessEvent> {
       let index = 0;
-      while (true) {
+      // `push` and `close` change what this loop reads from outside it, so it exits from within.
+      for (;;) {
         if (index < events.length) {
           yield events[index]!;
           index += 1;
@@ -154,6 +170,9 @@ export function runTurn(input: TurnInput): TurnRun {
     };
   }
   const { signal } = controller;
+  /* Read through a call: the signal aborts from outside, between awaits, which narrowing on
+     `signal.aborted` cannot see. */
+  const aborted = (): boolean => signal.aborted;
   const settle = () => {
     unlink();
     release();
@@ -163,13 +182,10 @@ export function runTurn(input: TurnInput): TurnRun {
   const session = input.session ?? createSessionFacts();
   const ledger = input.ledger ?? createLedger();
   const sessionId = input.sessionId === undefined ? session.sessionId : input.sessionId;
-  const actor: Actor = {
-    id: `assistant:${sessionId ?? "local"}:${turnId}`,
-    kind: "assistant",
-    ...(input.modelInfo ? { model: input.modelInfo.model } : {}),
-    sessionId,
-    turnId,
-  };
+  const actorId = `assistant:${sessionId ?? "local"}:${turnId}`;
+  const actor: Actor = input.modelInfo
+    ? { id: actorId, kind: "assistant", model: input.modelInfo.model, sessionId, turnId }
+    : { id: actorId, kind: "assistant", sessionId, turnId };
 
   const queue = createEventQueue();
   let seq = 0;
@@ -181,6 +197,8 @@ export function runTurn(input: TurnInput): TurnRun {
       return;
     }
     ended = body.type === "turn_end";
+    /* SAFETY: EventBody is HarnessEvent with exactly `v`, `seq` and `turnId` omitted, member by
+       member, and this adds those three back, so the result is the member `body` came from. */
     const event = { v: 1, seq, turnId, ...body } as HarnessEvent;
     seq += 1;
     input.onEvent?.(event);
@@ -320,10 +338,9 @@ export function runTurn(input: TurnInput): TurnRun {
 
       const truncated = !sawDone;
       if (errorMessage) {
-        const error: TurnError = {
-          message: errorMessage,
-          ...(errorCode ? { code: errorCode } : {}),
-        };
+        const error: TurnError = errorCode
+          ? { message: errorMessage, code: errorCode }
+          : { message: errorMessage };
         input.hooks?.onStreamError?.(error);
         emit({ type: "round_end", messageId, stopReason, truncated, dropped: true, error });
         return finish("error", { error, removedMessageId: messageId });
@@ -331,7 +348,7 @@ export function runTurn(input: TurnInput): TurnRun {
 
       /* A turn that has drawn nothing by the end of a round with no calls ends here. A stopped
          round is not empty: the author ended it. */
-      const stopped = stopReason === "cancelled" || signal.aborted;
+      const stopped = stopReason === "cancelled" || aborted();
       const drawn = text !== "" || records.length > 0;
       if (calls.size === 0 && !stopped && !drawnBefore && anchor === null && !drawn) {
         emit({ type: "round_end", messageId, stopReason, truncated, dropped: true });
@@ -353,13 +370,15 @@ export function runTurn(input: TurnInput): TurnRun {
         for (const record of records) {
           blocks.push({ type: "tool_call", ...record });
         }
-        appended.push({
+        const drawnMessage: ChatMessage = {
           id: messageId,
           role: "assistant",
           blocks,
           timestamp: now(),
-          ...(truncated ? { meta: { incomplete: "truncated" as const } } : {}),
-        });
+        };
+        appended.push(
+          truncated ? { ...drawnMessage, meta: { incomplete: "truncated" } } : drawnMessage,
+        );
         anchor = messageId;
       }
       if (calls.size === 0 || stopped) {
@@ -368,7 +387,7 @@ export function runTurn(input: TurnInput): TurnRun {
 
       let didWork = false;
       for (const [callId, call] of calls) {
-        if (signal.aborted) {
+        if (aborted()) {
           return finish("cancelled");
         }
         emit({
@@ -437,7 +456,7 @@ export function runTurn(input: TurnInput): TurnRun {
         workRounds += 1;
       }
       // A Stop that landed during the round's last call opens no further round.
-      if (signal.aborted) {
+      if (aborted()) {
         return finish("cancelled");
       }
     }
@@ -459,14 +478,14 @@ export function runTurn(input: TurnInput): TurnRun {
   }
 
   const outcome = loop().finally(settle);
-  outcome.then(
-    () => {
+  void (async () => {
+    try {
+      await outcome;
       queue.close();
-    },
-    (error: unknown) => {
+    } catch (error) {
       queue.close({ error });
-    },
-  );
+    }
+  })();
 
   return {
     turnId,

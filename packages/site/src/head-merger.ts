@@ -19,7 +19,16 @@
  */
 
 import { siteAbsoluteUrl } from "@jxsuite/schema/asset-paths";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxHeadEntry } from "@jxsuite/schema/types";
+
+/**
+ * A `$head` entry as authored JSON can actually hold it, which is wider than {@link JxHeadEntry}: a
+ * document may carry a raw HTML string, a hand-written element may leave out `tagName`, and a
+ * malformed entry may be `null`. The merge keys and the render tolerate all three, so one bad entry
+ * never takes the whole page down with it.
+ */
+export type AuthoredHeadEntry = Partial<JxHeadEntry> | string | null;
 
 /** What a page knows about itself while its `<head>` is being merged. */
 export interface HeadMergeContext {
@@ -86,8 +95,8 @@ export function mergeHead(
      * canonical link must not be.
      */
     const hasAuthored = [...merged.values()].some(
-      (e) =>
-        e && typeof e === "object" && e.tagName === "link" && e.attributes?.rel === "canonical",
+      (e: AuthoredHeadEntry) =>
+        isNonNullObject(e) && e.tagName === "link" && e.attributes?.rel === "canonical",
     );
     if (!hasAuthored) {
       const entry: JxHeadEntry = {
@@ -138,11 +147,11 @@ export function mergeHead(
  * Generate a deduplication key for a <head> element. Elements with the same key are considered
  * duplicates; the last one wins.
  *
- * @param {JxHeadEntry} entry
+ * @param {AuthoredHeadEntry} entry
  * @returns {string}
  */
-function headEntryKey(entry: JxHeadEntry) {
-  if (!entry || typeof entry !== "object") {
+function headEntryKey(entry: AuthoredHeadEntry) {
+  if (!isNonNullObject(entry)) {
     return String(entry);
   }
 
@@ -190,7 +199,7 @@ function headEntryKey(entry: JxHeadEntry) {
   // <style> — unique per content hash
   if (tag === "style") {
     const raw = Array.isArray(entry.children) ? entry.children.join("") : entry.textContent;
-    const content = typeof raw === "object" && raw !== null ? JSON.stringify(raw) : (raw ?? "");
+    const content = isNonNullObject(raw) ? JSON.stringify(raw) : (raw ?? "");
     return `style:${simpleHash(content)}`;
   }
 
@@ -216,24 +225,24 @@ function simpleHash(str: string) {
 /**
  * Render a merged $head array to HTML string for insertion into <head>.
  *
- * @param {JxHeadEntry[]} headEntries - Merged head entries
+ * @param {readonly AuthoredHeadEntry[]} headEntries - Merged head entries
  * @returns {string} HTML string
  */
-export function renderHead(headEntries: JxHeadEntry[]) {
-  return headEntries.map((e: JxHeadEntry) => renderHeadEntry(e)).join("\n  ");
+export function renderHead(headEntries: readonly AuthoredHeadEntry[]) {
+  return headEntries.map((e) => renderHeadEntry(e)).join("\n  ");
 }
 
 /**
  * Render a single $head entry to an HTML string.
  *
- * @param {JxHeadEntry} entry
+ * @param {AuthoredHeadEntry} entry
  * @returns {string}
  */
-function renderHeadEntry(entry: JxHeadEntry) {
-  if (typeof entry === "string") {
+function renderHeadEntry(entry: AuthoredHeadEntry) {
+  if (isString(entry)) {
     return entry;
   }
-  if (!entry || typeof entry !== "object") {
+  if (!isNonNullObject(entry)) {
     return "";
   }
 
@@ -247,7 +256,7 @@ function renderHeadEntry(entry: JxHeadEntry) {
 
   // Void elements (no closing tag)
   const VOID = new Set(["meta", "link", "base", "br", "hr", "img", "input"]);
-  if (VOID.has(tag)) {
+  if (tag !== undefined && VOID.has(tag)) {
     return open;
   }
 
@@ -257,15 +266,14 @@ function renderHeadEntry(entry: JxHeadEntry) {
    * page as the string "[object Object]".
    */
   const raw = Array.isArray(entry.children) ? entry.children.join("") : entry.textContent;
-  const content =
-    raw !== null && typeof raw === "object" ? JSON.stringify(raw, null, 2) : (raw ?? "");
+  const content = isNonNullObject(raw) ? JSON.stringify(raw, null, 2) : (raw ?? "");
   return `${open}${content}</${tag}>`;
 }
 
 /**
- * @param {unknown} val
+ * @param {string | boolean} val - An attribute value; `true` never reaches here (it renders bare)
  * @returns {string}
  */
-function escapeAttr(val: unknown) {
+function escapeAttr(val: string | boolean) {
   return String(val).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
 }

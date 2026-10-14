@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { reactive } from "@vue/reactivity";
 import { defineElement, mount } from "../src/runtime";
 import type { JxDocument, JxElement, JxMappedArray } from "@jxsuite/schema/types";
+import type { JxPath } from "../src/types";
 
 try {
   GlobalRegistrator.register();
@@ -31,14 +32,15 @@ function listDoc(
   map?: JxElement,
   keyed = true,
 ): JxDocument {
-  const array: JxMappedArray = {
-    $prototype: "Array",
-    items: { $ref: "#/state/rows" },
-    ...(keyed ? { key: { $ref: "$map/item/id" } } : {}),
-    map: map ?? { tagName: "li", textContent: "${$map.index}:${$map.item.title}" },
-    ...overrides,
-  };
-  return { tagName: "ul", children: [array as unknown as JxElement] };
+  // A repeater nested among children is structurally a JxElement (see JxElement.children).
+  const array: JxElement = { $prototype: "Array", items: { $ref: "#/state/rows" } };
+  if (keyed) {
+    array.key = { $ref: "$map/item/id" };
+  }
+  array.map = map ?? { tagName: "li", textContent: "${$map.index}:${$map.item.title}" };
+  // Overrides win, as a trailing spread would: an existing key is replaced where it stands.
+  Object.assign(array, overrides);
+  return { tagName: "ul", children: [array] };
 }
 
 let host: HTMLElement;
@@ -57,8 +59,20 @@ afterEach(() => {
 
 const texts = (ul: Element) => [...ul.children].map((li) => li.textContent);
 const nodes = (ul: Element) => [...ul.children];
-const three = (ul: Element) => nodes(ul) as [Element, Element, Element];
-const two = (ul: Element) => nodes(ul) as [Element, Element];
+const three = (ul: Element): [Element, Element, Element] => {
+  const [a, b, c] = nodes(ul);
+  if (!a || !b || !c) {
+    throw new Error(`expected three rows, found ${ul.childElementCount}`);
+  }
+  return [a, b, c];
+};
+const two = (ul: Element): [Element, Element] => {
+  const [a, b] = nodes(ul);
+  if (!a || !b) {
+    throw new Error(`expected two rows, found ${ul.childElementCount}`);
+  }
+  return [a, b];
+};
 
 /**
  * Identity, element by element. `toEqual` over DOM nodes walks happy-dom's whole object graph —
@@ -138,7 +152,7 @@ describe("keyed $map — identity", () => {
     rows.reverse();
     await tick();
     same(nodes(ul), [n2, n1]);
-    expect(warn).not.toHaveBeenCalled();
+    expect(warn.mock.calls).toEqual([]);
   });
 
   test("an unkeyed list keeps identity by position", async () => {
@@ -271,13 +285,13 @@ describe("keyed $map — tracking and teardown", () => {
 
   test("onNodeMoved reports a reused row's new path", async () => {
     const rows = reactive([row("a"), row("b"), row("c")]);
-    const moved = mock((_node: unknown, _path: unknown) => null);
+    const moved = mock((_node: HTMLElement | Text, _path: JxPath) => null);
     await mount(listDoc(), host, { scope: { rows }, onNodeMoved: moved });
     const ul = host.firstElementChild!;
     const [a, , c] = three(ul);
     rows.reverse();
     await tick();
-    const name = (node: unknown) => (node === a ? "a" : node === c ? "c" : "?");
+    const name = (node: HTMLElement | Text) => (node === a ? "a" : node === c ? "c" : "?");
     const reported = moved.mock.calls.map(([node, path]) => [name(node), path]);
     expect(reported).toContainEqual(["c", ["children", 0, "map", 0]]);
     expect(reported).toContainEqual(["a", ["children", 0, "map", 2]]);
@@ -285,7 +299,7 @@ describe("keyed $map — tracking and teardown", () => {
   });
 
   test("items that are not an array, or a missing map, render no rows and keep siblings", async () => {
-    const state = reactive({ rows: "nope" as unknown });
+    const state = reactive({ rows: "nope" });
     await mount(
       {
         tagName: "ul",
@@ -303,7 +317,7 @@ describe("keyed $map — tracking and teardown", () => {
     await mount(
       {
         tagName: "ol",
-        children: [{ $prototype: "Array", items: [1, 2] } as unknown as JxElement],
+        children: [{ $prototype: "Array", items: [1, 2] }],
       },
       host,
     );

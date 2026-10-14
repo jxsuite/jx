@@ -33,7 +33,14 @@
  * @docs studio/logic/formulas
  */
 import { PURE_METHOD_OPS } from "@jxsuite/runtime/expression";
-import { isJsonObject, isRef } from "@jxsuite/schema/guards";
+import {
+  isBoolean,
+  isJsonObject,
+  isNonNullObject,
+  isNumber,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
 import { formulaChipStrip } from "./formula-chips";
 import { applyCatalogPick, calleeEntry, formulaCatalog } from "./formula-catalog";
 import { openFormulaPalette } from "../surfaces/formula-palette";
@@ -43,17 +50,11 @@ import {
   renderExpressionEditorSurface,
 } from "../surfaces/expression-editor";
 
-import type {
-  ExprOption,
-  ExprRowView,
-  ExprSelectGroup,
-  ExpressionActions,
-} from "../surfaces/expression-editor";
-import type {
-  JxExpressionNode,
-  JxExpressionOperand,
-  JxStateDefinition,
-} from "@jxsuite/schema/types";
+import type { ExprRowView, ExpressionActions } from "../surfaces/expression-editor";
+import type { ExpressionFields, ExpressionValue } from "./formula-chips";
+import type { JxExpressionOperand, JxStateDefinition } from "@jxsuite/schema/types";
+import type { SurfaceOption, SurfaceOptionGroup } from "./surface";
+import type { ExpressionPreview } from "../services/preview-eval";
 
 // ─── Operator Categories ────────────────────────────────────────────────────
 
@@ -77,15 +78,31 @@ const BINARY_OPS = new Set([
 const ASSIGN_OPS = new Set(["=", "+=", "-=", "*=", "/="]);
 
 /**
+ * A value's members by name when it is an object, or `null` for a primitive, `null` or absence.
+ *
+ * Arrays come through as objects, as they always did here: the walk reads named members only, and
+ * an array has none of the ones it reads, so it walks as a node whose every slot is empty.
+ */
+function fieldsOf(value: ExpressionValue | undefined): ExpressionFields | null {
+  if (!isNonNullObject(value)) {
+    return null;
+  }
+  /* SAFETY: every object an ExpressionValue admits is a record of document values keyed by member
+     name (or an array, read by name only), so each member read off it is an ExpressionValue or
+     absent. */
+  return value as ExpressionFields;
+}
+
+/**
  * Does this expression node DO something rather than compute something?
  *
  * An assignment writes a target and yields nothing worth reading; a `+` or a `filter` yields a
  * value. The Data panel needs the distinction to know whether a row has a value column at all —
  * labelling `setBeds0` "pending" reads as "still loading" for a thing that will never load.
  */
-export function isActionExpression(node: unknown): boolean {
-  const op = (node as { operator?: unknown } | null | undefined)?.operator;
-  return typeof op === "string" && ASSIGN_OPS.has(op);
+export function isActionExpression(node: ExpressionValue | undefined): boolean {
+  const op = fieldsOf(node)?.operator;
+  return isString(op) && ASSIGN_OPS.has(op);
 }
 const NO_ARG_OPS = new Set(["pop", "shift"]);
 const ONE_ARG_OPS = new Set(["push", "unshift"]);
@@ -164,7 +181,7 @@ const OPERATOR_GROUPS = [
  * names the group in the accessibility tree and the legend inside it is what a reader sees, which
  * is the pair `<sp-menu-divider>` plus a header span was standing in for.
  */
-const OPERATOR_SELECT_GROUPS: ExprSelectGroup[] = OPERATOR_GROUPS.map((group) => ({
+const OPERATOR_SELECT_GROUPS: SurfaceOptionGroup[] = OPERATOR_GROUPS.map((group) => ({
   id: group.label,
   label: group.label,
   rows: group.ops.map((op) => ({ label: op, value: op })),
@@ -177,23 +194,23 @@ const OPERATOR_SELECT_GROUPS: ExprSelectGroup[] = OPERATOR_GROUPS.map((group) =>
  * operator that gains a group, or moves between two, keeps its label and its neighbours here
  * without anybody remembering to say so twice.
  */
-function restrictGroups(operators: readonly string[]): ExprSelectGroup[] {
+function restrictGroups(operators: readonly string[]): SurfaceOptionGroup[] {
   const allowed = new Set(operators);
-  return OPERATOR_SELECT_GROUPS.map((group) => ({
-    ...group,
-    rows: group.rows.filter((row) => allowed.has(row.value)),
-  })).filter((group) => group.rows.length > 0);
+  return OPERATOR_SELECT_GROUPS.flatMap((group) => {
+    const rows = group.rows.filter((row) => allowed.has(row.value));
+    return rows.length > 0 ? [{ ...group, rows }] : [];
+  });
 }
 
 /** The three rungs of the value ladder, spelled the way `ui/value-source.ts` spells them (§6.6). */
-const SOURCE_OPTIONS: ExprOption[] = [
+const SOURCE_OPTIONS: SurfaceOption[] = [
   { label: VALUE_SOURCE_LABELS.literal, value: "literal" },
   { label: VALUE_SOURCE_LABELS.ref, value: "ref" },
   { label: VALUE_SOURCE_LABELS.expression, value: "expression" },
 ];
 
 /** What a literal may be. Abbreviated because the picker sits beside the value it types. */
-const TYPE_OPTIONS: ExprOption[] = [
+const TYPE_OPTIONS: SurfaceOption[] = [
   { label: "str", value: "string" },
   { label: "num", value: "number" },
   { label: "bool", value: "boolean" },
@@ -207,7 +224,7 @@ const TYPE_OPTIONS: ExprOption[] = [
  * type is what the value IS, and the control is what edits it — `null` is a type with no control at
  * all, drawn as an inert word.
  */
-const LITERAL_CONTROLS: Record<string, string> = {
+const LITERAL_CONTROLS = {
   boolean: "bool",
   null: "null",
   number: "number",
@@ -300,11 +317,11 @@ function operatorInfo(op: string): OperatorInfo {
  * Properties, Style and Logic tabs give, and they are spelled the same way — `ui/value-source.ts`
  * owns the words, so `lit / $ref / expr` is gone from the operand picker (§6.6).
  *
- * @param {unknown} operand
+ * @param {ExpressionValue | undefined} operand
  * @returns {"ref" | "expression" | "literal"}
  */
-function operandMode(operand: unknown) {
-  if (operand && typeof operand === "object") {
+function operandMode(operand: ExpressionValue | undefined) {
+  if (isNonNullObject(operand)) {
     if ("$ref" in operand) {
       return "ref";
     }
@@ -317,7 +334,7 @@ function operandMode(operand: unknown) {
 
 /** Positional-arg labels for a `call` node, from the callee's catalog entry when resolvable. */
 function calleeParamLabels(
-  target: unknown,
+  target: ExpressionValue | undefined,
   state?: Record<string, JxStateDefinition> | null,
 ): string[] {
   const ref = isRef(target) ? target.$ref : "";
@@ -342,17 +359,17 @@ function defaultForMode(mode: string): JxExpressionOperand {
 // ─── Literal Type Detection ─────────────────────────────────────────────────
 
 /**
- * @param {unknown} val
+ * @param {ExpressionValue | undefined} val
  * @returns {"string" | "number" | "boolean" | "null"}
  */
-function literalType(val: unknown) {
+function literalType(val: ExpressionValue | undefined) {
   if (val === null || val === undefined) {
     return "null";
   }
-  if (typeof val === "boolean") {
+  if (isBoolean(val)) {
     return "boolean";
   }
-  if (typeof val === "number") {
+  if (isNumber(val)) {
     return "number";
   }
   return "string";
@@ -378,20 +395,21 @@ function defaultForLiteralType(type: string): JxExpressionOperand {
 // ─── Hint (one-line summary for signal rows) ────────────────────────────────
 
 /**
- * @param {unknown} node
+ * @param {ExpressionValue | undefined} node
  * @returns {string}
  */
-export function expressionHint(node: unknown) {
-  if (!isJsonObject(node) || typeof node.operator !== "string") {
+export function expressionHint(node: ExpressionValue | undefined) {
+  const fields = fieldsOf(node);
+  const op = fields?.operator;
+  if (fields === null || !isString(op)) {
     return "$expression";
   }
-  const expr = node as unknown as JxExpressionNode;
-  const op = expr.operator;
-  const { target } = expr;
+  const { target } = fields;
+  const targetOp = fieldsOf(target)?.operator;
   const targetLabel = isRef(target)
     ? target.$ref.replace("#/state/", "")
-    : isJsonObject(target) && typeof target.operator === "string"
-      ? `(${target.operator}…)`
+    : isString(targetOp)
+      ? `(${targetOp}…)`
       : String(target ?? "?");
 
   if (ASSIGN_OPS.has(op) || ONE_ARG_OPS.has(op)) {
@@ -423,18 +441,11 @@ export function expressionHint(node: unknown) {
 
 // ─── What the editor is handed ──────────────────────────────────────────────
 
-/** Preview data computed by services/preview-eval.ts — display strings keyed by node path. */
-export interface EditorPreview {
-  values: Map<string, string>;
-  error: string | null;
-  mutating: boolean;
-}
-
 export interface ExpressionEditorOpts {
   stateDefs: string[];
   allowEventRef: boolean;
   depth?: number;
-  preview?: EditorPreview | null;
+  preview?: ExpressionPreview | null;
   path?: (string | number)[];
   /** Full state defs map — resolves named-formula catalog entries (call labels, palette). */
   stateEntries?: Record<string, JxStateDefinition> | null;
@@ -491,7 +502,7 @@ export interface ExpressionProjection {
 /** The walk's own state: the options it was given, plus what it has emitted so far. */
 interface Walk {
   opts: ExpressionEditorOpts;
-  preview: EditorPreview | null;
+  preview: ExpressionPreview | null;
   rows: ExprRowView[];
   plans: Map<string, RowPlan>;
   chipPaths: Map<string, (string | number)[]>;
@@ -513,6 +524,9 @@ type RowPatch = { [K in keyof ExprRowView]?: ExprRowView[K] | undefined };
  * to no case at all, so a partial row is a row that silently draws nothing.
  */
 function blankRow(row: RowPatch & { key: string; kind: ExprRowView["kind"] }) {
+  /* SAFETY: every caller hands in only defined values (each is computed with its own default), so
+     each key of the result is either the patch's value or the default beside it, and both have the
+     type ExprRowView declares for that key. */
   return {
     badge: "",
     catalog: false,
@@ -550,7 +564,7 @@ function indentAt(depth: number): string {
 }
 
 /** The live value at a node path, and whether the preview holds one at all. */
-function badgeAt(walk: Walk, key: string): { badge: string; hasBadge: boolean } {
+function badgeAt(walk: Walk, key: string) {
   const text = walk.preview?.values.get(key);
   return { badge: text ?? "", hasBadge: text !== undefined };
 }
@@ -590,13 +604,14 @@ interface OperandSlot {
  */
 function walkOperand(
   walk: Walk,
-  operand: unknown,
-  commit: (next: unknown) => void,
+  operand: ExpressionValue | undefined,
+  commit: (next: ExpressionValue) => void,
   slot: OperandSlot,
 ): void {
   const { allowEventRef, stateDefs } = walk.opts;
-  const stateRefs = (stateDefs || []).map((k) => `#/state/${k}`);
-  const refValue = ((operand as Record<string, unknown> | null)?.$ref as string) ?? "";
+  const stateRefs = stateDefs.map((k) => `#/state/${k}`);
+  // Shown as written: a malformed (non-string) pointer is coerced the way the picker would show it.
+  const refValue = String(fieldsOf(operand)?.$ref ?? "");
   const plan: RowPlan = {
     setRef: (value) => commit({ $ref: value }),
   };
@@ -693,16 +708,14 @@ function walkOperand(
 /** The rows of a positional-args list (`splice`, `call`), plus the row that grows it. */
 function walkArgs(
   walk: Walk,
-  args: unknown,
-  commit: (next: unknown[]) => void,
+  args: ExpressionValue | undefined,
+  commit: (next: ExpressionValue[]) => void,
   depth: number,
   path: (string | number)[],
   naming: { labels: string[]; fallbackLabel: string },
 ): void {
-  /* `Array.isArray` narrows an `unknown` to `any[]`, so every spread of it reads as unsafe to
-     the type-aware lint. The elements ARE unknown — each is an operand this walk discriminates
-     — so saying so restores the check rather than silencing it. */
-  const safeArgs: unknown[] = Array.isArray(args) ? args : [];
+  // Anything but a list is no args yet: each element is an operand the walk discriminates.
+  const safeArgs: ExpressionValue[] = Array.isArray(args) ? args : [];
   for (const [idx, arg] of safeArgs.entries()) {
     const argPath = [...path, "value", idx];
     const label = naming.labels[idx] ?? naming.fallbackLabel;
@@ -749,16 +762,14 @@ function walkArgs(
 /** The case rows of a `switch` node: matched value → result operand, the default, and `+ Add case`. */
 function walkSwitchCases(
   walk: Walk,
-  safeNode: Record<string, unknown>,
-  onChange: (node: unknown) => void,
+  safeNode: ExpressionFields,
+  onChange: (node: ExpressionValue) => void,
   depth: number,
   path: (string | number)[],
 ): void {
-  const cases = isJsonObject(safeNode.cases)
-    ? (safeNode.cases as Record<string, unknown>)
-    : ({} as Record<string, unknown>);
+  const cases: ExpressionFields = isJsonObject(safeNode.cases) ? safeNode.cases : {};
   const entries = Object.entries(cases);
-  const setCases = (next: Record<string, unknown>) => onChange({ ...safeNode, cases: next });
+  const setCases = (next: ExpressionFields) => onChange({ ...safeNode, cases: next });
 
   for (const [caseKey, operand] of entries) {
     const casePath = [...path, "cases", caseKey];
@@ -782,7 +793,7 @@ function walkSwitchCases(
         if (newKey === caseKey) {
           return;
         }
-        const next: Record<string, unknown> = {};
+        const next: ExpressionFields = {};
         for (const [k, v] of entries) {
           next[k === caseKey ? newKey : k] = v;
         }
@@ -829,16 +840,16 @@ function walkSwitchCases(
 }
 
 /** What replacing the operator means for the rest of the node. */
-function reoperate(safeNode: Record<string, unknown>, newOp: string): Record<string, unknown> {
+function reoperate(safeNode: ExpressionFields, newOp: string): ExpressionFields {
   const newInfo = operatorInfo(newOp);
-  const updated: Record<string, unknown> = { operator: newOp, target: safeNode.target };
+  const updated: ExpressionFields = { operator: newOp, target: safeNode.target };
   if (newInfo.targetMustBeRef && operandMode(safeNode.target) !== "ref") {
     updated.target = { $ref: "" };
   }
   if (newInfo.needsValue) {
     if (newInfo.valueIsNode) {
-      const val = safeNode.value as Record<string, unknown> | null;
-      updated.value = val?.operator ? safeNode.value : { operator: "!", target: null };
+      const valueNode = fieldsOf(safeNode.value);
+      updated.value = valueNode?.operator ? valueNode : { operator: "!", target: null };
     } else if (newInfo.spliceArray) {
       updated.value = Array.isArray(safeNode.value) ? safeNode.value : [null];
     } else {
@@ -863,16 +874,14 @@ function reoperate(safeNode: Record<string, unknown>, newOp: string): Record<str
 /** Emit every row one expression node reads as, deepest last. */
 function walkExpression(
   walk: Walk,
-  node: unknown,
-  onChange: (node: unknown) => void,
+  node: ExpressionValue | undefined,
+  onChange: (node: ExpressionValue) => void,
   depth: number,
   path: (string | number)[],
 ): void {
-  const safeNode: Record<string, unknown> =
-    node && typeof node === "object"
-      ? (node as Record<string, unknown>)
-      : { operator: "=", target: null };
-  const op = (safeNode.operator as string) || "=";
+  const safeNode = fieldsOf(node) ?? { operator: "=", target: null };
+  // Shown as written: a malformed (non-string) operator is coerced the way the picker would show it.
+  const op = String(safeNode.operator || "=");
   const info = operatorInfo(op);
   const pathKey = path.join("/");
   const sub = (...segs: (string | number)[]) => [...path, ...segs].join("/");
@@ -914,23 +923,22 @@ function walkExpression(
      would be a second door onto the operators the select has just stopped offering. */
   const grammar = depth === 0 ? opts.operators : undefined;
   const operatorKey = `${pathKey}::operator`;
-  walk.plans.set(operatorKey, {
-    ...(grammar
-      ? {}
-      : {
-          browse: (anchor: HTMLElement) =>
-            openFormulaPalette({
-              anchor,
-              entries: formulaCatalog(opts.stateEntries),
-              onPick: (entry) =>
-                applyCatalogPick(entry, onChange, {
-                  onInsertDef: opts.onInsertDef,
-                  stateEntries: opts.stateEntries,
-                }),
-            }),
-        }),
+  const operatorPlan: RowPlan = {
     setOperator: (newOp) => onChange(reoperate(safeNode, newOp)),
-  });
+  };
+  if (!grammar) {
+    operatorPlan.browse = (anchor: HTMLElement) =>
+      openFormulaPalette({
+        anchor,
+        entries: formulaCatalog(opts.stateEntries),
+        onPick: (entry) =>
+          applyCatalogPick(entry, onChange, {
+            onInsertDef: opts.onInsertDef,
+            stateEntries: opts.stateEntries,
+          }),
+      });
+  }
+  walk.plans.set(operatorKey, operatorPlan);
   walk.rows.push(
     blankRow({
       ...rootBadge,
@@ -980,11 +988,10 @@ function walkExpression(
         prop: "value",
       }),
     );
+    const valueNode = fieldsOf(safeNode.value);
     walkExpression(
       walk,
-      (safeNode.value as Record<string, unknown> | null)?.operator
-        ? safeNode.value
-        : { operator: "!", target: null },
+      valueNode?.operator ? valueNode : { operator: "!", target: null },
       (v) => onChange({ ...safeNode, value: v }),
       depth + 1,
       [...path, "value"],
@@ -1047,8 +1054,8 @@ function newWalk(opts: ExpressionEditorOpts): Walk {
 
 /** The projection one expression reads as: the rows, and what each key commits. */
 export function flattenExpression(
-  node: unknown,
-  onChange: (node: unknown) => void,
+  node: ExpressionValue | undefined,
+  onChange: (node: ExpressionValue) => void,
   opts: ExpressionEditorOpts,
 ): ExpressionProjection {
   const walk = newWalk(opts);
@@ -1061,8 +1068,8 @@ export function flattenExpression(
  * `dispatchEvent` detail (spec.md §20). The same rows, with no operator row above them.
  */
 export function flattenOperand(
-  operand: unknown,
-  onChange: (next: unknown) => void,
+  operand: ExpressionValue | undefined,
+  onChange: (next: ExpressionValue) => void,
   opts: ExpressionEditorOpts & { label?: string; prop?: string },
 ): ExpressionProjection {
   const walk = newWalk(opts);
@@ -1151,8 +1158,8 @@ function paint(host: HTMLElement, projection: ExpressionProjection, opts: Expres
  */
 export function mountExpressionEditor(
   host: HTMLElement,
-  node: unknown,
-  onChange: (node: unknown) => void,
+  node: ExpressionValue | undefined,
+  onChange: (node: ExpressionValue) => void,
   opts: ExpressionEditorOpts,
 ): void {
   paint(host, flattenExpression(node, onChange, opts), opts);
@@ -1165,8 +1172,8 @@ export function mountExpressionEditor(
  */
 export function mountOperandEditor(
   host: HTMLElement,
-  operand: unknown,
-  onChange: (next: unknown) => void,
+  operand: ExpressionValue | undefined,
+  onChange: (next: ExpressionValue) => void,
   opts: ExpressionEditorOpts & { label?: string; prop?: string },
 ): void {
   paint(host, flattenOperand(operand, onChange, opts), opts);

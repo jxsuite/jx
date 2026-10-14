@@ -5,7 +5,6 @@
  */
 import { installMockPlatform } from "./harness";
 import { describe, expect, test } from "bun:test";
-import { registerPlatform } from "../src/platform";
 import {
   dataSurfaceAvailable,
   deleteRow,
@@ -84,7 +83,8 @@ describe("degradation without the member family", () => {
   });
 
   test("survives a missing platform registration entirely", async () => {
-    registerPlatform(undefined as never);
+    // The registration slot is typed `StudioPlatform | undefined`, so clearing it needs no cast.
+    globalThis.__jxPlatform = undefined;
     expect(dataSurfaceAvailable()).toBe(false);
     expect(await fetchConnections()).toBeNull();
     const probe = await testConnection("main");

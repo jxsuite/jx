@@ -3,13 +3,22 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { resolvePreviewFile, startPreviewServer } from "../src/site/preview-server.ts";
+import { isString } from "@jxsuite/schema/guards";
 
 const TMP = resolve(import.meta.dir, "__test-preview__");
 let server: Server;
 let base: string;
+
+/** The TCP port a started preview server is bound to (port 0 asks the OS to pick one). */
+function portOf(listening: Server): number {
+  const address = listening.address();
+  if (address === null || isString(address)) {
+    throw new Error("The preview server listens on TCP, so it must report an AddressInfo");
+  }
+  return address.port;
+}
 
 beforeAll(() => {
   rmSync(TMP, { force: true, recursive: true });
@@ -22,8 +31,7 @@ beforeAll(() => {
   writeFileSync(join(TMP, "data.yaml"), "a: 1\n", "utf8");
 
   server = startPreviewServer(TMP, 0);
-  const { port } = server.address() as AddressInfo;
-  base = `http://localhost:${port}`;
+  base = `http://localhost:${portOf(server)}`;
 });
 
 afterAll(() => {
@@ -104,8 +112,7 @@ describe("startPreviewServer", () => {
     writeFileSync(join(bare, "index.html"), "<h1>Bare</h1>", "utf8");
     const bareServer = startPreviewServer(bare, 0);
     try {
-      const { port } = bareServer.address() as AddressInfo;
-      const res = await fetch(`http://localhost:${port}/nope/`);
+      const res = await fetch(`http://localhost:${portOf(bareServer)}/nope/`);
       expect(res.status).toBe(404);
       expect(res.headers.get("content-type")).toContain("text/plain");
       expect(await res.text()).toBe("Not found");

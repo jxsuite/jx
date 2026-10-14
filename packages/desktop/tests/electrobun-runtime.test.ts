@@ -11,6 +11,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import {
   HUTCH_TARGET,
   WINDOWS_RUNTIME_FILES,
@@ -126,10 +128,12 @@ describe("electrobunVersion", () => {
      the `electrobun.version` pin from hutch.config.ts and made the npm dependency select the
      toolchain, so anything hand-written here could name a release the build never used. */
   test("reports the installed electrobun dependency's exact version", () => {
-    const installed = createRequire(import.meta.url)("electrobun/package.json") as {
-      version: string;
-    };
-    expect(electrobunVersion()).toBe(installed.version);
-    expect(electrobunVersion()).toMatch(/^\d+\.\d+\.\d+/);
+    const installed: JsonValue = createRequire(import.meta.url)("electrobun/package.json");
+    if (!isJsonObject(installed) || !isString(installed.version)) {
+      throw new Error("electrobun/package.json has no string version");
+    }
+    const version = electrobunVersion();
+    expect(version).toBe(installed.version);
+    expect(version).toMatch(/^\d+\.\d+\.\d+/);
   });
 });

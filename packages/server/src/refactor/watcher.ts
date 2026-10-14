@@ -6,7 +6,8 @@
  * build/reload); both share the pure `toFsEvent`/`coalesceFsEvents` helpers.
  */
 
-import { watch as chokidarWatch } from "chokidar";
+import { watch } from "chokidar";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { coalesceFsEvents, toFsEvent } from "./fs-events.ts";
 import { invalidateReferenceCache } from "./find-refs.ts";
 import { createWatchIgnore } from "../watch-policy.ts";
@@ -36,7 +37,7 @@ export function createFsWatcher(
   let buffer: FsEventPayload[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const watcher = chokidarWatch(root, {
+  const watcher = watch(root, {
     /* Left on deliberately: a symlink inside a project is project content, and its events belong
        in the sidebar. It is the link pointing OUT of the root that walks the watcher off into the
        rest of the filesystem, and createWatchIgnore drops exactly those — along with the sockets
@@ -71,9 +72,8 @@ export function createFsWatcher(
      directory holding a few unix sockets took the whole launcher down rather than losing a few
      watches. The filter above means these should now be rare; the listener means they are never
      fatal when they are not. */
-  watcher.on("error", (err) => {
-    const error = err as NodeJS.ErrnoException;
-    console.error(`[fs-watch] ${error.message ?? String(error)}`);
+  watcher.on("error", (cause) => {
+    console.error(`[fs-watch] ${errorMessage(cause)}`);
   });
 
   return {

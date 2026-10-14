@@ -29,7 +29,9 @@ describe("onMessage unsubscribe", () => {
 
     const deliver = (n: number) => {
       for (const l of listeners) {
-        l({ data: { "jx:canvas": "tok", payload: { n } }, origin: "" } as MessageEvent);
+        l(
+          new MessageEvent("message", { data: { "jx:canvas": "tok", payload: { n } }, origin: "" }),
+        );
       }
     };
     deliver(1);

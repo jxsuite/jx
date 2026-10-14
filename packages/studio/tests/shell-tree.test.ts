@@ -197,7 +197,7 @@ describe("the frame is a document", () => {
     /* The frame is `src/surfaces/shell.json` — a Jx document the runtime renders — so the ids the
        application adopts are readable from the JSON itself rather than only from a rendered tree.
        That is the point of the migration: Studio can open its own frame. */
-    const { children } = shellDoc as { children: { attributes: { id: string } }[] };
+    const { children } = shellDoc;
     expect(children.map((child) => child.attributes.id)).toEqual([
       "toolbar",
       "pane-grid",
@@ -210,11 +210,11 @@ describe("the frame is a document", () => {
       "right-panel",
       "statusbar",
     ]);
-    expect((shellDoc as { attributes: { id: string } }).attributes.id).toBe("app");
+    expect(shellDoc.attributes.id).toBe("app");
   });
 
   test("carries no style of its own, because the frame must be laid out by the first paint", () => {
     // Its rules are the generated styles/shell-frame.css (studio-ui-guidelines.md §1.1).
-    expect("style" in (shellDoc as Record<string, unknown>)).toBe(false);
+    expect("style" in shellDoc).toBe(false);
   });
 });

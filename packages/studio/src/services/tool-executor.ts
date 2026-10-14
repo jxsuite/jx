@@ -20,7 +20,7 @@
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
 import { DEFAULT_TURN_POLICY, runTurn } from "@jxsuite/ai/harness";
-import type { TurnRun } from "@jxsuite/ai/harness";
+import type { TurnInput, TurnRun } from "@jxsuite/ai/harness";
 import { toChatMessages, toOpenAITools } from "@jxsuite/ai/messages";
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
@@ -35,6 +35,9 @@ import { studioTurnHooks } from "./harness/turn-hooks";
 
 /** What a turn that drew nothing says: the model answered with neither text nor a tool call. */
 export const EMPTY_TURN_TEXT = DEFAULT_TURN_POLICY.emptyText;
+
+/** {@link TurnInput} while this module assembles it: read-only to `runTurn`, not to its builder. */
+type TurnInputDraft = { -readonly [K in keyof TurnInput]: TurnInput[K] };
 
 interface RunAgentLoopOptions {
   chatState: ReturnType<typeof createChatState>;
@@ -94,7 +97,7 @@ export async function runAgentLoop({
   let superseded = false;
   let run: TurnRun | undefined;
   try {
-    run = runTurn({
+    const input: TurnInputDraft = {
       history,
       system: [{ text: systemPrompt }],
       /* Projected from the chat store, the transcript of record. The streaming client is read on
@@ -104,13 +107,15 @@ export async function runAgentLoop({
           chatState.toMessagesArray(),
           toOpenAITools(request.tools),
           systemPrompt,
+          /* SAFETY: the one production caller, `document-assistant.ts`, always passes its turn
+             controller's signal; only tests that drive the loop directly omit it, and their stream
+             doubles record the absent signal rather than reading it — which the agent-trace
+             goldens (`signal: "none"`) pin. */
           signal as AbortSignal,
         ),
       modelInfo: { family: "openai-compat", model: chatState.model },
       tools: toolRegistry,
-      ...(signal ? { signal } : {}),
       turnId: ledger.turnId,
-      ...(placeholder ? { firstMessageId: placeholder.id } : {}),
       policy: { estimateTokens: estimatePromptTokens },
       hooks: studioTurnHooks({
         superseded: () =>
@@ -128,7 +133,14 @@ export async function runAgentLoop({
           applyHarnessEvent(chatState, event);
         }
       },
-    });
+    };
+    if (signal) {
+      input.signal = signal;
+    }
+    if (placeholder) {
+      input.firstMessageId = placeholder.id;
+    }
+    run = runTurn(input);
     await run.outcome;
   } finally {
     endBatch();

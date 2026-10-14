@@ -26,6 +26,14 @@ const flush = () =>
     setTimeout(r, 0);
   });
 
+/** The shipped stylebook page, as the document `mount` takes. */
+function stylebookPage(): JxDocument {
+  /* SAFETY: stylebook/jx-tabs.json is a Jx page document, and conformance.test.ts runs every
+     stylebook page through validateDocument, so a page that is not a JxDocument fails there by
+     name; the JSON import only infers the literal shape of its keys. */
+  return stylebookTabs as JxDocument;
+}
+
 type TabsEl = HTMLElement & { selected: string; label: string; activation: string };
 type TabEl = HTMLElement & { value: string; label: string; selected: boolean };
 type PanelEl = HTMLElement & { active: boolean };
@@ -36,7 +44,7 @@ interface TabSpec {
 }
 
 function tab(value: string, label: string, spec: TabSpec = {}): JxElement {
-  const attributes: Record<string, string> = {
+  const attributes: NonNullable<JxElement["attributes"]> = {
     id: `tab-${value}`,
     value,
     label,
@@ -48,7 +56,7 @@ function tab(value: string, label: string, spec: TabSpec = {}): JxElement {
   if (spec.dirty) {
     attributes["dirty"] = "";
   }
-  return { tagName: "jx-tab", attributes } as JxElement;
+  return { tagName: "jx-tab", attributes };
 }
 
 interface StripSpec {
@@ -60,7 +68,7 @@ interface StripSpec {
 }
 
 function strip(spec: StripSpec = {}): JxDocument {
-  const attributes: Record<string, string> = {
+  const attributes: NonNullable<JxElement["attributes"]> = {
     label: spec.label ?? "Inspector sections",
     selected: spec.selected ?? "design",
   };
@@ -84,7 +92,7 @@ function strip(spec: StripSpec = {}): JxDocument {
         ],
       },
     ],
-  } as unknown as JxDocument;
+  };
 }
 
 let dispose: (() => void) | null = null;
@@ -98,12 +106,52 @@ interface Mounted {
   selects: string[];
 }
 
+/** The `index`th `jx-tabs` under `root`, typed with the props its document declares. */
+function stripAt(root: ParentNode, index = 0): TabsEl {
+  const found = root.querySelectorAll("jx-tabs")[index];
+  if (!found) {
+    throw new Error(`no jx-tabs #${index} was rendered`);
+  }
+  /* SAFETY: registerUi() in beforeAll defined jx-tabs from jx-tabs.json, whose state declares
+     `selected`, `label` and `activation` as props, so every jx-tabs element is that class. */
+  return found as TabsEl;
+}
+
+/** A strip's own tabs, typed with the props their document declares. */
+function rowsOf(tabs: HTMLElement): TabEl[] {
+  /* SAFETY: tabsOf() returns only `jx-tab` elements whose nearest strip is `tabs`, and
+     registerUi() in beforeAll defined jx-tab from jx-tab.json, which declares `value`, `label` and
+     `selected` as props. */
+  return tabsOf(tabs) as TabEl[];
+}
+
+/** Every `jx-tab-panel` under `root`, typed with the `active` prop its document declares. */
+function panelsIn(root: ParentNode): PanelEl[] {
+  /* SAFETY: the selector matches only jx-tab-panel elements, and registerUi() in beforeAll defined
+     jx-tab-panel from jx-tab-panel.json, which declares `active` as a prop. */
+  return [...root.querySelectorAll("jx-tab-panel")] as PanelEl[];
+}
+
+/** A tab's close button, which jx-tab.json renders as a native `<button part="close">`. */
+function closeOf(row: Element): HTMLButtonElement {
+  const close = row.querySelector('[part="close"]');
+  if (!(close instanceof HTMLButtonElement)) {
+    throw new Error("the tab rendered no close button");
+  }
+  return close;
+}
+
+/** A strip event's `detail` as text, `"undefined"` for an event that carries none. */
+function detailOf(event: Event): string {
+  return String(event instanceof CustomEvent ? event.detail : undefined);
+}
+
 async function render(doc: JxDocument): Promise<Mounted> {
   const host = document.createElement("div");
   document.body.append(host);
   ({ dispose } = await mount(doc, host));
   await flush();
-  const tabs = host.querySelector("jx-tabs") as TabsEl;
+  const tabs = stripAt(host);
   const changes: { detail: string; selected: string }[] = [];
   const closes: string[] = [];
   const selects: string[] = [];
@@ -111,19 +159,20 @@ async function render(doc: JxDocument): Promise<Mounted> {
   // `close` are documented as bubbling, and a listener on the target itself cannot tell the
   // Difference. A delegated handler on a panel container is the shape a real host uses.
   host.addEventListener("change", (e) => {
-    changes.push({
-      detail: String((e as CustomEvent).detail),
-      selected: (e.target as TabsEl).selected,
-    });
+    /* SAFETY: nothing under `host` dispatches `change` but a mounted jx-tabs strip (its tabs send
+       `select`, which the strip stops, and no tab holds a form control), so the target is a
+       jx-tabs element, whose `selected` prop its document declares. */
+    const source = e.target as TabsEl;
+    changes.push({ detail: detailOf(e), selected: source.selected });
   });
   host.addEventListener("close", (e) => {
-    closes.push(String((e as CustomEvent).detail));
+    closes.push(detailOf(e));
   });
   // `select` is the strip's INTERNAL protocol and must stop at the tablist.
   host.addEventListener("select", (e) => {
-    selects.push(String((e as CustomEvent).detail));
+    selects.push(detailOf(e));
   });
-  return { host, tabs, rows: tabsOf(tabs) as TabEl[], changes, closes, selects };
+  return { host, tabs, rows: rowsOf(tabs), changes, closes, selects };
 }
 
 /** Press a key where a keyboard would: at the focused tab, or at `fallback`. */
@@ -214,11 +263,8 @@ describe("jx-tabs", () => {
     // The definition still authors one, and it still declares nothing of its own: a `display` on
     // It would have been the box, and a document that grows a second internal node must not
     // Quietly become one either.
-    const doc = documents["jx-tabs"]!;
-    const slotDef = (doc.children as JxElement[])[0]!;
-    expect(slotDef.tagName).toBe("slot");
-    expect(slotDef.style).toBeUndefined();
-    expect(doc.children).toHaveLength(1);
+    const doc = documents["jx-tabs"];
+    expect(doc.children).toEqual([{ tagName: "slot" }]);
     expect(rules(tabs).get("&")).toContain("display: flex");
   });
 
@@ -226,15 +272,15 @@ describe("jx-tabs", () => {
     // A BOUND role makes `roleOf` return "bound" and switches the naming rules off, and `tablist`
     // Is in neither named-role set anyway — so an unnamed strip is a silent defect everywhere but
     // Here.
-    const unnamed = {
+    const unnamed: JxDocument = {
       tagName: "div",
       children: [{ tagName: "div", attributes: { role: "tablist" } }],
-    } as unknown as JxDocument;
+    };
     expect(findA11yDefects(unnamed)).toEqual([]);
 
-    const doc = documents["jx-tabs"]!;
-    expect(doc.attributes!["aria-label"]).toBe("${state.label}");
-    expect((doc.state!["label"] as { default: string }).default).toBe("Tabs");
+    const doc = documents["jx-tabs"];
+    expect(doc.attributes?.["aria-label"]).toBe("${state.label}");
+    expect(doc.state?.["label"]).toMatchObject({ default: "Tabs" });
   });
 
   test("exactly one tab holds the caret at rest, and the arrows move it with wrap", async () => {
@@ -346,7 +392,7 @@ describe("jx-tabs", () => {
   });
 
   test("a key that rose out of a nested strip is not the outer strip's to answer", async () => {
-    const doc = {
+    const doc: JxDocument = {
       tagName: "div",
       children: [
         {
@@ -360,9 +406,9 @@ describe("jx-tabs", () => {
           ],
         },
       ],
-    } as unknown as JxDocument;
+    };
     const { tabs, rows } = await render(doc);
-    const inner = document.querySelectorAll("jx-tabs")[1] as TabsEl;
+    const inner = stripAt(document, 1);
 
     // The outer strip owns exactly its own tabs, and the nested one is not one of them.
     expect(rows).toHaveLength(2);
@@ -416,7 +462,7 @@ describe("jx-tabs", () => {
       seen += 1;
     });
     other.addEventListener("keydown", (e) => {
-      onTabsKeydown(scope, e as KeyboardEvent);
+      onTabsKeydown(scope, e);
     });
     other.addEventListener("select", (e) => {
       onTabsSelect(scope, e);
@@ -440,19 +486,17 @@ describe("jx-tabs", () => {
     // Every gate green. This is what mounts it.
     const host = document.createElement("div");
     document.body.append(host);
-    ({ dispose } = await mount(stylebookTabs as unknown as JxDocument, host, {
-      base: "jx-ui:/stylebook/",
-    } as never));
+    ({ dispose } = await mount(stylebookPage(), host, { base: "jx-ui:/stylebook/" }));
     await flush();
-    const auto = host.querySelector("jx-tabs") as TabsEl;
-    const rows = tabsOf(auto) as TabEl[];
+    const auto = stripAt(host);
+    const rows = rowsOf(auto);
     rows[1]!.click();
     await flush();
     expect(auto.selected).toBe("content");
     expect(auto.getAttribute("selected")).toBe("content");
     expect(selections(rows)).toEqual(["false", "true", "false"]);
     // The three panels of the automatic strip: exactly one is showing.
-    const panels = [...host.querySelectorAll("jx-tab-panel")] as PanelEl[];
+    const panels = panelsIn(host);
     expect(panels.map((panel) => panel.hasAttribute("hidden"))).toEqual([true, false, true]);
   });
 
@@ -466,7 +510,7 @@ describe("jx-tabs", () => {
     // Tablist drops out of the tab order and no host write repairs it.
     rows[1]!.remove();
     await flush();
-    const left = tabsOf(tabs) as TabEl[];
+    const left = rowsOf(tabs);
     expect(carets(left)).toEqual(["0", "-1"]);
     expect(selections(left)).toEqual(["false", "false"]);
   });
@@ -484,7 +528,7 @@ describe("jx-tabs", () => {
     // Adding one puts it, and it is what the observer watches.
     tabs.append(late);
     await flush();
-    const now = tabsOf(tabs) as TabEl[];
+    const now = rowsOf(tabs);
     expect(now).toHaveLength(2);
     expect(carets(now)).toEqual(["-1", "0"]);
     expect(selections(now)).toEqual(["false", "true"]);
@@ -524,18 +568,18 @@ describe("jx-tabs", () => {
     expect(own.get('&[aria-selected="true"]')).toContain("border-block-end-color");
 
     const strip_ = rules(tabs);
-    expect(strip_.get('&[aria-orientation="vertical"]')).toContain("flex-direction: column");
-    expect(strip_.get('&[aria-orientation="vertical"]')).toContain("border-inline-end: 1px solid");
+    const vertical = strip_.get('&[aria-orientation="vertical"]');
+    expect(vertical).toContain("flex-direction: column");
+    expect(vertical).toContain("border-inline-end: 1px solid");
     /* A DIRECT-CHILD form, and that is the whole of what a slot leaving no node bought here. It
        was a descendant selector because it had to cross the emulated `<slot>`, which meant a
        vertical strip also turned the marks of a HORIZONTAL strip nested inside it — the same
        defect `jx-action-group`'s seam had, and measured the same way in Chrome 152: with the loose
        form the nested strip's selected tab drew a 2px `rgb(37, 99, 235)` INLINE-end mark and no
        block-end mark at all, and with this form it keeps its own block-end one. */
-    expect(strip_.get('&[aria-orientation="vertical"] > jx-tab')).toContain(
-      "border-inline-end: 2px solid transparent",
-    );
-    expect(strip_.get('&[aria-orientation="vertical"] > jx-tab')).toContain("border-block-end: 0");
+    const verticalTab = strip_.get('&[aria-orientation="vertical"] > jx-tab');
+    expect(verticalTab).toContain("border-inline-end: 2px solid transparent");
+    expect(verticalTab).toContain("border-block-end: 0");
     expect(strip_.get('&[aria-orientation="vertical"] > jx-tab[aria-selected="true"]')).toContain(
       "border-inline-end-color: var(--jx-accent-solid)",
     );
@@ -576,7 +620,7 @@ describe("jx-tab", () => {
     );
 
     // An unlabelled tab claims no empty name.
-    const { rows: bare } = await render(strip({ tabs: [{ tagName: "jx-tab" } as JxElement] }));
+    const { rows: bare } = await render(strip({ tabs: [{ tagName: "jx-tab" }] }));
     expect(bare[0]!.hasAttribute("aria-label")).toBe(false);
   });
 
@@ -598,7 +642,7 @@ describe("jx-tab", () => {
       strip({ tabs: [tab("index", "index.page.json", { closable: true, dirty: true })] }),
     );
     const row = rows[0]!;
-    const close = row.querySelector('[part="close"]') as HTMLButtonElement;
+    const close = closeOf(row);
     expect(close.localName).toBe("button");
     expect(close.getAttribute("type")).toBe("button");
     expect(close.getAttribute("aria-label")).toBe("Close index.page.json");
@@ -613,10 +657,12 @@ describe("jx-tab", () => {
     // Target too, so the spacing exception cannot rescue an undersized one. The pseudo-element
     // Grows the hit area without moving a pixel of the layout.
     const own = rules(row);
-    expect(own.get('& [part="close"]')).toContain("width: 16px");
-    expect(own.get('& [part="close"]')).toContain("position: relative");
-    expect(own.get('& [part="close"]::before')).toContain("inset-block: -4px");
-    expect(own.get('& [part="close"]::before')).toContain("inset-inline: -4px");
+    const target = own.get('& [part="close"]');
+    expect(target).toContain("width: 16px");
+    expect(target).toContain("position: relative");
+    const reach = own.get('& [part="close"]::before');
+    expect(reach).toContain("inset-block: -4px");
+    expect(reach).toContain("inset-inline: -4px");
   });
 
   test("a plain tab draws no dot, no close button, and pays nothing for their absence", async () => {
@@ -650,7 +696,7 @@ describe("jx-tab", () => {
         ],
       }),
     );
-    const close = rows[0]!.querySelector('[part="close"]') as HTMLButtonElement;
+    const close = closeOf(rows[0]!);
     // The close button is a tab stop whenever its tab is current, so a keyboard reaches it in one
     // Press. If the strip answers Enter and Space there — selecting the tab and cancelling the
     // Default — the button is a focusable control no keyboard can operate, which is the whole of
@@ -682,7 +728,7 @@ describe("jx-tab", () => {
         ],
       }),
     );
-    const close = rows[1]!.querySelector('[part="close"]') as HTMLButtonElement;
+    const close = closeOf(rows[1]!);
     close.focus();
     // Focus genuinely reaches a tab's descendant, so the active tab is the one that CONTAINS the
     // Key's target. Resolving only exact targets would send the caret back to the first tab.
@@ -691,7 +737,7 @@ describe("jx-tab", () => {
   });
 
   test("a consumer child written into a tab is not swallowed into the close button", async () => {
-    const doc = {
+    const doc: JxDocument = {
       tagName: "div",
       children: [
         {
@@ -706,7 +752,7 @@ describe("jx-tab", () => {
           ],
         },
       ],
-    } as unknown as JxDocument;
+    };
     const { rows } = await render(doc);
     const close = rows[0]!.querySelector('[part="close"]')!;
     expect(close.querySelector("b")).toBeNull();
@@ -723,7 +769,7 @@ describe("jx-tab", () => {
         ],
       }),
     );
-    const close = rows[0]!.querySelector('[part="close"]') as HTMLButtonElement;
+    const close = closeOf(rows[0]!);
     close.click();
     expect(closes).toEqual(["index"]);
     expect(changes).toEqual([]);
@@ -737,7 +783,7 @@ describe("jx-tab", () => {
 
 describe("jx-tab-panel", () => {
   test("hidden is declared in attributes, and actually hides the panel", async () => {
-    const doc = {
+    const doc: JxDocument = {
       tagName: "div",
       children: [
         {
@@ -751,12 +797,12 @@ describe("jx-tab-panel", () => {
           children: [{ tagName: "p", textContent: "Content" }],
         },
       ],
-    } as unknown as JxDocument;
+    };
     const host = document.createElement("div");
     document.body.append(host);
     ({ dispose } = await mount(doc, host));
     await flush();
-    const [shown, gone] = [...host.querySelectorAll("jx-tab-panel")] as PanelEl[];
+    const [shown, gone] = panelsIn(host);
     expect(shown!.getAttribute("role")).toBe("tabpanel");
     expect(shown!.getAttribute("tabindex")).toBe("0");
     expect(shown!.getAttribute("aria-labelledby")).toBe("tab-design");
@@ -765,9 +811,9 @@ describe("jx-tab-panel", () => {
 
     // A root-level `hidden` key is silently ignored — `defineElement` never runs `applyProperties`
     // On the host — so the binding must live in `attributes`, and this is what says it does.
-    const def = documents["jx-tab-panel"]!;
-    expect(def.attributes!["hidden"]).toEqual({ $ref: "#/state/notActive" });
-    expect((def as { hidden?: unknown }).hidden).toBeUndefined();
+    const def = documents["jx-tab-panel"];
+    expect(def.attributes?.["hidden"]).toEqual({ $ref: "#/state/notActive" });
+    expect(def.hidden).toBeUndefined();
 
     gone!.active = true;
     expect(gone!.hasAttribute("hidden")).toBe(false);
@@ -776,10 +822,10 @@ describe("jx-tab-panel", () => {
   });
 
   test("a panel with no tab to name it carries no aria-labelledby at all", async () => {
-    const doc = {
+    const doc: JxDocument = {
       tagName: "div",
       children: [{ tagName: "jx-tab-panel", attributes: { active: "${true}" } }],
-    } as unknown as JxDocument;
+    };
     const host = document.createElement("div");
     document.body.append(host);
     ({ dispose } = await mount(doc, host));
@@ -792,10 +838,10 @@ describe("jx-tab-panel", () => {
   });
 
   test("the panel declares its own display, so it also says what hidden means to it", async () => {
-    const doc = {
+    const doc: JxDocument = {
       tagName: "div",
       children: [{ tagName: "jx-tab-panel", attributes: { active: "${true}" } }],
-    } as unknown as JxDocument;
+    };
     const host = document.createElement("div");
     document.body.append(host);
     ({ dispose } = await mount(doc, host));

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { JxMutableNode } from "../types.ts";
-import type { JxDocOp } from "../src/doc-ops.ts";
+import type { JxMutableNode, JxPath } from "../types.ts";
+import type { JxDocOp, JxDocOpPair } from "../src/doc-ops.ts";
+import { isString } from "../src/guards.ts";
 import {
   applyDocOpToDoc,
   applyDocOpsWithInverse,
@@ -20,13 +21,59 @@ function doc(): JxMutableNode {
   };
 }
 
+/** The node at `path`, failing the test when nothing is there. */
+function nodeAt(d: JxMutableNode, path: JxPath): JxMutableNode {
+  const node = getNodeAtPath(d, path);
+  if (node === undefined) {
+    throw new Error(`no node at /${path.join("/")}`);
+  }
+  return node;
+}
+
+/** The child at `index` of `node`'s children array, if it has one. */
+function childAt(node: JxMutableNode, index: number): JxMutableNode | string | undefined {
+  return Array.isArray(node.children) ? node.children[index] : undefined;
+}
+
+/** A `ul` whose `children` slot is one repeater, so it has no children array to splice. */
+function mappedList(): JxMutableNode {
+  return { children: { $prototype: "Array", items: [], map: { tagName: "li" } }, tagName: "ul" };
+}
+
+/**
+ * An op whose `op` discriminant is outside the vocabulary, as a peer speaking another protocol
+ * version could send. JxDocOp cannot spell one, which is exactly what the case needs.
+ */
+function foreignOp(kind: string): JxDocOp {
+  // SAFETY: Only `op.op` is read before the applier and inverseOf reach their default branch and throw `unknown-doc-op:<kind>`, so the set-key members it is shaped after are never touched.
+  return { key: "", op: kind, path: [] } as JxDocOp;
+}
+
+/** The error `applyDocOpsWithInverse` throws: the op's reason, carrying the pairs already applied. */
+interface PartialApplyError extends Error {
+  applied: JxDocOpPair[];
+}
+
+function isPartialApplyError(error: unknown): error is PartialApplyError {
+  return error instanceof Error && "applied" in error && Array.isArray(error.applied);
+}
+
+/** Run `apply` and hand back the partial-apply error it throws, or null when it throws none. */
+function partialApplyError(apply: () => void): PartialApplyError | null {
+  try {
+    apply();
+  } catch (error) {
+    return isPartialApplyError(error) ? error : null;
+  }
+  return null;
+}
+
 describe("getNodeAtPath", () => {
   test("walks nested paths and tolerates missing segments", () => {
     const d = doc();
     expect(getNodeAtPath(d, [])).toBe(d);
-    expect(getNodeAtPath(d, ["children", 0, "textContent"])).toBe(
-      "Title" as unknown as JxMutableNode,
-    );
+    // A path that ends on a leaf answers the leaf, whatever the declared node return type says.
+    expect<unknown>(getNodeAtPath(d, ["children", 0, "textContent"])).toBe("Title");
     expect(getNodeAtPath(d, ["children", 9, "textContent"])).toBeUndefined();
   });
 });
@@ -40,15 +87,12 @@ describe("childArray", () => {
   });
 
   test("refuses a children array passed as the node", () => {
-    expect(() => childArray([] as unknown as JxMutableNode)).toThrow(TypeError);
+    // A path ending on "children" resolves to the array itself, which is how one gets passed here.
+    expect(() => childArray(nodeAt(doc(), ["children"]))).toThrow(TypeError);
   });
 
   test("refuses mapped-array children", () => {
-    const node = {
-      children: { map: {} },
-      tagName: "ul",
-    } as unknown as JxMutableNode as unknown as JxMutableNode;
-    expect(() => childArray(node)).toThrow(TypeError);
+    expect(() => childArray(mappedList())).toThrow(TypeError);
   });
 });
 
@@ -69,9 +113,9 @@ describe("applyDocOpToDoc", () => {
   test("set-key sets, replaces, and deletes", () => {
     const d = doc();
     applyDocOpToDoc(d, { key: "textContent", op: "set-key", path: ["children", 0], value: "New" });
-    expect((d.children as JxMutableNode[])[0]!.textContent).toBe("New");
+    expect(nodeAt(d, ["children", 0]).textContent).toBe("New");
     applyDocOpToDoc(d, { key: "textContent", op: "set-key", path: ["children", 0] });
-    expect("textContent" in (d.children as JxMutableNode[])[0]!).toBe(false);
+    expect("textContent" in nodeAt(d, ["children", 0])).toBe(false);
   });
 
   test("set-key on a missing node throws with a machine-readable reason", () => {
@@ -80,17 +124,24 @@ describe("applyDocOpToDoc", () => {
     ).toThrow("doc-op-node-not-found:children/9");
   });
 
+  test("a child op under a missing parent throws a TypeError naming the path", () => {
+    const op: JxDocOp = { index: 0, node: "x", op: "insert-child", parentPath: ["children", 9] };
+    expect(() => applyDocOpToDoc(doc(), op)).toThrow(
+      new TypeError("doc-op-node-not-found:children/9"),
+    );
+  });
+
   test("insert/remove/set-child splice the children array", () => {
     const d = doc();
     applyDocOpToDoc(d, { index: 1, node: "loose", op: "insert-child", parentPath: [] });
-    expect((d.children as unknown[])[1]).toBe("loose");
+    expect(childAt(d, 1)).toBe("loose");
     applyDocOpToDoc(d, {
       index: 1,
       node: { tagName: "aside" },
       op: "set-child",
       parentPath: [],
     });
-    expect((d.children as JxMutableNode[])[1]!.tagName).toBe("aside");
+    expect(nodeAt(d, ["children", 1]).tagName).toBe("aside");
     applyDocOpToDoc(d, { index: 1, op: "remove-child", parentPath: [] });
     expect(d.children).toHaveLength(2);
   });
@@ -106,8 +157,7 @@ describe("applyDocOpToDoc", () => {
       toParentPath: ["children", 1],
     });
     expect(d.children).toHaveLength(1);
-    const section = (d.children as JxMutableNode[])[0]!;
-    expect((section.children as JxMutableNode[])[1]!.tagName).toBe("h1");
+    expect(nodeAt(d, ["children", 0, "children", 1]).tagName).toBe("h1");
   });
 
   test("inserted nodes are cloned, never aliased to the op", () => {
@@ -115,13 +165,11 @@ describe("applyDocOpToDoc", () => {
     const node = { tagName: "em" };
     applyDocOpToDoc(d, { index: 0, node, op: "insert-child", parentPath: [] });
     node.tagName = "mutated";
-    expect((d.children as JxMutableNode[])[0]!.tagName).toBe("em");
+    expect(nodeAt(d, ["children", 0]).tagName).toBe("em");
   });
 
   test("unknown op kinds throw", () => {
-    expect(() => applyDocOpToDoc(doc(), { op: "nope" } as unknown as JxDocOp)).toThrow(
-      "unknown-doc-op:nope",
-    );
+    expect(() => applyDocOpToDoc(doc(), foreignOp("nope"))).toThrow("unknown-doc-op:nope");
   });
 });
 
@@ -158,11 +206,11 @@ describe("inverseOf", () => {
 
   test("the inverse holds a clone, never the document's own object", () => {
     const d = doc();
-    const inverse = inverseOf(d, { key: "children", op: "set-key", path: [] }) as {
-      value: unknown;
-    };
-    expect(inverse.value).toEqual(d.children);
-    expect(inverse.value).not.toBe(d.children);
+    const inverse = inverseOf(d, { key: "children", op: "set-key", path: [] });
+    expect(inverse.op).toBe("set-key");
+    const restored = inverse.op === "set-key" ? inverse.value : undefined;
+    expect(restored).toEqual(d.children);
+    expect(restored).not.toBe(d.children);
   });
 
   test("insert-child, remove-child and set-child invert one another", () => {
@@ -178,11 +226,12 @@ describe("inverseOf", () => {
       op: "insert-child",
       parentPath: [],
     });
-    for (const op of [
+    const ops: JxDocOp[] = [
       { index: 2, node, op: "insert-child", parentPath: [] },
       { index: 0, op: "remove-child", parentPath: ["children", 1] },
       { index: 0, node, op: "set-child", parentPath: [] },
-    ] as JxDocOp[]) {
+    ];
+    for (const op of ops) {
       expect(roundTrip(doc(), op)).toEqual(doc());
     }
   });
@@ -271,7 +320,7 @@ describe("inverseOf", () => {
       parentPath: ["children", 0],
     });
     applyDocOpToDoc(d, inverse);
-    expect((d.children as JxMutableNode[])[0]).toEqual({
+    expect(childAt(d, 0)).toEqual({
       children: [],
       tagName: "h1",
       textContent: "Title",
@@ -320,17 +369,13 @@ describe("inverseOf", () => {
       toIndex: 99,
       toParentPath: [],
     };
-    expect((inverseOf(doc(), move) as { fromIndex: number }).fromIndex).toBe(1);
+    expect(inverseOf(doc(), move)).toMatchObject({ fromIndex: 1, op: "move-child" });
     expect(roundTrip(doc(), move)).toEqual(doc());
   });
 
   test("an insert or move into something that cannot hold children has no inverse", () => {
     const d: JxMutableNode = {
-      children: [
-        "loose text",
-        { children: { map: {} }, tagName: "ul" } as unknown as JxMutableNode,
-        { tagName: "p" },
-      ],
+      children: ["loose text", mappedList(), { tagName: "p" }],
       tagName: "div",
     };
     const into = (toParentPath: (string | number)[]): JxDocOp => ({
@@ -388,27 +433,22 @@ describe("inverseOf", () => {
         toParentPath: [],
       }),
     ).toThrow("doc-op-node-not-found");
-    expect(() => inverseOf(d, { op: "bogus" } as unknown as JxDocOp)).toThrow(
-      "unknown-doc-op:bogus",
-    );
+    expect(() => inverseOf(d, foreignOp("bogus"))).toThrow("unknown-doc-op:bogus");
   });
 
-  /** A copy of `node` with every empty `children` array removed. */
-  function withoutEmptyChildren(node: unknown): unknown {
-    if (Array.isArray(node)) {
-      return node.map((item) => withoutEmptyChildren(item));
-    }
-    if (node && typeof node === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(node)) {
-        if (key === "children" && Array.isArray(value) && value.length === 0) {
-          continue;
-        }
-        out[key] = withoutEmptyChildren(value);
+  /** A copy of `node` with every empty `children` array in its element tree removed. */
+  function withoutEmptyChildren(node: JxMutableNode): JxMutableNode {
+    const out: JxMutableNode = { ...node };
+    if (Array.isArray(node.children)) {
+      if (node.children.length === 0) {
+        delete out.children;
+      } else {
+        out.children = node.children.map((kid) =>
+          isString(kid) ? kid : withoutEmptyChildren(kid),
+        );
       }
-      return out;
     }
-    return node;
+    return out;
   }
 
   /* The property every consumer relies on — Studio's undo, a run's journal, a room's rollback:
@@ -428,9 +468,7 @@ describe("inverseOf", () => {
       const kids = Array.isArray(node.children) ? node.children : [];
       return [
         at,
-        ...kids.flatMap((kid, i) =>
-          typeof kid === "object" ? nodePaths(kid as JxMutableNode, [...at, "children", i]) : [],
-        ),
+        ...kids.flatMap((kid, i) => (isString(kid) ? [] : nodePaths(kid, [...at, "children", i]))),
       ];
     };
     const childCount = (d: JxMutableNode, path: (string | number)[]) => {
@@ -456,11 +494,11 @@ describe("inverseOf", () => {
         let op: JxDocOp | null = null;
         const count = childCount(d, path);
         if (kind === "set-key") {
-          op = pick([
+          op = pick<JxDocOp>([
             { key: "id", op: "set-key", path, value: `n${step}` },
             { key: "style", op: "set-key", path },
             { key: "textContent", op: "set-key", path, value: "t" },
-          ] as JxDocOp[]);
+          ]);
         } else if (kind === "insert-child") {
           op = {
             index: Math.floor(random() * (count + 1)),
@@ -521,20 +559,17 @@ describe("applyDocOpsWithInverse", () => {
       { index: 0, op: "remove-child", parentPath: [] },
       { key: "id", op: "set-key", path: ["children", 0] },
     ]);
-    expect((d.children as JxMutableNode[])[0]).toEqual({ id: "rule", tagName: "hr" });
+    expect(childAt(d, 0)).toEqual({ id: "rule", tagName: "hr" });
   });
 
   test("stops at the first op that does not apply, carrying the pairs already applied", () => {
     const d = doc();
-    let caught: (Error & { applied?: unknown[] }) | null = null;
-    try {
+    const caught = partialApplyError(() =>
       applyDocOpsWithInverse(d, [
         { key: "id", op: "set-key", path: [], value: "kept" },
         { key: "x", op: "set-key", path: ["children", 9], value: 1 },
-      ]);
-    } catch (error) {
-      caught = error as Error & { applied?: unknown[] };
-    }
+      ]),
+    );
     expect(caught?.message).toBe("doc-op-node-not-found:children/9");
     expect(caught?.applied).toHaveLength(1);
     expect(d.id).toBe("kept");
@@ -545,17 +580,14 @@ describe("applyDocOpsWithInverse", () => {
   test("a move that cannot land loses nothing, and the applied pairs roll back exactly", () => {
     for (const toParentPath of [["children", 9], ["children"]]) {
       const d = doc();
-      let caught: (Error & { applied?: { inverse: JxDocOp }[] }) | null = null;
-      try {
+      const caught = partialApplyError(() =>
         applyDocOpsWithInverse(d, [
           { key: "id", op: "set-key", path: [], value: "kept" },
           { fromIndex: 0, fromParentPath: [], op: "move-child", toIndex: 0, toParentPath },
-        ]);
-      } catch (error) {
-        caught = error as Error & { applied?: { inverse: JxDocOp }[] };
-      }
+        ]),
+      );
       expect(caught?.applied).toHaveLength(1);
-      for (const { inverse } of caught!.applied!.toReversed()) {
+      for (const { inverse } of caught?.applied.toReversed() ?? []) {
         applyDocOpToDoc(d, inverse);
       }
       expect(d).toEqual(doc());
@@ -564,10 +596,7 @@ describe("applyDocOpsWithInverse", () => {
 
   test("the applier itself refuses a move into mapped children before splicing anything", () => {
     const d: JxMutableNode = {
-      children: [
-        { tagName: "p" },
-        { children: { map: {} }, tagName: "ul" } as unknown as JxMutableNode,
-      ],
+      children: [{ tagName: "p" }, mappedList()],
       tagName: "div",
     };
     const before = cloneValue(d);
@@ -585,21 +614,16 @@ describe("applyDocOpsWithInverse", () => {
 
   test("a non-Error thrown by the applier still carries the applied pairs", () => {
     const d = doc();
-    const hostile = {
+    const hostile: JxDocOp = {
       key: "k",
       op: "set-key",
       path: [],
-      get value() {
+      get value(): never {
         // oxlint-disable-next-line no-throw-literal -- the case under test
         throw "not an error";
       },
-    } as unknown as JxDocOp;
-    let caught: (Error & { applied?: unknown[] }) | null = null;
-    try {
-      applyDocOpsWithInverse(d, [hostile]);
-    } catch (error) {
-      caught = error as Error & { applied?: unknown[] };
-    }
+    };
+    const caught = partialApplyError(() => applyDocOpsWithInverse(d, [hostile]));
     expect(caught).toBeInstanceOf(Error);
     expect(caught?.message).toBe("not an error");
     expect(caught?.applied).toEqual([]);

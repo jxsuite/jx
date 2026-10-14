@@ -25,6 +25,7 @@ import {
   unreachableStylesheets,
 } from "../scripts/check-studio-dist";
 import { STUDIO_ASSETS, STUDIO_WORKERS } from "../src/hosting/layout";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const temps: string[] = [];
 afterAll(() => {
@@ -44,7 +45,7 @@ function tree(files: Record<string, string>): string {
 }
 
 /** A build output that satisfies every required manifest entry. */
-function completeBuild(extra: Record<string, string> = {}): Record<string, string> {
+function completeBuild(extra: Record<string, string> = {}) {
   const files: Record<string, string> = {};
   for (const a of STUDIO_ASSETS.filter((x) => x.required)) {
     if (a.dir) {
@@ -208,7 +209,7 @@ describe("analyze", () => {
 });
 
 describe("preloadFindings", () => {
-  const findingsFor = (preload: unknown, extra: Record<string, string> = {}) => {
+  const findingsFor = (preload: JsonValue, extra: Record<string, string> = {}) => {
     const files = completeBuild({ [MANIFEST]: JSON.stringify({ preload }), ...extra });
     const root = tree(files);
     return preloadFindings(root, emittedFiles(join(root, "dist"), root));

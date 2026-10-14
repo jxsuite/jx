@@ -12,12 +12,22 @@
  * Pure and DOM-free: deps limited to `@jxsuite/schema` guards/types + {@link getNodeAtPath}.
  */
 
-import { isRef } from "@jxsuite/schema/guards";
-import { getNodeAtPath } from "../state";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import {
+  isJsonObject,
+  isMappedArray,
+  isNonNullObject,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
 
 import type { JxPath } from "../state";
-import type { ContentSectionEntry } from "../types";
-import type { JxMappedArray, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  JxMappedArray,
+  JxMutableNode,
+  JxStateDefinition,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 
 /** Cap on how many inferred/declared fields we enumerate (mirrors merge-tags BREADTH_CAP breadth). */
 const FIELD_CAP = 50;
@@ -44,18 +54,16 @@ export function findEnclosingRepeater(
   if (mapIdx <= 0) {
     return null;
   }
-  const node = getNodeAtPath(doc, path.slice(0, mapIdx)) as
-    | (Record<string, unknown> & JxMappedArray)
-    | undefined;
-  return node && node.$prototype === "Array" ? (node as JxMappedArray) : null;
+  const node = getNodeAtPath(doc, path.slice(0, mapIdx));
+  return isMappedArray(node) ? node : null;
 }
 
 /** Strip a `#/state/<name>` JSON-Pointer ref to its bare state name (null when it is not one). */
-function refToStateName(ref: unknown): string | null {
-  if (!isRef(ref)) {
+function refToStateName(binding: JxMappedArray["items"]): string | null {
+  if (!isRef(binding)) {
     return null;
   }
-  const { $ref: target } = ref;
+  const { $ref: target } = binding;
   return target.startsWith("#/state/") ? target.slice("#/state/".length) : null;
 }
 
@@ -85,25 +93,28 @@ function safeFields(names: string[]): string[] {
  */
 export function resolveRepeaterItemFields(
   arrayNode: JxMappedArray,
-  state: Record<string, unknown> | null | undefined,
+  state: Readonly<Record<string, JxStateDefinition>> | null | undefined,
   projectConfig: ProjectConfig | null | undefined,
 ): string[] {
   const base = ["item", "index"];
-  const { items } = arrayNode as { items?: unknown };
+  const { items } = arrayNode;
   const defs = state ?? {};
 
   const stateName = refToStateName(items);
   if (stateName) {
-    const def = defs[stateName] as Record<string, unknown> | undefined;
-    if (def && typeof def === "object") {
+    const def = defs[stateName];
+    if (isJsonObject(def)) {
       // (a) Content collection — `{ contentType: "<name>" }`. Import-aliased `$prototype` still
       // Matches because we detect on the `contentType` string, not the prototype name.
-      if (typeof def.contentType === "string") {
-        const content = (projectConfig?.content ?? {}) as Record<string, ContentSectionEntry>;
-        const ct = content[def.contentType];
-        const props = ct?.schema?.properties;
+      if (isString(def.contentType)) {
+        /* The `content` section is contributed by an extension and absorbed by the project
+           config's index signature, so each level is checked before it is read. */
+        const content = projectConfig?.content;
+        const ct = isJsonObject(content) ? content[def.contentType] : undefined;
+        const ctSchema = isJsonObject(ct) ? ct.schema : undefined;
+        const props = isJsonObject(ctSchema) ? ctSchema.properties : undefined;
         const out = [...base, "item.id", "item.body"];
-        if (props && typeof props === "object") {
+        if (isNonNullObject(props)) {
           for (const f of safeFields(Object.keys(props))) {
             out.push(`item.data.${f}`);
           }
@@ -112,14 +123,14 @@ export function resolveRepeaterItemFields(
       }
 
       // (b) State array — declared object item-schema, or inferred from a sample default[0].
-      const itemsSchema = def.items as Record<string, unknown> | undefined;
-      const declared = itemsSchema?.properties as Record<string, unknown> | undefined;
-      if (declared && typeof declared === "object") {
+      const itemsSchema = def.items;
+      const declared = isJsonObject(itemsSchema) ? itemsSchema.properties : undefined;
+      if (isNonNullObject(declared)) {
         return [...base, ...safeFields(Object.keys(declared)).map((f) => `item.${f}`)];
       }
-      const defaults = def.default as unknown[] | undefined;
-      const sample: unknown = Array.isArray(defaults) ? defaults[0] : undefined;
-      if (sample && typeof sample === "object" && !Array.isArray(sample)) {
+      const defaults = def.default;
+      const sample = Array.isArray(defaults) ? defaults[0] : undefined;
+      if (isJsonObject(sample)) {
         return [...base, ...safeFields(Object.keys(sample)).map((f) => `item.${f}`)];
       }
     }
@@ -128,8 +139,8 @@ export function resolveRepeaterItemFields(
 
   // (c) Inline literal array — infer fields from the first object element.
   if (Array.isArray(items)) {
-    const [first] = items as unknown[];
-    if (first && typeof first === "object" && !Array.isArray(first)) {
+    const [first] = items;
+    if (isJsonObject(first)) {
       return [...base, ...safeFields(Object.keys(first)).map((f) => `item.${f}`)];
     }
   }

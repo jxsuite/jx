@@ -8,18 +8,19 @@ import "./with-dom.js";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { applyStyle, buildScope, documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
 import { applyIframePatch } from "../src/canvas/iframe-patch";
-import { serializeJxPath } from "../src/canvas/path-mapping";
-import { getNodeAtPath } from "../src/state";
+import { parseJxPath, serializeJxPath } from "../src/canvas/path-mapping";
+import { childList, getNodeAtPath } from "../src/state";
+import { isString } from "@jxsuite/schema/guards";
 import type { IframeRenderCtx } from "../src/canvas/iframe-render";
-import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
-import type { WireDocOp } from "../src/canvas/iframe-protocol";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocOp } from "../src/tabs/patch-ops";
 
 // A render context for the subtree-render ops (insert / set-child / re-render). The scope is empty
 // (the test nodes carry no `$ref`/state bindings) and the mapper is the unwrapped page-doc default.
 let CTX: IframeRenderCtx;
 beforeAll(async () => {
   CTX = {
-    defs: await buildScope({} as JxDocument, {}, "http://localhost/"),
+    defs: await buildScope({}, {}, "http://localhost/"),
     docBase: "http://localhost/",
     mapperCtx: {
       arrayPaths: new Set(),
@@ -32,24 +33,47 @@ beforeAll(async () => {
   };
 });
 
+/** A fixture rendered as stamped DOM, beside the shadow doc the forward ops are recorded against. */
+interface Mounted {
+  container: HTMLElement;
+  shadow: JxMutableNode;
+}
+
+/** A fixture child as a node; these fixtures never hold bare-text children. */
+function nodeOf(entry: JxMutableNode | string): JxMutableNode {
+  if (isString(entry)) {
+    throw new Error(`fixture child "${entry}" is text, not a node`);
+  }
+  return entry;
+}
+
+/** The literal tag a fixture node names; a fixture with an expression tag fails here. */
+function tagOf(node: JxMutableNode): string {
+  if (!isString(node.tagName)) {
+    throw new Error("fixture node has no literal tagName");
+  }
+  return node.tagName;
+}
+
 /**
  * Build a container whose elements carry `data-jx-path` (as the iframe's full render stamps them)
  * for the given doc, plus the raw shadow doc the forward ops are recorded against. Only `children`
  * and top-level `textContent`/`style` are mirrored — enough to exercise the in-place patcher.
  */
-function mount(doc: JxMutableNode): { container: HTMLElement; shadow: JxMutableNode } {
+function mount(doc: JxMutableNode): Mounted {
   resetDocumentStyles();
   const shadow = structuredClone(doc);
   const container = document.createElement("div");
-  const root = document.createElement(doc.tagName as string);
+  const root = document.createElement(tagOf(doc));
   root.dataset.jxPath = serializeJxPath([]);
-  for (const [i, kid] of ((doc.children as JxMutableNode[]) ?? []).entries()) {
-    const el = document.createElement(kid.tagName as string);
+  for (const [i, entry] of childList(doc).entries()) {
+    const kid = nodeOf(entry);
+    const el = document.createElement(tagOf(kid));
     el.dataset.jxPath = serializeJxPath(["children", i]);
-    if (typeof kid.textContent === "string") {
+    if (isString(kid.textContent)) {
       el.textContent = kid.textContent;
     }
-    if (kid.style && typeof kid.style === "object") {
+    if (kid.style) {
       // The full render emits rules, not inline declarations — so the harness must too.
       applyStyle(el, kid.style);
     }
@@ -60,7 +84,11 @@ function mount(doc: JxMutableNode): { container: HTMLElement; shadow: JxMutableN
 }
 
 function elAt(container: HTMLElement, path: (string | number)[]): HTMLElement {
-  return container.querySelector(`[data-jx-path='${serializeJxPath(path)}']`) as HTMLElement;
+  const el = container.querySelector(`[data-jx-path='${serializeJxPath(path)}']`);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`no element rendered at ${serializeJxPath(path)}`);
+  }
+  return el;
 }
 
 /** The rules the stylesheet engine holds for one element — the replacement for `el.style`. */
@@ -80,12 +108,12 @@ const BASE: JxMutableNode = {
     { tagName: "span", textContent: "world" },
   ],
   tagName: "div",
-} as unknown as JxMutableNode;
+};
 
 describe("applyIframePatch — set-style", () => {
   test("re-emits the node's style onto its element and folds the value into the shadow doc", () => {
     const { container, shadow } = mount(BASE);
-    const op: WireDocOp = {
+    const op: JxDocOp = {
       key: "style",
       op: "set-key",
       path: ["children", 0],
@@ -96,7 +124,7 @@ describe("applyIframePatch — set-style", () => {
     const el = elAt(container, ["children", 0]);
     // The previous rule set was released, not merged.
     expect(cssFor(el)).toBe(`[data-jx="${el.dataset.jx}"] { color: blue; font-weight: 700 }`);
-    expect((shadow.children as JxMutableNode[])[0]!.style).toEqual({
+    expect(getNodeAtPath(shadow, ["children", 0])?.style).toEqual({
       color: "blue",
       fontWeight: "700",
     });
@@ -104,7 +132,7 @@ describe("applyIframePatch — set-style", () => {
 
   test("blanks template-string style values (edit-mode transform)", () => {
     const { container, shadow } = mount(BASE);
-    const op: WireDocOp = {
+    const op: JxDocOp = {
       key: "style",
       op: "set-key",
       path: ["children", 0],
@@ -143,13 +171,9 @@ describe("applyIframePatch — set-style", () => {
     // Set state["$media"]). A surgical set-style on a media-bearing node must re-emit through it.
     const mediaCtx: IframeRenderCtx = {
       ...CTX,
-      defs: await buildScope(
-        { $media: { "--md": "(min-width: 768px)" } } as JxDocument,
-        {},
-        "http://localhost/",
-      ),
+      defs: await buildScope({ $media: { "--md": "(min-width: 768px)" } }, {}, "http://localhost/"),
     };
-    const op: WireDocOp = {
+    const op: JxDocOp = {
       key: "style",
       op: "set-key",
       path: ["children", 0],
@@ -168,7 +192,7 @@ describe("applyIframePatch — set-style", () => {
 describe("applyIframePatch — set-text", () => {
   test("writes the node's display text and folds it into the shadow doc", () => {
     const { container, shadow } = mount(BASE);
-    const op: WireDocOp = {
+    const op: JxDocOp = {
       key: "textContent",
       op: "set-key",
       path: ["children", 1],
@@ -177,7 +201,7 @@ describe("applyIframePatch — set-text", () => {
     applyIframePatch(shadow, [op], container);
 
     expect(elAt(container, ["children", 1]).textContent).toBe("updated");
-    expect((shadow.children as JxMutableNode[])[1]!.textContent).toBe("updated");
+    expect(getNodeAtPath(shadow, ["children", 1])?.textContent).toBe("updated");
   });
 
   test("renders a template string as a literal expression", () => {
@@ -260,7 +284,7 @@ describe("applyIframePatch — event bindings and escalation", () => {
       ),
     ).not.toThrow();
     // The handler is folded into the shadow doc but never touches the DOM.
-    expect((shadow.children as JxMutableNode[])[0]!.onclick).toBe("doThing()");
+    expect(getNodeAtPath(shadow, ["children", 0])?.onclick).toBe("doThing()");
   });
 
   test("throws when a subtree-render op arrives without a render context (caller escalates)", () => {
@@ -304,20 +328,17 @@ describe("applyIframePatch — event bindings and escalation", () => {
 // ─── Structural ops (Phase 3b-1: remove / move — no subtree render) ──────────────
 
 /** Mount a doc as DOM with `data-jx-path` stamped recursively (the iframe full render's shape). */
-function mountTree(doc: JxMutableNode): { container: HTMLElement; shadow: JxMutableNode } {
+function mountTree(doc: JxMutableNode): Mounted {
   const shadow = structuredClone(doc);
   const container = document.createElement("div");
   const build = (node: JxMutableNode, path: (string | number)[]): HTMLElement => {
-    const el = document.createElement(node.tagName as string);
+    const el = document.createElement(tagOf(node));
     el.dataset.jxPath = serializeJxPath(path);
-    if (typeof node.textContent === "string") {
+    if (isString(node.textContent)) {
       el.append(document.createTextNode(node.textContent));
     }
-    const kids = node.children;
-    if (Array.isArray(kids)) {
-      for (const [i, k] of kids.entries()) {
-        el.append(build(k as JxMutableNode, [...path, "children", i]));
-      }
+    for (const [i, k] of childList(node).entries()) {
+      el.append(build(nodeOf(k), [...path, "children", i]));
     }
     return el;
   };
@@ -328,9 +349,11 @@ function mountTree(doc: JxMutableNode): { container: HTMLElement; shadow: JxMuta
 /** Every stamped element resolves to a same-tag node in the shadow doc → DOM and shadow agree. */
 function expectConsistent(container: HTMLElement, shadow: JxMutableNode): void {
   for (const el of container.querySelectorAll<HTMLElement>("[data-jx-path]")) {
-    const node = getNodeAtPath(shadow, JSON.parse(el.dataset.jxPath!)) as JxMutableNode | undefined;
+    /* The lookup is typed for a live path; a stamp the shadow doc lost resolves to undefined,
+       which is exactly the drift this check reports. */
+    const node = getNodeAtPath(shadow, parseJxPath(el.dataset.jxPath!));
     expect(node, `no shadow node for ${el.dataset.jxPath}`).toBeDefined();
-    expect((node!.tagName as string).toLowerCase()).toBe(el.tagName.toLowerCase());
+    expect(tagOf(node!).toLowerCase()).toBe(el.tagName.toLowerCase());
   }
 }
 
@@ -341,7 +364,7 @@ const TREE: JxMutableNode = {
     { children: [{ tagName: "em", textContent: "c" }], tagName: "div" },
   ],
   tagName: "div",
-} as unknown as JxMutableNode;
+};
 
 function rootChildTags(container: HTMLElement): string[] {
   return [...container.firstElementChild!.children].map((c) => c.tagName.toLowerCase());
@@ -493,7 +516,7 @@ describe("applyIframePatch — subtree render", () => {
     const doc: JxMutableNode = {
       children: [{ children: [], tagName: "div" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const { container, shadow } = mountTree(doc);
     const emptyDiv = elAt(container, ["children", 0]);
     emptyDiv.classList.add("empty-container-placeholder");
@@ -527,7 +550,7 @@ describe("applyIframePatch — echoed ops", () => {
     const el = elAt(container, ["children", 0]);
     el.textContent = "hello there"; // What the user typed.
 
-    const op: WireDocOp = {
+    const op: JxDocOp = {
       key: "textContent",
       op: "set-key",
       path: ["children", 0],
@@ -544,13 +567,13 @@ describe("applyIframePatch — echoed ops", () => {
 
   test("suppression is per PATH — other ops in the same batch still patch the DOM", () => {
     const { container, shadow } = mount(BASE);
-    const echoed: WireDocOp = {
+    const echoed: JxDocOp = {
       key: "textContent",
       op: "set-key",
       path: ["children", 0],
       value: "typed",
     };
-    const other: WireDocOp = {
+    const other: JxDocOp = {
       key: "textContent",
       op: "set-key",
       path: ["children", 1],
@@ -565,7 +588,7 @@ describe("applyIframePatch — echoed ops", () => {
   test("an empty or absent echo list patches everything, as normal", () => {
     for (const echo of [undefined, []]) {
       const { container, shadow } = mount(BASE);
-      const op: WireDocOp = {
+      const op: JxDocOp = {
         key: "textContent",
         op: "set-key",
         path: ["children", 0],
@@ -624,7 +647,7 @@ describe("applyIframePatch — echoed ops", () => {
     const { container, shadow } = mount({
       children: [{ children: [{ tagName: "em", textContent: "deep" }], tagName: "p" }],
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     expect(() =>
       applyIframePatch(
         shadow,
@@ -642,14 +665,14 @@ describe("applyIframePatch — echoed ops", () => {
     // Echo suppression exists for the commit shape (set-key on textContent/children). A structural
     // Op arriving for the same path is something else entirely and must not be silently dropped.
     const { container, shadow } = mount(BASE);
-    const op: WireDocOp = {
+    const op: JxDocOp = {
       index: 0,
       node: { tagName: "em", textContent: "new" },
       op: "insert-child",
       parentPath: [],
     };
     applyIframePatch(shadow, [op], container, CTX, [[]]);
-    expect((shadow.children as unknown[]).length).toBe(3);
+    expect(childList(shadow)).toHaveLength(3);
     expect(container.querySelector("em")?.textContent).toBe("new");
   });
 });

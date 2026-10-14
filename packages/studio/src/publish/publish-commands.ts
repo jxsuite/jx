@@ -70,10 +70,11 @@ export async function runDeploy(
   options: { attempts?: number; delayMs?: number } = {},
 ): Promise<boolean> {
   const deploy = currentDeploy();
-  let cancelled = false;
+  // Aborted by the activity's Cancel; the poll loop checks it between attempts.
+  const cancellation = new AbortController();
   const activity = beginActivity({
     cancel: () => {
-      cancelled = true;
+      cancellation.abort();
     },
     source: "Publish",
     status: "Starting…",
@@ -104,7 +105,7 @@ export async function runDeploy(
   const attempts = options.attempts ?? DEPLOY_POLL.attempts;
   const delayMs = options.delayMs ?? DEPLOY_POLL.delayMs;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (cancelled) {
+    if (cancellation.signal.aborted) {
       return false;
     }
     let info;
@@ -123,7 +124,7 @@ export async function runDeploy(
     }
     await sleep(delayMs);
   }
-  if (cancelled) {
+  if (cancellation.signal.aborted) {
     return false;
   }
   noteDeployment(null);

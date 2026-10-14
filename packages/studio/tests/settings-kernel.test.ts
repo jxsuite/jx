@@ -21,7 +21,7 @@ import {
   settingsSettled,
   watchRemoteSettings,
 } from "../src/services/settings/kernel";
-import type { SettingsPatch, StudioPlatform } from "../src/types";
+import type { KeyValuePatch } from "../src/types";
 
 /* Read off the registry rather than restated, so a key rename moves the test with the code. */
 const KEY = SETTINGS.aiOpenAiKey.key;
@@ -30,7 +30,7 @@ const MODEL = SETTINGS.aiModel.key;
 
 /** Drop any platform a prior test registered so hasPlatform() reflects the dev-server case. */
 function clearPlatform() {
-  delete (globalThis as { __jxPlatform?: StudioPlatform }).__jxPlatform;
+  Reflect.deleteProperty(globalThis, "__jxPlatform");
 }
 
 /**
@@ -39,8 +39,8 @@ function clearPlatform() {
  * make the whole point of this step untestable.
  */
 function installSettingsBackend(seed: Record<string, string> = {}) {
-  let store: Record<string, string> = { ...seed };
-  const patches: SettingsPatch[] = [];
+  let store = { ...seed };
+  const patches: KeyValuePatch[] = [];
   installMockPlatform({
     getSettings: async () => ({ ...store }),
     patchSettings: async (patch) => {
@@ -253,7 +253,7 @@ describe("write-through", () => {
   });
 
   test("keeps sending after a rejected write", async () => {
-    const sent: SettingsPatch[] = [];
+    const sent: KeyValuePatch[] = [];
     let failNext = true;
     installMockPlatform({
       getSettings: async () => ({}),

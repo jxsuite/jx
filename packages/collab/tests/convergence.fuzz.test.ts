@@ -8,7 +8,8 @@
 
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
-import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/ops.ts";
 import { applyDocOpToDoc, getNodeAtPath } from "../src/ops.ts";
 import { applyDocOpsToY, LOCAL_ORIGIN, yEventsToDocOps } from "../src/op-bridge.ts";
@@ -41,7 +42,7 @@ function collectNodePaths(doc: JxMutableNode): JxPath[] {
       return;
     }
     for (const [index, child] of node.children.entries()) {
-      if (typeof child === "object" && child !== null) {
+      if (isJsonObject(child)) {
         const childPath = [...path, "children", index];
         paths.push(childPath);
         walk(child, childPath);
@@ -72,7 +73,7 @@ function randomOp(rng: Rng, doc: JxMutableNode): JxDocOp | null {
   const kind = rng.int(6);
   const parentPath = rng.pick(paths);
   const parent = getNodeAtPath(doc, parentPath);
-  const children = Array.isArray(parent.children) ? parent.children : [];
+  const children = Array.isArray(parent?.children) ? parent.children : [];
   switch (kind) {
     case 0: {
       const node = rng.int(4) === 0 ? `s${rng.int(100)}` : randomNode(rng);
@@ -121,7 +122,7 @@ function randomOp(rng: Rng, doc: JxMutableNode): JxDocOp | null {
         fromChildPath.every((seg, i) => seg === toParentPath[i]);
       const target = intoSelf ? parentPath : toParentPath;
       const targetNode = getNodeAtPath(doc, target);
-      const targetLen = Array.isArray(targetNode.children) ? targetNode.children.length : 0;
+      const targetLen = Array.isArray(targetNode?.children) ? targetNode.children.length : 0;
       const sameParent = target === parentPath;
       const maxIndex = sameParent ? Math.max(0, targetLen - 1) : targetLen;
       return {
@@ -148,14 +149,16 @@ function assertValidTree(doc: JxMutableNode, seed: number) {
     if (!Array.isArray(node.children)) {
       throw new TypeError(`seed ${seed}: children is not an array`);
     }
-    for (const child of node.children) {
+    // The mirror's static type is exactly what this check doubts, so read the children as raw values.
+    const children: readonly (JxDocumentValue | undefined)[] = node.children;
+    for (const child of children) {
       if (child === null || child === undefined) {
         throw new TypeError(`seed ${seed}: null child`);
       }
-      if (typeof child === "object") {
+      if (isJsonObject(child)) {
         walk(child);
-      } else if (typeof child !== "string") {
-        throw new TypeError(`seed ${seed}: unexpected child type ${typeof child}`);
+      } else if (!Array.isArray(child) && !isString(child)) {
+        throw new TypeError(`seed ${seed}: unexpected child ${JSON.stringify(child)}`);
       }
     }
   };
@@ -174,7 +177,8 @@ function makeReplica(base: Y.Doc): Replica {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(base));
   const replica: Replica = { mirror: yDocToJson(ydoc), outbox: [], ydoc };
-  ydoc.on("update", (update: Uint8Array, origin: unknown) => {
+  // Origins here: LOCAL_ORIGIN for local ops, "peer" for deliveries, null for the untagged bootstrap.
+  ydoc.on("update", (update: Uint8Array, origin: string | null) => {
     if (origin === LOCAL_ORIGIN) {
       replica.outbox.push(update);
     }
@@ -183,7 +187,7 @@ function makeReplica(base: Y.Doc): Replica {
     if (transaction.origin === LOCAL_ORIGIN) {
       return;
     }
-    const ops = yEventsToDocOps(events as unknown as Y.YEvent<never>[]);
+    const ops = yEventsToDocOps(events);
     if (ops === null) {
       // The bridge's diff fallback lands the tab on the Y state; model that directly.
       replica.mirror = yDocToJson(ydoc);

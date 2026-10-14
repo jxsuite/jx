@@ -8,7 +8,8 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { ContentFieldValue, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -16,7 +17,7 @@ import { pathToFileURL } from "node:url";
 import { buildExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
-import type { FormatHostIO } from "@jxsuite/schema/format-registry";
+import type { FormatBlock, FormatHostIO } from "@jxsuite/schema/format-registry";
 import {
   Content,
   contentAssetMounts,
@@ -27,7 +28,13 @@ import {
   localeSource,
   resolveContentTypeRefs,
 } from "../src/content-loader.ts";
-import type { ContentLoaderEntry, ContentSection } from "../src/content-loader.ts";
+import type {
+  ContentLoaderEntry,
+  ContentSection,
+  ProjectDataContext,
+} from "../src/content-loader.ts";
+import type { ContentNodes } from "../src/inert.ts";
+import type { ContentTypeDef } from "../src/types.ts";
 
 const TMP = mkdtempSync(join(tmpdir(), "jx-parser-content-loader-"));
 
@@ -96,27 +103,102 @@ function captureWarnings(): string[] {
   return warnings;
 }
 
+/** The entries a loaded section holds for `name`, failing the test when the type is absent. */
+function entriesOf(data: Map<string, ContentLoaderEntry[]>, name: string): ContentLoaderEntry[] {
+  const entries = data.get(name);
+  if (entries === undefined) {
+    throw new Error(`no content type "${name}" was loaded`);
+  }
+  return entries;
+}
+
+/** Whether a field holds an entry a relationship ref resolved, rather than the raw id. */
+function isResolvedEntry(value: ContentFieldValue | undefined): value is ContentLoaderEntry {
+  return (
+    isNonNullObject(value) &&
+    !Array.isArray(value) &&
+    !(value instanceof Date) &&
+    isString(value.id) &&
+    isNonNullObject(value.data)
+  );
+}
+
+/** The entry a relationship field resolved to, failing the test when it still holds the id. */
+function resolvedEntry(value: ContentFieldValue | undefined): ContentLoaderEntry {
+  if (!isResolvedEntry(value)) {
+    throw new Error(`expected a resolved entry, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+/** A to-many field's list, failing the test when it is not an array. */
+function listOf(value: ContentFieldValue | undefined): ContentFieldValue[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`expected a list, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+/** The `src` of every img in a rendered tree, walking element children (not nested lists). */
+function imageSrcsIn(nodes: ContentNodes): string[] {
+  const srcs: string[] = [];
+  for (const node of nodes) {
+    // A string, a nested list or a `null` hole has no img of its own here.
+    if (isString(node) || Array.isArray(node) || !isNonNullObject(node)) {
+      continue;
+    }
+    const src = node.attributes?.src;
+    if (node.tagName === "img" && isString(src)) {
+      srcs.push(src);
+    }
+    if (Array.isArray(node.children)) {
+      srcs.push(...imageSrcsIn(node.children));
+    }
+  }
+  return srcs;
+}
+
+/** The `src` of every img in an entry's rendered children. */
+const imageSrcs = (entry: ContentLoaderEntry): string[] => imageSrcsIn(entry.$children ?? []);
+
 // ─── Fake format machinery ───────────────────────────────────────────────────
+
+/**
+ * The option bag either fake capability receives: `discover` gets `baseDir` (and `exclude`), `load`
+ * the rest. Only the members a test reads back are declared.
+ */
+interface FakeCallOptions {
+  baseDir?: string;
+  exclude?: readonly string[];
+  directiveOptions?: { allowedNames?: string[] };
+  sourceRoot?: string;
+}
+
+/** One recorded capability call: which method, and the arguments the loader passed it. */
+interface FakeCall {
+  method: "discover" | "load";
+  args: [source: string, options: FakeCallOptions | undefined];
+}
 
 interface FakeImplOptions {
   remote?: boolean;
   withDiscover?: boolean;
   discoverResult?: string[];
-  loadImpl?: (source: string, options?: Record<string, unknown>) => unknown;
+  loadImpl?: (source: string, options?: FakeCallOptions) => ContentLoaderEntry[];
 }
 
 /** Build a real FormatEntry backed by an in-memory implementation class. */
 function makeFakeEntry(name: string, opts: FakeImplOptions = {}) {
-  const calls: { method: string; args: unknown[] }[] = [];
+  const calls: FakeCall[] = [];
   const Impl = {
-    discover: (...args: unknown[]) => {
-      calls.push({ args, method: "discover" });
+    discover: (source: string, options?: FakeCallOptions) => {
+      calls.push({ args: [source, options], method: "discover" });
       return opts.discoverResult ?? [];
     },
-    load: (...args: unknown[]) => {
-      calls.push({ args, method: "load" });
+    load: (source: string, options?: FakeCallOptions) => {
+      calls.push({ args: [source, options], method: "load" });
       if (opts.loadImpl) {
-        return opts.loadImpl(args[0] as string, args[1] as Record<string, unknown>);
+        return opts.loadImpl(source, options);
       }
       return [{ body: null, data: { name: "fake" }, id: "fake-entry" }];
     },
@@ -126,19 +208,18 @@ function makeFakeEntry(name: string, opts: FakeImplOptions = {}) {
     loadJson: () => Promise.reject(new Error("not used")),
     resolvePath: (_base, ref) => ref,
   };
-  const methods: Record<string, { role: string; identifier: string }> = {
-    load: { identifier: "load", role: "load" },
-  };
-  if (opts.withDiscover) {
-    methods.discover = { identifier: "discover", role: "discover" };
+  const load = { identifier: "load", role: "load" };
+  const methods = opts.withDiscover
+    ? { discover: { identifier: "discover", role: "discover" }, load }
+    : { load };
+  const format: FormatBlock = { extensions: [".fake"] };
+  if (opts.remote) {
+    format.remote = true;
   }
   const classDef = {
     $defs: { methods },
     $implementation: "./fake.js",
-    format: {
-      extensions: [".fake"],
-      ...(opts.remote ? { remote: true } : {}),
-    },
+    format,
     title: name,
   };
   const entry = new FormatEntry(name, "/virtual/fake.class.json", classDef, io);
@@ -156,14 +237,16 @@ function makeNodeIO(): FormatHostIO {
   return {
     importModule: async (path) => {
       try {
-        return (await import(pathToFileURL(path).href)) as Record<string, unknown>;
+        return await import(pathToFileURL(path).href);
       } catch {
         const tsPath = `${path.slice(0, -3)}.ts`;
-        return (await import(pathToFileURL(tsPath).href)) as Record<string, unknown>;
+        return await import(pathToFileURL(tsPath).href);
       }
     },
-    loadJson: (path) =>
-      Promise.resolve(JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>),
+    loadJson: (path) => {
+      const parsed: JsonValue = JSON.parse(readFileSync(path, "utf8"));
+      return Promise.resolve(parsed);
+    },
     resolvePath: (base, ref) => (isAbsolute(ref) ? ref : resolve(dirname(base), ref)),
   };
 }
@@ -198,7 +281,7 @@ describe("loadContentSection", () => {
   });
 
   it("returns empty entries for a content type without a source", async () => {
-    const section = { empty: {} as { source: string } };
+    const section: ContentSection = { empty: {} };
     const result = await loadContentSection(section, TMP, makeRegistry());
     expect(result.get("empty")).toEqual([]);
   });
@@ -241,7 +324,7 @@ describe("loadContentSection", () => {
       },
     };
     const result = await loadContentSection(section, TMP, makeRegistry(entry));
-    const feed = result.get("feed") as ContentLoaderEntry[];
+    const feed = entriesOf(result, "feed");
     expect(feed.map((e) => e.id)).toEqual(["a", "b"]);
     expect(calls[0]?.method).toBe("load");
     expect(calls[0]?.args[0]).toBe("https://example.com/feed.fake");
@@ -283,7 +366,7 @@ describe("loadContentSection", () => {
     });
     const section = { docs: { format: "FakeFmt", source: "./content/docs/" } };
     const result = await loadContentSection(section, TMP, makeRegistry(entry));
-    const docs = result.get("docs") as ContentLoaderEntry[];
+    const docs = entriesOf(result, "docs");
     expect(docs.map((e) => e.id)).toEqual(["/virtual/a.fake", "/virtual/b.fake"]);
     expect(calls[0]?.method).toBe("discover");
     expect(calls[0]?.args[1]).toEqual({ baseDir: TMP });
@@ -295,7 +378,7 @@ describe("loadContentSection", () => {
     });
     const section = { docs: { format: "FakeFmt", source: "./content/single.fake" } };
     const result = await loadContentSection(section, TMP, makeRegistry(entry));
-    const docs = result.get("docs") as ContentLoaderEntry[];
+    const docs = entriesOf(result, "docs");
     expect(docs).toHaveLength(1);
     expect(calls[0]?.method).toBe("load");
     expect(String(calls[0]?.args[0])).toContain("content/single.fake");
@@ -307,7 +390,7 @@ describe("loadContentSection", () => {
     });
     const section = { docs: { source: "./content/single.fake" } };
     const result = await loadContentSection(section, TMP, makeRegistry(entry));
-    expect((result.get("docs") as ContentLoaderEntry[])[0]?.id).toBe("by-ext");
+    expect(entriesOf(result, "docs")[0]?.id).toBe("by-ext");
   });
 
   it("validates registry-loaded entries against the schema", async () => {
@@ -345,7 +428,7 @@ describe("loadContentSection", () => {
   it("loads native JSON entries via the explicit json format name", async () => {
     const section = { things: { format: "json", source: "./content/things/" } };
     const result = await loadContentSection(section, TMP, makeRegistry());
-    const things = result.get("things") as ContentLoaderEntry[];
+    const things = entriesOf(result, "things");
     expect(things).toHaveLength(1);
     expect(things[0]?.id).toBe("one");
     expect(things[0]?.data.name).toBe("One");
@@ -360,14 +443,14 @@ describe("loadContentSection", () => {
       },
     };
     const result = await loadContentSection(section, TMP, makeRegistry());
-    const rows = result.get("rows") as ContentLoaderEntry[];
+    const rows = entriesOf(result, "rows");
     expect(rows.map((e) => e.id)).toEqual(["two", "list-1"]);
   });
 
   it("derives JSON from a .json source extension and falls back to the filename id", async () => {
     const section = { plain: { source: "./content/plain.json" } };
     const result = await loadContentSection(section, TMP, makeRegistry());
-    const plain = result.get("plain") as ContentLoaderEntry[];
+    const plain = entriesOf(result, "plain");
     expect(plain).toHaveLength(1);
     expect(plain[0]?.id).toBe("plain");
     expect(plain[0]?.data.name).toBe("no-id");
@@ -389,16 +472,20 @@ describe("loadContentSection", () => {
     const { calls, entry } = makeFakeEntry("FakeFmt", {
       loadImpl: () => [{ body: null, data: {}, id: "x" }],
     });
-    const section = {
+    // `$elements` is project.json data, where nothing stops an entry being a number.
+    const authoredElements: JsonValue[] = ["my-widget", { $ref: "./card.json" }, 42];
+    const section: ContentSection = {
       docs: {
-        $elements: ["my-widget", { $ref: "./card.json" }, 42 as unknown as string],
+        /* SAFETY: deliberately unsound: ContentTypeDef admits only names and refs, and the 42 is
+           here to pin that deriving `allowedNames` drops an entry that is neither instead of
+           passing it on to the directive options. */
+        $elements: authoredElements as NonNullable<ContentTypeDef["$elements"]>,
         format: "FakeFmt",
         source: "./content/single.fake",
       },
     };
     await loadContentSection(section, TMP, makeRegistry(entry));
-    const loadOptions = calls[0]?.args[1] as { directiveOptions?: { allowedNames?: string[] } };
-    expect(loadOptions.directiveOptions?.allowedNames).toEqual(["my-widget", "./card.json"]);
+    expect(calls[0]?.args[1]?.directiveOptions?.allowedNames).toEqual(["my-widget", "./card.json"]);
   });
 
   it("passes sourceRoot to load for directory sources but not single files", async () => {
@@ -410,15 +497,13 @@ describe("loadContentSection", () => {
     const section = { docs: { format: "FakeFmt", source: "./content/" } };
     await loadContentSection(section, TMP, makeRegistry(entry));
     const dirLoad = calls.find((c) => c.method === "load");
-    const dirOptions = dirLoad ? (dirLoad.args[1] as { sourceRoot?: string }) : undefined;
-    expect(dirOptions?.sourceRoot).toBe(resolve(TMP, "content"));
+    expect(dirLoad?.args[1]?.sourceRoot).toBe(resolve(TMP, "content"));
 
     calls.length = 0;
     const single = { one: { format: "FakeFmt", source: "./content/single.fake" } };
     await loadContentSection(single, TMP, makeRegistry(entry));
     const singleLoad = calls.find((c) => c.method === "load");
-    const singleOptions = singleLoad ? (singleLoad.args[1] as { sourceRoot?: string }) : undefined;
-    expect(singleOptions?.sourceRoot).toBeUndefined();
+    expect(singleLoad?.args[1]?.sourceRoot).toBeUndefined();
   });
 });
 
@@ -490,8 +575,8 @@ describe("resolveContentTypeRefs", () => {
       true,
     );
     // Resolvable id still resolves; dangling ids stay untouched
-    const reviewers = contentTypes.get("posts")?.[0]?.data.reviewers as unknown[];
-    expect((reviewers[0] as ContentLoaderEntry).id).toBe("jane");
+    const reviewers = listOf(contentTypes.get("posts")?.[0]?.data.reviewers);
+    expect(resolvedEntry(reviewers[0]).id).toBe("jane");
     expect(reviewers[1]).toBe("nobody");
   });
 
@@ -554,7 +639,7 @@ describe("resolveContentTypeRefs", () => {
         source: "./posts/",
       },
     });
-    const author = contentTypes.get("posts")?.[0]?.data.author as ContentLoaderEntry;
+    const author = resolvedEntry(contentTypes.get("posts")?.[0]?.data.author);
     expect(author.id).toBe("jane");
     expect(author.data.name).toBe("Jane");
   });
@@ -578,8 +663,8 @@ describe("resolveContentTypeRefs", () => {
         source: "./posts/",
       },
     });
-    const tags = contentTypes.get("posts")?.[0]?.data.tags as unknown[];
-    expect((tags[0] as ContentLoaderEntry).data.label).toBe("Alpha");
+    const tags = listOf(contentTypes.get("posts")?.[0]?.data.tags);
+    expect(resolvedEntry(tags[0]).data.label).toBe("Alpha");
     expect(tags[1]).toBe("ghost");
     expect(tags[2]).toBe(7);
     expect(contentTypes.get("posts")?.[1]?.data.tags).toBe("not-an-array");
@@ -610,19 +695,19 @@ describe("Content.projectData", () => {
     const data = await Content.projectData(section, { projectConfig: {}, registry, root: TMP });
 
     expect([...data.keys()].toSorted()).toEqual(["authors", "posts"]);
-    const posts = data.get("posts") as ContentLoaderEntry[];
+    const posts = entriesOf(data, "posts");
     expect(posts).toHaveLength(1);
-    const post = posts[0] as ContentLoaderEntry;
+    const post = posts[0]!;
     expect(post.id).toBe("hello");
     expect(post.data.title).toBe("Hello");
     expect(post.body).toContain("# Hello World");
 
     // To-one and to-many relationship refs resolved via #/content/ pointers
-    const author = post.data.author as ContentLoaderEntry;
+    const author = resolvedEntry(post.data.author);
     expect(author.id).toBe("jane");
     expect(author.data.name).toBe("Jane");
-    const reviewers = post.data.reviewers as unknown[];
-    expect((reviewers[0] as ContentLoaderEntry).id).toBe("jane");
+    const reviewers = listOf(post.data.reviewers);
+    expect(resolvedEntry(reviewers[0]).id).toBe("jane");
     expect(reviewers[1]).toBe("ghost");
   });
 
@@ -630,7 +715,9 @@ describe("Content.projectData", () => {
     const registry = await buildFixtureRegistry();
     const section: ContentSection = { tree: { format: "Markdown", source: "./content/tree/" } };
     const data = await Content.projectData(section, { projectConfig: {}, registry, root: TMP });
-    const ids = (data.get("tree") as ContentLoaderEntry[]).map((e) => e.id).toSorted();
+    const ids = entriesOf(data, "tree")
+      .map((e) => e.id)
+      .toSorted();
     expect(ids).toEqual(["guides/deep", "guides/nested", "root"]);
   });
 
@@ -651,12 +738,14 @@ describe("Content.projectData", () => {
     expect(registry.byPathsDiscriminator("contentType")?.name).toBe("Content");
 
     const section = { things: { format: "json", source: "./content/things/" } };
-    const data = (await entry?.call("projectData", section, {
+    const data = await entry?.call("projectData", section, {
       projectConfig: {},
       registry,
       root: TMP,
-    })) as Map<string, ContentLoaderEntry[]>;
-    expect(data.get("things")?.[0]?.id).toBe("one");
+    });
+    // Content's section data is its collection map: content type name → loaded entries.
+    const things = data instanceof Map ? data.get("things") : undefined;
+    expect(things?.[0]?.id).toBe("one");
   });
 });
 
@@ -796,28 +885,6 @@ describe("content asset mounts", () => {
     return await Content.projectData(mediaSection, { projectConfig: {}, registry, root: TMP });
   }
 
-  /** The `src` of every img in an entry's rendered children. */
-  function imageSrcs(entry: ContentLoaderEntry): string[] {
-    const srcs: string[] = [];
-    const walk = (node: unknown) => {
-      if (!node || typeof node !== "object") {
-        return;
-      }
-      const record = node as Record<string, unknown>;
-      const attributes = record.attributes as Record<string, unknown> | undefined;
-      if (record.tagName === "img" && typeof attributes?.src === "string") {
-        srcs.push(attributes.src);
-      }
-      for (const child of (record.children as unknown[]) ?? []) {
-        walk(child);
-      }
-    };
-    for (const child of entry.$children ?? []) {
-      walk(child);
-    }
-    return srcs;
-  }
-
   describe("Content.assets", () => {
     it("publishes each directory source at /content/<type>", () => {
       const mounts = Content.assets(
@@ -862,7 +929,7 @@ describe("content asset mounts", () => {
     it("remaps entry-relative image srcs onto the mount", async () => {
       const warnings = captureWarnings();
       const data = await loadMedia();
-      const post = (data.get("media") as ContentLoaderEntry[]).find((e) => e.id === "post")!;
+      const post = entriesOf(data, "media").find((e) => e.id === "post")!;
 
       expect(imageSrcs(post)).toEqual([
         "/content/media/images/hero.png",
@@ -879,13 +946,13 @@ describe("content asset mounts", () => {
 
     it("resolves against the entry's own directory, not the source root", async () => {
       const data = await loadMedia();
-      const deep = (data.get("media") as ContentLoaderEntry[]).find((e) => e.id === "nested/deep")!;
+      const deep = entriesOf(data, "media").find((e) => e.id === "nested/deep")!;
       expect(imageSrcs(deep)).toEqual(["/content/media/images/hero.png"]);
     });
 
     it("remaps only frontmatter fields declared uri-reference", async () => {
       const data = await loadMedia();
-      const post = (data.get("media") as ContentLoaderEntry[]).find((e) => e.id === "post")!;
+      const post = entriesOf(data, "media").find((e) => e.id === "post")!;
       expect(post.data.cover).toBe("/content/media/images/hero.png");
       expect(post.data.gallery).toEqual(["/content/media/images/hero.png"]);
       expect(post.data.code).toBe("packages/compiler/src/site/site-build.ts");
@@ -893,7 +960,7 @@ describe("content asset mounts", () => {
 
     it("leaves the raw body untouched so round-tripping still writes the authored path", async () => {
       const data = await loadMedia();
-      const post = (data.get("media") as ContentLoaderEntry[]).find((e) => e.id === "post")!;
+      const post = entriesOf(data, "media").find((e) => e.id === "post")!;
       expect(post.body).toContain("![hero](./images/hero.png)");
       expect(post.body).not.toContain("/content/media/");
     });
@@ -945,7 +1012,7 @@ describe("asset reference rewriting — edge cases", () => {
 
   it("rewrites an image that shares a paragraph with text, not only a lone one", async () => {
     const data = await loadEdge();
-    const post = (data.get("edge") as ContentLoaderEntry[]).find((e) => e.id === "post")!;
+    const post = entriesOf(data, "edge").find((e) => e.id === "post")!;
     // The image sits beside text nodes in the same paragraph's children — walking past them (rather
     // Than stopping at the first non-element sibling) is what this asserts.
     expect(JSON.stringify(post.$children)).toContain("/content/edge/images/hero.png");
@@ -953,7 +1020,7 @@ describe("asset reference rewriting — edge cases", () => {
 
   it("leaves an unparseable percent-escape alone instead of throwing", async () => {
     const data = await loadEdge();
-    const bad = (data.get("edge") as ContentLoaderEntry[]).find((e) => e.id === "bad-uri")!;
+    const bad = entriesOf(data, "edge").find((e) => e.id === "bad-uri")!;
     // Decoding "%zz" throws (an invalid percent-escape); the reference is left exactly as written
     // Rather than crashing the whole load.
     expect(JSON.stringify(bad.$children)).toContain("%zz");
@@ -983,7 +1050,9 @@ describe("localesForExpansion", () => {
   });
 
   it("a project with no i18n expands over nothing", () => {
-    expect(localesForExpansion(({} as { config?: ProjectConfig }).config)).toEqual([]);
+    // A host context that carries no project config at all, as `Content.projectData` may receive.
+    const bare: Partial<ProjectDataContext> = {};
+    expect(localesForExpansion(bare.projectConfig)).toEqual([]);
     expect(localesForExpansion({})).toEqual([]);
     expect(localesForExpansion({ i18n: {} })).toEqual([]);
   });
@@ -1158,7 +1227,7 @@ describe("localized content types", () => {
   it("loads every locale's directory and stamps where each entry came from", async () => {
     const registry = await buildFixtureRegistry();
     const data = await Content.projectData(section, { projectConfig: config, registry, root: TMP });
-    const entries = data.get("i18n-posts") as ContentLoaderEntry[];
+    const entries = entriesOf(data, "i18n-posts");
 
     expect(entries.map((entry) => [entry.id, entry._meta?.locale])).toEqual([
       ["hello", "en"],
@@ -1173,34 +1242,12 @@ describe("localized content types", () => {
    * and the map was keyed by the last URL segment, so it always missed and a translated entry kept
    * its authored `./hero.png`.
    */
-  /** The `src` of every img in an entry's rendered children. */
-  const srcsOf = (entry: ContentLoaderEntry): string[] => {
-    const srcs: string[] = [];
-    const walk = (node: unknown): void => {
-      if (!node || typeof node !== "object") {
-        return;
-      }
-      const record = node as Record<string, unknown>;
-      const attributes = record.attributes as Record<string, unknown> | undefined;
-      if (record.tagName === "img" && typeof attributes?.src === "string") {
-        srcs.push(attributes.src);
-      }
-      for (const child of (record.children as unknown[]) ?? []) {
-        walk(child);
-      }
-    };
-    for (const child of entry.$children ?? []) {
-      walk(child);
-    }
-    return srcs;
-  };
-
   it("rewrites a translated entry's assets onto its own locale's mount", async () => {
     const registry = await buildFixtureRegistry();
     const data = await Content.projectData(section, { projectConfig: config, registry, root: TMP });
-    const entries = data.get("i18n-posts") as ContentLoaderEntry[];
+    const entries = entriesOf(data, "i18n-posts");
 
-    expect(entries.map((entry) => srcsOf(entry))).toEqual([
+    expect(entries.map((entry) => imageSrcs(entry))).toEqual([
       ["/content/i18n-posts/en/hero.png"],
       ["/content/i18n-posts/fr/hero.png"],
     ]);

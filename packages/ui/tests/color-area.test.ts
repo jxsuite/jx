@@ -29,6 +29,8 @@ afterEach(() => {
 /** A square inside a plain ancestor, so every event assertion is one a host could actually make. */
 async function area(attrs: Record<string, string> = {}): Promise<JxColorArea> {
   const outer = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-color-area, so createElement returns the upgraded
+     element, which carries every reactive property `JxColorArea` lists from its component document. */
   const el = document.createElement("jx-color-area") as JxColorArea;
   el.setAttribute("label", "Colour");
   for (const [k, v] of Object.entries(attrs)) {
@@ -46,35 +48,27 @@ const axis = (el: Element, which: "x" | "y") =>
 const above = (el: Element) => el.parentElement!;
 
 /** What the ANCESTOR heard, as `target=saturation/brightness`. */
-function record(el: HTMLElement): { input: string[]; change: string[] } {
-  const heard = { change: [] as string[], input: [] as string[] };
+function record(el: HTMLElement) {
+  const input: string[] = [];
+  const change: string[] = [];
   const seen = (event: Event) => {
+    /* SAFETY: the sidecar stops the inner ranges' own input and change and re-dispatches them from
+       the host, so everything the wrapper hears was dispatched by the jx-color-area itself. */
     const t = event.target as JxColorArea;
     return `${t.localName}=${t.saturation}/${t.brightness}`;
   };
   above(el).addEventListener("input", (e) => {
-    heard.input.push(seen(e));
+    input.push(seen(e));
   });
   above(el).addEventListener("change", (e) => {
-    heard.change.push(seen(e));
+    change.push(seen(e));
   });
-  return heard;
+  return { change, input };
 }
 
 /** Give the track a box, because happy-dom lays nothing out and a coordinate needs one. */
 function measure(el: Element, width = 200, height = 100): void {
-  track(el).getBoundingClientRect = () =>
-    ({
-      bottom: height,
-      height,
-      left: 0,
-      right: width,
-      toJSON: () => ({}),
-      top: 0,
-      width,
-      x: 0,
-      y: 0,
-    }) as DOMRect;
+  track(el).getBoundingClientRect = () => new DOMRect(0, 0, width, height);
 }
 
 /** A pointer event with a coordinate, built by hand because happy-dom ships no PointerEvent. */
@@ -319,30 +313,23 @@ describe("jx-color-area", () => {
       saturation: 0,
       step: 1,
     };
-    onAreaKeydown(state, {
-      currentTarget: null,
-      key: "ArrowUp",
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      target: null,
-    } as unknown as KeyboardEvent);
+    // Never dispatched, so both its target and its currentTarget are null.
+    onAreaKeydown(state, key("ArrowUp"));
     expect(state.brightness).toBe(0);
 
     const undrawn = document.createElement("jx-color-area");
+    const down = new PointerEvent("pointerdown", { clientX: 0, clientY: 0, pointerId: 1 });
+    Object.defineProperty(down, "currentTarget", { value: undrawn });
     expect(() => {
-      onAreaPointerDown(state, {
-        clientX: 0,
-        clientY: 0,
-        currentTarget: undrawn,
-        pointerId: 1,
-        preventDefault: () => {},
-      } as unknown as PointerEvent);
+      onAreaPointerDown(state, down);
     }).not.toThrow();
 
     // A different host, never handed a pointerdown: nothing is mid-drag for it to commit.
     const other = document.createElement("jx-color-area");
+    const up = new PointerEvent("pointerup", { pointerId: 1 });
+    Object.defineProperty(up, "currentTarget", { value: other });
     expect(() => {
-      onAreaPointerUp(state, { currentTarget: other, pointerId: 1 } as unknown as PointerEvent);
+      onAreaPointerUp(state, up);
     }).not.toThrow();
   });
 });

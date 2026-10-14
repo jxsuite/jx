@@ -1,12 +1,6 @@
 import { Updater } from "electrobun/main";
 import type { AppInfo } from "@jxsuite/protocol";
-
-export interface UpdateStatus {
-  version: string | null;
-  updateAvailable: boolean;
-  updateReady: boolean;
-  error: string | null;
-}
+import type { UpdateStatus } from "./rpc-schema";
 
 let cachedStatus: UpdateStatus = {
   error: null,

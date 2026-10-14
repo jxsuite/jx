@@ -18,7 +18,7 @@
 const PARAM_SEGMENT = /\[\.\.\.(\w+)\]|\[(\w+)\]/g;
 
 /** What a page file's path says about its route, before anything is read from the file. */
-export interface RouteShape {
+export interface FileRoute {
   /** URL pattern with parameters, e.g. `/blog/:slug` or `/docs/*`. */
   urlPattern: string;
   /** Parameter names in declaration order, e.g. `["slug"]`. */
@@ -52,7 +52,7 @@ export function pageRelativePath(documentPath: string): string {
  * `about/index.md` → `/about`. The extension is dropped whatever it is: a page may be any format an
  * enabled extension claims, and its route is a property of the NAME, not of the parser.
  */
-export function fileToRoute(relativePath: string): RouteShape {
+export function fileToRoute(relativePath: string): FileRoute {
   let urlPath = pageRelativePath(relativePath);
 
   /* Drop the extension, but only a real one. `.` is legal inside a route segment, and slicing at
@@ -133,7 +133,7 @@ export function isRoutedPageFile(relativePath: string): boolean {
  * Sorting a route table with this is what makes `matchRoute` a first-match scan — `/about` is found
  * before `/[slug]` can claim it, whatever order the directory walk produced.
  */
-export function compareRoutes(a: RouteShape, b: RouteShape): number {
+export function compareRoutes(a: FileRoute, b: FileRoute): number {
   if (a.isDynamic !== b.isDynamic) {
     return a.isDynamic ? 1 : -1;
   }
@@ -144,7 +144,7 @@ export function compareRoutes(a: RouteShape, b: RouteShape): number {
 }
 
 /** One route matched against a URL, with the parameter values that matched it. */
-export interface RouteMatch<T extends RouteShape> {
+export interface RouteMatch<T extends FileRoute> {
   route: T;
   params: Record<string, string>;
 }
@@ -159,7 +159,7 @@ export interface RouteMatch<T extends RouteShape> {
  * A trailing slash is not significant — `build.trailingSlash` decides how a route is WRITTEN, and a
  * reader who types the other form is asking for the same page.
  */
-export function matchRoute<T extends RouteShape>(
+export function matchRoute<T extends FileRoute>(
   routes: readonly T[],
   pathname: string,
 ): RouteMatch<T> | null {

@@ -7,6 +7,32 @@
 import * as Y from "yjs";
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import type { CollabHandle, CollabIdentity, CollabStatus } from "@jxsuite/collab/provider";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** A `div` holding one paragraph that reads "Hello". */
+export const HELLO_DOC: JxMutableNode = {
+  children: [{ tagName: "p", textContent: "Hello" }],
+  tagName: "div",
+};
+
+/** A `div` holding one paragraph that reads "Base". */
+export const BASE_DOC: JxMutableNode = {
+  children: [{ tagName: "p", textContent: "Base" }],
+  tagName: "div",
+};
+
+/**
+ * The element child at `index`, failing the test with a named error when the document does not have
+ * one there (no children list, a repeater in its place, an index past the end, or a text child).
+ */
+export function childNode(node: JxMutableNode, index: number): JxMutableNode {
+  const child = Array.isArray(node.children) ? node.children[index] : undefined;
+  if (child === undefined || isString(child)) {
+    throw new TypeError(`expected an element child at index ${index}`);
+  }
+  return child;
+}
 
 interface Connection {
   doc: Y.Doc;
@@ -17,6 +43,14 @@ interface Connection {
   dirty: boolean;
   destroyed: boolean;
 }
+
+/**
+ * The origin a transaction on a mock Y.Doc carries: a string tag (a Jx writer's tag, or
+ * `"mock-hub"` for an update the hub relayed), the {@link Connection} that pushed an update to the
+ * server doc, the session's `Y.UndoManager` replaying an undo or redo, or `null` for an untagged
+ * transaction.
+ */
+type MockDocOrigin = Connection | string | Y.UndoManager | null;
 
 export interface MockCollabHub {
   capability: (docPath: string) => Promise<CollabHandle | null>;
@@ -89,12 +123,12 @@ export function createMockCollabHub(
       statusCbs: new Set(),
     };
 
-    const clientListener = (update: Uint8Array, origin: unknown) => {
+    const clientListener = (update: Uint8Array, origin: MockDocOrigin) => {
       if (origin !== "mock-hub" && !conn.destroyed) {
         Y.applyUpdate(server, update, conn);
       }
     };
-    const serverListener = (update: Uint8Array, origin: unknown) => {
+    const serverListener = (update: Uint8Array, origin: MockDocOrigin) => {
       if (origin !== conn && !conn.destroyed) {
         Y.applyUpdate(conn.doc, update, "mock-hub");
       }
@@ -102,9 +136,11 @@ export function createMockCollabHub(
     conn.doc.on("update", clientListener);
     server.on("update", serverListener);
 
+    /* Every awareness origin here is a string: "local" for `setLocalState`, "mock-hub" for what the
+       hub relayed, a test's own tag, and y-protocols' "timeout" expiry. */
     const awarenessListener = (
       changes: { added: number[]; updated: number[]; removed: number[] },
-      origin: unknown,
+      origin: string,
     ) => {
       if (origin === "mock-hub" || conn.destroyed) {
         return;

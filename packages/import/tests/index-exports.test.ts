@@ -4,6 +4,7 @@ import * as api from "../src/index.ts";
 
 describe("package exports", () => {
   test("exposes the pipeline surface", () => {
+    const exported = new Map(Object.entries(api));
     for (const name of [
       "importSite",
       "capturePage",
@@ -27,7 +28,7 @@ describe("package exports", () => {
       "diffScreenshots",
       "verifyProject",
     ] as const) {
-      expect(typeof (api as Record<string, unknown>)[name]).toBe("function");
+      expect(exported.get(name)).toBeFunction();
     }
     expect(Array.isArray(api.STYLE_ALLOWLIST)).toBe(true);
   });

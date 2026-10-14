@@ -16,7 +16,8 @@ import {
   createProxyStreamingClient,
   usageEventFromOpenAI,
 } from "../src/streaming-client.js";
-import type { StreamErrorEvent, StreamEvent } from "../src/streaming-client.js";
+import type { StreamEvent } from "../src/streaming-client.js";
+import type { JsonObject } from "../src/core-types.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,23 +37,69 @@ function streamingResponse(body: string, init?: ResponseInit): Response {
   return new Response(body, init);
 }
 
-/** Installs a fetch mock and records the single request's url + init. */
-function mockFetch(impl: (url: string, init: RequestInit) => Promise<Response> | Response): {
-  calls: { url: string; init: RequestInit }[];
-} {
-  const calls: { url: string; init: RequestInit }[] = [];
-  globalThis.fetch = ((url: string, init: RequestInit) => {
-    calls.push({ url, init });
-    return impl(url, init);
-  }) as typeof fetch;
+/** One request a client sent: where, with what init, and that init's headers and JSON body. */
+interface SentRequest {
+  url: string;
+  init: RequestInit;
+  headers: Record<string, string>;
+  body: JsonObject;
+}
+
+/** What {@link mockFetch} recorded: every request, in the order the clients sent them. */
+interface FetchRecord {
+  calls: SentRequest[];
+}
+
+/** Installs a fetch mock and records each request's url, init, headers and parsed body. */
+function mockFetch(
+  impl: (url: string, init: RequestInit) => Promise<Response> | Response,
+): FetchRecord {
+  const calls: SentRequest[] = [];
+  const answer = (input: string | URL | Request, init?: RequestInit) => {
+    if (init === undefined) {
+      throw new Error("every streaming client calls fetch with an init");
+    }
+    const url = String(input);
+    /* SAFETY: both clients that fetch (OpenAI and proxy, streaming-client.ts) pass `headers` as a
+       plain object of strings and `body` as JSON.stringify of a request object. */
+    const headers = init.headers as Record<string, string>;
+    // SAFETY: as above, the body is always the JSON text of an object.
+    const body = JSON.parse(String(init.body)) as JsonObject;
+    calls.push({ url, init, headers, body });
+    return Promise.resolve(impl(url, init));
+  };
+  globalThis.fetch = Object.assign(answer, { preconnect: realFetch.preconnect });
   return { calls };
 }
 
-/** Drains an async generator into an array of the union every client is contracted to yield. */
-async function collect(gen: AsyncGenerator<unknown>): Promise<StreamEvent[]> {
+/** A 200 response whose reader rejects every read with `error`, and whose cancel succeeds. */
+function failingReadResponse(error: Error): Response {
+  const reader = {
+    read: (): Promise<ReadableStreamReadResult<Uint8Array>> => Promise.reject(error),
+    cancel: () => Promise.resolve(),
+  };
+  const response = { body: { getReader: () => reader }, ok: true, status: 200 };
+  /* SAFETY: a streaming client reads only `ok` and `body.getReader()` of a 2xx response, and only
+     `read()` and `cancel()` of the reader, which are the members built above. A real stream that
+     errored would reject the client's `void reader.cancel()` with nobody to handle it. */
+  return response as Response;
+}
+
+/** A non-ok response whose body fails while it is read, so `text()` rejects. */
+function unreadableResponse(status: number, statusText: string): Response {
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new Error("read fail"));
+    },
+  });
+  return new Response(body, { status, statusText });
+}
+
+/** Drains a client's stream into an array of the union every client is contracted to yield. */
+async function collect(gen: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
   const events: StreamEvent[] = [];
   for await (const event of gen) {
-    events.push(event as StreamEvent);
+    events.push(event);
   }
   return events;
 }
@@ -99,16 +146,13 @@ describe("createOpenAIStreamingClient", () => {
     const call = calls[0]!;
     expect(call.url).toBe("https://api.openai.com/v1/chat/completions");
     expect(call.init.method).toBe("POST");
-    const headers = call.init.headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer sk-test");
-    const sent = JSON.parse(call.init.body as string) as {
-      temperature?: number;
-      messages: { role: string; content: string }[];
-      tools?: unknown;
-    };
-    expect(sent.temperature).toBe(0);
-    expect(sent.messages[0]).toEqual({ role: "system", content: "be nice" });
-    expect(sent.tools).toBeUndefined();
+    expect(call.headers.Authorization).toBe("Bearer sk-test");
+    expect(call.body.temperature).toBe(0);
+    expect(call.body.messages).toEqual([
+      { role: "system", content: "be nice" },
+      { role: "user", content: "hi" },
+    ]);
+    expect(call.body.tools).toBeUndefined();
   });
 
   it("omits temperature when undefined and forwards tools with tool_choice", async () => {
@@ -119,16 +163,10 @@ describe("createOpenAIStreamingClient", () => {
       client.streamChat([], [{ type: "function" }], "sys", new AbortController().signal),
     );
 
-    const sent = JSON.parse(calls[0]!.init.body as string) as {
-      temperature?: number;
-      tools?: unknown[];
-      tool_choice?: string;
-      parallel_tool_calls?: boolean;
-      model: string;
-    };
+    const sent = calls[0]!.body;
     expect(sent.temperature).toBeUndefined();
     expect(sent.model).toBe("gpt-4o");
-    expect(sent.tools).toHaveLength(1);
+    expect(sent.tools).toEqual([{ type: "function" }]);
     expect(sent.tool_choice).toBe("auto");
     expect(sent.parallel_tool_calls).toBe(true);
   });
@@ -402,10 +440,11 @@ describe("createOpenAIStreamingClient", () => {
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toHaveLength(1);
-    const event = events[0] as StreamErrorEvent;
-    expect(event.type).toBe("error");
-    expect(event.message).toBe("API error 503: Service Unavailable");
-    expect(event.code).toBe("503");
+    expect(events[0]).toMatchObject({
+      type: "error",
+      message: "API error 503: Service Unavailable",
+      code: "503",
+    });
   });
 
   it("yields a network error event when fetch rejects with a non-abort error", async () => {
@@ -423,21 +462,14 @@ describe("createOpenAIStreamingClient", () => {
   });
 
   it("yields an error event when the response has no body", async () => {
-    const noBody = { ok: true, body: null } as unknown as Response;
-    mockFetch(() => noBody);
+    mockFetch(() => new Response(null, { status: 200 }));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "error", message: "No response body" }]);
   });
 
   it("yields an error event when reading the non-ok body text throws", async () => {
-    const failingText = {
-      ok: false,
-      status: 500,
-      statusText: "Server Error",
-      text: () => Promise.reject(new Error("read fail")),
-    } as unknown as Response;
-    mockFetch(() => failingText);
+    mockFetch(() => unreadableResponse(500, "Server Error"));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([
@@ -446,30 +478,14 @@ describe("createOpenAIStreamingClient", () => {
   });
 
   it("yields a stream error event when reading the body throws mid-stream", async () => {
-    const reader = {
-      read: () => Promise.reject(new Error("reader exploded")),
-      cancel: () => Promise.resolve(),
-    };
-    const fakeResponse = {
-      ok: true,
-      body: { getReader: () => reader },
-    } as unknown as Response;
-    mockFetch(() => fakeResponse);
+    mockFetch(() => failingReadResponse(new Error("reader exploded")));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "error", message: "Stream error: reader exploded" }]);
   });
 
   it("yields a cancelled done event when reading the body throws an AbortError mid-stream", async () => {
-    const reader = {
-      read: () => Promise.reject(abortError("mid-stream abort")),
-      cancel: () => Promise.resolve(),
-    };
-    const fakeResponse = {
-      ok: true,
-      body: { getReader: () => reader },
-    } as unknown as Response;
-    mockFetch(() => fakeResponse);
+    mockFetch(() => failingReadResponse(abortError("mid-stream abort")));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
@@ -573,11 +589,8 @@ describe("createOpenAIStreamingClient: prompt-cache hints", () => {
     const { calls } = mockFetch(() => streamingResponse(DONE, { status: 200 }));
     const client = createOpenAIStreamingClient({ apiKey: "k", baseUrl, sessionAffinity });
     await collect(client.streamChat([], [], "", new AbortController().signal));
-    const { init } = calls[0]!;
-    return {
-      body: JSON.parse(init.body as string) as Record<string, unknown>,
-      headers: init.headers as Record<string, string>,
-    };
+    const { body, headers } = calls[0]!;
+    return { body, headers };
   }
 
   it("puts the affinity in prompt_cache_key for OpenAI, after the fixed headers", async () => {
@@ -639,11 +652,13 @@ describe("createAnthropicStreamingClient", () => {
       apiKey: "k",
     });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toHaveLength(1);
-    const event = events[0] as StreamErrorEvent;
-    expect(event.type).toBe("error");
-    expect(event.code).toBe("NOT_IMPLEMENTED");
-    expect(event.message).toContain("not yet implemented");
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Anthropic provider is not yet implemented (planned for v2). Use OpenAI.",
+        code: "NOT_IMPLEMENTED",
+      },
+    ]);
   });
 });
 
@@ -674,12 +689,10 @@ describe("createProxyStreamingClient", () => {
 
     const call = calls[0]!;
     expect(call.url).toBe("https://proxy/chat");
-    const sent = JSON.parse(call.init.body as string) as { model: string; systemPrompt: string };
-    expect(sent.model).toBe("gpt-4o");
-    expect(sent.systemPrompt).toBe("sys");
-    const headers = call.init.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBeUndefined();
-    expect(headers["X-Api-Base-URL"]).toBeUndefined();
+    expect(call.body.model).toBe("gpt-4o");
+    expect(call.body.systemPrompt).toBe("sys");
+    expect(call.headers["X-Api-Key"]).toBeUndefined();
+    expect(call.headers["X-Api-Base-URL"]).toBeUndefined();
   });
 
   /* A platform may resolve the URL over IPC (desktop). A function is called inside the first
@@ -780,11 +793,10 @@ describe("createProxyStreamingClient", () => {
       baseUrl: "https://local/v1",
     });
     await collect(client.streamChat([], [], "", new AbortController().signal));
-    const headers = calls[0]!.init.headers as Record<string, string>;
+    const { body, headers } = calls[0]!;
     expect(headers["X-Api-Key"]).toBe("secret");
     expect(headers["X-Api-Base-URL"]).toBe("https://local/v1");
-    const sent = JSON.parse(calls[0]!.init.body as string) as { model: string };
-    expect(sent.model).toBe("gpt-5");
+    expect(body.model).toBe("gpt-5");
   });
 
   /* The raw id goes to the client's own backend, which hashes it before any provider sees it, so the
@@ -803,16 +815,15 @@ describe("createProxyStreamingClient", () => {
     const without = createProxyStreamingClient({ chatUrl: "https://proxy/chat", sessionId: "" });
     await collect(without.streamChat([], [], "", new AbortController().signal));
 
-    const first = calls[0]!.init.headers as Record<string, string>;
-    expect(first[AI_SESSION_HEADER]).toBe("s_1_abc");
-    expect(Object.keys(JSON.parse(calls[0]!.init.body as string) as object).toSorted()).toEqual([
+    const [first, second] = calls;
+    expect(first!.headers[AI_SESSION_HEADER]).toBe("s_1_abc");
+    expect(Object.keys(first!.body).toSorted()).toEqual([
       "messages",
       "model",
       "systemPrompt",
       "tools",
     ]);
-    const second = calls[1]!.init.headers as Record<string, string>;
-    expect(AI_SESSION_HEADER in second).toBe(false);
+    expect(AI_SESSION_HEADER in second!.headers).toBe(false);
   });
 
   it("stops and forwards an upstream error event", async () => {
@@ -916,6 +927,27 @@ describe("createProxyStreamingClient", () => {
     expect(events).toEqual([{ type: "error", message: "No route for that URI", code: "404" }]);
   });
 
+  it("shows a truthy non-string error message as text", async () => {
+    mockFetch(() =>
+      streamingResponse(
+        JSON.stringify({ error: { message: 42 }, errors: [{ message: "from errors" }] }),
+        { status: 500 },
+      ),
+    );
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([{ type: "error", message: "42", code: "500" }]);
+  });
+
+  it("shows a truthy non-string errors entry message as text", async () => {
+    mockFetch(() =>
+      streamingResponse(JSON.stringify({ errors: [{ message: true }] }), { status: 500 }),
+    );
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([{ type: "error", message: "true", code: "500" }]);
+  });
+
   it("falls back to the status when the body's code is absent or empty", async () => {
     // An empty string is not a code — it must not shadow the status a reader can still act on.
     mockFetch(() =>
@@ -937,10 +969,11 @@ describe("createProxyStreamingClient", () => {
     mockFetch(() => streamingResponse(JSON.stringify({ error: { type: "x" } }), { status: 500 }));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    const event = events[0] as StreamErrorEvent;
-    expect(event.type).toBe("error");
-    expect(event.message).toBe(JSON.stringify({ error: { type: "x" } }));
-    expect(event.code).toBe("500");
+    expect(events[0]).toMatchObject({
+      type: "error",
+      message: JSON.stringify({ error: { type: "x" } }),
+      code: "500",
+    });
   });
 
   it("falls back to statusText on a non-ok empty body", async () => {
@@ -951,13 +984,7 @@ describe("createProxyStreamingClient", () => {
   });
 
   it("yields an error event when reading the non-ok body text throws", async () => {
-    const failingText = {
-      ok: false,
-      status: 504,
-      statusText: "Gateway Timeout",
-      text: () => Promise.reject(new Error("read fail")),
-    } as unknown as Response;
-    mockFetch(() => failingText);
+    mockFetch(() => unreadableResponse(504, "Gateway Timeout"));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "error", message: "Gateway Timeout", code: "504" }]);
@@ -978,38 +1005,21 @@ describe("createProxyStreamingClient", () => {
   });
 
   it("yields an error event when the response has no body", async () => {
-    const noBody = { ok: true, body: null } as unknown as Response;
-    mockFetch(() => noBody);
+    mockFetch(() => new Response(null, { status: 200 }));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "error", message: "No response body" }]);
   });
 
   it("yields a stream error event when reading the body throws mid-stream", async () => {
-    const reader = {
-      read: () => Promise.reject(new Error("proxy reader exploded")),
-      cancel: () => Promise.resolve(),
-    };
-    const fakeResponse = {
-      ok: true,
-      body: { getReader: () => reader },
-    } as unknown as Response;
-    mockFetch(() => fakeResponse);
+    mockFetch(() => failingReadResponse(new Error("proxy reader exploded")));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "error", message: "Stream error: proxy reader exploded" }]);
   });
 
   it("yields a cancelled done event when reading the body throws an AbortError mid-stream", async () => {
-    const reader = {
-      read: () => Promise.reject(abortError("proxy abort")),
-      cancel: () => Promise.resolve(),
-    };
-    const fakeResponse = {
-      ok: true,
-      body: { getReader: () => reader },
-    } as unknown as Response;
-    mockFetch(() => fakeResponse);
+    mockFetch(() => failingReadResponse(abortError("proxy abort")));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);

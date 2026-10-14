@@ -1,3 +1,6 @@
+// The electrobun CLI evaluates this file under Bun, and it sits outside tsconfig.json's `include`
+// (it joins that program only through imports), so it names its ambient runtime types itself.
+/// <reference types="bun-types" />
 import type { ElectrobunConfig } from "electrobun";
 /*
  * RELATIVE, and it has to be. This file is loaded by the `electrobun` CLI — a compiled single-file
@@ -18,6 +21,8 @@ import { join } from "node:path";
 // Anchored to this file, not to cwd. The Electrobun 1.x CLI always evaluated the config with the
 // Project directory as cwd, so a bare "./package.json" worked; Hutch makes no such promise and
 // Loading the config failed outright with ENOENT until this was resolved properly.
+// SAFETY: this is @jxsuite/desktop's own committed manifest, and release-please keeps its
+// `version` a string.
 const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "package.json"), "utf8")) as {
   version: string;
 };

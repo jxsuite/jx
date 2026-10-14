@@ -1,6 +1,7 @@
 import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
+import { hasSchemaKeywords, isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -26,6 +27,8 @@ afterEach(() => {
 });
 
 async function toggle(attrs: Record<string, string> = {}, text = "Wrap"): Promise<JxSwitch> {
+  /* SAFETY: registerUi() in beforeAll defined jx-switch from its component document, which
+     declares the `checked`, `disabled`, `hint` and `label` props `JxSwitch` lists. */
   const el = document.createElement("jx-switch") as JxSwitch;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -78,13 +81,25 @@ function px(block: string | undefined, prop: string): number {
   return Number(match![1]);
 }
 
+/** The first child of a document node, which must be an element rather than text or a repeater. */
+function firstElement(node: JxElement): JxElement {
+  const [first] = Array.isArray(node.children) ? node.children : [];
+  if (first === undefined || isString(first)) {
+    throw new Error("expected an element as the node's first child");
+  }
+  return first;
+}
+
+/** The `description` of one state entry of the shipped document, or "" when it carries none. */
+function stateDescription(name: string): string {
+  const entry = documents["jx-switch"].state?.[name];
+  return hasSchemaKeywords(entry) ? (entry.description ?? "") : "";
+}
+
 /** The `checked` state entry of the shipped document, and the input node it is bound to. */
 function checkedBinding() {
-  const doc = documents["jx-switch"]!;
-  const { state } = doc as unknown as { state: Record<string, { description?: string }> };
-  const label = (doc.children as JxElement[])[0]!;
-  const box = (label.children as JxElement[])[0]!;
-  return { box, description: state["checked"]?.description ?? "" };
+  const box = firstElement(firstElement(documents["jx-switch"]));
+  return { box, description: stateDescription("checked") };
 }
 
 describe("jx-switch", () => {
@@ -163,6 +178,7 @@ describe("jx-switch", () => {
        symptom. */
     const form = document.createElement("form");
     document.body.append(form);
+    // SAFETY: registerUi() in beforeAll defined jx-switch, whose document declares `checked`.
     const el = document.createElement("jx-switch") as JxSwitch;
     form.append(el);
     await tick();
@@ -189,7 +205,7 @@ describe("jx-switch", () => {
        cost, so deleting either one without editing the other is a red test. */
     const { box, description } = checkedBinding();
     expect(box.attributes?.["checked"]).toEqual({ $ref: "#/state/checked" });
-    expect((box as unknown as Record<string, unknown>)["checked"]).toEqual({
+    expect(box["checked"]).toEqual({
       $ref: "#/state/checked",
     });
     expect(description).not.toContain("rather than as an attribute");
@@ -228,15 +244,15 @@ describe("jx-switch", () => {
     /* Interest invokers are supported on a, area and button only. A label carrying `interestfor`
        shows nothing on Chrome 152 and, worse, tells the tooltip sidecar the platform has the pair,
        so nothing is bound either: the one wiring that draws no tip on any engine. */
-    const doc = documents["jx-switch"]!;
-    const label = (doc.children as JxElement[])[0]!;
+    const doc = documents["jx-switch"];
+    const label = firstElement(doc);
     expect(label.attributes?.["part"]).toBe("control");
     expect(label.attributes).not.toHaveProperty("interestfor");
     // Nothing the element RENDERS names it; the prose explaining why is in the prop description.
     expect(JSON.stringify(doc.children)).not.toContain("interestfor");
-    const hint = doc.state!["hint"] as { description: string };
-    expect(hint.description).toContain("NO `interestfor`");
-    expect(hint.description).toContain("`a`, `area` and `button`");
+    const hint = stateDescription("hint");
+    expect(hint).toContain("NO `interestfor`");
+    expect(hint).toContain("`a`, `area` and `button`");
   });
 
   test("disabled reaches the control, and the host says so", async () => {
@@ -271,7 +287,7 @@ describe("jx-switch", () => {
   test("slotted markup survives into the label slot rather than being stringified", async () => {
     /* A label is not always a plain string: the Imports panel slots a span holding an escaped tag
        name, which a `label` attribute could not express. */
-    const el = document.createElement("jx-switch") as JxSwitch;
+    const el = document.createElement("jx-switch");
     const span = document.createElement("span");
     span.textContent = "<my-element>";
     el.append(span);
@@ -293,7 +309,7 @@ describe("jx-switch", () => {
     expect(bare.querySelector('[part="label"]')!.matches(":empty")).toBe(true);
 
     // Light children that match no slot: the slot unwrapped to its absent fallback.
-    const elsewhere = document.createElement("jx-switch") as JxSwitch;
+    const elsewhere = document.createElement("jx-switch");
     elsewhere.innerHTML = '<span slot="nowhere">x</span>';
     document.body.append(elsewhere);
     await tick();

@@ -10,6 +10,7 @@
  * `dispatchEvent` with `CustomEventInit` members, `stopPropagation` and `preventDefault`.
  */
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import {
   compileExpression,
   compileOperandSource,
@@ -17,13 +18,19 @@ import {
   evaluateOperand,
 } from "./expression.ts";
 
-import type { JxStatement } from "@jxsuite/schema/types";
-import type { CompileOpts, ExpressionNode, IterCtx } from "./expression.ts";
+import type {
+  JxDispatchStatement,
+  JxExpressionNode,
+  JxIfStatement,
+  JxStatement,
+  JxSwitchStatement,
+} from "@jxsuite/schema/types";
+import type { CompileOpts, IterCtx } from "./expression.ts";
 import type { JxScope } from "./types.ts";
 
 interface RunOpts {
   /** Named-formula-style arguments bound for $args/<name> refs in the body. */
-  args?: Record<string, unknown>;
+  args?: IterCtx["args"];
   /**
    * Dispatch target for dispatchEvent statements when there is no event to read `currentTarget`
    * from — a parameterised body invoked through `call`, or a lifecycle hook. A thunk is read at
@@ -32,31 +39,49 @@ interface RunOpts {
   target?: EventTarget | null | (() => EventTarget | null);
 }
 
-type StatementKind =
-  | "expression"
-  | "if"
-  | "switch"
-  | "dispatch"
-  | "stopPropagation"
-  | "preventDefault";
+/*
+ * Statement bodies come from documents that are not schema-validated at runtime, so the branch
+ * arrays the schema requires may still be absent; these views say so and keep the fallbacks
+ * honest.
+ */
+interface UncheckedIfStatement extends Omit<JxIfStatement, "then"> {
+  then?: JxStatement[];
+}
 
-function statementKind(statement: JxStatement): StatementKind {
+interface UncheckedSwitchStatement extends Omit<JxSwitchStatement, "cases"> {
+  cases?: JxSwitchStatement["cases"];
+}
+
+type ClassifiedStatement =
+  | { kind: "expression"; node: JxExpressionNode }
+  | { kind: "if"; node: UncheckedIfStatement }
+  | { kind: "switch"; node: UncheckedSwitchStatement }
+  | { kind: "dispatch"; node: JxDispatchStatement }
+  | { kind: "stopPropagation" }
+  | { kind: "preventDefault" };
+
+function classifyStatement(statement: JxStatement): ClassifiedStatement {
   if ("operator" in statement) {
-    return "expression";
+    return { kind: "expression", node: statement };
   }
   if ("if" in statement) {
-    return "if";
+    return { kind: "if", node: statement };
   }
   if ("$switch" in statement) {
-    return "switch";
+    return { kind: "switch", node: statement };
   }
   if ("stopPropagation" in statement) {
-    return "stopPropagation";
+    return { kind: "stopPropagation" };
   }
   if ("preventDefault" in statement) {
-    return "preventDefault";
+    return { kind: "preventDefault" };
   }
-  return "dispatch";
+  return { kind: "dispatch", node: statement };
+}
+
+/** A value `await` would adopt: anything with a callable `then` (ECMA-262 thenable). */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (isNonNullObject(value) || isFunction(value)) && "then" in value && isFunction(value.then);
 }
 
 /**
@@ -72,16 +97,18 @@ export async function runStatements(
 ): Promise<void> {
   const iterCtx: IterCtx | undefined = opts.args ? { args: opts.args } : undefined;
   for (const statement of statements) {
-    switch (statementKind(statement)) {
+    const classified = classifyStatement(statement);
+    switch (classified.kind) {
       case "expression": {
-        const result = evaluateExpression(statement as ExpressionNode, state, event, iterCtx);
-        if (result && typeof (result as PromiseLike<unknown>).then === "function") {
-          await (result as PromiseLike<unknown>);
+        const result = evaluateExpression(classified.node, state, event, iterCtx);
+        if (isThenable(result)) {
+          // Awaited for its ordering alone: the next statement runs once this one settles.
+          void (await result);
         }
         break;
       }
       case "if": {
-        const branch = statement as { if: unknown; then: JxStatement[]; else?: JxStatement[] };
+        const branch = classified.node;
         const taken = evaluateOperand(branch.if, state, event, iterCtx) ? branch.then : branch.else;
         if (Array.isArray(taken)) {
           await runStatements(taken, state, event, opts);
@@ -89,11 +116,7 @@ export async function runStatements(
         break;
       }
       case "switch": {
-        const branch = statement as {
-          $switch: unknown;
-          cases: Record<string, JxStatement[]>;
-          default?: JxStatement[];
-        };
+        const branch = classified.node;
         const key = String(evaluateOperand(branch.$switch, state, event, iterCtx));
         const cases = branch.cases ?? {};
         const taken = Object.hasOwn(cases, key) ? cases[key] : branch.default;
@@ -103,14 +126,9 @@ export async function runStatements(
         break;
       }
       case "dispatch": {
-        const dispatch = statement as {
-          dispatchEvent: string;
-          detail?: unknown;
-          bubbles?: boolean;
-          composed?: boolean;
-        };
+        const dispatch = classified.node;
         // An event's own target wins; the option is the fallback for bodies run without one.
-        const fallback = typeof opts.target === "function" ? opts.target() : opts.target;
+        const fallback = isFunction(opts.target) ? opts.target() : opts.target;
         const target = event?.currentTarget ?? fallback;
         if (!target) {
           break;
@@ -164,13 +182,14 @@ export function compileStatements(
   const indent = opts.indent ?? "";
   const lines: string[] = [];
   for (const statement of statements) {
-    switch (statementKind(statement)) {
+    const classified = classifyStatement(statement);
+    switch (classified.kind) {
       case "expression": {
-        lines.push(`${indent}${compileExpression(statement as ExpressionNode, opts)};`);
+        lines.push(`${indent}${compileExpression(classified.node, opts)};`);
         break;
       }
       case "if": {
-        const branch = statement as { if: unknown; then: JxStatement[]; else?: JxStatement[] };
+        const branch = classified.node;
         const test = compileOperandSource(branch.if, opts);
         const inner = { ...opts, indent: `${indent}  ` };
         lines.push(`${indent}if (${test}) {`, compileStatements(branch.then ?? [], inner));
@@ -181,11 +200,7 @@ export function compileStatements(
         break;
       }
       case "switch": {
-        const branch = statement as {
-          $switch: unknown;
-          cases: Record<string, JxStatement[]>;
-          default?: JxStatement[];
-        };
+        const branch = classified.node;
         const disc = compileOperandSource(branch.$switch, opts);
         const inner = { ...opts, indent: `${indent}    ` };
         lines.push(`${indent}switch (String(${disc})) {`);
@@ -208,12 +223,7 @@ export function compileStatements(
         break;
       }
       case "dispatch": {
-        const dispatch = statement as {
-          dispatchEvent: string;
-          detail?: unknown;
-          bubbles?: boolean;
-          composed?: boolean;
-        };
+        const dispatch = classified.node;
         const eventName = opts.eventParam ?? "event";
         const target = opts.dispatchTarget ?? `(${eventName} && ${eventName}.currentTarget)`;
         const init: string[] = [];

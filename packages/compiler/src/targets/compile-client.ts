@@ -40,17 +40,21 @@ import {
 import {
   bodyReturnsValue,
   hasStructuredBody,
+  isBoolean,
   isExpandedSignal,
   isExpressionDef,
   isFunctionDef,
   isMappedArray,
   isNamedFormulaDef,
+  isNonNullObject,
+  isNumber,
   isPrototypeDef,
+  isString,
   isTagExpression,
   paramNames,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
-import type { CompileContext, ExpressionNode } from "../shared.ts";
+import type { CompileContext } from "../shared.ts";
 import {
   escapeToken,
   objectKey,
@@ -60,12 +64,20 @@ import {
 } from "@jxsuite/runtime/pointer";
 import type {
   JsonObject,
+  JsonPrimitive,
   JsonValue,
   JxDocument,
+  JxExpressionNode,
   JxMappedArray,
   JxMutableNode,
   JxStyle,
 } from "@jxsuite/schema/types";
+
+/**
+ * A repeater as `isMappedArray` proves it: only `$prototype` is checked, so a parsed document can
+ * reach the emitter without `items`, which then renders as an empty list.
+ */
+type RepeaterSlot = Omit<JxMappedArray, "items"> & { items?: JxMappedArray["items"] };
 
 /** A compiled event handler entry: parameter names + function body. */
 interface HandlerDef {
@@ -95,7 +107,7 @@ export function compileClient(
     modulePath?: string;
     projectStyle?: JxStyle | null;
     prePaintScheme?: boolean;
-    [key: string]: unknown;
+    rewriteSrc?: (specifier: string) => string;
   },
 ) {
   const {
@@ -106,11 +118,7 @@ export function compileClient(
   } = opts;
 
   const context = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
-  const styleBlock = compileStyles(
-    raw,
-    raw.$media ?? {},
-    (opts.projectStyle ?? null) as JxStyle | null,
-  );
+  const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
 
   // Collectors for bindings and handlers
   const counter = { h: 0, l: 0, m: 0, needsLit: false, s: 0, sw: 0, t: 0 };
@@ -129,9 +137,9 @@ export function compileClient(
 
   const defs = raw.state ?? {};
   for (const [key, def] of Object.entries(defs)) {
-    if (def === null || typeof def !== "object" || Array.isArray(def)) {
+    if (!isNonNullObject(def) || Array.isArray(def)) {
       // Naked primitive or array → reactive state
-      if (typeof def === "string" && isTemplateString(def)) {
+      if (isTemplateString(def)) {
         // Template string → computed on state so other computeds can ref it
         computedEntries.push([key, `() => \`${def}\``]);
       } else {
@@ -142,7 +150,7 @@ export function compileClient(
 
     // $expression: Shape 5
     if (isExpressionDef(def)) {
-      const node = def.$expression as ExpressionNode;
+      const node = def.$expression;
       const compiled = compileExpression(node, {
         eventParam: "e",
         statePrefix: "state",
@@ -162,10 +170,11 @@ export function compileClient(
     // $prototype: "Function"
     if (isFunctionDef(def)) {
       const args = def.parameters ? paramNames(def.parameters) : def.arguments;
-      if (hasStructuredBody(def)) {
+      const { body } = def;
+      if (Array.isArray(body)) {
         // Structured body (spec §20) → an event handler compiled from statements.
         // With parameters, a positional callable like a named formula.
-        const compiled = compileStatements(def.body, { eventParam: "e", statePrefix: "state" });
+        const compiled = compileStatements(body, { eventParam: "e", statePrefix: "state" });
         if (def.parameters && def.parameters.length > 0) {
           initBlocks.push(
             `state[${JSON.stringify(key)}] = ${emitFormulaFn(def, `(() => {\n${compiled}\n})()`)};`,
@@ -174,19 +183,21 @@ export function compileClient(
           onEntries.push([key, { args: ["state", "e"], body: compiled }]);
         }
       } else if (def.$src) {
-        if (!srcImportMap.has(def.$src)) {
-          srcImportMap.set(def.$src, new Set());
+        let names = srcImportMap.get(def.$src);
+        if (!names) {
+          names = new Set();
+          srcImportMap.set(def.$src, names);
         }
-        (srcImportMap.get(def.$src) as Set<string>).add(srcImportBinding(key, def));
+        names.add(srcImportBinding(key, def));
 
         // $src functions always produce computed entries (they return values)
         computedEntries.push([key, `() => { return ${key}(state); }`]);
-      } else if (typeof def.body === "string" && bodyReturnsValue(def.body)) {
+      } else if (isString(body) && bodyReturnsValue(body)) {
         // Body contains return → computed
-        computedEntries.push([key, `() => { ${def.body} }`]);
+        computedEntries.push([key, `() => { ${body} }`]);
       } else {
         // No return → event handler
-        onEntries.push([key, { args: args ?? ["state"], body: def.body as string | undefined }]);
+        onEntries.push([key, { args: args ?? ["state"], body }]);
       }
       continue;
     }
@@ -228,12 +239,17 @@ export function compileClient(
       }
     }
 
-    // Plain object → reactive state (parsed JSON, so structurally a JsonObject)
+    /*
+     * Plain object → reactive state.
+     * SAFETY: `raw.state` is parsed JSON, so this entry is structurally a JsonObject; the checks
+     * above already took the primitives and arrays and every function, expression, schema-only,
+     * expanded-signal and storage/request/cookie shape, leaving the naked object literal.
+     */
     stateEntries.push([key, def as JsonObject]);
   }
 
   // Build HTML tree with data-bind markers
-  const bodyContent = buildClientNode(raw, raw, context, bindings, handlers, counter);
+  const bodyContent = buildClientNode(raw, context, bindings, handlers, counter);
 
   // Merge inline-discovered bindings/handlers
   for (const [key, expr] of bindings) {
@@ -257,7 +273,7 @@ export function compileClient(
     srcImportMap,
     counter,
     reactivitySrc,
-    opts.rewriteSrc as ((specifier: string) => string) | undefined,
+    opts.rewriteSrc,
   );
 
   // Build importmap entries — always include lit-html since compiled custom elements need it
@@ -300,8 +316,7 @@ ${importmapEntries.join(",\n")}
 // ─── HTML tree walker ─────────────────────────────────────────────────────────
 
 /**
- * @param {JxMutableNode} def
- * @param {JxMutableNode} raw
+ * @param {JxMutableNode | JsonPrimitive} def - A node or child slot as the document holds it
  * @param {CompileContext} context
  * @param {Map<string, string>} bindings
  * @param {Map<string, HandlerDef>} handlers
@@ -317,8 +332,7 @@ ${importmapEntries.join(",\n")}
  * @returns {string}
  */
 function buildClientNode(
-  def: JxMutableNode,
-  raw: JxMutableNode,
+  def: JxMutableNode | JsonPrimitive,
   context: CompileContext,
   bindings: Map<string, string>,
   handlers: Map<string, HandlerDef>,
@@ -333,21 +347,21 @@ function buildClientNode(
   },
 ) {
   // String children are text nodes
-  if (typeof def === "string") {
+  if (isString(def)) {
     return escapeHtml(def);
   }
-  if (typeof def === "number" || typeof def === "boolean") {
+  if (isNumber(def) || isBoolean(def)) {
     return escapeHtml(String(def));
   }
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return "";
   }
 
   const nextContext = createCompileContext(
-    raw,
+    def,
     context.scope,
-    raw?.state ?? context.scopeDefs,
-    raw?.$media ?? context.media,
+    def.state ?? context.scopeDefs,
+    def.$media ?? context.media,
   );
 
   /* REFUSED, LOUDLY. A chosen tag has no implementation in this target: the element's identity is
@@ -371,11 +385,11 @@ function buildClientNode(
 
   // TextContent bindings
   if (def.textContent !== undefined) {
-    const tc = raw?.textContent ?? (def.textContent as unknown as JxMutableNode);
+    const tc = def.textContent;
     if (isRefObject(tc)) {
-      const key = refToBindingKey((tc as JxMutableNode).$ref as string);
+      const key = refToBindingKey(tc.$ref);
       bindAttrs.push(`:text-content="${key}"`);
-      addRefBinding(bindings, key, (tc as JxMutableNode).$ref as string);
+      addRefBinding(bindings, key, tc.$ref);
       needsBind = true;
     } else if (isTemplateString(tc)) {
       const key = `_t${counter.t}`;
@@ -396,29 +410,32 @@ function buildClientNode(
       const key = refToBindingKey(val.$ref);
       bindAttrs.push(`@${eventName}="${key}"`);
       needsBind = true;
-    } else if (hasStructuredBody(val)) {
-      const key = `_h${counter.h}`;
-      counter.h += 1;
-      bindAttrs.push(`@${eventName}="${key}"`);
-      handlers.set(key, {
-        args: ["state", "e"],
-        body: compileStatements(val.body, { eventParam: "e", statePrefix: "state" }),
-      });
-      needsBind = true;
     } else if (isFunctionDef(val)) {
       const key = `_h${counter.h}`;
       counter.h += 1;
       bindAttrs.push(`@${eventName}="${key}"`);
-      handlers.set(key, {
-        args: val.parameters ? paramNames(val.parameters) : (val.arguments ?? ["state", "event"]),
-        body: val.body as string | undefined,
-      });
+      const { body } = val;
+      // A structured body (spec §20) compiles from statements; source text is used as written.
+      handlers.set(
+        key,
+        Array.isArray(body)
+          ? {
+              args: ["state", "e"],
+              body: compileStatements(body, { eventParam: "e", statePrefix: "state" }),
+            }
+          : {
+              args: val.parameters
+                ? paramNames(val.parameters)
+                : (val.arguments ?? ["state", "event"]),
+              body,
+            },
+      );
       needsBind = true;
     } else if (isExpressionDef(val)) {
       const key = `_h${counter.h}`;
       counter.h += 1;
       bindAttrs.push(`@${eventName}="${key}"`);
-      const compiled = compileExpression(val.$expression as ExpressionNode, {
+      const compiled = compileExpression(val.$expression, {
         eventParam: "e",
         statePrefix: "state",
       });
@@ -428,7 +445,7 @@ function buildClientNode(
   }
 
   // Dynamic style properties
-  if (def.style && typeof def.style === "object") {
+  if (isNonNullObject(def.style)) {
     for (const [prop, val] of Object.entries(def.style)) {
       if (
         prop.startsWith(":") ||
@@ -439,7 +456,7 @@ function buildClientNode(
       ) {
         continue;
       }
-      if (val === null || typeof val === "object") {
+      if (isNonDeclarationValue(val)) {
         continue;
       }
       if (isTemplateString(val)) {
@@ -453,12 +470,12 @@ function buildClientNode(
   }
 
   // Dynamic attributes
-  if (def.attributes && typeof def.attributes === "object") {
+  if (isNonNullObject(def.attributes)) {
     for (const [attr, val] of Object.entries(def.attributes)) {
       if (isRefObject(val)) {
-        const key = refToBindingKey((val as JxMutableNode).$ref as string);
+        const key = refToBindingKey(val.$ref);
         bindAttrs.push(`:attr.${attr}="${key}"`);
-        addRefBinding(bindings, key, (val as JxMutableNode).$ref as string);
+        addRefBinding(bindings, key, val.$ref);
         needsBind = true;
       } else if (isTemplateString(val)) {
         const key = `_t${counter.t}`;
@@ -488,9 +505,9 @@ function buildClientNode(
       continue;
     }
     if (isRefObject(val)) {
-      const key = refToBindingKey((val as JxMutableNode).$ref as string);
+      const key = refToBindingKey(val.$ref);
       bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
-      addRefBinding(bindings, key, (val as JxMutableNode).$ref as string);
+      addRefBinding(bindings, key, val.$ref);
       needsBind = true;
     } else if (isTemplateString(val)) {
       const key = `_t${counter.t}`;
@@ -508,7 +525,7 @@ function buildClientNode(
 
   // Inner content
   let inner = "";
-  const source = raw ?? def;
+  const source = def;
   if (source.$switch) {
     // ─── $switch → lit-html render binding ───
     // Without this branch the node fell through to the generic element path, which emitted a
@@ -521,10 +538,11 @@ function buildClientNode(
     const swKey = `_sw${counter.sw}`;
     counter.sw += 1;
     const discriminant = isRefObject(source.$switch)
-      ? `state.${refToBindingKey((source.$switch as { $ref: string }).$ref)}`
+      ? `state.${refToBindingKey(source.$switch.$ref)}`
       : `\`${String(source.$switch)}\``;
-    const cases = (source.cases ?? {}) as Record<string, JxMutableNode>;
-    const caseEntries = Object.entries(cases)
+    const cases = source.cases ?? {};
+    // Parsed JSON, so a case slot can hold `null` or a bare value the declared type leaves out.
+    const caseEntries = Object.entries<JxMutableNode | JsonPrimitive>(cases)
       // An external `$ref` case cannot be fetched at compile time, exactly as in the static target.
       .filter(([, caseDef]) => caseDef && !isRefObject(caseDef))
       .map(
@@ -545,7 +563,8 @@ function buildClientNode(
   } else if (source.innerHTML) {
     // ResolveStaticValue may return null if innerHTML contains `${` from rendered content
     // (e.g., code examples) that isn't an actual template expression. Fall back to raw value.
-    inner = (resolveStaticValue(source.innerHTML, nextContext.scope) as string) ?? source.innerHTML;
+    const resolved = resolveStaticValue(source.innerHTML, nextContext.scope);
+    inner = resolved == null ? source.innerHTML : String(resolved);
   } else if (isMappedArray(source.children)) {
     // ─── Mapped array → lit-html render binding ───
     counter.needsLit = true;
@@ -588,7 +607,7 @@ function buildClientNode(
     const listKey = `_children${counter.l}`;
     counter.l += 1;
     const childrenTpl = source.children
-      .map((c) => emitChildLit(c as JxMutableNode, nextContext.preformatted))
+      .map((c) => emitChildLit(c, nextContext.preformatted))
       .join(childSeparator(nextContext.preformatted, "      "));
     bindings.set(
       listKey,
@@ -601,19 +620,8 @@ function buildClientNode(
     const bindAttrStr2 = ` ${bindAttrs.join(" ")}`;
     return `<${tag}${staticAttrs} data-bind${bindAttrStr2}></${tag}>`;
   } else if (Array.isArray(source.children)) {
-    const rawChildren = Array.isArray(raw?.children) ? raw.children : undefined;
     inner = source.children
-      .map((c, i) => {
-        const childRaw = rawChildren?.[i] ?? c;
-        return buildClientNode(
-          c as JxMutableNode,
-          childRaw as JxMutableNode,
-          nextContext,
-          bindings,
-          handlers,
-          counter,
-        );
-      })
+      .map((c) => buildClientNode(c, nextContext, bindings, handlers, counter))
       .join(childSeparator(nextContext.preformatted));
   }
 
@@ -632,11 +640,12 @@ function buildClientNode(
  * Compile a map definition to a lit-html template string. Converts $map.item → item, $map.index →
  * index.
  *
- * @param {JxMutableNode} def
+ * @param {JxMutableNode | null | undefined} def - Absent, or a JSON `null` child slot, renders
+ *   nothing
  * @param {boolean} [preformatted]
  * @returns {string}
  */
-function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false) {
+function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted = false) {
   if (!def) {
     return "";
   }
@@ -663,11 +672,11 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
 
   // $props → lit property bindings. The element target emits these; the client target emitted
   // Nothing, so a component in a list silently received none of its per-item props.
-  if (def.$props && typeof def.$props === "object") {
+  if (isNonNullObject(def.$props)) {
     for (const [k, v] of Object.entries(def.$props)) {
       if (isRefObject(v)) {
-        attrs += ` .${k}="\${${mapRefToClientExpr((v as { $ref: string }).$ref)}}"`;
-      } else if (typeof v === "string" && isTemplateString(v)) {
+        attrs += ` .${k}="\${${mapRefToClientExpr(v.$ref)}}"`;
+      } else if (isTemplateString(v)) {
         attrs += ` .${k}="${mapRefsToLit(v)}"`;
       } else {
         attrs += ` .${k}="\${${JSON.stringify(v)}}"`;
@@ -676,9 +685,9 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
   }
 
   // Attributes object
-  if (def.attributes && typeof def.attributes === "object") {
+  if (isNonNullObject(def.attributes)) {
     for (const [k, v] of Object.entries(def.attributes)) {
-      if (typeof v === "string" && isTemplateString(v)) {
+      if (isTemplateString(v)) {
         attrs += ` ${k}="${mapRefsToLit(v)}"`;
         continue;
       }
@@ -688,7 +697,7 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
          as it hydrates (spec.md §8.3). Stringifying here emitted `open="false"`, which HTML reads
          by presence and therefore as an OPEN element: the author wrote "closed" and the page
          rendered open. */
-      if (typeof v === "boolean") {
+      if (isBoolean(v)) {
         const text = booleanAttrValue(k, v);
         if (text !== null) {
           attrs += text === "" ? ` ${k}` : ` ${k}="${escapeHtml(text)}"`;
@@ -700,7 +709,7 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
   }
 
   // Style → inline CSS
-  if (def.style && typeof def.style === "object") {
+  if (isNonNullObject(def.style)) {
     const parts: string[] = [];
     for (const [k, v] of Object.entries(def.style)) {
       if (
@@ -712,7 +721,7 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
       ) {
         continue;
       }
-      if (v === null || typeof v === "object") {
+      if (isNonDeclarationValue(v)) {
         continue;
       }
       const cssProp = camelToKebab(k);
@@ -734,22 +743,30 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
     }
     const eventName = prop.slice(2).toLowerCase();
     if (isRefObject(val)) {
-      const key = refToBindingKey((val as JxMutableNode).$ref as string);
+      const key = refToBindingKey(val.$ref);
       attrs += ` @${eventName}=\${(e) => { state.$map = { item, index }; on.${key}(e); }}`;
     } else if (hasStructuredBody(val)) {
       const compiled = compileStatements(val.body, { eventParam: "e", statePrefix: "state" });
       attrs += ` @${eventName}=\${(e) => { state.$map = { item, index }; ${compiled} }}`;
-    } else if (val && typeof val === "object" && (val as JxMutableNode).$prototype === "Function") {
-      const body = mapRefsToLit((val as JxMutableNode).body as string);
+    } else if (isFunctionDef(val)) {
+      /*
+       * SAFETY: hasStructuredBody above took every statement-array body, so `body` is source text
+       * or absent. An absent one (a `$src` function) reaches replaceAll and throws, as it always
+       * has: a repeater handler is emitted inline and needs inline source.
+       */
+      const body = mapRefsToLit(val.body as string);
       attrs += ` @${eventName}=\${(e) => { ${body} }}`;
-    } else if (val && typeof val === "object" && "$expression" in /** @type {any} */ val) {
-      const compiled = compileExpression(
-        (val as Record<string, unknown>).$expression as ExpressionNode,
-        {
-          eventParam: "e",
-          statePrefix: "state",
-        },
-      );
+    } else if (isNonNullObject(val) && "$expression" in val) {
+      /*
+       * SAFETY: an `on*` member carrying `$expression` is a Shape 5 expression entry, whose
+       * `$expression` the document schema defines as an expression node. Presence is all this
+       * branch has ever tested; a malformed node is not filtered here but fails inside
+       * compileExpression, as it did before.
+       */
+      const compiled = compileExpression(val.$expression as JxExpressionNode, {
+        eventParam: "e",
+        statePrefix: "state",
+      });
       attrs += ` @${eventName}=\${(e) => { state.$map = { item, index }; ${compiled}; }}`;
     }
   }
@@ -766,7 +783,7 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
     if (isTemplateString(tc)) {
       inner = mapRefsToLit(tc);
     } else if (isRefObject(def.textContent)) {
-      const path = refToBindingKey((def.textContent as unknown as JxMutableNode).$ref as string);
+      const path = refToBindingKey(def.textContent.$ref);
       inner = `\${state.${path}}`;
     } else {
       inner = escapeHtml(tc);
@@ -792,15 +809,15 @@ function emitLitMapTemplate(def: JxMutableNode | undefined, preformatted = false
  * Emit one child of a lit template: a string text node, an array pseudo-element (expanded inline
  * via a `.map()` hole), or a nested element.
  *
- * @param {JxMutableNode | string} c
+ * @param {JxMutableNode | JsonPrimitive} c - A child slot as the document holds it
  * @param {boolean} [preformatted]
  * @returns {string}
  */
-function emitChildLit(c: JxMutableNode | string, preformatted = false): string {
-  if (typeof c === "string") {
+function emitChildLit(c: JxMutableNode | JsonPrimitive, preformatted = false): string {
+  if (isString(c)) {
     return isTemplateString(c) ? mapRefsToLit(c) : escapeHtml(c);
   }
-  if (typeof c === "number" || typeof c === "boolean") {
+  if (isNumber(c) || isBoolean(c)) {
     return escapeHtml(String(c));
   }
   if (isMappedArray(c)) {
@@ -813,13 +830,13 @@ function emitChildLit(c: JxMutableNode | string, preformatted = false): string {
  * Emit a lit-html `${(items ?? []).map(...)}` hole for a mapped array, expanding its template
  * inline among sibling nodes (wrapper-less).
  *
- * @param {JxMappedArray} arrayDef
+ * @param {RepeaterSlot} arrayDef
  * @returns {string}
  */
-function emitArrayHole(arrayDef: JxMappedArray): string {
+function emitArrayHole(arrayDef: RepeaterSlot): string {
   const { items } = arrayDef;
   const itemsExpr = isRefObject(items)
-    ? `state.${refToBindingKey((items as { $ref: string }).$ref)}`
+    ? `state.${refToBindingKey(items.$ref)}`
     : JSON.stringify(items ?? []);
   const tpl = emitLitMapTemplate(arrayDef.map);
   return `\${(${itemsExpr} ?? []).map((item, index) => html\`${tpl}\`)}`;
@@ -1013,10 +1030,15 @@ function emitClientModule(
  * @param {string} key
  * @param {string} storeName
  * @param {string} storageKey
- * @param {unknown} defaultVal
+ * @param {JsonValue} defaultVal
  * @returns {string}
  */
-function emitStorageInit(key: string, storeName: string, storageKey: string, defaultVal: unknown) {
+function emitStorageInit(
+  key: string,
+  storeName: string,
+  storageKey: string,
+  defaultVal: JsonValue,
+) {
   const lines: string[] = [
     `// ${key}: ${storeName} (key: "${storageKey}")`,
     "try {",
@@ -1037,10 +1059,10 @@ function emitStorageInit(key: string, storeName: string, storageKey: string, def
 /**
  * @param {string} key
  * @param {string} cookieName
- * @param {unknown} defaultVal
+ * @param {JsonValue} defaultVal
  * @returns {string}
  */
-function emitCookieInit(key: string, cookieName: string, defaultVal: unknown) {
+function emitCookieInit(key: string, cookieName: string, defaultVal: JsonValue) {
   const lines: string[] = [
     `// ${key}: Cookie (name: "${cookieName}")`,
     "{",
@@ -1055,6 +1077,19 @@ function emitCookieInit(key: string, cookieName: string, defaultVal: unknown) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Whether a style entry is something other than one declaration value: a nested block, a block
+ * list, a `$ref`, or a JSON `null`. None of those is emitted as an inline declaration.
+ *
+ * @param {JxStyle[string] | null} value
+ * @returns {boolean}
+ */
+function isNonDeclarationValue(
+  value: JxStyle[string] | null,
+): value is Exclude<JxStyle[string], string | number | undefined> | null {
+  return value === null || isNonNullObject(value);
+}
 
 /**
  * @param {string} ref

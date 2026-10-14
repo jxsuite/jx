@@ -40,10 +40,17 @@ import { makeContext } from "../src/commands/context";
 import type { CommandContext } from "../src/commands/context";
 import type { AnyCommand } from "../src/commands/registry";
 import type { ChatRowView } from "../src/surfaces/ai-chat";
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { LiveMessage, LiveToolCall } from "@jxsuite/ai/messages";
+import type { ToolResult } from "@jxsuite/ai/tools";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 let idCounter = 0;
-function msg(role: Message["role"], content: string, extra: Partial<Message> = {}): Message {
+function msg(
+  role: LiveMessage["role"],
+  content: string,
+  extra: Partial<LiveMessage> = {},
+): LiveMessage {
   idCounter += 1;
   return { content, id: `t_${idCounter}`, role, timestamp: idCounter, ...extra };
 }
@@ -61,7 +68,7 @@ function stub(id: string, title: string, extra: Partial<AnyCommand> = {}): AnyCo
     run: () => {},
     title,
     ...extra,
-  } as AnyCommand;
+  };
 }
 
 const ASSISTANT_STUBS: readonly AnyCommand[] = [
@@ -90,32 +97,19 @@ afterEach(() => {
 
 /** The transcript, as rows. */
 function rows(
-  messages: Message[],
+  messages: LiveMessage[],
   opts: { status?: string; ask?: AskHandlers } = {},
 ): ChatRowView[] {
-  return projectRows({
-    messages,
-    status: opts.status ?? "idle",
-    ...(opts.ask ? { ask: opts.ask } : {}),
-  });
+  return projectRows({ ask: opts.ask, messages, status: opts.status ?? "idle" });
 }
 
 /** An assistant turn whose only tool call is a question. */
-function asking(
-  id: string,
-  args: object,
-  result?: { success: boolean; data?: unknown; error?: string },
-): Message {
-  return msg("assistant", "", {
-    toolCalls: [
-      {
-        arguments: JSON.stringify(args),
-        id,
-        name: "ask_user",
-        ...(result ? { result: result as never } : {}),
-      },
-    ],
-  });
+function asking(id: string, args: JsonObject, result?: ToolResult): LiveMessage {
+  const call: LiveToolCall = { arguments: JSON.stringify(args), id, name: "ask_user" };
+  if (result) {
+    call.result = result;
+  }
+  return msg("assistant", "", { toolCalls: [call] });
 }
 
 /** File a ledger entry against a message id, the way the agent loop does. */
@@ -410,7 +404,9 @@ describe("every id the assistant names is one the real app declares", () => {
     const { appCommandSet } = await import("../src/commands/app-commands");
     const declared = new Set(appCommandSet().map((c) => c.id));
     const source = readFileSync(new URL("../src/panels/ai-panel.ts", import.meta.url), "utf8");
-    const named = [...source.matchAll(/projectCommand\("([\w.]+)"/g)].map((m) => m[1] as string);
+    const named = [...source.matchAll(/projectCommand\("([\w.]+)"/g)].flatMap(([, id]) =>
+      id === undefined ? [] : [id],
+    );
     expect(named).toEqual(["assistant.newChat", "assistant.history", "assistant.retry"]);
     expect(named.filter((id) => !declared.has(id))).toEqual([]);
   });
@@ -507,8 +503,8 @@ describe("the question card", () => {
 
 describe("parseAsk", () => {
   /** Read a question out of the arguments an `ask_user` call would carry. */
-  function ask(args: object | string) {
-    const encoded = typeof args === "string" ? args : JSON.stringify(args);
+  function ask(args: JsonObject | string) {
+    const encoded = isString(args) ? args : JSON.stringify(args);
     return parseAsk({ arguments: encoded, id: "q", name: "ask_user" });
   }
 
@@ -540,17 +536,16 @@ describe("parseAsk", () => {
 
 describe("a running import, under the chip that started it", () => {
   /** An assistant turn whose tool call is an import, optionally already settled. */
-  function importing(result?: { success: boolean; summary?: string }): Message {
-    return msg("assistant", "", {
-      toolCalls: [
-        {
-          arguments: JSON.stringify({ url: "https://example.com" }),
-          id: "run1",
-          name: "import_site",
-          ...(result ? { result: result as never } : {}),
-        },
-      ],
-    });
+  function importing(result?: ToolResult): LiveMessage {
+    const call: LiveToolCall = {
+      arguments: JSON.stringify({ url: "https://example.com" }),
+      id: "run1",
+      name: "import_site",
+    };
+    if (result) {
+      call.result = result;
+    }
+    return msg("assistant", "", { toolCalls: [call] });
   }
 
   const RECORD = {

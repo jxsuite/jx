@@ -32,6 +32,8 @@ afterEach(() => {
  */
 async function slider(attrs: Record<string, string> = {}): Promise<JxColorSlider> {
   const outer = document.createElement("div");
+  /* SAFETY: registerUi() in beforeAll defined jx-color-slider, so createElement returns the
+     upgraded element, which carries every reactive property `JxColorSlider` lists. */
   const el = document.createElement("jx-color-slider") as JxColorSlider;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -46,19 +48,23 @@ const control = (el: Element) => el.querySelector<HTMLInputElement>('input[part=
 const above = (el: Element) => el.parentElement!;
 
 /** What the ANCESTOR heard, in order, so a doubled or a leaked event is a visible failure. */
-function record(el: HTMLElement): { input: string[]; change: string[] } {
-  const heard = { change: [] as string[], input: [] as string[] };
-  const seen = (event: Event) =>
-    `${(event.target as HTMLElement).localName}=${
-      (event.target as HTMLElement & { value?: unknown }).value
-    }`;
+function record(el: HTMLElement) {
+  const input: string[] = [];
+  const change: string[] = [];
+  const seen = (event: Event) => {
+    /* SAFETY: the listeners sit on the slider's own wrapper, so every input or change they hear
+       was dispatched by the jx-color-slider (numeric `value` prop) or its inner range `<input>`
+       (string `value`); both are HTMLElements. */
+    const from = event.target as HTMLElement & { value?: number | string };
+    return `${from.localName}=${from.value}`;
+  };
   above(el).addEventListener("input", (e) => {
-    heard.input.push(seen(e));
+    input.push(seen(e));
   });
   above(el).addEventListener("change", (e) => {
-    heard.change.push(seen(e));
+    change.push(seen(e));
   });
-  return heard;
+  return { change, input };
 }
 
 /** A keydown the platform would deliver to the focused control. */

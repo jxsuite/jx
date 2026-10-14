@@ -25,9 +25,8 @@ import {
 } from "../src/workspace/workspace";
 import { captureSession, readSession, restoreSession } from "../src/workspace/session";
 import type { PersistedSession } from "../src/workspace/session";
-import type { JxMutableNode } from "@jxsuite/schema/types";
-
-const DOC = { children: [], tagName: "div" } as unknown as JxMutableNode;
+import type { JsonValue } from "@jxsuite/schema/types";
+import { EMPTY_DOC } from "./shared-fixtures";
 
 /** Open `path` into `paneId`, the way `studio.ts` hands `restoreSession` its opener. */
 function opener(missing: string[] = []) {
@@ -35,7 +34,11 @@ function opener(missing: string[] = []) {
     if (missing.includes(path)) {
       throw new Error(`no such file: ${path}`);
     }
-    const tab = openTab({ document: structuredClone(DOC), documentPath: path, id: `t:${path}` });
+    const tab = openTab({
+      document: structuredClone(EMPTY_DOC),
+      documentPath: path,
+      id: `t:${path}`,
+    });
     const pane = paneById(paneId);
     const home = workspace.panes.find((p) => p.tabOrder.includes(tab.id));
     if (pane && home && home.id !== paneId) {
@@ -56,8 +59,12 @@ beforeEach(() => {
 
 describe("captureSession", () => {
   test("records each pane's documents in strip order, and the active one", () => {
-    openTab({ document: structuredClone(DOC), documentPath: "pages/a.md", id: "a" });
-    const b = openTab({ document: structuredClone(DOC), documentPath: "pages/b.md", id: "b" });
+    openTab({ document: structuredClone(EMPTY_DOC), documentPath: "pages/a.md", id: "a" });
+    const b = openTab({
+      document: structuredClone(EMPTY_DOC),
+      documentPath: "pages/b.md",
+      id: "b",
+    });
     const captured = captureSession();
     expect(captured.panes).toEqual([
       { activeFile: b.documentPath, files: ["pages/a.md", "pages/b.md"], id: PRIMARY_PANE },
@@ -66,7 +73,7 @@ describe("captureSession", () => {
   });
 
   test("records the view settings a person chose, per document", () => {
-    const tab = resetWorkspaceWithTab(structuredClone(DOC), { documentPath: "pages/a.md" });
+    const tab = resetWorkspaceWithTab(structuredClone(EMPTY_DOC), { documentPath: "pages/a.md" });
     tab.session.ui.canvasMode = "source";
     tab.session.ui.zoom = 1.5;
     tab.session.ui.activeMedia = "md";
@@ -82,21 +89,21 @@ describe("captureSession", () => {
   });
 
   test("an untitled tab is not in it — there is no path to reopen from", () => {
-    openTab({ document: structuredClone(DOC), documentPath: null, id: "untitled" });
+    openTab({ document: structuredClone(EMPTY_DOC), documentPath: null, id: "untitled" });
     expect(captureSession().panes).toEqual([]);
   });
 
   test("a pane with nothing restorable is dropped rather than stored empty", () => {
     // A split MOVES the active tab, so this leaves the primary with nothing. Restoring an empty
     // Pane would reopen one the author would immediately close.
-    openTab({ document: structuredClone(DOC), documentPath: "pages/a.md", id: "a" });
+    openTab({ document: structuredClone(EMPTY_DOC), documentPath: "pages/a.md", id: "a" });
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
     expect(captureSession().panes.map((p) => p.id)).toEqual([SECONDARY_PANE]);
   });
 
   test("both panes are recorded when both hold something", () => {
-    openTab({ document: structuredClone(DOC), documentPath: "pages/a.md", id: "a" });
-    openTab({ document: structuredClone(DOC), documentPath: "pages/b.md", id: "b" });
+    openTab({ document: structuredClone(EMPTY_DOC), documentPath: "pages/a.md", id: "a" });
+    openTab({ document: structuredClone(EMPTY_DOC), documentPath: "pages/b.md", id: "b" });
     splitRight();
     expect(captureSession().panes).toEqual([
       { activeFile: "pages/a.md", files: ["pages/a.md"], id: PRIMARY_PANE },
@@ -114,11 +121,12 @@ describe("readSession — every field is untrusted input", () => {
        object handed across a call. A structured clone would preserve types JSON erases and prove
        less about the thing that actually happens. */
     const wire: string = JSON.stringify(session);
-    return readSession(JSON.parse(wire) as unknown);
+    const decoded: JsonValue = JSON.parse(wire);
+    return readSession(decoded);
   };
 
   test("a captured session survives the round trip", () => {
-    openTab({ document: structuredClone(DOC), documentPath: "pages/a.md", id: "a" });
+    openTab({ document: structuredClone(EMPTY_DOC), documentPath: "pages/a.md", id: "a" });
     const captured = captureSession();
     expect(round(captured)).toEqual(captured);
   });
@@ -171,7 +179,7 @@ describe("readSession — every field is untrusted input", () => {
   });
 
   test("a stored locale is kept only if it is a well-formed tag — and `null` is a value", () => {
-    const read = (previewLocale: unknown) =>
+    const read = (previewLocale: JsonValue) =>
       readSession({
         panes: [{ activeFile: null, files: ["a.md"], id: PRIMARY_PANE }],
         ui: { "a.md": { previewLocale } },

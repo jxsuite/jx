@@ -15,6 +15,9 @@
  * @docs extending/extensions/formats
  */
 
+import type { JsonValue } from "../types";
+import { isString } from "./guards";
+
 /** RFC 6838 §4.2: the first character, then up to 126 more from the restricted set. */
 const RESTRICTED_NAME = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}$/;
 
@@ -37,11 +40,11 @@ export interface MediaType {
 /**
  * Parse a media type, or return null when it does not match the grammar.
  *
- * @param {unknown} value
+ * @param {JsonValue | undefined} value - Any configured value; non-strings are not media types
  * @returns {MediaType | null}
  */
-export function parseMediaType(value: unknown): MediaType | null {
-  if (typeof value !== "string") {
+export function parseMediaType(value: JsonValue | undefined): MediaType | null {
+  if (!isString(value)) {
     return null;
   }
   const [essence, ...paramParts] = value.split(";");
@@ -113,11 +116,11 @@ export function formatMediaType(media: MediaType): string {
  * Separate from {@link parseMediaType} because a caller validating configuration needs to say what
  * is wrong, and a caller reading a type only needs to know whether it could.
  *
- * @param {unknown} value
+ * @param {JsonValue | undefined} value - Any configured value; non-strings are not media types
  * @returns {string | null}
  */
-export function mediaTypeProblem(value: unknown): string | null {
-  if (typeof value !== "string" || value.trim() === "") {
+export function mediaTypeProblem(value: JsonValue | undefined): string | null {
+  if (!isString(value) || value.trim() === "") {
     return "expected a media type string";
   }
   if (!value.includes("/")) {
@@ -137,10 +140,10 @@ export function mediaTypeProblem(value: unknown): string | null {
  * moment a format declared the `variant` parameter RFC 7763 defines, so the distinction belongs
  * here rather than in each caller's `split`.
  *
- * @param {unknown} value
+ * @param {JsonValue | undefined} value - Any configured value; non-strings are not media types
  * @returns {string | null} Null when the value is not a media type at all
  */
-export function mediaTypeEssence(value: unknown): string | null {
+export function mediaTypeEssence(value: JsonValue | undefined): string | null {
   const media = parseMediaType(value);
   if (media === null) {
     return null;
@@ -151,7 +154,7 @@ export function mediaTypeEssence(value: unknown): string | null {
 }
 
 /** True when the type names an unregistered format under the `x.` or deprecated `x-` convention. */
-export function isUnregisteredMediaType(value: unknown): boolean {
+export function isUnregisteredMediaType(value: JsonValue | undefined): boolean {
   const media = parseMediaType(value);
   return media !== null && (media.tree === "x" || media.subtype.startsWith("x-"));
 }
@@ -191,12 +194,22 @@ export const YAML_MEDIA_TYPE = "application/yaml";
  * text and a browser that guesses the encoding of a UTF-8 document guesses wrong for exactly the
  * non-Latin content the rest of this repo works to support.
  */
-export const MEDIA_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
+export const MEDIA_TYPE_BY_EXTENSION = {
   ".markdown": `${MARKDOWN_MEDIA_TYPE}; charset=utf-8`,
   ".md": `${MARKDOWN_MEDIA_TYPE}; charset=utf-8`,
   ".yaml": `${YAML_MEDIA_TYPE}; charset=utf-8`,
   ".yml": `${YAML_MEDIA_TYPE}; charset=utf-8`,
-};
+} as const satisfies Readonly<Record<string, string>>;
+
+/**
+ * True when {@link MEDIA_TYPE_BY_EXTENSION} corrects this extension. Every key starts with a dot,
+ * so no `Object.prototype` member can answer for one.
+ */
+function isOverriddenExtension(
+  extension: string,
+): extension is keyof typeof MEDIA_TYPE_BY_EXTENSION {
+  return extension in MEDIA_TYPE_BY_EXTENSION;
+}
 
 /**
  * The media type for a path, or null to leave the host's own answer alone.
@@ -213,5 +226,6 @@ export function mediaTypeForPath(path: string): string | null {
   if (dot <= path.lastIndexOf("/") || dot <= path.lastIndexOf("\\")) {
     return null;
   }
-  return MEDIA_TYPE_BY_EXTENSION[path.slice(dot).toLowerCase()] ?? null;
+  const extension = path.slice(dot).toLowerCase();
+  return isOverriddenExtension(extension) ? MEDIA_TYPE_BY_EXTENSION[extension] : null;
 }

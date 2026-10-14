@@ -307,8 +307,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `  const activeMedia = activeMediaOfPane(surface.paneId);\n  for (const p of surface.panels) {`,
-        replace: `  const activeMedia = tabOfSurface(surface)?.session.ui.activeMedia ?? null;\n  for (const p of surface.panels) {`,
+        find: `  const activeMedia = activeMediaOfPane(surface.paneId);\n`,
+        replace: `  const activeMedia = tabOfSurface(surface)?.session.ui.activeMedia ?? null;\n`,
       },
     ],
     file: "src/canvas/canvas-utils.ts",
@@ -1038,8 +1038,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `      if (doc && consumePatchedDocument(doc, paneId)) {`,
-        replace: `      if (doc && consumePatchedDocument(doc, PRIMARY_PANE)) {`,
+        find: `    if (tab && consumePatchedDocument(tab.doc.document, paneId)) {`,
+        replace: `    if (tab && consumePatchedDocument(tab.doc.document, PRIMARY_PANE)) {`,
       },
     ],
     file: "src/studio.ts",
@@ -1274,8 +1274,7 @@ const MUTANTS: Mutant[] = [
     edits: [
       {
         find:
-          `    return getEffectiveLayoutPath(source.doc.document.$layout as string | false | undefined) ===\n` +
-          `      null\n` +
+          `    return getEffectiveLayoutPath(source.doc.document.$layout) === null\n` +
           `      ? "a page with a layout — this one declares none"\n      : null;`,
         replace: `    return null;`,
       },
@@ -1365,7 +1364,7 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `          select: hit ? (hit.layoutPath as JxPath) : null,`,
+        find: `          select: hit ? hit.layoutPath : null,`,
         replace: `          select: null,`,
       },
     ],
@@ -1605,8 +1604,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `      hit?.layoutFile ??\n      getEffectiveLayoutPath(`,
-        replace: `      undefined ??\n      getEffectiveLayoutPath(`,
+        find: `    const path = hit?.layoutFile ?? getEffectiveLayoutPath(`,
+        replace: `    const path = undefined ?? getEffectiveLayoutPath(`,
       },
     ],
     file: "src/workspace/pane-derive.ts",

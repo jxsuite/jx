@@ -21,7 +21,6 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { checkPlacements } from "../src/commands/levels";
 import { checkChromeBudget } from "../src/commands/budget";
 import { CAPABILITIES, emptyContext, makeContext } from "../src/commands/context";
-import type { CommandContext } from "../src/commands/context";
 
 /**
  * `selection.repeat`'s converter, doubled — the one command record in this set whose `run` reaches
@@ -129,9 +128,7 @@ function recordingDeps() {
 const everythingContext = () =>
   makeContext({
     // A host with every PAL family, so a capability-gated record is exercised rather than skipped.
-    capability: Object.fromEntries(
-      CAPABILITIES.map((name) => [name, true]),
-    ) as CommandContext["capability"],
+    capability: Object.fromEntries(CAPABILITIES.map((name) => [name, true])),
     project: { open: true, isSite: true, isRepo: true },
     document: { open: true, dirty: true, mode: "json", canUndo: true, canRedo: true },
     editor: { kind: "canvas" },
@@ -208,6 +205,9 @@ describe("the records that settle an existing argument", () => {
     const byId = (id: string) => defaultCommandSet().find((c) => c.id === id)!.aiTool!.report;
     const at = (paths: (string | number)[][]) =>
       makeContext({ selection: { count: paths.length, paths } });
+    /* SAFETY: `selection.delete` and `selection.duplicate` declare no `args` (they are
+       `Command<void>` records), so their reports read none; `never` is only how the stored
+       `AnyCommand` erases that argument type. */
     const facts = (before: (string | number)[][], after: (string | number)[][]) => ({
       after: at(after),
       args: undefined as never,
@@ -324,7 +324,8 @@ describe("the records that settle an existing argument", () => {
         setTimeout(done, 0);
       });
     }
-    expect(convertToRepeater).toHaveBeenCalledTimes(1);
+    // Exactly one call, with no arguments: the converter reads the selection itself.
+    expect(convertToRepeater.mock.calls).toEqual([[]]);
   });
 
   test("delete is destructive, undoable, and refuses the document root", () => {
@@ -468,8 +469,8 @@ describe("the implementations", () => {
       "openProject",
       "newWindow",
       "openPalette:projects",
-      ...RAIL_PANELS.filter((panel) => panel.when?.(everythingContext()) !== false).map(
-        (panel) => `focusPanel:${panel.id}`,
+      ...RAIL_PANELS.flatMap((panel) =>
+        panel.when?.(everythingContext()) === false ? [] : [`focusPanel:${panel.id}`],
       ),
       ...INSPECTOR_TABS.map((tab) => `focusInspectorTab:${tab.id}`),
       "cycleRegion:1",

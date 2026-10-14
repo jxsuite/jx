@@ -15,6 +15,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { rewriteHtmlBase } from "../src/site/base-path";
 import { buildSite } from "../src/site/site-build";
 
@@ -138,7 +139,7 @@ describe("rewriteHtmlBase", () => {
 
 const TMP = resolve(import.meta.dir, "__test-base-path__");
 
-function writeJSON(path: string, obj: unknown) {
+function writeJSON(path: string, obj: JsonValue) {
   mkdirSync(resolve(TMP, ...path.split("/").slice(0, -1)), { recursive: true });
   writeFileSync(resolve(TMP, path), JSON.stringify(obj, null, 2), "utf8");
 }
@@ -231,10 +232,14 @@ describe("a site whose url carries a path", () => {
       "navigator.serviceWorker.register('/m/probe/sw.js',{scope:\"/m/probe/\"}",
     );
 
-    const manifest = JSON.parse(read("dist/manifest.webmanifest")) as Record<string, unknown>;
-    expect(manifest.start_url).toBe("/m/probe/");
-    expect(manifest.scope).toBe("/m/probe/");
-    expect(manifest.icons).toEqual([{ sizes: "192x192", src: "/m/probe/icon-192.png" }]);
+    const manifest: JsonValue = JSON.parse(read("dist/manifest.webmanifest"));
+    expect(manifest).toEqual(
+      expect.objectContaining({
+        icons: [{ sizes: "192x192", src: "/m/probe/icon-192.png" }],
+        scope: "/m/probe/",
+        start_url: "/m/probe/",
+      }),
+    );
   }, 120_000);
 
   test("the same fixture at an origin root emits no prefix anywhere", async () => {

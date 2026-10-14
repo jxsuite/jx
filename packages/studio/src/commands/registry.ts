@@ -36,12 +36,11 @@ import { createKeymap } from "./keymap";
 import type { KeyChordEvent, Keymap, KeymapMatch } from "./keymap";
 import { checkRecordPlacements } from "./levels";
 import type { Category, KeyScope, Level, Placement } from "./levels";
+import { isFunction } from "@jxsuite/schema/guards";
 import { coerceArgs } from "./command-args";
+import type { CommandArgsSchema, CommandArgValues } from "./command-args";
 import { runReported } from "./run-reported";
 import type { CommandContext } from "./context";
-
-/** Arguments as they arrive from a palette prompt, an automation manifest step or an AI tool call. */
-export type CommandArgs = Record<string, unknown>;
 
 /** How an action's effect is undone — surfaced to the user before an agent runs it. */
 export type UndoScope = "document" | "project" | "none";
@@ -77,7 +76,7 @@ export interface Command<A = void> {
    * shot check's contract AND what {@link CommandRegistry.run} coerces the received record against
    * before `run` sees it (`command-args.ts`'s `coerceArgs`). One object, four readers.
    */
-  args?: object;
+  args?: CommandArgsSchema;
   /** Surfaces this command renders in. Defaults to `["palette"]`. */
   menus?: readonly Placement[];
   /** Menu ordering key: "1_clipboard", "3_structure", "9_danger". */
@@ -216,7 +215,7 @@ export interface CommandRegistry {
    * `RangeError` naming the argument when `args` does not fit the record's schema — synchronously,
    * before `run` is entered, whichever surface the call came from.
    */
-  run: (id: string, args?: CommandArgs) => void | Promise<void>;
+  run: (id: string, args?: CommandArgValues) => void | Promise<void>;
   /** The chord index, conflict-checked at registration. */
   keymap: Keymap;
   /** Resolve a keyboard event through a scope stack and run what it hits. */
@@ -254,7 +253,7 @@ function checkProjection(command: AnyCommand, toolNames: ReadonlyMap<string, str
       `command "${command.id}" aiTool name "${tool.name}" is already projected by "${claimant}"`,
     );
   }
-  if (typeof tool.report !== "function") {
+  if (!isFunction(tool.report)) {
     throw new TypeError(
       `command "${command.id}" declares aiTool without a report: a tool that can only say ` +
         `"done" is refused`,
@@ -270,8 +269,7 @@ function checkProjection(command: AnyCommand, toolNames: ReadonlyMap<string, str
      selector's `paths` property in FRONT of the record's own `args`, so a record that declares its
      own `paths` would have two definitions of one argument — the model would read the record's
      description and the bridge would hand the value to the selector. */
-  const properties = (command.args as { properties?: Record<string, unknown> } | undefined)
-    ?.properties;
+  const properties = command.args?.properties;
   if (command.level === "selection" && properties && Object.hasOwn(properties, "paths")) {
     throw new Error(
       `command "${command.id}" is selection-level and may not declare "paths": the assistant ` +
@@ -341,11 +339,11 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
       if (violations.length > 0) {
         throw new Error(`command "${command.id}" ${violations[0]!.message}`);
       }
-      checkProjection(command as AnyCommand, toolNames);
+      checkProjection(command, toolNames);
       // Chord conflicts throw from the keymap; do this LAST so a rejected record leaves the
       // Registry untouched in every failure mode — the tool name is claimed only after it.
       keymap.add(command);
-      commands.set(command.id, command as AnyCommand);
+      commands.set(command.id, command);
       if (command.aiTool) {
         toolNames.set(command.aiTool.name, command.id);
       }
@@ -404,6 +402,10 @@ export function createCommandRegistry(options: CommandRegistryOptions): CommandR
          their typed readers; `coerceArgs` dispatches to the same functions, so the two cannot
          disagree. A record with no `args` takes whatever it was handed, as it always has. */
       const coerced = command.args ? coerceArgs(id, command.args, args) : args;
+      /* SAFETY: a stored record is `Command<never>` because the map erases each record's own `A`.
+         The runtime contract for that erased `A` is the record's `args` schema, which `coerceArgs`
+         has just applied (every key its reader's return value, an undeclared key refused); a
+         record with no schema takes the caller's record as it always has. */
       return command.run(ctx, coerced as never);
     },
     keymap,

@@ -5,7 +5,8 @@
  * multiple canvas-related modules: element lookup, zoom, panel resolution, inline bubbling.
  */
 
-import { getNodeAtPath, parentElementPath } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { parentElementPath } from "../store";
 import { displayTagName } from "@jxsuite/schema/guards";
 import { activeCanvasSurface, activeMediaOfPane } from "./canvas-surface";
 import { isInlineInContext } from "../editor/inline-edit";
@@ -46,7 +47,7 @@ export function panelOfSurface(surface: CanvasSurface): CanvasPanel | null {
   }
   const activeMedia = activeMediaOfPane(surface.paneId);
   for (const p of canvasPanels) {
-    if (activeMedia === null && (p.mediaName === "base" || p.mediaName === null)) {
+    if (activeMedia === null && p.mediaName === "base") {
       return p;
     }
     if (p.mediaName === activeMedia) {
@@ -78,10 +79,10 @@ export function bubbleInlinePath(doc: JxMutableNode | undefined, path: JxPath) {
     return path;
   }
   let currentPath = path;
-  while (currentPath.length >= 2) {
+  // `parentElementPath` is null exactly when the path is too short to have a parent element.
+  for (let pPath = parentElementPath(currentPath); pPath; pPath = parentElementPath(currentPath)) {
     const node = getNodeAtPath(doc, currentPath);
-    const pPath = parentElementPath(currentPath);
-    const parentNode = pPath ? getNodeAtPath(doc, pPath) : null;
+    const parentNode = getNodeAtPath(doc, pPath);
     if (!node || !parentNode) {
       break;
     }
@@ -90,7 +91,7 @@ export function bubbleInlinePath(doc: JxMutableNode | undefined, path: JxPath) {
     if (!isInlineInContext(childTag, parentTag)) {
       break;
     }
-    currentPath = pPath as JxPath;
+    currentPath = pPath;
   }
   return currentPath;
 }

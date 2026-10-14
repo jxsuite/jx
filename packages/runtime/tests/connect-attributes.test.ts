@@ -129,9 +129,10 @@ describe("observed attributes present at connection", () => {
       state: { label: "none" },
       textContent: "${state.label}",
     });
-    const el = document.createElement(tag) as HTMLElement & { label?: string };
+    const el = document.createElement(tag);
     el.setAttribute("label", "from attribute");
-    el.label = "from property";
+    // Assigned through [[Set]] exactly as `el.label = …` would, so the element's accessor runs.
+    Object.assign(el, { label: "from property" });
     document.body.append(el);
     await tick();
     expect(el.textContent).toBe("from property");

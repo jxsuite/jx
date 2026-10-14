@@ -61,6 +61,9 @@
   "plugins": ["typescript"],
   "rules": {
     "typescript/no-floating-promises": "error",
+    // The type-aware half of ai-deslop's recommended config (see .oxlintrc.json for the rest).
+    "typescript/no-deprecated": "error",
+    "typescript/no-unnecessary-condition": "error",
     "typescript/await-thenable": "error",
     "typescript/no-unsafe-assignment": "error",
     "typescript/no-unsafe-call": "error",

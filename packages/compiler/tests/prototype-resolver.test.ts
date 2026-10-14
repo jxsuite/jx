@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolvePrototypes } from "../src/site/prototype-resolver";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_proto");
 
@@ -42,7 +43,7 @@ function cleanup() {
 
 describe("resolvePrototypes", () => {
   test("skips doc without state", async () => {
-    const doc: Record<string, any> = { children: [] };
+    const doc: JxMutableNode = { children: [] };
     await resolvePrototypes(doc, {}, "/tmp");
     expect(doc.state).toBeUndefined();
   });
@@ -100,7 +101,7 @@ describe("resolvePrototypes", () => {
   test("resolves $prototype with $src pointing to .class.json", async () => {
     setup();
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         state: {
           result: {
             $prototype: "Multiplier",
@@ -111,7 +112,7 @@ describe("resolvePrototypes", () => {
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
-      expect(doc.state.result as any).toBe(42);
+      expect(doc.state?.result).toBe(42);
     } finally {
       cleanup();
     }
@@ -120,14 +121,14 @@ describe("resolvePrototypes", () => {
   test("resolves $prototype via imports map", async () => {
     setup();
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         imports: { Multiplier: "./Multiplier.class.json" },
         state: {
           result: { $prototype: "Multiplier", a: 3, b: 5 },
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
-      expect(doc.state.result as any).toBe(15);
+      expect(doc.state?.result).toBe(15);
     } finally {
       cleanup();
     }
@@ -152,7 +153,7 @@ describe("resolvePrototypes", () => {
   test("resolves from project root when no sourcePath", async () => {
     setup();
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         state: {
           result: {
             $prototype: "Multiplier",
@@ -163,7 +164,7 @@ describe("resolvePrototypes", () => {
         },
       };
       await resolvePrototypes(doc, {}, FIXTURES);
-      expect(doc.state.result as any).toBe(16);
+      expect(doc.state?.result).toBe(16);
     } finally {
       cleanup();
     }
@@ -214,7 +215,7 @@ describe("resolvePrototypes", () => {
     mkdirSync(mdFixtures, { recursive: true });
     writeFileSync(join(mdFixtures, "test.md"), "---\ntitle: Test Page\n---\n\nHello world\n");
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         imports: {
           Markdown: "@jxsuite/parser/Markdown.class.json",
         },
@@ -227,11 +228,10 @@ describe("resolvePrototypes", () => {
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(mdFixtures, "page.json") }, mdFixtures);
-      const page = doc.state.page as any;
-      expect(page.frontmatter.title).toBe("Test Page");
-      expect(page.$children).toBeArray();
-      expect(page.$children.length).toBeGreaterThan(0);
-      expect(page.slug).toBe("test");
+      const page = doc.state?.page;
+      expect(page).toMatchObject({ frontmatter: { title: "Test Page" }, slug: "test" });
+      // A non-empty array: the parsed body produced at least one child node.
+      expect(page).toHaveProperty("$children", expect.arrayContaining([expect.anything()]));
     } finally {
       rmSync(mdFixtures, { force: true, recursive: true });
     }
@@ -249,7 +249,7 @@ describe("resolvePrototypes", () => {
       "---\ntitle: Second\ndate: 2025-02-01\n---\n\nSecond post\n",
     );
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         imports: {
           MarkdownCollection: "@jxsuite/parser/MarkdownCollection.class.json",
         },
@@ -262,12 +262,12 @@ describe("resolvePrototypes", () => {
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(mdFixtures, "page.json") }, mdFixtures);
-      const posts = doc.state.posts as unknown as any[];
+      const posts = doc.state?.posts;
       expect(posts).toBeArray();
-      expect(posts.length).toBe(2);
-      const titles = posts.map((p) => p.frontmatter.title);
-      expect(titles).toContain("First");
-      expect(titles).toContain("Second");
+      expect(posts).toHaveLength(2);
+      const titled = (title: string) =>
+        expect.objectContaining({ frontmatter: expect.objectContaining({ title }) });
+      expect(posts).toEqual(expect.arrayContaining([titled("First"), titled("Second")]));
     } finally {
       rmSync(mdFixtures, { force: true, recursive: true });
     }
@@ -276,14 +276,14 @@ describe("resolvePrototypes", () => {
   test("explicit imports override built-in prototype mappings", async () => {
     setup();
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         imports: { MarkdownFile: "./Multiplier.class.json" },
         state: {
           result: { $prototype: "MarkdownFile", a: 4, b: 9 },
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
-      expect(doc.state.result as any).toBe(36);
+      expect(doc.state?.result).toBe(36);
     } finally {
       cleanup();
     }

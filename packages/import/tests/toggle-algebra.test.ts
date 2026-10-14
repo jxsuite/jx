@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { JxElement } from "@jxsuite/schema/types";
 import { BOOLEAN_KEY, classifyToggleValue, roleOfElement } from "../src/toggle-algebra.ts";
 
 describe("classifyToggleValue", () => {
@@ -122,11 +123,11 @@ describe("roleOfElement", () => {
 
   test("is null for an element with no directives at all", () => {
     expect(roleOfElement({ class: "accordion-item", id: "x" })).toBeNull();
-    const noAttributes: Record<string, unknown> | undefined = undefined;
-    expect(roleOfElement(noAttributes)).toBeNull();
+    const bare: JxElement = { tagName: "div" };
+    expect(roleOfElement(bare.attributes)).toBeNull();
   });
 
   test("ignores non-string attribute values", () => {
-    expect(roleOfElement({ width: 400 } as unknown as Record<string, unknown>)).toBeNull();
+    expect(roleOfElement({ width: 400 })).toBeNull();
   });
 });

@@ -15,19 +15,21 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isBoolean, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 import { Window } from "happy-dom";
+import type { Element } from "happy-dom";
 import { emitElementModule } from "../src/targets/compile-element";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-const emit = (doc: unknown, name = "XProbe") => emitElementModule(doc as JxDocument, name, []);
+const emit = (doc: JxDocument, name = "XProbe") => emitElementModule(doc, name, []);
 
 /** Two children, so the shared subtree is big enough for duplication to matter. */
-const SUBTREE = [
+const SUBTREE: JxElement[] = [
   { className: "label", tagName: "span", textContent: "${state.label}" },
   { tagName: "p", textContent: "Body copy." },
 ];
 
-const chosenTag = (candidates: [string, string]) => ({
+const chosenTag = (candidates: [string, string]): JxDocument => ({
   children: [
     {
       children: SUBTREE,
@@ -45,18 +47,18 @@ const chosenTag = (candidates: [string, string]) => ({
   tagName: "x-tag",
 });
 
-const switchDoc = {
-  children: [
-    {
-      $switch: { $ref: "#/state/mode" },
-      cases: {
-        a: { children: SUBTREE, tagName: "div" },
-        b: { children: SUBTREE, tagName: "div" },
-        c: { children: SUBTREE, tagName: "div" },
-      },
-      tagName: "div",
-    },
-  ],
+const switchNode: JxElement = {
+  $switch: { $ref: "#/state/mode" },
+  cases: {
+    a: { children: SUBTREE, tagName: "div" },
+    b: { children: SUBTREE, tagName: "div" },
+    c: { children: SUBTREE, tagName: "div" },
+  },
+  tagName: "div",
+};
+
+const switchDoc: JxDocument = {
+  children: [switchNode],
   state: { label: { default: "L", type: "string" }, mode: { default: "a", type: "string" } },
   tagName: "x-switch",
 };
@@ -109,7 +111,7 @@ describe("$switch", () => {
       ...switchDoc,
       children: [
         {
-          ...switchDoc.children[0],
+          ...switchNode,
           cases: {
             a: { tagName: "p", textContent: "ONE" },
             b: { tagName: "p", textContent: "TWO" },
@@ -162,7 +164,24 @@ describe("inside a map callback", () => {
 
 const TMP = resolve(import.meta.dir, "__test-hoist-render__");
 let win: Window;
-let host: Element;
+let host: HoistHost;
+
+/** The rendered `<x-tag>`, whose reactive state the tests below write to. */
+interface HoistHost extends Element {
+  state: { label: string; on: boolean };
+}
+
+function isHoistHost(element: Element | null): element is HoistHost {
+  return (
+    element !== null &&
+    "state" in element &&
+    isNonNullObject(element.state) &&
+    "label" in element.state &&
+    isString(element.state.label) &&
+    "on" in element.state &&
+    isBoolean(element.state.on)
+  );
+}
 
 beforeAll(async () => {
   rmSync(TMP, { force: true, recursive: true });
@@ -170,27 +189,27 @@ beforeAll(async () => {
   writeFileSync(resolve(TMP, "el.js"), emit(chosenTag(["a", "div"]), "XHoist"), "utf8");
 
   win = new Window({ url: "https://example.test" });
-  const globals = globalThis as Record<string, unknown>;
-  const source = win as unknown as Record<string, unknown>;
-  for (const key of [
-    "window",
-    "document",
-    "HTMLElement",
-    "customElements",
-    "Node",
-    "Element",
-    "Event",
-    "CustomEvent",
-  ]) {
-    globals[key] = source[key];
-  }
+  Object.assign(globalThis, {
+    CustomEvent: win.CustomEvent,
+    Element: win.Element,
+    Event: win.Event,
+    HTMLElement: win.HTMLElement,
+    Node: win.Node,
+    customElements: win.customElements,
+    document: win.document,
+    window: win.window,
+  });
 
   await import(resolve(TMP, "el.js"));
   win.document.body.innerHTML = "<x-tag></x-tag>";
-  host = win.document.querySelector("x-tag") as unknown as Element;
   await new Promise((r) => {
     setTimeout(r, 20);
   });
+  const rendered = win.document.querySelector("x-tag");
+  if (!isHoistHost(rendered)) {
+    throw new Error("Expected <x-tag> to upgrade and expose its label/on state");
+  }
+  host = rendered;
 });
 
 afterAll(() => {
@@ -211,12 +230,12 @@ describe("hoisted branch — runtime behaviour", () => {
 
   test("the shared subtree stays reactive after a state change", () => {
     // The const is rebuilt per render, so the binding inside it must still track `label`.
-    (host as unknown as { state: Record<string, unknown> }).state.label = "CHANGED";
+    host.state.label = "CHANGED";
     expect(host.querySelector("span")?.textContent).toBe("CHANGED");
   });
 
   test("switching the discriminant swaps the tag and keeps the subtree", () => {
-    (host as unknown as { state: Record<string, unknown> }).state.on = true;
+    host.state.on = true;
     expect(host.querySelector("a")).toBeTruthy();
     expect(host.querySelector("a")?.querySelector("span")?.textContent).toBe("CHANGED");
   });

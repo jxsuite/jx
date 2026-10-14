@@ -26,7 +26,7 @@ import { openGridSourcePicker } from "../grid/grid-open";
 import type { DataActionsSurfaceHandle, DataActionsView } from "../surfaces/data-actions";
 import type { DialogSurfaceHandle } from "../surfaces/dialog";
 import type { PushPlanSurfaceHandle, PushPlanView } from "../surfaces/push-plan";
-import type { DataConnectionTestResult, DataPushResult } from "../types";
+import type { DataConnectionTestResult, DataPushRequest, DataPushResult } from "../types";
 import type { SectionActionsContext } from "../settings/contributed-section";
 
 // ─── Grid opening (delegates to the grid-tab source picker) ──────────────────
@@ -75,7 +75,7 @@ function noteRows(texts: readonly string[], prefix: string) {
 }
 
 /** What the body lists: the dry run until it has been applied, then what actually happened. */
-function planView(state: PushDialogState): PushPlanView {
+function planView(state: Pick<PushDialogState, "dryRun" | "phase" | "result">): PushPlanView {
   const shown = state.phase === "done" ? state.result : state.dryRun;
   return {
     errors: noteRows(shown?.errors ?? [], "error"),
@@ -129,27 +129,28 @@ export async function startPush(connection: string | undefined, onDone: () => vo
   if (pushDialog) {
     return;
   }
-  const state: PushDialogState = {
+  /* The dialog's callbacks need the state record and the record needs the dialog's handle, so the
+     record is built first and completed with the handle below; it stays one object throughout. */
+  const pending: Omit<PushDialogState, "handle"> = {
     connection,
     dryRun: null,
-    handle: null as unknown as DialogSurfaceHandle,
     onDone,
     phase: "loading",
     plan: null,
     result: null,
   };
-  state.handle = openDialogSurface({
+  const handle = openDialogSurface({
     cancelLabel: "Cancel",
     confirmLabel: "",
     headline: connection ? `Push Schema — ${connection}` : "Push Schema",
     island: (host) => {
-      state.plan = mountPushPlanSurface(host, planView(state));
+      pending.plan = mountPushPlanSurface(host, planView(pending));
     },
     layer: layerHost("dialog"),
     message: "Compiling plan…",
     onCancel: closePushDialog,
     onClosed: () => {
-      if (pushDialog === state) {
+      if (pushDialog === pending) {
         closePushDialog();
       }
     },
@@ -158,12 +159,14 @@ export async function startPush(connection: string | undefined, onDone: () => vo
     },
     region: "data/push",
   });
+  const state: PushDialogState = Object.assign(pending, { handle });
   pushDialog = state;
 
-  const plan = await pushSchema({
-    dryRun: true,
-    ...(connection === undefined ? {} : { connection }),
-  });
+  const request: DataPushRequest = { dryRun: true };
+  if (connection !== undefined) {
+    request.connection = connection;
+  }
+  const plan = await pushSchema(request);
   if (pushDialog !== state) {
     return;
   }

@@ -62,6 +62,7 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { isString } from "@jxsuite/schema/guards";
 import { isTabDropSource } from "./tab-drop";
 import { rectOf } from "../utils/geometry";
 import {
@@ -100,8 +101,22 @@ export interface PaneCell {
   surface: CanvasSurface;
 }
 
-/** A cell's record, plus the disposers its stage gestures and its drop zone live behind. */
-interface CellState extends PaneCell {
+/**
+ * A cell's record while the runtime fills it in, plus the disposers its stage gestures and its drop
+ * zone live behind.
+ *
+ * Every element field starts null and is written once, when the runtime creates that box (see
+ * {@link cellPart}). The runtime creates a row's nodes depth-first inside one synchronous render
+ * pass, so by the time anything outside that pass asks, {@link isDrawnCell} holds.
+ */
+interface CellState {
+  paneId: string;
+  root: HTMLElement | null;
+  strip: HTMLElement | null;
+  chrome: HTMLElement | null;
+  stage: HTMLElement | null;
+  dropZone: HTMLElement | null;
+  surface: CanvasSurface | null;
   /** Stage-gesture disposer, live between the stage's creation and the cell's disposal. */
   releaseGestures: (() => void) | null;
   /** The drop zone's pragmatic registration, live between its creation and the cell's disposal. */
@@ -128,9 +143,22 @@ let _scope: EffectScope | null = null;
  */
 let _dragMonitor: (() => void) | null = null;
 
+/** Whether every box of a cell has been created, which is what makes it a {@link PaneCell}. */
+function isDrawnCell(cell: CellState): cell is CellState & PaneCell {
+  return (
+    cell.root !== null &&
+    cell.strip !== null &&
+    cell.chrome !== null &&
+    cell.stage !== null &&
+    cell.dropZone !== null &&
+    cell.surface !== null
+  );
+}
+
 /** The cell a pane is drawn in, or null. Test-visible, and the bootstrap's handle on the primary. */
 export function cellForPane(paneId: string): PaneCell | null {
-  return _cells.get(paneId) ?? null;
+  const cell = _cells.get(paneId);
+  return cell !== undefined && isDrawnCell(cell) ? cell : null;
 }
 
 /**
@@ -149,9 +177,9 @@ export function paneGridReady(): Promise<void> {
  * The record for a pane, created when its cell's outermost box is, and reused for the life of the
  * cell.
  *
- * Every element field is typed non-null and starts null, the same bargain `CanvasSurface` makes:
- * the runtime creates a row's nodes depth-first inside one synchronous render pass, so the record
- * is complete before anything outside that pass can hold it.
+ * Every element field starts null: the runtime creates a row's nodes depth-first inside one
+ * synchronous render pass, so the record is complete before anything outside that pass can hold it
+ * through {@link cellForPane}.
  */
 function cellState(paneId: string): CellState {
   const existing = _cells.get(paneId);
@@ -159,15 +187,15 @@ function cellState(paneId: string): CellState {
     return existing;
   }
   const cell: CellState = {
-    chrome: null as unknown as HTMLElement,
-    dropZone: null as unknown as HTMLElement,
+    chrome: null,
+    dropZone: null,
     paneId,
     releaseDropZone: null,
     releaseGestures: null,
-    root: null as unknown as HTMLElement,
-    stage: null as unknown as HTMLElement,
-    strip: null as unknown as HTMLElement,
-    surface: null as unknown as CanvasSurface,
+    root: null,
+    stage: null,
+    strip: null,
+    surface: null,
   };
   _cells.set(paneId, cell);
   return cell;
@@ -229,11 +257,15 @@ function watchPaneFocus(paneId: string, root: HTMLElement): void {
  */
 function attachStage(cell: CellState, stage: HTMLElement): void {
   cell.stage = stage;
-  cell.surface = createPaneSurface(cell.paneId);
+  const surface = createPaneSurface(cell.paneId);
+  cell.surface = surface;
   registerCanvasSurface(cell.paneId, stage);
-  cell.releaseGestures = installStageGestures(cell.surface);
+  cell.releaseGestures = installStageGestures(surface);
   scheduleCanvasRender(cell.paneId);
 }
+
+/** What a cell's drop zone reports to a drag: refused, or the pane a drop would split beside. */
+type PaneEdgeData = { type: "pane-edge-refused" } | { paneId: string; type: "pane-edge" };
 
 /**
  * The RIGHT BAND of `paneId`'s cell, and only while it is legal to drop there: the grid is still
@@ -245,11 +277,7 @@ function attachStage(cell: CellState, stage: HTMLElement): void {
  * that the rest of the stage keeps ordinary canvas gestures — a drag never reaches this at all
  * unless `canDrop` already accepted it, so the band only ever competes with itself.
  */
-function edgeData(
-  paneId: string,
-  input: { clientX: number },
-  element: HTMLElement,
-): Record<string, unknown> {
+function edgeData(paneId: string, input: { clientX: number }, element: HTMLElement): PaneEdgeData {
   if (workspace.panes.length >= MAX_PANES || workspace.panes.at(-1)?.id !== paneId) {
     return { type: "pane-edge-refused" };
   }
@@ -467,7 +495,8 @@ export function mount(): void {
     },
     onDrag({ location }) {
       const [target] = location.current.dropTargets;
-      const edgePane = target?.data.type === "pane-edge" ? (target.data.paneId as string) : "";
+      const paneId = target?.data.paneId;
+      const edgePane = target?.data.type === "pane-edge" && isString(paneId) ? paneId : "";
       _surface?.drag({ armed: true, edgePane });
     },
     onDragStart() {

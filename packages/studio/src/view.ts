@@ -66,8 +66,8 @@ export type MonacoSurface = editor.IStandaloneCodeEditor & {
  * offsets, the source-view Monaco and the render generation were all fields of "the canvas" — a
  * singular that stopped existing when the shell grew a pane grid. They are fields of a
  * {@link import("./canvas/canvas-surface").CanvasSurface} now, one record per pane, and
- * `scripts/check-pane-singletons.ts` fails the build if one grows back: the index signature below
- * means `view.panX` is not a type error, only a silently-`unknown` read.
+ * `scripts/check-pane-singletons.ts` fails the build if one grows back, and with no index signature
+ * on this record a read of `view.panX` is a type error as well.
  */
 interface ViewState {
   /**
@@ -103,7 +103,6 @@ interface ViewState {
   layerDragSourceHeight: number;
   _completionRegistered: boolean;
   _layersCollapsed: Set<string> | null;
-  [key: string]: unknown;
 }
 
 export const view: ViewState = {

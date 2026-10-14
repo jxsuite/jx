@@ -3,7 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { compileElement, compileElementPage } from "../src/compiler";
 import { emitElementModule } from "../src/targets/compile-element";
 import { resolve } from "node:path";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type {
+  JsonObject,
+  JxAttributeValue,
+  JxElement,
+  JxStateDefinition,
+} from "@jxsuite/schema/types";
 
 const fixturesDir = import.meta.dir;
 const examplesDir = resolve(fixturesDir, "../../../examples/components");
@@ -86,8 +91,9 @@ describe("compileElement", () => {
       expect(content.split("<span").length - 1).toBe(1);
       expect(content).toMatch(/const _c0 = html`/);
       // Declared inside template(), above the return, so it is rebuilt per render and reads `s`.
-      expect(content.indexOf("const _c0")).toBeGreaterThan(content.indexOf("const s = this.state"));
-      expect(content.indexOf("const _c0")).toBeLessThan(content.indexOf("return html`"));
+      const hoistedAt = content.indexOf("const _c0");
+      expect(hoistedAt).toBeGreaterThan(content.indexOf("const s = this.state"));
+      expect(hoistedAt).toBeLessThan(content.indexOf("return html`"));
       // Both branches reference it rather than repeating the subtree.
       expect(content.split("${_c0}").length - 1).toBe(2);
       expect(content).not.toContain("[object Object]");
@@ -247,12 +253,13 @@ describe("compileElement", () => {
   });
 
   test("throws for non-hyphenated tagName", async () => {
+    let caught: unknown;
     try {
       await compileElement({ state: {}, tagName: "nohyphen" });
-      expect(true).toBe(false);
     } catch (error) {
-      expect((error as Error).message).toContain("must contain a hyphen");
+      caught = error;
     }
+    expect(caught).toHaveProperty("message", expect.stringContaining("must contain a hyphen"));
   });
 
   test("tagName converts to PascalCase class name", async () => {
@@ -607,8 +614,8 @@ Paragraph content
 `,
     );
     try {
-      const { buildProjectFormatRegistry } = await import("../src/site/format-host");
-      const formats = await buildProjectFormatRegistry(tmpDir, {
+      const { buildProjectExtensionRegistry } = await import("../src/site/format-host");
+      const { formats } = await buildProjectExtensionRegistry(tmpDir, {
         extensions: ["@jxsuite/parser"],
       });
       const result = await compileElementPage(mdPath, {
@@ -646,8 +653,14 @@ Paragraph content
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain('No format class registered for ".xyz"');
-      expect((caught as Error).message).toContain('project.json "extensions"');
+      expect(caught).toHaveProperty(
+        "message",
+        expect.stringContaining('No format class registered for ".xyz"'),
+      );
+      expect(caught).toHaveProperty(
+        "message",
+        expect.stringContaining('project.json "extensions"'),
+      );
     } finally {
       rmSync(tmpDir, { force: true, recursive: true });
     }
@@ -849,12 +862,18 @@ describe("compileElement — emitLitNode edge cases", () => {
   });
 
   test("boolean/number child nodes are escaped", async () => {
+    const numberChild: JsonObject = { children: [42], tagName: "div" };
     const content = emitElementModule(
       {
-        children: [{ children: [42], tagName: "div" }],
+        /*
+         * SAFETY: The schema allows only elements and strings as children, so a number child is
+         * outside JxElement on purpose; emitElementModule renders primitive children with an
+         * isNumber/isBoolean branch, which is what this test covers.
+         */
+        children: [numberChild as JxElement],
         state: {},
         tagName: "test-bool-child",
-      } as unknown as JxDocument,
+      },
       "TestBoolChild",
       [],
     );
@@ -1246,8 +1265,10 @@ describe("compileElement — $src $export aliasing", () => {
 // ─── Bodyless $src classification (issue #107) ──────────────────────────────
 
 describe("compileElement — bodyless $src classification", () => {
-  /** @param {Record<string, unknown>} extra */
-  const compile = (children: unknown, extraState: Record<string, unknown> = {}) =>
+  const compile = (
+    children: NonNullable<JxElement["children"]>,
+    extraState: Record<string, JxStateDefinition> = {},
+  ) =>
     compileElement({
       children,
       state: {
@@ -1255,7 +1276,7 @@ describe("compileElement — bodyless $src classification", () => {
         ...extraState,
       },
       tagName: "test-src-class",
-    } as unknown as JxDocument);
+    });
 
   test("a bodyless $src read as a value becomes a computed", async () => {
     // `items` reads the entry's return value, so the template needs the array, not the function.
@@ -1866,12 +1887,12 @@ describe("compileElement — the non-state $ref schemes", () => {
 
 describe("compileElement — boolean attributes (spec.md §8.3)", () => {
   /** The lit template for one element carrying `attributes`. */
-  async function template(attributes: Record<string, unknown>) {
+  async function template(attributes: Record<string, JxAttributeValue>) {
     const result = await compileElement({
       children: [{ attributes, tagName: "details" }],
       state: { unused: 0 },
       tagName: "test-bool-attrs",
-    } as never);
+    });
     return result.files[0]!.content;
   }
 
@@ -1898,7 +1919,7 @@ describe("compileElement — boolean attributes (spec.md §8.3)", () => {
       children: [{ attributes: { open: { $ref: "#/state/isOpen" } }, tagName: "details" }],
       state: { isOpen: true },
       tagName: "test-bound-bool",
-    } as never);
+    });
     expect(result.files[0]!.content).toContain("__jxAttrText('open', s.isOpen) ?? nothing");
   });
 
@@ -1907,7 +1928,7 @@ describe("compileElement — boolean attributes (spec.md §8.3)", () => {
       children: [{ attributes: { "data-x": "page ${state.n}" }, tagName: "div" }],
       state: { n: 1 },
       tagName: "test-mixed-tpl",
-    } as never);
+    });
     const { content } = result.files[0]!;
     expect(content).toContain('data-x="page ${s.n}"');
     expect(content).not.toContain("__jxAttrText('data-x'");

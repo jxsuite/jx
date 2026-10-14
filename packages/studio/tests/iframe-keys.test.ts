@@ -30,7 +30,8 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { chordsInScopes } from "../src/commands/keymap";
 import { emptyContext } from "../src/commands/context";
 import type { ForwardTable } from "../src/canvas/iframe-keys";
-import type { IframeToParent } from "../src/canvas/iframe-protocol";
+import type { IframeChannel } from "../src/canvas/iframe-channel";
+import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
 function key(init: KeyboardEventInit): KeyboardEvent {
   return new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
@@ -146,13 +147,24 @@ describe("serializeKey", () => {
   });
 });
 
+/** A frame-side channel that records every post and never receives anything. */
+function recordingChannel(posts: IframeToParent[]): IframeChannel<IframeToParent, ParentToIframe> {
+  return {
+    dispose: () => {},
+    onMessage: () => () => {},
+    post: (m) => {
+      posts.push(m);
+    },
+  };
+}
+
 describe("startKeyForwarding", () => {
   const t = table({ chord: "mod+z", scope: "global" });
 
   test("forwards a claimed chord and prevents its default", () => {
     const posts: IframeToParent[] = [];
     const stop = startKeyForwarding(
-      { post: (m: IframeToParent) => posts.push(m) } as never,
+      recordingChannel(posts),
       document,
       () => false,
       () => t,
@@ -169,7 +181,7 @@ describe("startKeyForwarding", () => {
     // The host had anything to run.
     const posts: IframeToParent[] = [];
     const stop = startKeyForwarding(
-      { post: (m: IframeToParent) => posts.push(m) } as never,
+      recordingChannel(posts),
       document,
       () => false,
       () => t,
@@ -185,7 +197,7 @@ describe("startKeyForwarding", () => {
     const posts: IframeToParent[] = [];
     let live: ForwardTable = NO_TABLE;
     const stop = startKeyForwarding(
-      { post: (m: IframeToParent) => posts.push(m) } as never,
+      recordingChannel(posts),
       document,
       () => false,
       () => live,
@@ -202,7 +214,7 @@ describe("startKeyForwarding", () => {
     // The defaults, exercised: no session, no table, design mode. A frame wired up wrong is inert
     // Rather than eager — it must never `preventDefault` a key on a guess.
     const posts: IframeToParent[] = [];
-    const stop = startKeyForwarding({ post: (m: IframeToParent) => posts.push(m) } as never);
+    const stop = startKeyForwarding(recordingChannel(posts));
     const e = key({ ctrlKey: true, key: "z" });
     document.body.dispatchEvent(e);
     expect(posts).toEqual([]);
@@ -213,7 +225,7 @@ describe("startKeyForwarding", () => {
   test("teardown removes the listener", () => {
     const posts: IframeToParent[] = [];
     const stop = startKeyForwarding(
-      { post: (m: IframeToParent) => posts.push(m) } as never,
+      recordingChannel(posts),
       document,
       () => false,
       () => t,

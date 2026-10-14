@@ -14,7 +14,7 @@
  */
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
-import { html, render as litRender } from "lit-html";
+import { html, render } from "lit-html";
 import { mountShellTree } from "../src/shell/tree";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -31,6 +31,10 @@ function mirrorResolver(): (id: string) => HTMLElement | null {
   expect(start).toBeGreaterThan(0);
   expect(end).toBeGreaterThan(start);
   const body = src.slice(start, end).replaceAll("<HTMLElement>", "").replaceAll("!", "");
+  /* SAFETY: `body` is shot.ts's resolver verbatim minus its type syntax: it reads only the `id`
+     parameter and builds `matches` from `querySelectorAll` over HTMLElements (or a lone button),
+     so the appended return yields the last of those or null — the signature asserted here. The
+     `start`/`end` expectations above fail first if the slice stops being that code. */
   // eslint-disable-next-line no-new-func
   return new Function("id", `${body}\nreturn matches.at(-1) ?? null;`) as (
     id: string,
@@ -42,8 +46,11 @@ async function build(): Promise<void> {
      pasted here too; it stamps its own region ids now (src/shell/tree.ts), which is what the
      `stampShellRegions()` call under this used to be for. */
   await mountShellTree();
-  const inspector = document.querySelector("#right-panel")!;
-  litRender(
+  const inspector = document.querySelector("#right-panel");
+  if (!(inspector instanceof HTMLElement)) {
+    throw new Error("mountShellTree() drew no #right-panel");
+  }
+  render(
     html`
       <div class="kv-row" data-prop="image">
         <button part="browse" type="button"></button>
@@ -53,7 +60,7 @@ async function build(): Promise<void> {
       </div>
       <div class="kv-row" data-prop="href"></div>
     `,
-    inspector as HTMLElement,
+    inspector,
   );
 }
 

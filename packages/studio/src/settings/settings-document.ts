@@ -26,7 +26,7 @@
 import { errorMessage } from "@jxsuite/schema/parse";
 import { optionalStringArg, stringProperty } from "../commands/command-args";
 import { notify } from "../services/notify";
-import { requireProjectState } from "../state";
+import { projectState } from "../state";
 import { PROJECT_CONFIG_PATH } from "../tabs/tab";
 import { lendProjectConfigLayout } from "../tabs/project-config";
 import { activeTab, focusPane, openTab, workspace } from "../workspace/workspace";
@@ -181,7 +181,7 @@ export function activeSettingsSection(): string | null {
 
 /** Whether the active tab is the configuration document in its settings editor. */
 export function settingsDocumentOpen(): boolean {
-  const tab = activeTab.value as Tab | null;
+  const tab = activeTab.value;
   return tab?.documentPath === PROJECT_CONFIG_PATH && tab.session.ui.canvasMode === SETTINGS_MODE;
 }
 
@@ -197,7 +197,7 @@ export function settingsDocumentOpen(): boolean {
  * @returns {Tab | null} The tab, or null when no project is open
  */
 export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
-  const state = requireProjectState();
+  const state = projectState;
   if (!state) {
     return null;
   }
@@ -210,11 +210,11 @@ export function showSettingsDocument(mode: string = SETTINGS_MODE): Tab | null {
     }
     existing.session.ui.canvasMode = mode;
     existing.session.ui.preview = false;
-    return revealTab(existing as unknown as Tab);
+    return revealTab(existing);
   }
   const tab = openTab({
     capabilities: { modes: [...SETTINGS_TAB_MODES] },
-    document: (state.projectConfig ?? {}) as unknown as Record<string, unknown>,
+    document: state.projectConfig ?? {},
     documentPath: PROJECT_CONFIG_PATH,
     id: PROJECT_CONFIG_PATH,
   });

@@ -24,6 +24,8 @@
  */
 import { flush, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { JsonSchema, SchemaFormPatch } from "../src/ui/schema-form";
 
 let ids: string[] = ["ada", "grace"];
 let listError = "";
@@ -57,7 +59,7 @@ const { NULL_FORM_CONTEXT, referenceTarget } = await import("../src/ui/schema-fo
 
 interface Mounted {
   container: HTMLElement;
-  patches: Record<string, unknown>[];
+  patches: SchemaFormPatch[];
   redraw: () => void;
 }
 
@@ -85,30 +87,27 @@ async function land(): Promise<void> {
  * asynchronous — the container is attached and the caller awaits before asserting. Each mount takes
  * a key of its own, so two fields in one test are two forms.
  */
-async function mountReference(value: unknown, schema: Record<string, unknown>): Promise<Mounted> {
+async function mountReference(value: JsonValue, schema: JsonSchema): Promise<Mounted> {
   const container = document.createElement("div");
   document.body.append(container);
   mounted.push(container);
-  const patches: Record<string, unknown>[] = [];
-  const state = { value };
+  const patches: SchemaFormPatch[] = [];
+  let author: JsonValue | undefined = value;
+  // A cleared field patches `author: undefined`; the form reads that as the key being absent.
+  const current = (): JsonObject => (author === undefined ? {} : { author });
   mountSeq += 1;
   const key = `reference:${mountSeq}`;
   const draw = () =>
-    mountSchemaForm(
-      key,
-      { properties: { author: schema } },
-      { author: state.value },
-      {
-        onChange: (patch) => {
-          patches.push(patch);
-          state.value = patch.author;
-          draw();
-        },
-        rerender: () => {
-          draw();
-        },
+    mountSchemaForm(key, { properties: { author: schema } }, current(), {
+      onChange: (patch) => {
+        patches.push(patch);
+        ({ author } = patch);
+        draw();
       },
-    );
+      rerender: () => {
+        draw();
+      },
+    });
   container.append(draw());
   await settle();
   return {
@@ -308,7 +307,7 @@ describe("the control", () => {
     const container = document.createElement("div");
     document.body.append(container);
     mounted.push(container);
-    const patches: Record<string, unknown>[] = [];
+    const patches: SchemaFormPatch[] = [];
     mountSeq += 1;
     container.append(
       mountSchemaForm(
@@ -522,7 +521,7 @@ describe("every consumer gets it without asking", () => {
     const container = document.createElement("div");
     document.body.append(container);
     mounted.push(container);
-    const patches: Record<string, unknown>[] = [];
+    const patches: SchemaFormPatch[] = [];
     mountSeq += 1;
     container.append(
       mountSchemaForm(

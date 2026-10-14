@@ -3,6 +3,7 @@
  * surface's cfApi (token in X-CF-Token, never stored).
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { handleStudioApi } from "../src/studio-api";
 
 const ROOT = import.meta.dir;
@@ -19,17 +20,24 @@ interface UpstreamCall {
   init?: RequestInit;
 }
 
-function stubUpstream(status = 200, body?: unknown) {
+function stubUpstream(status = 200, body?: JsonObject) {
   const payload = body ?? { success: true, result: [] };
   const calls: UpstreamCall[] = [];
-  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ url: String(url), ...(init === undefined ? {} : { init }) });
+  const { preconnect } = realFetch;
+  const answer = async (url: RequestInfo | URL, init?: RequestInit) => {
+    const call: UpstreamCall = { url: String(url) };
+    if (init !== undefined) {
+      call.init = init;
+    }
+    calls.push(call);
     return Response.json(payload, { status });
-  }) as typeof fetch;
+  };
+  // Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+  globalThis.fetch = Object.assign(answer, { preconnect });
   return calls;
 }
 
-async function proxy(payload: unknown, headers: Record<string, string> = {}) {
+async function proxy(payload: JsonObject, headers: Record<string, string> = {}) {
   const urlStr = "http://localhost/__studio/cf/proxy";
   const req = new Request(urlStr, {
     body: JSON.stringify(payload),
@@ -74,21 +82,21 @@ describe("/__studio/cf/proxy", () => {
     expect(calls[0]!.url).toBe(
       `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/pages/projects`,
     );
-    const headers = calls[0]!.init?.headers as Record<string, string>;
-    expect(headers["Authorization"]).toBe("Bearer cf_tok");
+    const headers = new Headers(calls[0]!.init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer cf_tok");
     expect(calls[0]!.init?.method).toBe("POST");
     expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ name: "site" });
   });
 
   test("passes upstream status and body through", async () => {
-    stubUpstream(404, { success: false, errors: [{ code: 8_000_007, message: "not found" }] });
+    const upstream = { success: false, errors: [{ code: 8_000_007, message: "not found" }] };
+    stubUpstream(404, upstream);
     const res = await proxy(
       { path: `/accounts/${ACCOUNT}/pages/projects/missing` },
       { "X-CF-Token": "cf_tok" },
     );
     expect(res.status).toBe(404);
-    const body = (await res.json()) as { success: boolean };
-    expect(body.success).toBe(false);
+    expect(await res.json()).toEqual(upstream);
   });
 
   test("rejects malformed JSON bodies", async () => {

@@ -13,6 +13,7 @@ import { setCanvasAssetResolver } from "@jxsuite/runtime";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
 import { flush } from "./harness";
 import { startCanvasIframe } from "../src/canvas/iframe-entry";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { AssetContext } from "../src/canvas/asset-resolve";
 import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
@@ -26,7 +27,7 @@ const REPO: AssetContext = {
   space: "repo",
 };
 
-function renderMsg(gen: number, doc: unknown, assets: AssetContext | null): ParentToIframe {
+function renderMsg(gen: number, doc: JxMutableNode, assets: AssetContext | null): ParentToIframe {
   return {
     assets,
     colorScheme: null,
@@ -48,7 +49,7 @@ function renderMsg(gen: number, doc: unknown, assets: AssetContext | null): Pare
 }
 
 /** A fresh document per render: a patch folds its ops into the shadow doc it was rendered from. */
-function imgDoc() {
+function imgDoc(): JxMutableNode {
   return { children: [{ attributes: { src: "/hero.png" }, tagName: "img" }], tagName: "div" };
 }
 
@@ -155,7 +156,7 @@ describe("assetVersions in the frame", () => {
   test("a ref named after an Object.prototype member gets no version", async () => {
     const { container, deliver } = await boot();
     await deliver({ kind: "assetVersions", versions: { "public/hero.png": "abc" } });
-    const doc = {
+    const doc: JxMutableNode = {
       children: [
         { attributes: { src: "constructor" }, tagName: "img" },
         { attributes: { src: "./toString" }, tagName: "img" },

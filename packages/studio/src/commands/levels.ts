@@ -231,7 +231,7 @@ export function panelPlacements(panel: PlaceablePanel): string[] {
 
 /** Whether `value` is one of the {@link PANEL_PLACEMENTS}. */
 export function isPanelPlacement(value: string): value is PanelPlacement {
-  return (PANEL_PLACEMENTS as readonly string[]).includes(value);
+  return PANEL_PLACEMENTS.some((placement) => placement === value);
 }
 
 /** Check one Panel record against {@link PANEL_PLACEMENT_MATRIX}. */
@@ -300,12 +300,12 @@ export interface PlacementViolation {
 
 /** Whether `placement` is one of the {@link PLACEMENTS}. */
 export function isPlacement(value: string): value is Placement {
-  return (PLACEMENTS as readonly string[]).includes(value);
+  return PLACEMENTS.some((placement) => placement === value);
 }
 
 /** Whether `level` is one of the {@link LEVELS}. */
 export function isLevel(value: string): value is Level {
-  return (LEVELS as readonly string[]).includes(value);
+  return LEVELS.some((level) => level === value);
 }
 
 /** Whether the matrix lets a `level` record render in `placement`. */

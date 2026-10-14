@@ -7,6 +7,14 @@ import {
   parseProjectConfig,
   toError,
 } from "../src/parse";
+import { isString } from "../src/guards";
+import type { JxElement } from "../types";
+
+/** A parsed node's first child, when that child is an element rather than text. */
+function firstElementChild(node: JxElement): JxElement | undefined {
+  const [child] = Array.isArray(node.children) ? node.children : [];
+  return isString(child) ? undefined : child;
+}
 
 describe("errorMessage", () => {
   test("returns the message of an Error instance", () => {
@@ -52,7 +60,9 @@ describe("parseJxDocument", () => {
     try {
       parseJxDocument("{ not json", "/site/pages/broken.json");
     } catch (error) {
-      caught = error as Error;
+      if (error instanceof Error) {
+        caught = error;
+      }
     }
     expect(caught).toBeInstanceOf(Error);
     expect(caught?.message).toContain("Failed to parse Jx document at /site/pages/broken.json");
@@ -158,9 +168,8 @@ describe("Unicode normalization at the parse boundary (UAX #31 §R4)", () => {
 
   test("a decomposed state key arrives composed", () => {
     const doc = parseJxDocument(`{"state":{"${NFD_ETAT}":"bonjour"}}`, "/site/x.json");
-    const state = doc.state as Record<string, unknown>;
-    expect(Object.keys(state)).toEqual([NFC_ETAT]);
-    expect(state[NFC_ETAT]).toBe("bonjour");
+    expect(Object.keys(doc.state ?? {})).toEqual([NFC_ETAT]);
+    expect(doc.state?.[NFC_ETAT]).toBe("bonjour");
   });
 
   test("a decomposed reference in a template arrives composed, so it matches the key", () => {
@@ -168,8 +177,7 @@ describe("Unicode normalization at the parse boundary (UAX #31 §R4)", () => {
       `{"state":{"${NFC_ETAT}":"bonjour"},"children":[{"tagName":"p","textContent":"\${state.${NFD_ETAT}}"}]}`,
       "/site/x.json",
     );
-    const [child] = doc.children as { textContent: string }[];
-    expect(child?.textContent).toBe(`\${state.${NFC_ETAT}}`);
+    expect(firstElementChild(doc)?.textContent).toBe(`\${state.${NFC_ETAT}}`);
   });
 
   test("a decomposed $ref pointer arrives composed", () => {
@@ -177,8 +185,7 @@ describe("Unicode normalization at the parse boundary (UAX #31 §R4)", () => {
       `{"children":[{"tagName":"p","textContent":{"$ref":"#/state/${NFD_ETAT}"}}]}`,
       "/site/x.json",
     );
-    const [child] = doc.children as { textContent: { $ref: string } }[];
-    expect(child?.textContent.$ref).toBe(`#/state/${NFC_ETAT}`);
+    expect(firstElementChild(doc)?.textContent).toEqual({ $ref: `#/state/${NFC_ETAT}` });
   });
 
   test("normalization reaches nested objects and arrays", () => {
@@ -186,18 +193,15 @@ describe("Unicode normalization at the parse boundary (UAX #31 §R4)", () => {
       `{"children":[{"tagName":"ul","children":[{"tagName":"li","${NFD_ETAT}":1}]}]}`,
       "/site/x.json",
     );
-    const [ul] = doc.children as { children: Record<string, unknown>[] }[];
-    const [li] = ul?.children ?? [];
+    const ul = firstElementChild(doc);
+    const li = ul && firstElementChild(ul);
     expect(Object.keys(li ?? {})).toContain(NFC_ETAT);
   });
 
   test("project configs and class definitions cross the same boundary", () => {
     const config = parseProjectConfig(`{"name":"${NFD_ETAT}"}`, "/site/project.json");
     expect(config.name).toBe(NFC_ETAT);
-    const cls = parseClassDef(`{"${NFD_ETAT}":true}`, "/site/X.class.json") as unknown as Record<
-      string,
-      unknown
-    >;
+    const cls = parseClassDef(`{"${NFD_ETAT}":true}`, "/site/X.class.json");
     expect(Object.keys(cls)).toEqual([NFC_ETAT]);
   });
 
@@ -208,7 +212,7 @@ describe("Unicode normalization at the parse boundary (UAX #31 §R4)", () => {
   test("already-composed text is returned unchanged", () => {
     const doc = parseJxDocument(`{"title":"${NFC_ETAT}","state":{"${NFC_ETAT}":1}}`, "/x.json");
     expect(doc.title).toBe(NFC_ETAT);
-    expect(Object.keys(doc.state as object)).toEqual([NFC_ETAT]);
+    expect(Object.keys(doc.state ?? {})).toEqual([NFC_ETAT]);
   });
 
   /*

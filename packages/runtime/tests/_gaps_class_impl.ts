@@ -1,9 +1,11 @@
 // Fixture classes for runtime-gaps-resolve.test.ts (external class resolution)
 
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
 /** Instance exposes a `value` property — exercises the `"value" in instance` branch. */
 export class ValueBox {
-  value: unknown;
-  constructor(config: Record<string, unknown>) {
+  value: JsonValue;
+  constructor(config: JsonObject) {
     this.value = config.initial ?? "boxed";
   }
 }
@@ -11,18 +13,18 @@ export class ValueBox {
 /** Instance with resolve() + subscribe() — exercises async resolution and subscription. */
 export class Resolvable {
   _label: string;
-  _subs: ((v: unknown) => void)[] = [];
-  constructor(config: Record<string, unknown>) {
+  _subs: ((v: JsonValue) => void)[] = [];
+  constructor(config: JsonObject) {
     this._label = String(config.label ?? "");
-    (globalThis as Record<string, unknown>).__gapsResolvable = this;
+    Object.assign(globalThis, { __gapsResolvable: this });
   }
   resolve() {
     return Promise.resolve(`resolved:${this._label}`);
   }
-  subscribe(cb: (v: unknown) => void) {
+  subscribe(cb: (v: JsonValue) => void) {
     this._subs.push(cb);
   }
-  push(v: unknown) {
+  push(v: JsonValue) {
     for (const cb of this._subs) {
       cb(v);
     }

@@ -32,6 +32,7 @@ import {
   isPopover,
   labelOf,
   literalAttr,
+  OVERLAY_DOCS,
   popoverIdsIn,
   scalar,
   tagOf,
@@ -73,6 +74,12 @@ export const POPOVER_COMMANDS: ReadonlySet<string> = new Set([
 /** The values `closedby` takes. */
 export const DIALOG_CLOSEDBY = ["any", "closerequest", "none"] as const;
 
+/** {@link INVOKER_COMMANDS} as a lookup an attribute's literal text can be tested against. */
+const INVOKER_COMMAND_SET: ReadonlySet<string> = new Set(INVOKER_COMMANDS);
+
+/** {@link DIALOG_CLOSEDBY} as a lookup an attribute's literal text can be tested against. */
+const DIALOG_CLOSEDBY_SET: ReadonlySet<string> = new Set(DIALOG_CLOSEDBY);
+
 /**
  * Only a `<button>` carries `command` and `commandfor` (`HTMLButtonElement`, and no other
  * interface).
@@ -105,8 +112,6 @@ export interface DialogDefect {
   severity: "error" | "warn";
   fix?: DialogFix;
 }
-
-const DOCS = "See docs/framework/concepts/overlays.";
 
 /** Whether the node is a `<dialog>`. */
 export function isDialog(node: JxElement): boolean {
@@ -142,7 +147,7 @@ export function documentHasDialog(doc: JxElement): boolean {
 
 /** Whether a node declares an `oncommand` handler, in any of the handler spellings. */
 function handlesCommand(node: JxElement): boolean {
-  const handler = (node as Record<string, unknown>).oncommand;
+  const handler = node.oncommand;
   return handler !== undefined && handler !== null;
 }
 
@@ -240,7 +245,7 @@ function invokerDefects(
       detail:
         "`command` and `commandfor` are attributes of `HTMLButtonElement` and of no other " +
         "interface — not even `<input>`, which `popovertarget` does allow. Elsewhere they parse " +
-        `and do nothing. Make it a <button>, or remove both attributes. ${DOCS}`,
+        `and do nothing. Make it a <button>, or remove both attributes. ${OVERLAY_DOCS}`,
       fix: "invoker",
       message: `<${tag || "element"}> carries command/commandfor, which only <button> supports.`,
       path,
@@ -250,16 +255,12 @@ function invokerDefects(
     return out;
   }
 
-  if (
-    command !== null &&
-    !(INVOKER_COMMANDS as readonly string[]).includes(command) &&
-    !isCustomCommand(command)
-  ) {
+  if (command !== null && !INVOKER_COMMAND_SET.has(command) && !isCustomCommand(command)) {
     out.push({
       detail:
         `\`command\` is an enumerated attribute taking ${INVOKER_COMMANDS.map((c) => `\`${c}\``).join(", ")}, ` +
         "or a custom command starting with `--`. Anything else is the invalid-value state, and a " +
-        `button in that state does nothing when clicked. ${DOCS}`,
+        `button in that state does nothing when clicked. ${OVERLAY_DOCS}`,
       message: `${label} declares command="${command}", which is not a built-in or --custom command.`,
       path,
       rule: "command-invalid",
@@ -277,7 +278,7 @@ function invokerDefects(
       out.push({
         detail:
           `No element in this document has the id "${target}". The dialogs and popovers here are: ${names}. ` +
-          `A commandfor that names nothing does nothing, silently. ${DOCS}`,
+          `A commandfor that names nothing does nothing, silently. ${OVERLAY_DOCS}`,
         message: `commandfor="${target}" names nothing in this document.`,
         path,
         rule: "command-target-missing",
@@ -290,7 +291,7 @@ function invokerDefects(
         out.push({
           detail:
             `\`${command}\` acts on a <dialog>, and "${target}" is ${targetsPopover ? "a popover" : `a <${tagOf(known) || "element"}>`}. ` +
-            `The click is ignored. ${targetsPopover ? "Use `toggle-popover`, `show-popover` or `hide-popover` for a popover." : "Point it at a dialog, or make the target one."} ${DOCS}`,
+            `The click is ignored. ${targetsPopover ? "Use `toggle-popover`, `show-popover` or `hide-popover` for a popover." : "Point it at a dialog, or make the target one."} ${OVERLAY_DOCS}`,
           message: `${label} sends ${command} to "${target}", which is not a dialog.`,
           path,
           rule: "command-target-mismatch",
@@ -300,7 +301,7 @@ function invokerDefects(
         out.push({
           detail:
             `\`${command}\` acts on a popover, and "${target}" is ${targetsDialog ? "a dialog" : `a <${tagOf(known) || "element"}>`} that declares no \`popover\`. ` +
-            `The click is ignored. ${targetsDialog ? "Use `show-modal`, `close` or `request-close` for a dialog." : "Give the target a `popover` attribute, or point the button elsewhere."} ${DOCS}`,
+            `The click is ignored. ${targetsDialog ? "Use `show-modal`, `close` or `request-close` for a dialog." : "Give the target a `popover` attribute, or point the button elsewhere."} ${OVERLAY_DOCS}`,
           message: `${label} sends ${command} to "${target}", which is not a popover.`,
           path,
           rule: "command-target-mismatch",
@@ -311,7 +312,7 @@ function invokerDefects(
           detail:
             `A custom command is a \`CommandEvent\` dispatched at its target, and "${target}" has no ` +
             "`oncommand` handler to answer it — so the click does nothing. Add one that switches on " +
-            `\`event#/command\`, or use a built-in command. ${DOCS}`,
+            `\`event#/command\`, or use a built-in command. ${OVERLAY_DOCS}`,
           message: `${label} sends ${command} to "${target}", which handles no command.`,
           path,
           rule: "custom-command-unhandled",
@@ -335,12 +336,12 @@ function dialogDefects(
   const { style } = node;
 
   const closedby = literalAttr(node, "closedby");
-  if (closedby !== null && !(DIALOG_CLOSEDBY as readonly string[]).includes(closedby)) {
+  if (closedby !== null && !DIALOG_CLOSEDBY_SET.has(closedby)) {
     out.push({
       detail:
         "`closedby` is an enumerated attribute taking `any` (light dismiss and Escape), " +
         "`closerequest` (Escape only, the default for a modal) or `none`. Anything else is the " +
-        `invalid-value default, \`auto\`, which is the same as leaving it out. ${DOCS}`,
+        `invalid-value default, \`auto\`, which is the same as leaving it out. ${OVERLAY_DOCS}`,
       message: `${label} declares closedby="${closedby}", which is not any, closerequest or none.`,
       path,
       rule: "dialog-closedby-invalid",
@@ -354,7 +355,7 @@ function dialogDefects(
         "A closed dialog is hidden by the browser's own `dialog:not([open]) { display: none }`. " +
         "That rule is UA-origin, so any author `display` beats it, and the dialog is laid out on " +
         "every page whether or not anyone opened it. `display` belongs in the `&[open]` rule and " +
-        `nowhere else. ${DOCS}`,
+        `nowhere else. ${OVERLAY_DOCS}`,
       fix: "display",
       message: `${label} sets display in its base rule.`,
       path,
@@ -372,7 +373,7 @@ function dialogDefects(
       detail:
         'No <button> in this document opens it with `command="show-modal"`. If it is opened from another ' +
         "file or from a function that calls `showModal()`, this is fine; otherwise there is no " +
-        `way for a reader to open it. ${DOCS}`,
+        `way for a reader to open it. ${OVERLAY_DOCS}`,
       message: `${label} has no invoker in this document.`,
       path,
       rule: "dialog-no-invoker",
@@ -386,7 +387,7 @@ function dialogDefects(
         "A modal dialog makes everything outside it inert, so the only ways out are the ones it " +
         'offers: `closedby="none"` turns off Escape and light dismiss, and nothing inside it ' +
         'closes it. A reader who opens it cannot leave. Add a <button command="close"> inside, or ' +
-        `drop \`closedby="none"\`. ${DOCS}`,
+        `drop \`closedby="none"\`. ${OVERLAY_DOCS}`,
       message: `${label} opens modally, closes on nothing, and has no close button.`,
       path,
       rule: "modal-without-close",

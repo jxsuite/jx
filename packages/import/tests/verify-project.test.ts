@@ -8,7 +8,8 @@ import { describe, expect, it, mock } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PNG } from "pngjs";
-import type { Browser, Page } from "puppeteer-core";
+import type { Browser, Page, Viewport } from "puppeteer-core";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 function makePng(width: number, height: number, fill: [number, number, number, number]): Buffer {
   const img = new PNG({ width, height });
@@ -61,10 +62,56 @@ const { verifyProject, captureReferenceScreenshot } = await import("../src/verif
 // -- Fake puppeteer pages / browser -------------------------------------------------------------
 
 interface FakePageState {
-  viewports: { width: number; height: number }[];
+  viewports: Viewport[];
   urls: string[];
   fullPage: (boolean | undefined)[];
   closed: boolean;
+}
+
+/** A `console` message the way puppeteer hands one over. */
+interface FakeConsoleMessage {
+  text: () => string;
+  type: () => string;
+}
+
+/** The two members of puppeteer's HTTPResponse that the verifier reads. */
+interface FakeResponse {
+  status: () => number;
+  url: () => string;
+}
+
+/** The one member of puppeteer's HTTPRequest that the verifier reads. */
+interface FakeRequest {
+  url: () => string;
+}
+
+/** What a page event carries: `pageerror` may carry any thrown value, so a bare string too. */
+type PageEventPayload = FakeConsoleMessage | FakeResponse | FakeRequest | Error | string;
+
+type PageEventHandler = (payload: PageEventPayload) => void;
+
+/** The page members verify.ts calls, in the shapes it calls them with. */
+interface FakePuppeteerPage {
+  on?: (event: string, handler: PageEventHandler) => FakePuppeteerPage;
+  setViewport: (viewport: Viewport) => Promise<void>;
+  goto: (url: string) => Promise<null>;
+  screenshot: (options?: { fullPage?: boolean }) => Promise<Uint8Array>;
+  close: () => Promise<void>;
+}
+
+interface FakePageOptions {
+  png?: Buffer;
+  failGoto?: boolean;
+  /** Events to fire during `goto`, in order. */
+  events?: { event: string; payload: PageEventPayload }[];
+  /** Omit `page.on` entirely — a stand-in page that only screenshots must still work. */
+  noEvents?: boolean;
+}
+
+/** A fake page, and the record of what was done to it. */
+interface FakePage {
+  page: Page;
+  state: FakePageState;
 }
 
 /**
@@ -72,35 +119,15 @@ interface FakePageState {
  * turn "this page scores 8%" into "this page 404'd on fifteen images", so a fake that cannot fire
  * them would leave the interesting half of the verifier untested.
  */
-function makeFakePage(
-  opts: {
-    png?: Buffer;
-    failGoto?: boolean;
-    /** Events to fire during `goto`, in order. */
-    events?: { event: string; payload: unknown }[];
-    /** Omit `page.on` entirely — a stand-in page that only screenshots must still work. */
-    noEvents?: boolean;
-  } = {},
-): {
-  page: Page;
-  state: FakePageState;
-} {
+function makeFakePage(opts: FakePageOptions = {}): FakePage {
   const state: FakePageState = { viewports: [], urls: [], fullPage: [], closed: false };
-  const listeners = new Map<string, ((payload: unknown) => void)[]>();
-  const page = {
-    ...(opts.noEvents
-      ? {}
-      : {
-          on(event: string, handler: (payload: unknown) => void) {
-            listeners.set(event, [...(listeners.get(event) ?? []), handler]);
-            return this;
-          },
-        }),
-    setViewport(vp: { width: number; height: number }) {
+  const listeners = new Map<string, PageEventHandler[]>();
+  const fake: FakePuppeteerPage = {
+    setViewport(vp) {
       state.viewports.push(vp);
       return Promise.resolve();
     },
-    async goto(url: string) {
+    async goto(url) {
       if (opts.failGoto) {
         throw new Error("goto failed");
       }
@@ -115,8 +142,9 @@ function makeFakePage(
           handler(payload);
         }
       }
+      return null;
     },
-    screenshot(screenshotOpts?: { fullPage?: boolean }) {
+    screenshot(screenshotOpts) {
       state.fullPage.push(screenshotOpts?.fullPage);
       return Promise.resolve(new Uint8Array(opts.png ?? RED_PNG));
     },
@@ -124,18 +152,28 @@ function makeFakePage(
       state.closed = true;
       return Promise.resolve();
     },
-  } as unknown as Page;
-  return { page, state };
+  };
+  if (!opts.noEvents) {
+    fake.on = (event, handler) => {
+      listeners.set(event, [...(listeners.get(event) ?? []), handler]);
+      return fake;
+    };
+  }
+  /* SAFETY: verify.ts calls only setViewport, goto, screenshot and close on a page, plus `on`
+     behind watchPage's isFunction probe (absent when `noEvents` is set, which is the case that
+     probe exists for). FakePuppeteerPage implements each of those with puppeteer's call shape,
+     and the event payloads carry exactly the members watchPage reads off them. */
+  return { page: fake as Page, state };
 }
 
 /** A `console` message the way puppeteer hands one over. */
-function consoleMessage(type: string, text: string) {
+function consoleMessage(type: string, text: string): FakeConsoleMessage {
   return { text: () => text, type: () => type };
 }
 
 function makeFakeBrowser(pages: Page[]): Browser {
   let i = 0;
-  return {
+  const fake = {
     newPage() {
       const page = pages[i];
       i += 1;
@@ -144,7 +182,15 @@ function makeFakeBrowser(pages: Page[]): Browser {
       }
       return Promise.resolve(page);
     },
-  } as unknown as Browser;
+  };
+  /* SAFETY: verifyProject calls only `newPage()` on the browser it is handed or launches; it never
+     closes a caller's browser and closes a launched one through the mocked closeBrowser. */
+  return fake as Browser;
+}
+
+/** The report.json verifyProject wrote; `JSON.parse` without a reviver only yields JSON values. */
+function readReport(reportDir: string): JsonValue {
+  return JSON.parse(readFileSync(join(reportDir, "report.json"), "utf8"));
 }
 
 function makeProjectDir(): string {
@@ -226,28 +272,22 @@ describe("verifyProject - success path", () => {
     ]) {
       expect(existsSync(join(reportDir, name))).toBe(true);
     }
-    const report = JSON.parse(readFileSync(join(reportDir, "report.json"), "utf8")) as {
-      averageFidelity: number;
-      pages: unknown[];
-      buildErrors: string[];
-      viewport: { width: number; height: number };
-      colorTolerance: number;
-      minFidelity: number;
-      fullPage: boolean;
-      passed: boolean;
-    };
-    expect(report.averageFidelity).toBe(100);
-    expect(report.pages.length).toBe(2);
-    expect(report.buildErrors).toEqual([]);
-    expect(report.viewport).toEqual({ width: 640, height: 480 });
+    const report = readReport(reportDir);
+    expect(report).toHaveProperty("pages.length", 2);
     /*
-     * Named for what it is. `threshold` in the report read like the bar the run had to clear, and
-     * it is pixelmatch's per-pixel colour tolerance — the confusion is issue #232 in one word.
+     * `colorTolerance` is named for what it is. `threshold` in the report read like the bar the run
+     * had to clear, and it is pixelmatch's per-pixel colour tolerance — the confusion is issue #232
+     * in one word.
      */
-    expect(report.colorTolerance).toBe(0.1);
-    expect(report.minFidelity).toBe(0);
-    expect(report.fullPage).toBe(true);
-    expect(report.passed).toBe(true);
+    expect(report).toMatchObject({
+      averageFidelity: 100,
+      buildErrors: [],
+      viewport: { width: 640, height: 480 },
+      colorTolerance: 0.1,
+      minFidelity: 0,
+      fullPage: true,
+      passed: true,
+    });
 
     expect(progress.some((m) => m.includes("Building project"))).toBe(true);
     expect(progress.some((m) => m.includes("Verifying pages/index.json"))).toBe(true);
@@ -286,10 +326,7 @@ describe("verifyProject - success path", () => {
     expect(result.passed).toBe(false);
     // Default reportDir is <projectDir>/verify
     expect(result.reportDir).toBe(join(projectDir, "verify"));
-    const report = JSON.parse(readFileSync(join(result.reportDir, "report.json"), "utf8")) as {
-      buildErrors: string[];
-    };
-    expect(report.buildErrors).toEqual(["missing layout"]);
+    expect(readReport(result.reportDir)).toMatchObject({ buildErrors: ["missing layout"] });
   });
 });
 
@@ -345,10 +382,7 @@ describe("verifyProject - what the page said while it rendered", () => {
     expect(progress.some((m) => m.includes("2 request(s) failed or 404"))).toBe(true);
     expect(progress.some((m) => m.includes("3 console error(s)"))).toBe(true);
 
-    const report = JSON.parse(readFileSync(join(result.reportDir, "report.json"), "utf8")) as {
-      pages: { failedRequests: string[] }[];
-    };
-    expect(report.pages[0]!.failedRequests).toHaveLength(2);
+    expect(readReport(result.reportDir)).toHaveProperty("pages.0.failedRequests.length", 2);
   });
 
   // A stand-in page that only screenshots is still a usable page; diagnostics are then empty.

@@ -39,7 +39,7 @@ import {
   attachInstruction,
   extractInstruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
-import { isJsonObject } from "@jxsuite/schema/guards";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { mountExpressionEditor, mountOperandEditor } from "../ui/expression-editor";
 import { openMenu } from "../surfaces/menu";
 import { disposeDetachedStatementEditors, renderStatementsSurface } from "../surfaces/statements";
@@ -47,12 +47,14 @@ import { disposeDetachedStatementEditors, renderStatementsSurface } from "../sur
 import type {
   CemEvent,
   JxDispatchStatement,
+  JxDocumentValue,
   JxIfStatement,
   JxStatement,
   JxStateDefinition,
   JxSwitchStatement,
 } from "@jxsuite/schema/types";
-import type { StatementFieldView, StatementRowView, StatementOption } from "../surfaces/statements";
+import type { StatementFieldView, StatementRowView } from "../surfaces/statements";
+import type { SurfaceOption } from "../ui/surface";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -91,8 +93,15 @@ type LanePath = (string | number)[];
 
 // ─── Statement Kind Detection ────────────────────────────────────────────────
 
-/** Discriminate a statement's kind, mirroring the runtime's detection order (`spec.md` §20.2). */
-export function statementKind(stmt: unknown): "expression" | "if" | "switch" | "dispatch" {
+/**
+ * Discriminate a statement's kind, mirroring the runtime's detection order (`spec.md` §20.2).
+ *
+ * Takes any document value, not only a well-formed statement: a body is read from a document, and
+ * whatever an entry holds falls back to `"expression"` rather than throwing.
+ */
+export function statementKind(
+  stmt: JxDocumentValue | undefined,
+): "expression" | "if" | "switch" | "dispatch" {
   if (isJsonObject(stmt)) {
     if ("operator" in stmt) {
       return "expression";
@@ -112,8 +121,23 @@ export function statementKind(stmt: unknown): "expression" | "if" | "switch" | "
 
 const ASSIGN_OPS = new Set(["=", "+=", "-=", "*=", "/="]);
 
+/** A statement {@link statementKind} reads as an `if`/`then`/`else` branch. */
+function isIfStatement(stmt: JxStatement): stmt is JxIfStatement {
+  return statementKind(stmt) === "if";
+}
+
+/** A statement {@link statementKind} reads as a `$switch`/`cases` multiway branch. */
+function isSwitchStatement(stmt: JxStatement): stmt is JxSwitchStatement {
+  return statementKind(stmt) === "switch";
+}
+
+/** A statement {@link statementKind} reads as a WHATWG `dispatchEvent`. */
+function isDispatchStatement(stmt: JxStatement): stmt is JxDispatchStatement {
+  return statementKind(stmt) === "dispatch";
+}
+
 /** Card header label — ECMA/WHATWG naming (`spec.md` §20.2). */
-function kindLabel(stmt: unknown): string {
+function kindLabel(stmt: JxStatement): string {
   switch (statementKind(stmt)) {
     case "if": {
       return "If / Else";
@@ -139,22 +163,25 @@ function kindLabel(stmt: unknown): string {
 
 // ─── Add-statement Seeds (spec.md §20 shapes) ────────────────────────────────
 
-const STATEMENT_SEEDS: Record<string, () => JxStatement> = {
-  call: () => ({ operator: "call", target: { $ref: "" }, value: [] }),
-  dispatch: () => ({ dispatchEvent: "" }),
-  if: () => ({
-    if: { operator: "===", target: { $ref: "" }, value: null },
-    then: [],
-  }),
-  set: () => ({ operator: "=", target: { $ref: "" }, value: null }),
-  switch: () => ({ $switch: { $ref: "" }, cases: {} }),
-};
+const STATEMENT_SEEDS = new Map<string, () => JxStatement>([
+  ["call", () => ({ operator: "call", target: { $ref: "" }, value: [] })],
+  ["dispatch", () => ({ dispatchEvent: "" })],
+  [
+    "if",
+    () => ({
+      if: { operator: "===", target: { $ref: "" }, value: null },
+      then: [],
+    }),
+  ],
+  ["set", () => ({ operator: "=", target: { $ref: "" }, value: null })],
+  ["switch", () => ({ $switch: { $ref: "" }, cases: {} })],
+]);
 
 /**
  * The add-statement menu, in the order the rows read. One list, and this is it
  * (`studio-ui-guidelines.md` §12.5).
  */
-const STATEMENT_CHOICES: readonly StatementOption[] = [
+const STATEMENT_CHOICES: readonly SurfaceOption[] = [
   { label: "Set state", value: "set" },
   { label: "Call function", value: "call" },
   { label: "If / Else", value: "if" },
@@ -164,34 +191,84 @@ const STATEMENT_CHOICES: readonly StatementOption[] = [
 
 // ─── Lane Addressing (immutable read/write through nested statement lists) ───
 
+/**
+ * The lane one statement holds under a lane-path step: `then`/`else` on an `if`, a named case or
+ * `default` on a `$switch`. Undefined for any other step, which is how a stale path reads.
+ */
+function laneUnder(
+  stmt: JxStatement,
+  key: string | number | undefined,
+  caseKey: string | number | undefined,
+): JxStatement[] | undefined {
+  if (isIfStatement(stmt)) {
+    if (key === "then") {
+      return stmt.then;
+    }
+    if (key === "else") {
+      return stmt.else;
+    }
+  }
+  if (isSwitchStatement(stmt)) {
+    if (key === "default") {
+      return stmt.default;
+    }
+    if (key === "cases" && isString(caseKey) && isJsonObject(stmt.cases)) {
+      return stmt.cases[caseKey];
+    }
+  }
+  return undefined;
+}
+
+/** How many entries a lane path's first step consumes: three for a case, two otherwise. */
+function stepLength(key: string | number | undefined): number {
+  return key === "cases" ? 3 : 2;
+}
+
 /** Resolve the statement list a lane path points at; null when the path is stale. */
 export function laneListAt(list: JxStatement[], path: LanePath): JxStatement[] | null {
   if (path.length === 0) {
     return list;
   }
-  const [idx, key] = path;
-  /*
-   * `unknown`, not a cast to `Record<string, unknown>`. A `JxStatement` is a union of interfaces
-   * with no index signature, so asserting one into an open bag is a lie TypeScript rightly refuses
-   * — and it was buying nothing, because `isJsonObject` takes `unknown` and narrows to exactly the
-   * open bag this wants. The guard on the next line is the real check either way.
-   */
-  const stmt: unknown = typeof idx === "number" ? list[idx] : null;
-  if (!isJsonObject(stmt) || typeof key !== "string") {
+  const [idx, key, caseKey] = path;
+  const stmt = isNumber(idx) ? list[idx] : undefined;
+  if (stmt === undefined) {
     return null;
   }
-  if (key === "cases") {
-    const caseKey = path.at(2);
-    const { cases } = stmt;
-    if (typeof caseKey !== "string" || !isJsonObject(cases) || !Array.isArray(cases[caseKey])) {
-      return null;
+  /* A lane is document data, so the array check stays: a `then` the document holds as anything
+     else is a stale path here, not a list to walk. */
+  const lane = laneUnder(stmt, key, caseKey);
+  return Array.isArray(lane) ? laneListAt(lane, path.slice(stepLength(key))) : null;
+}
+
+/**
+ * The statement with the lane at one lane-path step rewritten, or null when the statement holds no
+ * lane there. The step's key stays where it was in the statement, or is appended when new.
+ */
+function withLaneUnder(
+  stmt: JxStatement,
+  key: string | number | undefined,
+  caseKey: string | number | undefined,
+  rewrite: (lane: JxStatement[]) => JxStatement[],
+): JxStatement | null {
+  if (isIfStatement(stmt)) {
+    if (key === "then") {
+      return { ...stmt, then: rewrite(Array.isArray(stmt.then) ? stmt.then : []) };
     }
-    return laneListAt(cases[caseKey] as unknown as JxStatement[], path.slice(3));
+    if (key === "else") {
+      return { ...stmt, else: rewrite(stmt.else ?? []) };
+    }
   }
-  if (!Array.isArray(stmt[key])) {
-    return null;
+  if (isSwitchStatement(stmt)) {
+    if (key === "default") {
+      return { ...stmt, default: rewrite(stmt.default ?? []) };
+    }
+    if (key === "cases" && isString(caseKey)) {
+      const cases = { ...stmt.cases };
+      cases[caseKey] = rewrite(cases[caseKey] ?? []);
+      return { ...stmt, cases };
+    }
   }
-  return laneListAt(stmt[key] as unknown as JxStatement[], path.slice(2));
+  return null;
 }
 
 /** Rebuild the statement tree with the lane at `path` replaced by `next` — fully immutable. */
@@ -203,22 +280,18 @@ export function withLaneList(
   if (path.length === 0) {
     return next;
   }
-  const idx = path[0] as number;
-  const key = path[1] as string;
-  const stmt = list[idx] as unknown as Record<string, unknown>;
-  let updated: Record<string, unknown>;
-  if (key === "cases") {
-    const caseKey = path[2] as string;
-    const cases = { ...(stmt.cases as Record<string, JxStatement[]>) };
-    cases[caseKey] = withLaneList(cases[caseKey] ?? [], path.slice(3), next);
-    updated = { ...stmt, cases };
-  } else {
-    updated = {
-      ...stmt,
-      [key]: withLaneList((stmt[key] as JxStatement[] | undefined) ?? [], path.slice(2), next),
-    };
+  const [idx, key, caseKey] = path;
+  const stmt = isNumber(idx) ? list[idx] : undefined;
+  const updated =
+    stmt === undefined
+      ? null
+      : withLaneUnder(stmt, key, caseKey, (lane) =>
+          withLaneList(lane, path.slice(stepLength(key)), next),
+        );
+  if (updated === null) {
+    throw new RangeError(`No statement lane at ${JSON.stringify(path)}`);
   }
-  return list.map((s, i) => (i === idx ? (updated as unknown as JxStatement) : s));
+  return list.map((s, i) => (i === idx ? updated : s));
 }
 
 // ─── The plan: what every key in the projection addresses ────────────────────
@@ -391,45 +464,57 @@ export function flattenStatements(
   /** The operands of one card, and the plans that commit them. */
   function fieldsOf(cardKey: string, plan: CardPlan): StatementFieldView[] {
     const { commit, stmt } = plan;
-    const kind = statementKind(stmt);
     const field = (prop: string) => `${cardKey}::${prop}`;
-    if (kind === "if") {
-      const s = stmt as JxIfStatement;
+    /* Every operand editor below reports what its own controls built — a `{ $ref }`, a JSON literal
+       or an expression node, the `JxExpressionOperand` members an operand admits — so each
+       assertion back to a statement only restores the operand type `mountOperandEditor` erases. */
+    if (isIfStatement(stmt)) {
       fields.set(field("if"), {
         paint: (host) =>
-          mountOperandEditor(host, s.if, (v) => commit({ ...s, if: v } as JxStatement), {
-            ...operandOpts(opts),
-            label: "If",
-            prop: "if",
-          }),
+          mountOperandEditor(
+            host,
+            stmt.if,
+            // SAFETY: `v` is an operand the operand editor built (see above), so this is an `if`.
+            (v) => commit({ ...stmt, if: v } as JxIfStatement),
+            {
+              ...operandOpts(opts),
+              label: "If",
+              prop: "if",
+            },
+          ),
       });
       return [emptyField({ key: field("if"), kind: "control", label: "If", prop: "if" })];
     }
-    if (kind === "switch") {
-      const s = stmt as JxSwitchStatement;
+    if (isSwitchStatement(stmt)) {
       fields.set(field("$switch"), {
         paint: (host) =>
-          mountOperandEditor(host, s.$switch, (v) => commit({ ...s, $switch: v } as JxStatement), {
-            ...operandOpts(opts),
-            label: "Switch on",
-            prop: "$switch",
-          }),
+          mountOperandEditor(
+            host,
+            stmt.$switch,
+            // SAFETY: `v` is an operand the operand editor built (see above), so this is a `$switch`.
+            (v) => commit({ ...stmt, $switch: v } as JxSwitchStatement),
+            {
+              ...operandOpts(opts),
+              label: "Switch on",
+              prop: "$switch",
+            },
+          ),
       });
       return [
         emptyField({ key: field("$switch"), kind: "control", label: "Switch on", prop: "$switch" }),
       ];
     }
-    if (kind === "dispatch") {
-      const s = stmt as JxDispatchStatement;
+    if (isDispatchStatement(stmt)) {
       fields.set(field("dispatchEvent"), {
-        set: (value) => commit({ ...s, dispatchEvent: value } as JxStatement),
+        set: (value) => commit({ ...stmt, dispatchEvent: value }),
       });
       fields.set(field("detail"), {
         paint: (host) =>
           mountOperandEditor(
             host,
-            s.detail ?? null,
-            (v) => commit({ ...s, detail: v } as JxStatement),
+            stmt.detail ?? null,
+            // SAFETY: `v` is an operand the operand editor built (see above), a valid `detail`.
+            (v) => commit({ ...stmt, detail: v } as JxDispatchStatement),
             {
               ...operandOpts(opts),
               label: "Detail",
@@ -439,8 +524,16 @@ export function flattenStatements(
       });
       fields.set(field("eventInit"), {
         flag: (name, checked) => {
-          const { [name as "bubbles"]: _removed, ...rest } = s;
-          commit((checked ? { ...rest, [name]: true } : rest) as JxStatement);
+          // The two CustomEventInit members the Options row draws, and nothing else.
+          if (name === "bubbles" || name === "composed") {
+            // Removed, then re-added, so a checked flag lands last, where it always has.
+            const next: JxDispatchStatement = { ...stmt };
+            delete next[name];
+            if (checked) {
+              next[name] = true;
+            }
+            commit(next);
+          }
         },
       });
       return [
@@ -451,18 +544,19 @@ export function flattenStatements(
           options: emitNames.map((n) => ({ label: n, value: n })),
           placeholder: "event-name",
           prop: "dispatchEvent",
-          value: s.dispatchEvent ?? "",
+          // The document may hold anything under the key `statementKind` found; only a string shows.
+          value: isString(stmt.dispatchEvent) ? stmt.dispatchEvent : "",
         }),
         emptyField({ key: field("detail"), kind: "control", label: "Detail", prop: "detail" }),
         emptyField({
           flags: [
             {
-              checked: Boolean(s.bubbles),
+              checked: Boolean(stmt.bubbles),
               key: `${field("eventInit")}::bubbles`,
               label: "Bubbles",
             },
             {
-              checked: Boolean(s.composed),
+              checked: Boolean(stmt.composed),
               key: `${field("eventInit")}::composed`,
               label: "Composed",
             },
@@ -476,11 +570,18 @@ export function flattenStatements(
     }
     fields.set(field("expression"), {
       paint: (host) =>
-        mountExpressionEditor(host, stmt, (n) => commit(n as JxStatement), {
-          allowEventRef: opts.allowEventRef,
-          stateDefs: opts.stateDefs,
-          stateEntries: opts.stateEntries ?? null,
-        }),
+        mountExpressionEditor(
+          host,
+          stmt,
+          /* SAFETY: the expression editor reports the node it was handed with one operand or its
+             operator replaced, so the expression statement it was given comes back as one. */
+          (n) => commit(n as JxStatement),
+          {
+            allowEventRef: opts.allowEventRef,
+            stateDefs: opts.stateDefs,
+            stateEntries: opts.stateEntries ?? null,
+          },
+        ),
     });
     /* No label: the card header already names the statement, and the expression editor draws its
        own Operator / Target / Value rows underneath. The surface hides an empty label node. */
@@ -523,35 +624,33 @@ export function flattenStatements(
         title: "Delete statement",
       });
 
-      const kind = statementKind(stmt);
-      if (kind === "if") {
-        const s = stmt as JxIfStatement;
+      if (isIfStatement(stmt)) {
         const thenPath = [...path, index, "then"];
-        const thenPlan = lanePlan(thenPath, s.then ?? []);
+        // A document's `then` is whatever it holds; anything but a list draws as an empty lane.
+        const thenList = Array.isArray(stmt.then) ? stmt.then : [];
+        const thenPlan = lanePlan(thenPath, thenList);
         laneRow(thenPlan, depth + 1, "Then");
-        walk(s.then ?? [], thenPath, depth + 1, thenPlan.commit);
-        if (Array.isArray(s.else)) {
+        walk(thenList, thenPath, depth + 1, thenPlan.commit);
+        if (Array.isArray(stmt.else)) {
           const elsePath = [...path, index, "else"];
           const elsePlan: LanePlan = {
-            ...lanePlan(elsePath, s.else),
+            ...lanePlan(elsePath, stmt.else),
             remove: () => {
-              const { else: _else, ...rest } = s;
-              commit(rest as JxStatement);
+              const { else: _else, ...rest } = stmt;
+              commit(rest);
             },
           };
           laneRow(elsePlan, depth + 1, "Else", { title: "Remove branch" });
-          walk(s.else, elsePath, depth + 1, elsePlan.commit);
+          walk(stmt.else, elsePath, depth + 1, elsePlan.commit);
         } else {
           actionRow(`act:${cardKey}:else`, depth + 1, "Add else", () =>
-            commit({ ...s, else: [] } as JxStatement),
+            commit({ ...stmt, else: [] }),
           );
         }
-      } else if (kind === "switch") {
-        const s = stmt as JxSwitchStatement;
-        const cases = isJsonObject(s.cases) ? (s.cases as Record<string, JxStatement[]>) : {};
+      } else if (isSwitchStatement(stmt)) {
+        const cases: Record<string, JxStatement[]> = isJsonObject(stmt.cases) ? stmt.cases : {};
         const entries = Object.entries(cases);
-        const setCases = (next: Record<string, JxStatement[]>) =>
-          commit({ ...s, cases: next } as JxStatement);
+        const setCases = (next: Record<string, JxStatement[]>) => commit({ ...stmt, cases: next });
         for (const [caseKey, caseList] of entries) {
           const casePath = [...path, index, "cases", caseKey];
           const list_ = Array.isArray(caseList) ? caseList : [];
@@ -577,18 +676,18 @@ export function flattenStatements(
           walk(list_, casePath, depth + 1, casePlan.commit);
         }
         const defaultPath = [...path, index, "default"];
-        const defaultList = Array.isArray(s.default) ? s.default : [];
+        const defaultList = Array.isArray(stmt.default) ? stmt.default : [];
         const defaultPlan: LanePlan = {
           ...lanePlan(defaultPath, defaultList),
           commit: (next) => {
             /* The key goes with its last statement. A `default: []` left behind is a branch the
                runtime still matches, so an emptied lane has to delete the key rather than clear it. */
             if (next.length === 0) {
-              const { default: _default, ...rest } = s;
-              commit(rest as JxStatement);
+              const { default: _default, ...rest } = stmt;
+              commit(rest);
               return;
             }
-            commit({ ...s, default: next } as JxStatement);
+            commit({ ...stmt, default: next });
           },
         };
         laneRow(defaultPlan, depth + 1, "Default");
@@ -636,45 +735,38 @@ function registerStatementsDnD(
     dndRegistrations.get(root)?.();
     const cleanups: (() => void)[] = [];
 
-    for (const row of root.querySelectorAll("[data-stmt-row]") as NodeListOf<HTMLElement>) {
+    for (const row of root.querySelectorAll<HTMLElement>("[data-stmt-row]")) {
       const laneId = row.dataset.stmtLane ?? "[]";
       const index = Math.trunc(Number(row.dataset.stmtIndex)) || 0;
       const handle = row.querySelector('[part="drag"]');
+      const dragArgs: Parameters<typeof draggable>[0] = {
+        element: row,
+        getInitialData() {
+          return { index, lane: laneId, type: "statement" };
+        },
+        onGenerateDragPreview({ nativeSetDragImage }) {
+          disableNativeDragPreview({ nativeSetDragImage });
+        },
+        onDragStart() {
+          row.dataset.dragging = "";
+        },
+        onDrop() {
+          delete row.dataset.dragging;
+        },
+      };
+      if (handle) {
+        dragArgs.dragHandle = handle;
+      }
 
       cleanups.push(
         combine(
-          draggable({
-            element: row,
-            ...(handle ? { dragHandle: handle } : {}),
-            getInitialData() {
-              return { index, lane: laneId, type: "statement" };
-            },
-            onGenerateDragPreview({
-              nativeSetDragImage,
-            }: {
-              nativeSetDragImage: ((image: Element, x: number, y: number) => void) | null;
-            }) {
-              disableNativeDragPreview({ nativeSetDragImage });
-            },
-            onDragStart() {
-              row.dataset.dragging = "";
-            },
-            onDrop() {
-              delete row.dataset.dragging;
-            },
-          }),
+          draggable(dragArgs),
           dropTargetForElements({
             element: row,
-            canDrop({ source }: { source: { data: Record<string, unknown> } }) {
+            canDrop({ source }) {
               return source.data.type === "statement" && source.data.lane === laneId;
             },
-            getData({
-              input,
-              element,
-            }: {
-              input: Parameters<typeof attachInstruction>[1]["input"];
-              element: Element;
-            }) {
+            getData({ input, element }) {
               return attachInstruction(
                 { index },
                 {
@@ -685,22 +777,16 @@ function registerStatementsDnD(
                   input,
                   mode: "standard",
                 },
-              ) as Record<string | symbol, unknown>;
+              );
             },
-            onDrag({ self }: { self: { data: Record<string, unknown> } }) {
+            onDrag({ self }) {
               const instruction = extractInstruction(self.data);
               markDrop(row, instruction?.type);
             },
             onDragLeave() {
               markDrop(row);
             },
-            onDrop({
-              self,
-              source,
-            }: {
-              self: { data: Record<string, unknown> };
-              source: { data: Record<string, unknown> };
-            }) {
+            onDrop({ self, source }) {
               markDrop(row);
               const instruction = extractInstruction(self.data);
               if (
@@ -709,10 +795,14 @@ function registerStatementsDnD(
               ) {
                 return;
               }
-              const from = source.data.index as number;
+              // `canDrop` admitted only this lane's statement rows, whose data carries a number.
+              const from = source.data.index;
+              /* SAFETY: `laneId` is this row's `data-stmt-lane`, which the surface writes from the
+                 row's `lane`: `JSON.stringify` of a LanePath in flattenStatements, or the "[]"
+                 fallback above. */
               const lanePath = JSON.parse(laneId) as LanePath;
               const lane = laneListAt(statements, lanePath);
-              if (!lane || from === index) {
+              if (!lane || !isNumber(from) || from === index) {
                 return;
               }
               let insertAt = instruction.type === "reorder-above" ? index : index + 1;
@@ -815,7 +905,7 @@ export function mountStatementEditor(
             title: choice.label,
           })),
           run: (id) => {
-            const seed = STATEMENT_SEEDS[id];
+            const seed = STATEMENT_SEEDS.get(id);
             if (seed) {
               plan.commit([...plan.list, seed()]);
             }

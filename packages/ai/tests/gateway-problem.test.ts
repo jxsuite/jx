@@ -9,9 +9,12 @@ import { PROBLEM_MEDIA_TYPE, PROBLEM_TYPES, problemDetails } from "@jxsuite/prot
 import type { ProblemTypeName } from "@jxsuite/protocol";
 import { problemResponse, problemTypeForStatus, refusal } from "../src/gateway/problem.ts";
 import type { GatewayRefusal } from "../src/gateway/types.ts";
+import type { JsonObject } from "../src/core-types.ts";
 
 describe("refusal", () => {
   it("answers with the declared type's own status", () => {
+    /* SAFETY: PROBLEM_TYPES is an `as const` object literal and ProblemTypeName is defined as its
+       `keyof typeof`, so its own enumerable keys are exactly the ProblemTypeName members. */
     for (const name of Object.keys(PROBLEM_TYPES) as ProblemTypeName[]) {
       const refused = refusal(name, "because");
       expect({ name, status: refused.status }).toEqual({
@@ -36,9 +39,13 @@ describe("problemResponse", () => {
     expect(problemResponse(refused).status).toBe(451);
   });
 
+  /* A body from a writer that set the legacy `error` alias itself, to a line other than `detail`.
+     It is declared untyped, as such a writer would produce it, so it reads no deprecated member. */
+  const legacyAliasProblem = { detail: "d", error: "e", status: 400, title: "t", type: "urn:x" };
+
   /* One body for two kinds of reader: a problem reader shows `detail`, an older one shows `error`
      and acts on `code`. */
-  it.each<[string, GatewayRefusal, Record<string, unknown>]>([
+  it.each<[string, GatewayRefusal, JsonObject]>([
     [
       "a code rides beside the problem",
       { code: "cf_reconnect_required", ...refusal("unauthorized", "Reconnect") },
@@ -54,10 +61,7 @@ describe("problemResponse", () => {
     ],
     [
       "an existing error alias is kept as it is",
-      {
-        problem: { detail: "d", error: "e", status: 400, title: "t", type: "urn:x" },
-        status: 400,
-      },
+      { problem: legacyAliasProblem, status: 400 },
       { detail: "d", error: "e", status: 400, title: "t", type: "urn:x" },
     ],
     [

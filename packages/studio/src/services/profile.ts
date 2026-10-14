@@ -40,7 +40,7 @@ export interface StartupProfile {
  * `default` is not a no-op by omission — it is a named state, so "the app started normally" and
  * "the profile was unrecognised" are different outcomes and the second one is loud.
  */
-export const STARTUP_PROFILES: Readonly<Record<string, StartupProfile>> = {
+export const STARTUP_PROFILES = {
   default: {
     description: "Resume whatever was persisted — layout, recents, settings, chat history.",
     id: "default",
@@ -51,7 +51,10 @@ export const STARTUP_PROFILES: Readonly<Record<string, StartupProfile>> = {
     id: "fresh",
     reset: "app-state",
   },
-};
+} satisfies Readonly<Record<string, StartupProfile>>;
+
+/** {@link STARTUP_PROFILES} by id, for a lookup whose id arrives from the query string. */
+const PROFILES_BY_ID = new Map<string, StartupProfile>(Object.entries(STARTUP_PROFILES));
 
 export const DEFAULT_PROFILE_ID = "default";
 
@@ -77,7 +80,8 @@ export function isStudioStorageKey(key: string): boolean {
  * @returns The keys removed, so a caller (Preferences, a test) can report what it did.
  */
 export function clearStudioStorage(): string[] {
-  const store = globalThis.localStorage as Storage | undefined;
+  // `localStorage` is absent outside a browser realm (Bun without a DOM shim), whatever lib.dom says.
+  const store = typeof localStorage === "undefined" ? undefined : localStorage;
   if (!store) {
     return [];
   }
@@ -105,10 +109,10 @@ export function clearStudioStorage(): string[] {
  *   `default` would start the app in the state the caller was trying to avoid.
  */
 export function applyProfile(id: string): StartupProfile {
-  const profile = STARTUP_PROFILES[id];
+  const profile = PROFILES_BY_ID.get(id);
   if (!profile) {
     throw new RangeError(
-      `unknown startup profile "${id}"; declared: ${Object.keys(STARTUP_PROFILES).join(", ")}`,
+      `unknown startup profile "${id}"; declared: ${[...PROFILES_BY_ID.keys()].join(", ")}`,
     );
   }
   if (profile.reset === "app-state") {
@@ -137,7 +141,10 @@ export function applyStartupProfile(search?: string): StartupState {
   if (_startup) {
     return _startup;
   }
-  const query = new URLSearchParams(search ?? globalThis.location?.search ?? "");
+  // `location` is absent outside a browser realm, which is why the tests pass `search` themselves.
+  const query = new URLSearchParams(
+    search ?? (typeof location === "undefined" ? "" : location.search),
+  );
   const profile = applyProfile(query.get("profile") ?? DEFAULT_PROFILE_ID);
   const clockParam = query.get("clock");
   _startup = { clock: clockParam === null ? null : pinClock(clockParam), profile };

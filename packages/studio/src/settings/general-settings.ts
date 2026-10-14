@@ -16,6 +16,7 @@
  * container to a `render`, and this one mounts a document into it instead of rendering lit.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
@@ -31,6 +32,7 @@ import type {
   OverviewValues,
 } from "../surfaces/settings-overview";
 import type { JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
+import type { ProjectConfigPatch } from "../site-context";
 
 /**
  * The last failed write, per rendered section.
@@ -49,7 +51,7 @@ const mounted = new WeakMap<HTMLElement, OverviewSurfaceHandle>();
 
 /** The live project configuration, read at the moment it is needed rather than at render time. */
 function config(): ProjectConfig {
-  return (projectState?.projectConfig || {}) as ProjectConfig;
+  return projectState?.projectConfig || {};
 }
 
 // ─── Site description ($head meta) ───────────────────────────────────────────
@@ -66,7 +68,8 @@ function isDescriptionMeta(entry: JxHeadEntry): boolean {
  */
 function readDescription(cfg: ProjectConfig): string {
   const entry = (cfg.$head ?? []).find((e) => isDescriptionMeta(e));
-  return typeof entry?.attributes?.content === "string" ? entry.attributes.content : "";
+  const content = entry?.attributes?.content;
+  return isString(content) ? content : "";
 }
 
 /** `$head` with the description meta upserted (or dropped, when cleared). */
@@ -91,11 +94,11 @@ function headWithDescription(head: JxHeadEntry[], text: string): JxHeadEntry[] {
  * The patch that _removes_ `url`. `undefined` survives the object spread inside `updateSiteConfig`
  * and `JSON.stringify` then drops the key, so clearing the field clears the setting instead of
  * persisting an empty string the build would have to special-case (`site-build.ts` gates the
- * sitemap on `Boolean(url)` but still forwards `""` into the render context). The cast is the price
- * of `exactOptionalPropertyTypes` — `ProjectConfig["url"]` is `string`, never `string |
- * undefined`.
+ * sitemap on `Boolean(url)` but still forwards `""` into the render context). A
+ * {@link ProjectConfigPatch} rather than a `Partial<ProjectConfig>`, because under
+ * `exactOptionalPropertyTypes` only the patch type can carry an `undefined` member.
  */
-const CLEAR_URL = { url: undefined } as unknown as Partial<ProjectConfig>;
+const CLEAR_URL: ProjectConfigPatch = { url: undefined };
 
 // ─── Projection ──────────────────────────────────────────────────────────────
 
@@ -121,7 +124,7 @@ function values(container: HTMLElement): OverviewValues {
   return {
     description: readDescription(cfg),
     error: errors.get(container) ?? null,
-    favicon: typeof cfg.favicon === "string" ? cfg.favicon : "",
+    favicon: isString(cfg.favicon) ? cfg.favicon : "",
     name: cfg.name ?? "",
     stylesDisabled: command === undefined,
     stylesTitle: command?.title ?? "",
@@ -145,7 +148,7 @@ function actions(container: HTMLElement): OverviewActions {
 
   /** Persist a patch, surfacing the rejection instead of swallowing it. */
   const persist = async (
-    patch: Partial<ProjectConfig>,
+    patch: ProjectConfigPatch,
     field: OverviewErrorField = "section",
   ): Promise<void> => {
     try {

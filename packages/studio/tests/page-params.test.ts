@@ -15,7 +15,18 @@ import {
   resolveParamBoundState,
   substitutePreviewParams,
 } from "../src/page-params";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { childArray } from "@jxsuite/schema/doc-ops";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+
+/** One `state` entry of a document, which every entry these tests read is: a JSON object. */
+function stateEntry(doc: JxMutableNode, key: string): JsonObject {
+  const entry = doc.state?.[key];
+  if (!isJsonObject(entry)) {
+    throw new Error(`state.${key} is not an object entry`);
+  }
+  return entry;
+}
 
 beforeEach(() => {
   invalidateParamValues();
@@ -51,18 +62,18 @@ describe("documentUrlPattern", () => {
 describe("pagePathsDef", () => {
   test("prefers the document root and falls back to frontmatter", () => {
     const fromDoc = pagePathsDef({
-      document: { $paths: { contentType: "product" } } as unknown as JxMutableNode,
+      document: { $paths: { contentType: "product" } },
       frontmatter: { $paths: { contentType: "other" } },
     });
     expect(fromDoc).toEqual({ contentType: "product" });
 
     const fromFrontmatter = pagePathsDef({
-      document: { tagName: "div" } as JxMutableNode,
+      document: { tagName: "div" },
       frontmatter: { $paths: { values: ["a"] } },
     });
     expect(fromFrontmatter).toEqual({ values: ["a"] });
 
-    expect(pagePathsDef({ document: { tagName: "div" } as JxMutableNode })).toBeNull();
+    expect(pagePathsDef({ document: { tagName: "div" } })).toBeNull();
   });
 });
 
@@ -91,9 +102,9 @@ describe("loadParamValues", () => {
   });
 
   test("contentType shape resolves entries via the platform and maps the field", async () => {
-    const calls: Record<string, unknown>[] = [];
+    const calls: JsonObject[] = [];
     installMockPlatform({
-      resolveClass: async (body: Record<string, unknown>) => {
+      resolveClass: async (body) => {
         calls.push(body);
         return [
           { data: { sku: "mini-trencher" }, id: "Mini Trencher" },
@@ -131,9 +142,9 @@ describe("loadParamValues", () => {
       },
     ]);
     try {
-      const calls: Record<string, unknown>[] = [];
+      const calls: JsonObject[] = [];
       installMockPlatform({
-        resolveClass: async (body: Record<string, unknown>) => {
+        resolveClass: async (body) => {
           calls.push(body);
           return [];
         },
@@ -209,7 +220,7 @@ describe("loadParamValues", () => {
   });
 
   test("unrecognized shapes resolve to no params", async () => {
-    expect(await loadParamValues("p11", {} as never)).toEqual({});
+    expect(await loadParamValues("p11", {})).toEqual({});
   });
 });
 
@@ -219,7 +230,7 @@ describe("substitutePreviewParams", () => {
   const paramRef = (name: string) => ({ $ref: `#/$params/${name}` });
 
   test("replaces $params refs anywhere in the tree without mutating the input doc", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       children: [
         { attributes: { "data-sku": paramRef("sku") }, tagName: "span" },
         { children: [{ tagName: "b", textContent: "x" }], tagName: "div" },
@@ -228,23 +239,21 @@ describe("substitutePreviewParams", () => {
         product: { $prototype: "ContentEntry", contentType: "product", id: paramRef("sku") },
       },
       tagName: "main",
-    } as unknown as JxMutableNode;
+    };
 
     const out = substitutePreviewParams(doc, { sku: "mini-trencher" }, "pages/products/[sku].json");
 
-    const state = out.state as Record<string, Record<string, unknown>>;
-    expect(state.product!.id).toBe("mini-trencher");
-    const child = (out.children as JxMutableNode[])[0]!;
-    expect((child.attributes as Record<string, unknown>)["data-sku"]).toBe("mini-trencher");
+    expect(stateEntry(out, "product").id).toBe("mini-trencher");
+    const [child] = childArray(out);
+    expect(child).toMatchObject({ attributes: { "data-sku": "mini-trencher" } });
     // Pure: the input doc (which shares nodes with the tab's source document) keeps its $refs.
-    const srcState = doc.state as Record<string, Record<string, unknown>>;
-    expect(srcState.product!.id).toEqual(paramRef("sku"));
+    expect(stateEntry(doc, "product").id).toEqual(paramRef("sku"));
   });
 
   test("injects state.$page mirroring the compiler's context injection", () => {
-    const doc = { tagName: "main", title: "Product" } as unknown as JxMutableNode;
+    const doc: JxMutableNode = { tagName: "main", title: "Product" };
     const out = substitutePreviewParams(doc, { sku: "b-2" }, "pages/products/[sku].json");
-    expect((out.state as Record<string, unknown>).$page).toEqual({
+    expect(out.state?.$page).toEqual({
       params: { sku: "b-2" },
       title: "Product",
       url: "/products/:sku",
@@ -252,24 +261,23 @@ describe("substitutePreviewParams", () => {
   });
 
   test("leaves refs for params without a chosen value and other $refs untouched", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       state: {
         other: { id: { $ref: "#/$defs/thing" } },
         pricing: { id: paramRef("missing") },
       },
       tagName: "main",
-    } as unknown as JxMutableNode;
+    };
     const out = substitutePreviewParams(doc, { sku: "a" }, "pages/[sku].json");
-    const state = out.state as Record<string, Record<string, unknown>>;
-    expect(state.pricing!.id).toEqual(paramRef("missing"));
-    expect(state.other!.id).toEqual({ $ref: "#/$defs/thing" });
+    expect(stateEntry(out, "pricing").id).toEqual(paramRef("missing"));
+    expect(stateEntry(out, "other").id).toEqual({ $ref: "#/$defs/thing" });
   });
 
   test("returns the doc unchanged for an empty params map", () => {
-    const doc = { state: { x: { id: paramRef("sku") } }, tagName: "main" } as never;
+    const doc: JxMutableNode = { state: { x: { id: paramRef("sku") } }, tagName: "main" };
     const out = substitutePreviewParams(doc, {}, "pages/[sku].json");
     expect(out).toBe(doc);
-    expect((out as { state: Record<string, unknown> }).state.$page).toBeUndefined();
+    expect(out.state?.$page).toBeUndefined();
   });
 });
 
@@ -308,24 +316,23 @@ describe("paramBoundStateKeys / resolveParamBoundState", () => {
   });
 
   test("bakes resolved values into renderDoc.state via platform.resolveClass", async () => {
-    const calls: Record<string, unknown>[] = [];
+    const calls: JsonObject[] = [];
     installMockPlatform({
-      resolveClass: async (body: Record<string, unknown>) => {
+      resolveClass: async (body) => {
         calls.push(body);
         return { data: { sku: String(body.id) }, id: "resolved" };
       },
     });
-    const doc = { state: sourceState(), tagName: "main" } as unknown as JxMutableNode;
-    const keys = paramBoundStateKeys(doc.state as Record<string, unknown>);
+    const doc: JxMutableNode = { state: sourceState(), tagName: "main" };
+    const keys = paramBoundStateKeys(doc.state);
     const out = substitutePreviewParams(doc, { sku: "a-1" }, "pages/[sku].json");
     await resolveParamBoundState(out, keys, "http://x/pages/[sku].json");
 
-    const state = out.state as Record<string, Record<string, unknown>>;
-    expect(state.product).toEqual({ data: { sku: "a-1" }, id: "resolved" });
-    expect(state.pricing).toEqual({ data: { sku: "a-1" }, id: "resolved" });
+    expect(out.state?.product).toEqual({ data: { sku: "a-1" }, id: "resolved" });
+    expect(out.state?.pricing).toEqual({ data: { sku: "a-1" }, id: "resolved" });
     // Entries without a param binding stay untouched (runtime resolves them as usual).
-    expect(state.unbound!.$prototype).toBe("ContentCollection");
-    expect(state.plain).toEqual({ just: "data" });
+    expect(stateEntry(out, "unbound").$prototype).toBe("ContentCollection");
+    expect(out.state?.plain).toEqual({ just: "data" });
     // The substituted literal id and $base reached the resolver.
     expect(calls.every((c) => c.id === "a-1" && c.$base === "http://x/pages/[sku].json")).toBe(
       true,
@@ -338,20 +345,20 @@ describe("paramBoundStateKeys / resolveParamBoundState", () => {
         throw new Error("backend down");
       },
     });
-    const doc = { state: sourceState(), tagName: "main" } as unknown as JxMutableNode;
-    const keys = paramBoundStateKeys(doc.state as Record<string, unknown>);
+    const doc: JxMutableNode = { state: sourceState(), tagName: "main" };
+    const keys = paramBoundStateKeys(doc.state);
     const out = substitutePreviewParams(doc, { sku: "a-1" }, "pages/[sku].json");
     await resolveParamBoundState(out, keys);
-    const state = out.state as Record<string, Record<string, unknown>>;
-    expect(state.product!.$prototype).toBe("ContentEntry");
-    expect(state.product!.id).toBe("a-1");
+    const product = stateEntry(out, "product");
+    expect(product.$prototype).toBe("ContentEntry");
+    expect(product.id).toBe("a-1");
   });
 
   test("no-ops without keys or a resolveClass-capable platform", async () => {
     installMockPlatform(); // No resolveClass
-    const doc = { state: sourceState(), tagName: "main" } as unknown as JxMutableNode;
+    const doc: JxMutableNode = { state: sourceState(), tagName: "main" };
     const out = substitutePreviewParams(doc, { sku: "a-1" }, "pages/[sku].json");
     await resolveParamBoundState(out, ["product"]);
-    expect((out.state as Record<string, Record<string, unknown>>).product!.id).toBe("a-1");
+    expect(stateEntry(out, "product").id).toBe("a-1");
   });
 });

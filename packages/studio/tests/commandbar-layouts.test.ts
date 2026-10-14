@@ -48,11 +48,13 @@ function installRegistry() {
 }
 
 function tabs(): HTMLElement[] {
-  return [...root.querySelectorAll('[part="layout"]')] as HTMLElement[];
+  return [...root.querySelectorAll('[part="layout"]')].filter(
+    (el): el is HTMLElement => el instanceof HTMLElement,
+  );
 }
 
 function tabNamed(name: string): HTMLElement {
-  const match = tabs().find((el) => el.textContent?.trim() === name);
+  const match = tabs().find((el) => el.textContent.trim() === name);
   if (!match) {
     throw new Error(`no layout tab "${name}"`);
   }
@@ -89,7 +91,7 @@ afterEach(() => {
   root.remove();
   setActiveRegistry(null);
   setWorkspaceProject(null);
-  delete (globalThis as Record<string, unknown>).__jxPlatform;
+  globalThis.__jxPlatform = undefined;
 });
 
 describe("the tabs", () => {
@@ -97,12 +99,7 @@ describe("the tabs", () => {
     toolbar.mount(root);
     await flush();
     await flush();
-    expect(tabs().map((el) => el.textContent?.trim())).toEqual([
-      "Write",
-      "Design",
-      "Build",
-      "Ship",
-    ]);
+    expect(tabs().map((el) => el.textContent.trim())).toEqual(["Write", "Design", "Build", "Ship"]);
     expect(tabNamed("Design").getAttribute("aria-selected")).toBe("true");
     expect(tabNamed("Write").getAttribute("aria-selected")).toBe("false");
   });
@@ -124,7 +121,7 @@ describe("the tabs", () => {
       navigatorPanel: "files",
     });
     await flush();
-    expect(tabs().map((el) => el.textContent?.trim())).toContain("Proofread");
+    expect(tabs().map((el) => el.textContent.trim())).toContain("Proofread");
   });
 
   test("clicking one adopts it, and the band repaints from the shell record", async () => {

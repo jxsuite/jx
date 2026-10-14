@@ -4,9 +4,9 @@ import { jsonClone } from "../utils/studio-utils";
 import { childIndex, getNodeAtPath, parentElementPath, pathsEqual } from "../state";
 import {
   cloneSelection,
-  isSpliceablePath,
   primarySelection,
   pruneSelection,
+  spliceCoordinate,
   structuralBatch,
 } from "./selection";
 import { applyDocOpToDoc, childArray, cloneValue, inverseOf } from "./doc-op-apply";
@@ -19,7 +19,7 @@ import {
   recordPatch,
 } from "./patch-ops";
 
-import type { JxDocOp, JxDocOpPair, JxFmOp, TransactionRecord } from "./patch-ops";
+import type { JxDocOp, JxDocOpPair, TransactionRecord } from "./patch-ops";
 
 import type { Tab } from "../tabs/tab";
 import type { JxPath } from "../state";
@@ -27,12 +27,19 @@ import type { JxPath } from "../state";
 import type { JsonValue } from "../types";
 import type {
   JxAttributeValue,
+  JxDocumentValue,
   JxEventBinding,
   JxMutableNode,
   JxStateObject,
   JxStyle,
 } from "@jxsuite/schema/types";
-import { ensureNestedStyle, getNestedStyle, isEventBinding } from "@jxsuite/schema/guards";
+import {
+  ensureNestedStyle,
+  getNestedStyle,
+  isEventBinding,
+  isNonNullObject,
+  isNumber,
+} from "@jxsuite/schema/guards";
 
 const HISTORY_LIMIT = 100;
 
@@ -48,8 +55,26 @@ function patchHistoryEnabled() {
   }
 }
 
+/**
+ * The node `path` names, for a mutation that cannot proceed without one. A path that no longer
+ * resolves throws a TypeError inside the transaction, which rolls the transaction back, exactly as
+ * dereferencing the missing node did before this check existed.
+ */
+function requireNodeAt(doc: JxMutableNode, path: JxPath): JxMutableNode {
+  const node = getNodeAtPath(doc, path);
+  if (!node) {
+    throw new TypeError(`No node at path [${path.join(", ")}]`);
+  }
+  return node;
+}
+
 /** Forward/inverse pair for a single-key change on the node at path. */
-function setKeyPair(path: JxPath, key: string, before: unknown, after: unknown): JxDocOpPair {
+function setKeyPair(
+  path: JxPath,
+  key: string,
+  before: JxDocumentValue | undefined,
+  after: JxDocumentValue | undefined,
+): JxDocOpPair {
   return {
     forward: { key, op: "set-key", path, value: after },
     inverse: { key, op: "set-key", path, value: before },
@@ -71,10 +96,10 @@ function shiftPrefixedIndex(
 ): JxPath {
   const d = parentPath.length;
   const isProperPrefix = d < path.length && parentPath.every((seg, i) => seg === path[i]);
-  if (!isProperPrefix || path[d] !== "children" || typeof path[d + 1] !== "number") {
+  const idx = path[d + 1];
+  if (!isProperPrefix || path[d] !== "children" || !isNumber(idx)) {
     return path;
   }
-  const idx = path[d + 1] as number;
   if (inclusive ? idx < spliceIndex : idx <= spliceIndex) {
     return path;
   }
@@ -152,7 +177,7 @@ function rollbackFailedTransaction(
   dirtyBefore: boolean,
 ) {
   for (let i = record.docOps.length - 1; i >= 0; i--) {
-    applyDocOpToDoc(tab.doc.document, toRaw(record.docOps[i]!.inverse) as JxDocOp);
+    applyDocOpToDoc(tab.doc.document, toRaw(record.docOps[i]!.inverse));
   }
   for (let i = record.fmOps.length - 1; i >= 0; i--) {
     const op = record.fmOps[i]!;
@@ -355,10 +380,11 @@ function materializeState(
   while (base >= 0 && !snapshots[base]!.document) {
     base -= 1;
   }
-  if (base < 0) {
+  const checkpoint = base < 0 ? null : snapshots[base]!.document;
+  if (!checkpoint) {
     throw new Error("history-missing-checkpoint");
   }
-  const doc = jsonClone(snapshots[base]!.document) as JxMutableNode;
+  const doc = jsonClone(checkpoint);
   for (let i = base + 1; i <= target; i++) {
     for (const op of snapshots[i]!.forwardOps ?? []) {
       applyDocOpToDoc(doc, op);
@@ -418,8 +444,11 @@ const DOC_META_KEYS = new Set(["state", "$media", "$head", "$elements", "imports
  * @param {JxDocOp} op
  */
 function applyDocOp(tab: Tab, op: JxDocOp) {
-  const prev =
-    op.op === "set-key" ? (getNodeAtPath(tab.doc.document, op.path)?.[op.key] as unknown) : null;
+  let prev: JxDocumentValue | undefined | null = null;
+  if (op.op === "set-key") {
+    const node = getNodeAtPath(tab.doc.document, op.path);
+    prev = node?.[op.key];
+  }
   applyDocOpToDoc(tab.doc.document, op);
   // The canvas lives in an iframe and can only be patched from VALUE-CARRYING ops (`record.docOps`),
   // Which is what crosses the bridge. Recording only the classification patch below left docOps
@@ -617,12 +646,12 @@ export function undo(tab: Tab) {
       (t) => {
         if (inverseOps) {
           for (let i = inverseOps.length - 1; i >= 0; i--) {
-            applyDocOp(t, toRaw(inverseOps[i]) as JxDocOp);
+            applyDocOp(t, toRaw(inverseOps[i]!));
           }
         }
         if (fmOps) {
           for (let i = fmOps.length - 1; i >= 0; i--) {
-            const op = toRaw(fmOps[i]) as JxFmOp;
+            const op = toRaw(fmOps[i]!);
             applyFmState(t, op.field, op.before);
           }
         }
@@ -666,12 +695,12 @@ export function redo(tab: Tab) {
       (t) => {
         if (forwardOps) {
           for (const op of forwardOps) {
-            applyDocOp(t, toRaw(op) as JxDocOp);
+            applyDocOp(t, toRaw(op));
           }
         }
         if (fmOps) {
           for (const op of fmOps) {
-            const raw = toRaw(op) as JxFmOp;
+            const raw = toRaw(op);
             applyFmState(t, raw.field, raw.after);
           }
         }
@@ -731,15 +760,20 @@ export function mutateInsertNode(
  * @param {JxPath} path
  */
 export function mutateRemoveNode(tab: Tab, path: JxPath) {
-  if (!path || !isSpliceablePath(path)) {
+  const at = spliceCoordinate(path);
+  if (!at) {
     return;
   }
-  const elemPath = parentElementPath(path) as JxPath;
-  const idx = childIndex(path) as number;
-  const [removed] = (getNodeAtPath(tab.doc.document, elemPath).children as JxMutableNode[]).splice(
-    idx,
-    1,
-  );
+  const { index: idx, parentPath: elemPath } = at;
+  /* SAFETY: a spliceable path addresses a member of its parent's children, and every document a
+     tab holds is in the static-array member form (`normalizeArrayChildren` runs on load), so the
+     parent resolves to a node whose children are an array. The paths that reach here are live ones
+     (the pruned selection, an inline edit's own block), so the index names a member and the splice
+     removes exactly one. A stale parent path throws (`requireNodeAt`), inside the transaction, which
+     rolls back. */
+  const [removed] = (
+    requireNodeAt(tab.doc.document, elemPath).children as (JxMutableNode | string)[]
+  ).splice(idx, 1) as [JxMutableNode | string];
   recordPatch({ op: "remove", path });
   recordDocOp({
     forward: { index: idx, op: "remove-child", parentPath: elemPath },
@@ -753,17 +787,19 @@ export function mutateRemoveNode(tab: Tab, path: JxPath) {
  * @param {JxPath} path
  */
 export function mutateDuplicateNode(tab: Tab, path: JxPath) {
-  if (!path || !isSpliceablePath(path)) {
+  const at = spliceCoordinate(path);
+  if (!at) {
     return;
   }
   const node = getNodeAtPath(tab.doc.document, path);
   if (!node) {
     return;
   }
-  const elemPath = parentElementPath(path) as JxPath;
-  const idx = childIndex(path) as number;
+  const { index: idx, parentPath: elemPath } = at;
   const clone = structuredClone(toRaw(node));
-  (getNodeAtPath(tab.doc.document, elemPath).children as JxMutableNode[]).splice(idx + 1, 0, clone);
+  /* SAFETY: `node` resolved above, so its parent does too, and every document a tab holds keeps
+     static children arrays (`normalizeArrayChildren` runs on load) — `node` is a member of one. */
+  (requireNodeAt(tab.doc.document, elemPath).children as JxMutableNode[]).splice(idx + 1, 0, clone);
   recordPatch({ index: idx + 1, op: "insert", parentPath: elemPath });
   recordDocOp({
     forward: { index: idx + 1, node: cloneValue(clone), op: "insert-child", parentPath: elemPath },
@@ -813,17 +849,16 @@ export function mutateDuplicateNodes(tab: Tab, paths: readonly JxPath[]) {
     const before = tab.session.selection;
     mutateDuplicateNode(tab, path);
     const made = primarySelection(tab.session.selection);
+    const at = spliceCoordinate(made);
     // `mutateDuplicateNode` refuses a path that addresses nothing and leaves the selection alone;
-    // Only a real insertion contributes a clone.
-    if (!made || tab.session.selection === before) {
+    // Only a real insertion contributes a clone, and it selects the clone at a splice coordinate.
+    if (!made || !at || tab.session.selection === before) {
       continue;
     }
     // Descending order keeps the ORIGINALS valid, but not the clones already made: this insertion
     // Sits before them, so every one of their coordinates moved up by one. Translating them here
     // Is the difference between "the copies are selected" and "two of the originals are".
-    const parentPath = parentElementPath(made) as JxPath;
-    const spliceIndex = childIndex(made) as number;
-    clones = clones.map((clone) => shiftPrefixedIndex(parentPath, clone, spliceIndex, 1, true));
+    clones = clones.map((clone) => shiftPrefixedIndex(at.parentPath, clone, at.index, 1, true));
     clones.unshift(made);
   }
   if (clones.length > 0) {
@@ -837,21 +872,23 @@ export function mutateDuplicateNodes(tab: Tab, paths: readonly JxPath[]) {
  * @param {string} wrapperTag
  */
 export function mutateWrapNode(tab: Tab, path: JxPath, wrapperTag = "div") {
-  if (!path || !isSpliceablePath(path)) {
+  const at = spliceCoordinate(path);
+  if (!at) {
     return;
   }
   const node = getNodeAtPath(tab.doc.document, path);
   if (!node) {
     return;
   }
-  const elemPath = parentElementPath(path) as JxPath;
-  const idx = childIndex(path) as number;
+  const { index: idx, parentPath: elemPath } = at;
   const wrapper = {
     children: [structuredClone(toRaw(node))],
     tagName: wrapperTag,
   };
   const original = cloneValue(node);
-  (getNodeAtPath(tab.doc.document, elemPath).children as JxMutableNode[]).splice(idx, 1, wrapper);
+  /* SAFETY: `node` resolved above, so its parent does too, and every document a tab holds keeps
+     static children arrays (`normalizeArrayChildren` runs on load) — `node` is a member of one. */
+  (requireNodeAt(tab.doc.document, elemPath).children as JxMutableNode[]).splice(idx, 1, wrapper);
   recordPatch({ op: "replace", path });
   recordDocOp({
     forward: { index: idx, node: cloneValue(wrapper), op: "set-child", parentPath: elemPath },
@@ -868,9 +905,9 @@ export function mutateWrapNode(tab: Tab, path: JxPath, wrapperTag = "div") {
  */
 export function mutateMoveNode(tab: Tab, fromPath: JxPath, toParentPath: JxPath, toIndex: number) {
   const doc = tab.doc.document;
-  const fromParentPath = parentElementPath(fromPath) as JxPath;
-  const fromIdx = childIndex(fromPath) as number;
-  if (!fromParentPath || typeof fromIdx !== "number") {
+  const fromParentPath = parentElementPath(fromPath);
+  const fromIdx = childIndex(fromPath);
+  if (!fromParentPath || !isNumber(fromIdx)) {
     return;
   }
   const fromParent = getNodeAtPath(doc, fromParentPath);
@@ -967,7 +1004,7 @@ export function mutateUpdateProperty(tab: Tab, path: JxPath, key: string, value?
  * @param {string | undefined} value
  */
 export function mutateUpdateStyle(tab: Tab, path: JxPath, prop: string, value: string | undefined) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {
     node.style = {};
@@ -996,7 +1033,7 @@ export function mutateUpdateAttribute(
   attr: string,
   value?: JxAttributeValue | undefined,
 ) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const attrsBefore = cloneValue(node.attributes);
   if (!node.attributes) {
     node.attributes = {};
@@ -1030,7 +1067,7 @@ export function mutateUpdateMediaStyle(
   if (!mediaName) {
     return mutateUpdateStyle(tab, path, prop, value);
   }
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {
     node.style = {};
@@ -1066,7 +1103,7 @@ export function mutateUpdateNestedStyle(
   prop: string,
   value: string | undefined,
 ) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {
     node.style = {};
@@ -1103,7 +1140,7 @@ export function mutateUpdateMediaNestedStyle(
   prop: string,
   value: string | undefined,
 ) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {
     node.style = {};
@@ -1186,7 +1223,7 @@ export function mutateUpdateNestedStylePath(
   prop: string,
   value: string | undefined,
 ) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {
     node.style = {};
@@ -1226,7 +1263,7 @@ export function mutateUpdateMediaNestedStylePath(
   prop: string,
   value: string | undefined,
 ) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {
     node.style = {};
@@ -1259,7 +1296,7 @@ export function mutateUpdateMediaNestedStylePath(
  * @param {Record<string, string | undefined> | undefined} style
  */
 export function mutateReplaceStyle(tab: Tab, path: JxPath, style: JxStyle | undefined) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (style && Object.keys(style).length > 0) {
     node.style = style;
@@ -1308,17 +1345,25 @@ export function mutateRemoveDef(tab: Tab, name: string) {
  * @param {string} name
  * @param {Record<string, JsonValue>} updates
  */
-export function mutateUpdateDef(tab: Tab, name: string, updates: Record<string, unknown>) {
+export function mutateUpdateDef(
+  tab: Tab,
+  name: string,
+  updates: Record<string, JxDocumentValue | undefined>,
+) {
   const doc = tab.doc.document;
   const stateBefore = cloneValue(doc.state);
   if (!doc.state) {
     doc.state = {};
   }
   const existing = doc.state[name];
+  /* SAFETY: what is left after null, primitives and arrays is one of the object entry forms (an
+     expanded signal, or a function, prototype, expression or server-function def). Each is a plain
+     record whose keys the loop below edits one by one, and JxStateObject is the open record that
+     edit needs; nothing here relies on a member that only one of the forms carries. */
   const entry: JxStateObject =
     existing == null
       ? {}
-      : typeof existing !== "object" || Array.isArray(existing)
+      : !isNonNullObject(existing) || Array.isArray(existing)
         ? { default: existing }
         : (existing as JxStateObject);
   doc.state[name] = entry;
@@ -1379,7 +1424,7 @@ export function mutateUpdateMedia(tab: Tab, name: string, query?: string | undef
  * @param {JsonValue} value
  */
 export function mutateUpdateProp(tab: Tab, path: JxPath, propName: string, value: JsonValue) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const propsBefore = cloneValue(node.$props);
   if (!node.$props) {
     node.$props = {};
@@ -1408,7 +1453,7 @@ export function mutateAddSwitchCase(
   caseName: string,
   caseDef?: JxMutableNode,
 ) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   const before = cloneValue(node.cases);
   if (!node.cases) {
     node.cases = {};
@@ -1424,7 +1469,7 @@ export function mutateAddSwitchCase(
  * @param {string} caseName
  */
 export function mutateRemoveSwitchCase(tab: Tab, path: JxPath, caseName: string) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   if (node.cases) {
     const before = cloneValue(node.cases);
     delete node.cases[caseName];
@@ -1440,7 +1485,7 @@ export function mutateRemoveSwitchCase(tab: Tab, path: JxPath, caseName: string)
  * @param {string} newName
  */
 export function mutateRenameSwitchCase(tab: Tab, path: JxPath, oldName: string, newName: string) {
-  const node = getNodeAtPath(tab.doc.document, path);
+  const node = requireNodeAt(tab.doc.document, path);
   if (!node.cases || !node.cases[oldName]) {
     return;
   }
@@ -1479,7 +1524,7 @@ export function mutateUpdateFrontmatter(tab: Tab, field: string, value?: JsonVal
  * Unlike `mutateUpdateFrontmatter`, values like `""`/`false`/`null` are written verbatim (source
  * round-trips can put them there) and no fm op is recorded — history replay must not re-record.
  */
-function applyFmState(tab: Tab, field: string, value: unknown) {
+function applyFmState(tab: Tab, field: string, value: JxDocumentValue | undefined) {
   if (value === undefined) {
     delete tab.doc.content.frontmatter[field];
   } else {

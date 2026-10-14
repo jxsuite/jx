@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@jxsuite/markup": "workspace:^",
+    "@jxsuite/protocol": "workspace:^",
     "@jxsuite/schema": "workspace:^",
     "pixelmatch": "^8.0.0",
     "pngjs": "^7.0.0",

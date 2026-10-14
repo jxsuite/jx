@@ -1,4 +1,6 @@
 // Named export for onMount test
-export function onMount(_state: any) {
-  (globalThis as any)._testMounted = true;
+import type { JxScope } from "../src/types";
+
+export function onMount(_state: JxScope) {
+  Object.assign(globalThis, { _testMounted: true });
 }

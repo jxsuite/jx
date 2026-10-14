@@ -15,16 +15,20 @@ import {
   routeTable,
   unionElements,
 } from "../src/compose.ts";
-import type { SiteIO } from "../src/compose.ts";
+import type { PageRoute, SiteIO } from "../src/compose.ts";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
 /** A working tree held in memory — the same shape a disk, a DO or a fetch would present. */
 function treeIO(files: Record<string, string>, parse?: SiteIO["parse"]): SiteIO {
-  return {
+  const io: SiteIO = {
     paths: () => Object.keys(files),
     read: (path) => Promise.resolve(files[path] ?? null),
-    ...(parse ? { parse } : {}),
   };
+  if (parse) {
+    io.parse = parse;
+  }
+  return io;
 }
 
 const PAGE = JSON.stringify({ tagName: "main", children: ["Hello"] });
@@ -65,14 +69,12 @@ describe("readProjectConfig", () => {
   });
 
   test("a tree with no project.json composes against an empty config", async () => {
-    expect(await readProjectConfig(treeIO({}))).toEqual({} as ProjectConfig);
+    expect(await readProjectConfig(treeIO({}))).toEqual({});
   });
 
   test("a project.json that does not parse still leaves the pages renderable", async () => {
     // Refusing every page would hide the one error the author can act on behind a blank origin.
-    expect(await readProjectConfig(treeIO({ "project.json": "{ oops" }))).toEqual(
-      {} as ProjectConfig,
-    );
+    expect(await readProjectConfig(treeIO({ "project.json": "{ oops" }))).toEqual({});
   });
 });
 
@@ -100,32 +102,34 @@ describe("composeRoute", () => {
   test("a URL no route claims composes to null", async () => {
     const io = treeIO({ "pages/index.json": PAGE });
     const routes = routeTable(io.paths());
-    expect(await composeRoute(io, routes, {} as ProjectConfig, "/nope")).toBeNull();
+    expect(await composeRoute(io, routes, {}, "/nope")).toBeNull();
   });
 
   test("a dynamic route matches on demand and takes its parameters from the URL", async () => {
     // $paths is deliberately not expanded, so /blog/anything renders.
     const io = treeIO({ "pages/blog/[slug].json": PAGE });
     const routes = routeTable(io.paths());
-    const page = await composeRoute(io, routes, {} as ProjectConfig, "/blog/anything");
-    expect(page).not.toBeNull();
-    expect((page?.doc.state as Record<string, unknown>) ?? {}).toBeDefined();
+    const page = await composeRoute(io, routes, {}, "/blog/anything");
+    expect(page?.doc.state?.$page).toMatchObject({ params: { slug: "anything" } });
   });
 
   test("a trailing slash is not significant", async () => {
     const io = treeIO({ "pages/about.json": PAGE });
     const routes = routeTable(io.paths());
-    expect(await composeRoute(io, routes, {} as ProjectConfig, "/about/")).not.toBeNull();
+    expect(await composeRoute(io, routes, {}, "/about/")).not.toBeNull();
   });
 });
 
 describe("composePage", () => {
-  const route = { sourcePath: "pages/index.json" } as never;
+  const route: PageRoute = {
+    isCatchAll: false,
+    isDynamic: false,
+    params: [],
+    sourcePath: "pages/index.json",
+    urlPattern: "/",
+  };
 
-  async function compose(
-    files: Record<string, string>,
-    config: ProjectConfig = {} as ProjectConfig,
-  ) {
+  async function compose(files: Record<string, string>, config: ProjectConfig = {}) {
     const io = treeIO(files);
     return composePage(io, routeTable(io.paths())[0]!, config, {});
   }
@@ -188,7 +192,7 @@ describe("composePage", () => {
       },
       {
         $head: [{ attributes: { href: "/favicon.svg", rel: "icon" }, tagName: "link" }],
-      } as ProjectConfig,
+      },
     );
     const rels = page.head.map((e) => e.attributes?.rel ?? e.attributes?.name);
     expect(rels).toContain("icon");
@@ -211,9 +215,7 @@ describe("composePage", () => {
   });
 
   test("project defaults.lang is used when the document declares none", async () => {
-    const page = await compose({ "pages/index.json": PAGE }, {
-      defaults: { lang: "he" },
-    } as ProjectConfig);
+    const page = await compose({ "pages/index.json": PAGE }, { defaults: { lang: "he" } });
     expect(page.lang).toBe("he");
     expect(page.dir).toBe("rtl");
   });
@@ -235,15 +237,15 @@ describe("composePage", () => {
 
   test("a page file the tree does not have names the file", async () => {
     const io = treeIO({});
-    await expect(
-      composePage(io, { ...(route as object), urlPattern: "/" } as never, {} as ProjectConfig, {}),
-    ).rejects.toThrow("pages/index.json could not be read as a page");
+    await expect(composePage(io, route, {}, {})).rejects.toThrow(
+      "pages/index.json could not be read as a page",
+    );
   });
 
   test("without a parser, a non-JSON page is a named error rather than a blank page", async () => {
     const io = treeIO({ "pages/index.md": "# Hi" });
     const mdRoute = routeTable(io.paths())[0]!;
-    await expect(composePage(io, mdRoute, {} as ProjectConfig, {})).rejects.toThrow(
+    await expect(composePage(io, mdRoute, {}, {})).rejects.toThrow(
       "other formats need their extension's parser",
     );
   });
@@ -253,7 +255,7 @@ describe("composePage", () => {
       children: [text.replace("# ", "")],
       tagName: "h1",
     }));
-    const page = await composePage(io, routeTable(io.paths())[0]!, {} as ProjectConfig, {});
+    const page = await composePage(io, routeTable(io.paths())[0]!, {}, {});
     expect(page.doc.tagName).toBe("h1");
     expect(page.doc.children).toEqual(["Hi"]);
   });
@@ -261,9 +263,7 @@ describe("composePage", () => {
   test("a parser that declines still produces the named error, not a blank page", async () => {
     const io = treeIO({ "pages/index.md": "# Hi" }, () => null);
     const mdRoute = routeTable(io.paths())[0]!;
-    await expect(composePage(io, mdRoute, {} as ProjectConfig, {})).rejects.toThrow(
-      "could not be read as a page",
-    );
+    await expect(composePage(io, mdRoute, {}, {})).rejects.toThrow("could not be read as a page");
   });
 
   test("a layout may be parsed through an injected parser too", async () => {
@@ -272,9 +272,9 @@ describe("composePage", () => {
         "layouts/base.md": "wrapper",
         "pages/index.json": JSON.stringify({ $layout: "./layouts/base.md", tagName: "main" }),
       },
-      () => ({ children: [{ tagName: "slot" }], tagName: "body" }) as JxDocument,
+      () => ({ children: [{ tagName: "slot" }], tagName: "body" }),
     );
-    const page = await composePage(io, routeTable(io.paths())[0]!, {} as ProjectConfig, {});
+    const page = await composePage(io, routeTable(io.paths())[0]!, {}, {});
     expect(page.doc.tagName).toBe("body");
   });
 
@@ -299,25 +299,23 @@ describe("composePage", () => {
   });
 
   test("with no title anywhere, the site's name is the title", async () => {
-    const page = await compose({ "pages/index.json": PAGE }, { name: "Acme" } as ProjectConfig);
+    const page = await compose({ "pages/index.json": PAGE }, { name: "Acme" });
     expect(page.head.some((e) => e.tagName === "title")).toBe(true);
   });
 
   test("a localized route takes its language from the route, not from a default", async () => {
     const io = treeIO({ "pages/fr/index.json": PAGE });
-    const config = {
+    const config: ProjectConfig = {
       defaults: { lang: "en" },
       i18n: { defaultLocale: "en", locales: ["en", "fr"] },
-    } as unknown as ProjectConfig;
+    };
     const page = await composePage(io, routeTable(io.paths())[0]!, config, {});
     expect(page.lang).toBe("fr");
   });
 
   test("$site and $page context is injected before anything renders", async () => {
-    const page = await compose({ "pages/index.json": PAGE }, { name: "Acme" } as ProjectConfig);
-    const state = page.doc.state as Record<string, unknown> | undefined;
-    expect(state).toBeDefined();
-    expect(JSON.stringify(state)).toContain("Acme");
+    const page = await compose({ "pages/index.json": PAGE }, { name: "Acme" });
+    expect(page.doc.state).toMatchObject({ $page: { title: "Acme" }, $site: { name: "Acme" } });
   });
 });
 
@@ -331,13 +329,13 @@ describe("composePage", () => {
 describe("component auto-discovery", () => {
   const CARD = JSON.stringify({ children: ["A card"], tagName: "site-card" });
 
-  async function compose(files: Record<string, string>, config = {} as ProjectConfig) {
+  async function compose(files: Record<string, string>, config: ProjectConfig = {}) {
     const io = treeIO(files);
     return composePage(io, routeTable(io.paths())[0]!, config, {});
   }
 
   const refsOf = (page: { doc: JxDocument }) =>
-    ((page.doc.$elements ?? []) as { $ref?: string }[]).map((entry) => entry.$ref);
+    (page.doc.$elements ?? []).map((entry) => (isString(entry) ? undefined : entry.$ref));
 
   test("a component the page uses but declares nowhere is registered anyway", async () => {
     const page = await compose({
@@ -408,7 +406,7 @@ describe("component auto-discovery", () => {
           tagName: "main",
         }),
       },
-      { $elements: [{ $ref: "./components/site-card.json" }] } as ProjectConfig,
+      { $elements: [{ $ref: "./components/site-card.json" }] },
     );
 
     expect(refsOf(page)).toEqual(["./components/site-card.json"]);

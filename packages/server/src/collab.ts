@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { colorForKey } from "@jxsuite/collab/awareness-types";
 import { createCollabHost } from "@jxsuite/collab/room";
+import { isString } from "@jxsuite/schema/guards";
 import {
   COLLAB_SUBPROTOCOL,
   offeredSubprotocols,
@@ -215,10 +216,13 @@ export function createCollabRegistry(opts: {
         if (answer.reject !== null) {
           return problem("invalidRequest", answer.reject);
         }
-        const upgraded = server.upgrade(req, {
-          data: { connection: null },
-          ...(answer.echo === null ? {} : { headers: { "Sec-WebSocket-Protocol": answer.echo } }),
-        });
+        const upgraded =
+          answer.echo === null
+            ? server.upgrade(req, { data: { connection: null } })
+            : server.upgrade(req, {
+                data: { connection: null },
+                headers: { "Sec-WebSocket-Protocol": answer.echo },
+              });
         return upgraded ? undefined : problem("invalidRequest", "Upgrade failed");
       }
       /*
@@ -254,7 +258,7 @@ export function createCollabRegistry(opts: {
         ws.data.connection = null;
       },
       message(ws: ServerWebSocket<CollabSocketData>, message: string | Buffer) {
-        if (typeof message === "string") {
+        if (isString(message)) {
           return;
         }
         ws.data.connection?.handleMessage(new Uint8Array(message));

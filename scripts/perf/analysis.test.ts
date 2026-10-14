@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonObject } from "@jxsuite/schema/types";
+
 import { analyze } from "./analysis.ts";
 import { lookupMapped, parseMappings } from "./sources.ts";
 
@@ -8,7 +10,7 @@ const SOURCE_MAP = {
   mappings: ";;;CAGCS",
 };
 
-function eventOf(name: string, durMs: number, args: Record<string, unknown> = {}) {
+function eventOf(name: string, durMs: number, args: JsonObject = {}) {
   return { name, cat: "devtools.timeline", dur: durMs * 1000, tid: 1, ts: 100, args };
 }
 

@@ -47,7 +47,7 @@ export function parentCursorToIframe(
   cursor: { x: number; y: number },
   iframeRect: { left: number; top: number },
   scale = 1,
-): { x: number; y: number } {
+) {
   return {
     x: (cursor.x - iframeRect.left) / scale,
     y: (cursor.y - iframeRect.top) / scale,

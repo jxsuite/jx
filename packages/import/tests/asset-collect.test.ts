@@ -6,14 +6,14 @@
 
 import { afterEach, describe, expect, it } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { Page } from "puppeteer-core";
 import type { AssetCollectionResult, DiscoveredAsset } from "../src/asset-collect.ts";
+import type { ImportPage } from "../src/capture.ts";
 
 GlobalRegistrator.register({ url: "https://example.com/" });
 
 // The happy-dom HTMLVideoElement lacks the poster property; reflect the attribute as a resolved
 // URL (empty string when absent), matching browser behavior.
-const videoProto = Object.getPrototypeOf(document.createElement("video")) as HTMLVideoElement;
+const videoProto = HTMLVideoElement.prototype;
 if (!("poster" in videoProto)) {
   Object.defineProperty(videoProto, "poster", {
     get(this: HTMLVideoElement) {
@@ -33,10 +33,26 @@ if (!("poster" in videoProto)) {
 
 const { collectAssets } = await import("../src/asset-collect.ts");
 
-const fakePage = {
-  evaluate: (fn: (...fnArgs: unknown[]) => unknown, ...args: unknown[]) =>
-    Promise.resolve(fn(...args)),
-} as unknown as Page;
+/** A page member collectAssets never calls; reaching one fails the test loudly. */
+function unused(member: string): () => Promise<never> {
+  return () => Promise.reject(new Error(`collectAssets called page.${member}`));
+}
+
+/** Runs every evaluate() callback in-process, against the happy-dom globals registered above. */
+const fakePage: ImportPage = {
+  close: unused("close"),
+  evaluate: (fn, ...args) => Promise.resolve(fn(...args)),
+  goto: unused("goto"),
+  screenshot: unused("screenshot"),
+  setViewport: unused("setViewport"),
+};
+
+/** A `fetch` that answers through `answer`, with the global's own `preconnect` beside it. */
+function fetchDouble(
+  answer: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
+}
 
 function setDom(headHtml: string, bodyHtml: string): void {
   document.head.innerHTML = headHtml;
@@ -198,7 +214,7 @@ describe("collectAssets - cross-origin stylesheet refetch", () => {
 
     const fetchedHrefs: string[] = [];
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: unknown) => {
+    globalThis.fetch = fetchDouble(async (input) => {
       const href = String(input);
       fetchedHrefs.push(href);
       if (href.includes("fail")) {
@@ -215,7 +231,7 @@ describe("collectAssets - cross-origin stylesheet refetch", () => {
           `@font-face { font-family: "Data"; src: url(data:font/woff2;base64,AAA); }`,
         ].join("\n"),
       );
-    }) as unknown as typeof fetch;
+    });
 
     try {
       const result = await collectAssets(fakePage);
@@ -264,10 +280,10 @@ describe("collectAssets - cross-origin stylesheet refetch", () => {
 
     const originalFetch = globalThis.fetch;
     let fetchCalled = false;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = fetchDouble(async () => {
       fetchCalled = true;
       return new Response("");
-    }) as unknown as typeof fetch;
+    });
 
     try {
       const result = await collectAssets(fakePage);

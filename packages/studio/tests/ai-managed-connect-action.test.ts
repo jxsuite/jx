@@ -10,6 +10,7 @@
 import { flush, installMockPlatform, pointer } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { ActionPrompt } from "../src/account/action-flow";
 import type { OfferedAction } from "../src/types";
 
@@ -42,12 +43,17 @@ const REFUSED = {
   models: [],
 };
 
-let probeBody: Record<string, unknown> = REFUSED;
+/** The `/models` probe's answer, as the JSON body the stubbed backend sends. */
+let probeBody: JsonObject = REFUSED;
 let probes = 0;
-(globalThis as Record<string, unknown>).fetch = async () => {
-  probes += 1;
-  return Response.json(probeBody, { status: 200 });
-};
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  async () => {
+    probes += 1;
+    return Response.json(probeBody, { status: 200 });
+  },
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 const containers: HTMLElement[] = [];
 
@@ -63,6 +69,15 @@ async function makeConnect() {
   render(mc.render(), container);
   await flush(6);
   return { container, mc };
+}
+
+/** The pressable control inside the gate's connect button. */
+function connectControl(container: HTMLElement) {
+  const control = container.querySelector('[part="connect"] [part="control"]');
+  if (!control) {
+    throw new Error("the gate renders no connect control");
+  }
+  return control;
 }
 
 beforeEach(async () => {
@@ -101,14 +116,14 @@ describe("the gate", () => {
     const { container, mc } = await makeConnect();
     expect(mc.canOffer()).toBe(true);
     expect(container.querySelector('[part="intro"]')?.textContent).toBe(REFUSED.detail);
-    expect(container.querySelector('[part="connect"]')?.textContent?.trim()).toBe("Join the team");
+    expect(container.querySelector('[part="connect"]')?.textContent.trim()).toBe("Join the team");
   });
 
   test("an action that is done re-runs the probe", async () => {
     await fetchAvailableModels({ force: true });
     const { container } = await makeConnect();
     const before = probes;
-    pointer(container.querySelector('[part="connect"] [part="control"]') as HTMLElement, "click");
+    pointer(connectControl(container), "click");
     await flush(6);
     expect(offers).toEqual([{ actions: [JOIN], detail: REFUSED.detail }]);
     expect(probes).toBe(before + 1);
@@ -119,7 +134,7 @@ describe("the gate", () => {
     await fetchAvailableModels({ force: true });
     const { container } = await makeConnect();
     const before = probes;
-    pointer(container.querySelector('[part="connect"] [part="control"]') as HTMLElement, "click");
+    pointer(connectControl(container), "click");
     await flush(6);
     expect(offers).toHaveLength(1);
     expect(probes).toBe(before);

@@ -25,8 +25,11 @@ import {
 import { CommandUnavailableError, createCommandRegistry } from "../src/commands/registry";
 import { defaultCommands, noopCommandDeps } from "../src/commands/defaults";
 import { makeContext } from "../src/commands/context";
+import { childList } from "../src/state";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { describe, expect, test } from "bun:test";
+import { MAP_TEMPLATE } from "./shared-fixtures";
 
 /** Four labelled paragraphs, so a batch that deletes the wrong one is visible in the result. */
 function makeTab() {
@@ -42,8 +45,21 @@ function makeTab() {
   return createTab({ document, id: "batch" });
 }
 
+/**
+ * The root's children as element nodes. Every document in this file is built from element children
+ * only, so a text child here means a mutator invented one: that fails loudly.
+ */
+function rootElements(tab: ReturnType<typeof makeTab>): JxMutableNode[] {
+  return childList(tab.doc.document).map((child) => {
+    if (isString(child)) {
+      throw new Error(`unexpected text child ${JSON.stringify(child)} under the root`);
+    }
+    return child;
+  });
+}
+
 function texts(tab: ReturnType<typeof makeTab>): string[] {
-  return (tab.doc.document.children as JxMutableNode[]).map((c) => String(c.textContent));
+  return rootElements(tab).map((c) => String(c.textContent));
 }
 
 const at = (i: number) => ["children", i];
@@ -100,7 +116,7 @@ describe("mutateRemoveNodes", () => {
     });
     transactDoc(tab, (t) => mutateRemoveNodes(t, [at(0), ["children", 0, "children", 0]]));
     expect(tab.doc.document.children).toHaveLength(1);
-    expect((tab.doc.document.children as JxMutableNode[])[0]!.tagName).toBe("p");
+    expect(rootElements(tab)[0]!.tagName).toBe("p");
     disposeTab(tab);
   });
 
@@ -194,7 +210,7 @@ function makeRepeaterTab() {
         $prototype: "Array",
         $src: "#/state/items",
         map: { tagName: "p", textContent: "row" },
-      } as unknown as JxMutableNode,
+      },
       { tagName: "p", textContent: "C" },
     ],
     tagName: "div",
@@ -204,12 +220,8 @@ function makeRepeaterTab() {
 
 /** What each child IS, so a repeater reads as "Array" instead of an undefined textContent. */
 function kinds(tab: ReturnType<typeof makeRepeaterTab>): string[] {
-  return (tab.doc.document.children as JxMutableNode[]).map((c) =>
-    c.$prototype === "Array" ? "Array" : String(c.textContent),
-  );
+  return rootElements(tab).map((c) => (c.$prototype === "Array" ? "Array" : String(c.textContent)));
 }
-
-const MAP_TEMPLATE = ["children", 1, "map"];
 
 describe("a batch over rows that are not splice coordinates", () => {
   test("delete: the paragraph goes, the template is refused, and the edit is RECORDED", () => {

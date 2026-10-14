@@ -10,11 +10,11 @@ describe("listCatalog", () => {
     const catalog = listCatalog();
     expect(catalog.length).toBeGreaterThan(0);
     for (const entry of catalog) {
-      expect(typeof entry.name).toBe("string");
-      expect(typeof entry.title).toBe("string");
-      expect(typeof entry.description).toBe("string");
-      expect(Array.isArray(entry.sections)).toBe(true);
-      expect(typeof entry.docs).toBe("string");
+      expect(entry.name).toBeTypeOf("string");
+      expect(entry.title).toBeTypeOf("string");
+      expect(entry.description).toBeTypeOf("string");
+      expect(entry.sections).toBeArray();
+      expect(entry.docs).toBeTypeOf("string");
     }
   });
 
@@ -39,14 +39,11 @@ describe("the committed bytes are held to the extensions tree", () => {
       const dir = entry.name.replace("@jxsuite/", "");
       const manifestPath = join(ROOT, "extensions", dir, "jx-extension.json");
       expect(existsSync(manifestPath)).toBe(true);
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-        name: string;
-        title: string;
-        description: string;
-      };
-      expect(manifest.name).toBe(entry.name);
-      expect(manifest.title).toBe(entry.title);
-      expect(manifest.description).toBe(entry.description);
+      expect(JSON.parse(readFileSync(manifestPath, "utf8"))).toMatchObject({
+        name: entry.name,
+        title: entry.title,
+        description: entry.description,
+      });
     }
   });
 
@@ -75,9 +72,9 @@ describe("the committed bytes are held to the extensions tree", () => {
     const page = join(ROOT, "docs/extending/extensions/first-party.md");
     const anchors = new Set(headingsOf(readFileSync(page, "utf8")).map((h) => h.slug));
     for (const entry of listCatalog()) {
-      const [, anchor] = entry.docs.split("#");
-      expect(anchor).toBeDefined();
-      expect(anchors.has(anchor as string)).toBe(true);
+      const [, anchor = ""] = entry.docs.split("#");
+      expect(anchor).not.toBe("");
+      expect([...anchors]).toContain(anchor);
     }
   });
 });

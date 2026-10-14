@@ -25,13 +25,13 @@ process.env.JX_STUDIO_WINDOWS_DIR = REGISTRY;
 
 void mock.module("node:fs", () => ({
   ...realFs,
-  mkdirSync: (path: string, opts?: unknown) => {
+  mkdirSync: (path: string, opts?: Parameters<typeof realFs.mkdirSync>[1]) => {
     if (path === REGISTRY) {
       // Pretend the directory is ready without actually creating it, so the `watch()` call right
       // After sees one that truly is not there.
       return;
     }
-    return realFs.mkdirSync(path, opts as never);
+    return realFs.mkdirSync(path, opts);
   },
 }));
 
@@ -40,7 +40,7 @@ const { watchFocusRequests } = await import("../src/chromium/window-registry");
 describe("watchFocusRequests — no watch capability", () => {
   test("degrades to a no-op when the directory cannot actually be watched", () => {
     const stop = watchFocusRequests(process.pid, () => {});
-    expect(typeof stop).toBe("function");
+    expect(stop).toBeFunction();
     expect(() => stop()).not.toThrow();
   });
 });

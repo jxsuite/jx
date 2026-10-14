@@ -4,6 +4,9 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describe, expect, test } from "bun:test";
 import { defineElement, mount } from "../src/runtime";
 
+import type { JxDocument, JxElement, JxRef } from "@jxsuite/schema/types";
+import type { JxEventHandler } from "../src/types";
+
 try {
   GlobalRegistrator.register();
 } catch {
@@ -14,6 +17,14 @@ const tick = () =>
   new Promise((r) => {
     setTimeout(r, 0);
   });
+
+/**
+ * A usage site that binds `hidden` to state. The runtime binds any element property, but
+ * {@link JxElement} types `hidden` as a literal boolean, so the binding needs its own view.
+ */
+interface BoundUsage extends Omit<JxElement, "hidden"> {
+  hidden?: JxRef | boolean;
+}
 
 describe("a definition's root-level event handlers", () => {
   test("listen on the host, with the definition's scope as state and the host as currentTarget", async () => {
@@ -47,16 +58,18 @@ describe("a definition's root-level event handlers", () => {
       onkeydown: { $ref: "#/state/onKeydown" },
       children: [{ tagName: "span", textContent: "Copy" }],
     });
-    (globalThis as { __hhSeen?: unknown[] }).__hhSeen = seen;
+    Object.assign(globalThis, { __hhSeen: seen });
     const outer = document.createElement("div");
-    const el = document.createElement(tag) as HTMLElement & { disabled: boolean };
+    const el = document.createElement(tag);
     outer.append(el);
     document.body.append(outer);
     await tick();
 
     const selected: unknown[] = [];
     outer.addEventListener("select", (e) => {
-      selected.push((e as CustomEvent).detail);
+      if (e instanceof CustomEvent) {
+        selected.push(e.detail);
+      }
     });
     let outerClicks = 0;
     outer.addEventListener("click", () => {
@@ -70,7 +83,8 @@ describe("a definition's root-level event handlers", () => {
     expect(outerClicks).toBe(0);
 
     // A disabled row selects nothing; the property write reaches the same scope the handler reads.
-    el.disabled = true;
+    // Assigned through [[Set]] exactly as `el.disabled = true` would, so the host's accessor runs.
+    Object.assign(el, { disabled: true });
     el.click();
     await tick();
     expect(selected).toEqual(["copy"]);
@@ -91,8 +105,8 @@ describe("a definition's root-level event handlers", () => {
       emits: [{ name: "select" }],
       description: "A row",
       textContent: "${state.label}",
-    } as Parameters<typeof defineElement>[0]);
-    const el = document.createElement(tag) as HTMLElement & Record<string, unknown>;
+    });
+    const el = document.createElement(tag);
     document.body.append(el);
     await tick();
     expect(el.textContent).toBe("x");
@@ -118,31 +132,29 @@ describe("a definition's root-level event handlers", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const picked: unknown[] = [];
-    const scope = {
-      hide: false,
-      pick: (_scope: unknown, event: Event) => {
-        picked.push((event as CustomEvent).detail);
-      },
+    const pick: JxEventHandler = (_scope, event) => {
+      if (event instanceof CustomEvent) {
+        picked.push(event.detail);
+      }
     };
-    const handle = await mount(
-      {
-        tagName: "div",
-        children: [
-          {
-            tagName: tag,
-            id: "row-1",
-            hidden: { $ref: "#/state/hide" },
-            $props: { value: "copy" },
-            onselect: { $ref: "#/state/pick" },
-            children: [{ tagName: "span", textContent: "Copy" }],
-          },
-        ],
-      } as unknown as Parameters<typeof mount>[0],
-      host,
-      { scope },
-    );
+    const scope = { hide: false, pick };
+    const usage: BoundUsage = {
+      tagName: tag,
+      id: "row-1",
+      hidden: { $ref: "#/state/hide" },
+      $props: { value: "copy" },
+      onselect: { $ref: "#/state/pick" },
+      children: [{ tagName: "span", textContent: "Copy" }],
+    };
+    /* SAFETY: `usage` differs from a JxElement only in binding `hidden` to state, which the runtime
+       resolves like any other bound property; the `el.hidden` assertion below checks that it did. */
+    const doc = { tagName: "div", children: [usage] } as JxDocument;
+    const handle = await mount(doc, host, { scope });
     await tick();
-    const el = host.querySelector(`#row-1`) as HTMLElement;
+    const el = host.querySelector(`#row-1`);
+    if (!(el instanceof HTMLElement)) {
+      throw new TypeError("the usage site did not render #row-1");
+    }
     expect(el.localName).toBe(tag);
     expect(el.hidden).toBe(false);
     el.click();
@@ -187,7 +199,7 @@ describe("a definition's root-level event handlers", () => {
             ],
           },
         ],
-      } as Parameters<typeof mount>[0],
+      },
       host,
       { scope },
     );

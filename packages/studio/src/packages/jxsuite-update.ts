@@ -29,9 +29,10 @@ import { openJxsuiteUpdateSurface } from "../surfaces/jxsuite-update";
 import { showProgressModal } from "../ui/progress-modal";
 import { notify } from "../services/notify";
 import { isUpgrade } from "./semver";
-import type { JxsuiteUpdateSurfaceHandle } from "../surfaces/jxsuite-update";
+import type { DialogLayerHandle } from "../ui/surface";
 
-const JXSUITE_PREFIX = "@jxsuite/";
+/** The npm scope every first-party package is published under. */
+export const JXSUITE_PREFIX = "@jxsuite/";
 
 export interface JxsuiteUpdate {
   name: string;
@@ -170,7 +171,7 @@ function askToUpdate(outdated: JxsuiteUpdate[]): Promise<boolean> {
       closing = true;
       handle.close();
     };
-    const handle: JxsuiteUpdateSurfaceHandle = openJxsuiteUpdateSurface({
+    const handle: DialogLayerHandle = openJxsuiteUpdateSurface({
       layer: layerHost("dialog"),
       onCancel: () => {
         takeDown();

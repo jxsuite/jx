@@ -5,6 +5,8 @@ import { reactive } from "@vue/reactivity";
 import { evaluateExpression } from "../src/expression";
 import { runStatements } from "../src/statements";
 
+import type { JxScope } from "../src/types";
+
 try {
   GlobalRegistrator.register();
 } catch {
@@ -72,7 +74,8 @@ describe("call binds the receiver the pointer's parent names", () => {
       null,
       {
         args: {
-          fn(this: unknown) {
+          // The receivers a careless owner rule could bind: the scope, the event, or nothing.
+          fn(this: JxScope | Event | undefined) {
             return this;
           },
         },
@@ -90,7 +93,7 @@ describe("call binds the receiver the pointer's parent names", () => {
     const seen: unknown[] = [];
     const event = new CustomEvent("go", {
       detail: {
-        fn(this: unknown, ...args: unknown[]) {
+        fn(this: JxScope | Event | undefined, ...args: unknown[]) {
           seen.push(this, ...args);
           return "ran";
         },
@@ -130,7 +133,9 @@ describe("runStatements dispatch target", () => {
     const el = document.createElement("div");
     const details: unknown[] = [];
     el.addEventListener("ping", (e) => {
-      details.push((e as CustomEvent).detail);
+      if (e instanceof CustomEvent) {
+        details.push(e.detail);
+      }
     });
     await runStatements([{ dispatchEvent: "ping", detail: 1 }], reactive({}), null, {
       target: () => el,

@@ -25,19 +25,18 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { afterEach, describe, expect, test } from "bun:test";
-import { projectState } from "../src/store";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { requireProjectState } from "../src/store";
 
 import type { CommandContext } from "../src/commands/context";
 import type { MockPlatformState } from "./harness";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 import type { StudioPlatform } from "../src/types";
 
 const { renderGeneralSettings } = await import("../src/settings/general-settings");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext } = await import("../src/commands/context");
-
-type AnyConfig = Record<string, any>;
 
 /**
  * Mount the section into a fresh container and let the document render.
@@ -46,11 +45,11 @@ type AnyConfig = Record<string, any>;
  * a detached node is never connected, so its own template never runs.
  */
 async function setup(
-  cfg: AnyConfig | null,
+  cfg: ProjectConfig | null,
   overrides: Partial<StudioPlatform> = {},
 ): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides);
-  resetStudioState({ projectConfig: cfg as unknown });
+  resetStudioState({ projectConfig: cfg });
   const container = document.createElement("div");
   document.body.append(container);
   renderGeneralSettings(container);
@@ -62,10 +61,10 @@ async function setup(
 /** The native control inside one row's field. */
 function control(container: HTMLElement, field: string): HTMLInputElement | HTMLTextAreaElement {
   const el = container.querySelector(`[data-field="${field}"] [part="input"]`);
-  if (!el) {
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
     throw new Error(`no control in the "${field}" row of the Overview section`);
   }
-  return el as HTMLInputElement | HTMLTextAreaElement;
+  return el;
 }
 
 /** Whatever refusal the section is currently showing — the section's own, a row's, or the upload's. */
@@ -73,7 +72,7 @@ function errorText(container: HTMLElement): string | undefined {
   for (const node of container.querySelectorAll(
     '[part="section-error"], [part="favicon-error"], [part="error"]',
   )) {
-    const text = node.textContent?.trim();
+    const text = node.textContent.trim();
     if (text) {
       return text;
     }
@@ -83,38 +82,44 @@ function errorText(container: HTMLElement): string | undefined {
 
 function part(container: HTMLElement, name: string): HTMLElement {
   const el = container.querySelector(`[part="${name}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no [part="${name}"] in the Overview section`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
-function config(): AnyConfig {
-  return (projectState as AnyConfig).projectConfig;
+function config(): ProjectConfig {
+  const cfg = requireProjectState().projectConfig;
+  if (!cfg) {
+    throw new Error("no project config is loaded");
+  }
+  return cfg;
 }
 
-function setAndFire(el: Element, value: string, type = "change"): void {
-  (el as HTMLInputElement).value = value;
+function setAndFire(
+  el: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+  type = "change",
+): void {
+  el.value = value;
   el.dispatchEvent(new Event(type, { bubbles: true }));
 }
 
 /** Click Upload Favicon with `document.createElement` watched, and hand back the file input. */
 function pickFavicon(container: HTMLElement): HTMLInputElement {
-  const origCreateElement = document.createElement.bind(document);
-  let fileInput: HTMLInputElement | null = null;
-  (document as any).createElement = (tag: string, ...rest: any[]) => {
-    const el = (origCreateElement as any)(tag, ...rest);
-    if (tag === "input") {
-      fileInput = el;
-    }
-    return el;
-  };
+  const createElement = spyOn(document, "createElement");
+  let created: HTMLElement[] = [];
   try {
     pointer(part(container, "favicon-upload"), "click");
   } finally {
-    (document as any).createElement = origCreateElement;
+    created = createElement.mock.results.flatMap((result) =>
+      result.type === "return" ? [result.value] : [],
+    );
+    createElement.mockRestore();
   }
-  if (!fileInput) {
+  // The last input created during the click is the one the upload listens on.
+  const fileInput = created.findLast((el) => el instanceof HTMLInputElement);
+  if (!(fileInput instanceof HTMLInputElement)) {
     throw new Error("Upload Favicon opened no file input");
   }
   return fileInput;
@@ -258,11 +263,11 @@ describe("production URL", () => {
 // ─── Save failures ───────────────────────────────────────────────────────────
 
 describe("save failures", () => {
-  const failing = {
+  const failing: Partial<StudioPlatform> = {
     writeFile: async () => {
       throw new Error("EROFS: read-only file system");
     },
-  } as unknown as Partial<StudioPlatform>;
+  };
 
   test("a rejected project.json write is shown under the field, not swallowed", async () => {
     const { container } = await setup({ name: "Bistro" }, failing);
@@ -297,11 +302,14 @@ describe("save failures", () => {
   });
 
   test("a failed favicon upload reports the upload, not a phantom save", async () => {
-    const { container } = await setup({}, {
-      uploadFile: async () => {
-        throw new Error("disk full");
+    const { container } = await setup(
+      {},
+      {
+        uploadFile: async () => {
+          throw new Error("disk full");
+        },
       },
-    } as unknown as Partial<StudioPlatform>);
+    );
 
     const fileInput = pickFavicon(container);
     const file = new File(["x"], "favicon.ico", { type: "image/x-icon" });
@@ -394,10 +402,10 @@ describe("global styles shortcut", () => {
   test("Edit Global Styles runs the command, rather than writing the mode itself", async () => {
     const registry = installStylesRegistry();
     const ran: string[] = [];
-    registry.run = ((id: string) => {
+    registry.run = (id) => {
       ran.push(id);
       return Promise.resolve();
-    }) as typeof registry.run;
+    };
     resetWorkspaceWithTab();
     const { container } = await setup({});
     pointer(part(container, "styles-open"), "click");
@@ -410,7 +418,7 @@ describe("global styles shortcut", () => {
     installStylesRegistry();
     const { container } = await setup({});
     expect(part(container, "styles-open").getAttribute("title")).toBe("Open Project Styles");
-    expect(part(container, "styles-open").textContent?.trim()).toBe("Edit Global Styles");
+    expect(part(container, "styles-open").textContent.trim()).toBe("Edit Global Styles");
   });
 
   /*
@@ -441,7 +449,7 @@ describe("redraws", () => {
   test("a redraw updates the standing surface instead of rebuilding it", async () => {
     const { container } = await setup({ name: "Bistro" });
     const first = control(container, "name");
-    (projectState as AnyConfig).projectConfig = { name: "Trattoria" };
+    requireProjectState().projectConfig = { name: "Trattoria" };
 
     renderGeneralSettings(container);
     await flush();
@@ -464,7 +472,7 @@ describe("redraws", () => {
 
   test("a mount still in flight gives the container up rather than landing on top of it", async () => {
     installMockPlatform();
-    resetStudioState({ projectConfig: { name: "Bistro" } as unknown });
+    resetStudioState({ projectConfig: { name: "Bistro" } });
     const container = document.createElement("div");
     document.body.append(container);
     renderGeneralSettings(container);

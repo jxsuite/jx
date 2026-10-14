@@ -18,7 +18,9 @@
  * edit typed into the first, and how one failed patch would rebuild both.
  */
 
-import { getNodeAtPath, parentElementPath } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { isString } from "@jxsuite/schema/guards";
+import { parentElementPath } from "../store";
 import { canvasModeOfPane, surfacesShowingTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
 import { postPatchToHosts } from "./iframe-host";
@@ -29,6 +31,13 @@ import type { CanvasSurface } from "./surface-registry";
 import type { JxPatchOp, TransactionRecord } from "../tabs/patch-ops";
 import type { Tab } from "../tabs/tab.js";
 import type { JxPath } from "../state";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** Whether a batch can be applied surgically, and why not when it cannot. */
+export interface PatchVerdict {
+  patchable: boolean;
+  reason: string;
+}
 
 /** Render-side callbacks injected at init so this module stays free of heavy canvas imports. */
 interface CanvasPatcherCtx {
@@ -62,10 +71,17 @@ export function initCanvasPatcher(ctx: CanvasPatcherCtx) {
     apply: applyPatchBatch,
     classify: classifyOps,
     escalate: escalateToFullRender,
-    markConsumed: (docRef: object, tab: Tab) => {
-      markConsumed(
-        docRef,
-        patchableSurfaces(tab).map((surface) => surface.paneId),
+    /* Records that `docRef`'s change has been applied surgically in each patchable pane.
+
+       No empty-list guard, because the list cannot be empty here: `transactDoc` marks only a batch
+       {@link classifyOps} called patchable, and that function rejects `patchableSurfaces(tab).length
+       === 0` before it can say so. A guard on an unreachable value is a branch no test can enter (the
+       gate's own rule), and `_consumed` is a `WeakMap` keyed on a reference `transactDoc` mints fresh
+       per transaction, so there is nothing for one to protect either. */
+    markConsumed: (docRef, tab) => {
+      _consumed.set(
+        toRaw(docRef),
+        new Set(patchableSurfaces(tab).map((surface) => surface.paneId)),
       );
     },
   });
@@ -97,31 +113,15 @@ function patchableSurfaces(tab: Tab | null): CanvasSurface[] {
 }
 
 /**
- * Record that `docRef`'s change has been applied surgically in each of `paneIds`.
- *
- * No empty-list guard, because the list cannot be empty here: `transactDoc` marks only a batch
- * {@link classifyOps} called patchable, and that function rejects `patchableSurfaces(tab).length
- * === 0` before it can say so. A guard on an unreachable value is a branch no test can enter — the
- * gate's own rule — and `_consumed` is a `WeakMap` keyed on a reference `transactDoc` mints fresh
- * per transaction, so there is nothing for one to protect either.
- *
- * @param {object} docRef
- * @param {readonly string[]} paneIds
- */
-function markConsumed(docRef: object, paneIds: readonly string[]) {
-  _consumed.set(toRaw(docRef) as object, new Set(paneIds));
-}
-
-/**
  * One-shot check used by ONE PANE's canvas doc-effect: returns true (and clears that pane's mark)
  * when the given document reference was already applied to that pane's stage surgically, so its
  * full render can be skipped. One-shot so tab switches and repeat triggers still render fully.
  *
- * @param {object} doc
+ * @param {JxMutableNode} doc
  * @param {string} paneId
  */
-export function consumePatchedDocument(doc: object, paneId: string): boolean {
-  const raw = toRaw(doc) as object;
+export function consumePatchedDocument(doc: JxMutableNode, paneId: string): boolean {
+  const raw = toRaw(doc);
   const panes = _consumed.get(raw);
   if (!panes?.has(paneId)) {
     return false;
@@ -221,7 +221,7 @@ function containerVerdict(tab: Tab, parentPath: JxPath, requireArray = true): st
    * definition escalated to a full render — in a component-heavy project, the most common authoring
    * action there is.
    */
-  if (parentPath.length > 0 && typeof parent.tagName === "string" && parent.tagName.includes("-")) {
+  if (parentPath.length > 0 && isString(parent.tagName) && parent.tagName.includes("-")) {
     return "structure-in-custom-element";
   }
   if (parent.innerHTML) {
@@ -253,7 +253,7 @@ function replaceVerdict(tab: Tab, path: JxPath): string | null {
   if (pathHasDynamicSegment(path)) {
     return "replace-on-cases-path";
   }
-  const parentPath = parentElementPath(path) as JxPath | null;
+  const parentPath = parentElementPath(path);
   if (!parentPath) {
     return "replace-no-parent";
   }
@@ -295,7 +295,7 @@ function opVerdict(tab: Tab, op: JxPatchOp): string | null {
       if (!node) {
         return "node-not-found";
       }
-      if (typeof node.tagName === "string" && node.tagName.includes("-")) {
+      if (isString(node.tagName) && node.tagName.includes("-")) {
         return "text-on-custom-element";
       }
       if (node.innerHTML) {
@@ -320,14 +320,14 @@ function opVerdict(tab: Tab, op: JxPatchOp): string | null {
       return containerVerdict(tab, op.parentPath);
     }
     case "remove": {
-      const parentPath = parentElementPath(op.path) as JxPath | null;
+      const parentPath = parentElementPath(op.path);
       return parentPath === null ? "remove-no-parent" : containerVerdict(tab, parentPath);
     }
     case "move": {
       if (pathHasDynamicSegment(op.fromPath)) {
         return "structure-on-cases-path";
       }
-      const fromParentPath = parentElementPath(op.fromPath) as JxPath | null;
+      const fromParentPath = parentElementPath(op.fromPath);
       if (fromParentPath === null) {
         return "move-no-parent";
       }
@@ -347,7 +347,7 @@ function opVerdict(tab: Tab, op: JxPatchOp): string | null {
  * @param {Tab} tab
  * @param {JxPatchOp[]} ops
  */
-export function classifyOps(tab: Tab, ops: JxPatchOp[]): { patchable: boolean; reason: string } {
+export function classifyOps(tab: Tab, ops: JxPatchOp[]): PatchVerdict {
   const reject = (reason: string) => {
     recordEscalation(reason);
     return { patchable: false, reason };

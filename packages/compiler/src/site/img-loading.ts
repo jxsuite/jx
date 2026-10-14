@@ -14,14 +14,19 @@
  * @docs framework/site/images
  */
 
+import type { JsonValue } from "@jxsuite/schema/types";
+
 /** WHATWG HTML: `fetchpriority` values. `high` is the one that means "this is the LCP image". */
 export const HIGH_PRIORITY = "high";
 
-/** Attributes an `<img>` already carries, as far as this decision is concerned. */
+/**
+ * Attributes an `<img>` already carries, as far as this decision is concerned: values as the
+ * document wrote them, where an empty string or `null` counts as absent.
+ */
 export interface ImgLoadingState {
-  loading?: unknown;
-  decoding?: unknown;
-  fetchpriority?: unknown;
+  loading?: JsonValue | undefined;
+  decoding?: JsonValue | undefined;
+  fetchpriority?: JsonValue | undefined;
 }
 
 /** Attributes to add. Empty when the author has already decided, or when lazy loading is off. */
@@ -30,7 +35,8 @@ export interface ImgLoadingAttrs {
   decoding?: "async";
 }
 
-const present = (value: unknown) => value !== undefined && value !== null && value !== "";
+const present = (value: JsonValue | undefined) =>
+  value !== undefined && value !== null && value !== "";
 
 /**
  * Decide the loading attributes for one `<img>`.

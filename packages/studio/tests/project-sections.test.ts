@@ -45,10 +45,8 @@ import {
 import { mountDeploySurface } from "../src/surfaces/settings-deploy";
 import { mountRawJsonSurface } from "../src/surfaces/settings-rawjson";
 import type { MockPlatformState } from "./harness";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type { StudioPlatform } from "../src/types";
-
-type AnyConfig = Record<string, any>;
 
 /**
  * Draw a section into a fresh container and let its surface mount.
@@ -57,13 +55,13 @@ type AnyConfig = Record<string, any>;
  * a detached node is never connected, so its own template never runs.
  */
 async function setup(
-  cfg: AnyConfig | null,
+  cfg: ProjectConfig | null,
   render: (container: HTMLElement) => void,
   overrides: Partial<StudioPlatform> = {},
   seed: Record<string, string> = {},
 ): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides, seed);
-  resetStudioState({ projectConfig: cfg as unknown });
+  resetStudioState({ projectConfig: cfg });
   const container = document.createElement("div");
   document.body.append(container);
   render(container);
@@ -71,24 +69,35 @@ async function setup(
   return { container, state };
 }
 
-function config(): AnyConfig {
-  return (projectState as AnyConfig).projectConfig;
+/** The live configuration the section wrote into; every caller has set one up first. */
+function config(): ProjectConfig {
+  const live = projectState?.projectConfig;
+  if (!live) {
+    throw new Error("no project configuration is loaded");
+  }
+  return live;
 }
 
-function written(state: MockPlatformState): AnyConfig {
-  return JSON.parse(state.files.get(PROJECT_CONFIG_PATH)!) as AnyConfig;
+/** The `project.json` bytes the section saved, read back as the configuration they serialise. */
+function written(state: MockPlatformState): ProjectConfig {
+  const saved: ProjectConfig = JSON.parse(state.files.get(PROJECT_CONFIG_PATH)!);
+  return saved;
 }
 
 /** The whole-file write failure, said under the section title rather than beside the control. */
 function errorText(container: HTMLElement): string | undefined {
   return container
     .querySelector('[part="section-error-slot"] > [part="section-error"]')
-    ?.textContent?.trim();
+    ?.textContent.trim();
 }
 
 /** The adapter picker's native control, which is where a reader chooses. */
 function picker(container: HTMLElement): HTMLSelectElement {
-  return container.querySelector('[part="adapter"] select') as HTMLSelectElement;
+  const select = container.querySelector('[part="adapter"] select');
+  if (!(select instanceof HTMLSelectElement)) {
+    throw new Error("the Deploy section drew no adapter <select>");
+  }
+  return select;
 }
 
 /** Choose a platform the way the author does. */
@@ -100,9 +109,9 @@ async function choose(container: HTMLElement, value: string): Promise<void> {
 }
 
 /** A platform whose every write is refused. */
-const failing = {
+const failing: Partial<StudioPlatform> = {
   writeFile: () => Promise.reject(new Error("EROFS: read-only file system")),
-} as unknown as Partial<StudioPlatform>;
+};
 
 beforeEach(() => {
   resetProjectConfigDocument();
@@ -134,7 +143,7 @@ describe("the Deploy section", () => {
     const { container, state } = await setup({ build: { outDir: "dist" } }, renderDeploySection);
     await choose(container, "bun");
     expect(config().build).toEqual({ adapter: "bun", outDir: "dist" });
-    expect(written(state).build.adapter).toBe("bun");
+    expect(written(state).build?.adapter).toBe("bun");
   });
 
   test("a rejected write is shown under the section title", async () => {
@@ -149,8 +158,9 @@ describe("the Deploy section", () => {
        sentence is the section's rather than the field's. */
     const section = container.querySelector('[part="deploy"]')!;
     const order = [...section.children].map((el) => el.getAttribute("part"));
-    expect(order.indexOf("section-error-slot")).toBeGreaterThan(order.indexOf("title"));
-    expect(order.indexOf("section-error-slot")).toBeLessThan(order.indexOf("row"));
+    const slotIndex = order.indexOf("section-error-slot");
+    expect(slotIndex).toBeGreaterThan(order.indexOf("title"));
+    expect(slotIndex).toBeLessThan(order.indexOf("row"));
     expect(
       container
         .querySelector('[part="section-error-slot"] > [part="section-error"]')
@@ -178,24 +188,25 @@ describe("the Deploy section", () => {
        failed WRITE has already put the value into the live configuration, so the file is behind and
        the error line is what says so. `project.json` open with unsaved authoring of its own is the
        case where neither side is applied. */
-    const onDisk = serializeProjectConfig({ build: { adapter: "static" } } as ProjectConfig);
+    const onDisk = serializeProjectConfig({ build: { adapter: "static" } });
     const { container } = await setup(
       { build: { adapter: "static" } },
       renderDeploySection,
       {},
       { [PROJECT_CONFIG_PATH]: onDisk },
     );
+    const opened: JxMutableNode = JSON.parse(onDisk);
     const tab = openTab({
-      document: JSON.parse(onDisk) as Record<string, unknown>,
+      document: opened,
       documentPath: PROJECT_CONFIG_PATH,
       id: PROJECT_CONFIG_PATH,
     });
-    (toRaw(tab.doc.document) as unknown as AnyConfig).description = "typed in the source editor";
+    toRaw(tab.doc.document).description = "typed in the source editor";
     tab.doc.dirty = true;
 
     await choose(container, "node");
 
-    expect(config().build.adapter).toBe("static");
+    expect(config().build?.adapter).toBe("static");
     expect(picker(container).value).toBe("static");
   });
 
@@ -233,7 +244,7 @@ describe("the Raw JSON section", () => {
   test("a redraw re-reads the file into the standing document", async () => {
     const { container } = await setup({ name: "Bistro" }, renderRawJsonSection);
     const before = container.querySelector('[part="rawjson"]');
-    (config() as AnyConfig).name = "Trattoria";
+    config().name = "Trattoria";
     renderRawJsonSection(container);
     await flush(2);
     expect(container.querySelector('[part="rawjson"]')).toBe(before!);
@@ -255,7 +266,7 @@ describe("the Raw JSON section", () => {
 describe("the surfaces themselves", () => {
   function host(): HTMLElement {
     installMockPlatform();
-    resetStudioState({ projectConfig: {} as unknown });
+    resetStudioState({ projectConfig: {} });
     const container = document.createElement("div");
     document.body.append(container);
     return container;

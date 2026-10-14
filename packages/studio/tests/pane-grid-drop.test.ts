@@ -8,22 +8,46 @@
  */
 import { flush, resetStudioState, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { JsonObject } from "@jxsuite/schema/types";
 
-type AnyRec = Record<string, any>;
+/** What a drag carries, as the adapter hands it to every callback. */
+interface DragSource {
+  data: JsonObject;
+}
 
-const dropTargets = new Map<Element, AnyRec>();
-const monitors: AnyRec[] = [];
+/** Where a drag is, by the drop targets under it, innermost first. */
+interface DragLocation {
+  current: { dropTargets: { data: JsonObject }[] };
+}
+
+/** The slice of a `dropTargetForElements` config these tests drive. */
+interface RecordedDropTarget {
+  element: Element;
+  canDrop: (args: { source: DragSource }) => boolean;
+  getData: (args: { input: { clientX: number } }) => { type: string; paneId?: string };
+}
+
+/** The slice of a `monitorForElements` config these tests drive, plus the mock's release mark. */
+interface RecordedMonitor {
+  onDragStart?: (args: { source: DragSource }) => void;
+  onDrag?: (args: { location: DragLocation }) => void;
+  onDrop?: (args: { source?: DragSource; location: DragLocation }) => void;
+  __released?: boolean;
+}
+
+const dropTargets = new Map<Element, RecordedDropTarget>();
+const monitors: RecordedMonitor[] = [];
 const released = new Set<Element>();
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: () => () => {},
-  dropTargetForElements: (cfg: AnyRec) => {
+  dropTargetForElements: (cfg: RecordedDropTarget) => {
     dropTargets.set(cfg.element, cfg);
     return () => {
       released.add(cfg.element);
     };
   },
-  monitorForElements: (cfg: AnyRec) => {
+  monitorForElements: (cfg: RecordedMonitor) => {
     monitors.push(cfg);
     return () => {
       cfg.__released = true;
@@ -37,7 +61,11 @@ const { DEFAULT_PANE_SPLIT, resetShellSurfaces, shell } = await import("../src/s
 const { cellForPane, mount, paneGridReady, unmount } = await import("../src/panels/pane-grid");
 
 function grid(): HTMLElement {
-  return document.querySelector("#pane-grid") as HTMLElement;
+  const el = document.querySelector("#pane-grid");
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("no #pane-grid in the document");
+  }
+  return el;
 }
 
 function standUpGrid(): HTMLElement {
@@ -46,7 +74,7 @@ function standUpGrid(): HTMLElement {
 }
 
 /** Ask a pane's registered drop zone what a hover at `clientX` would answer. */
-function getDataFor(paneId: string, clientX: number): AnyRec {
+function getDataFor(paneId: string, clientX: number) {
   const element = cellForPane(paneId)!.dropZone;
   const cfg = dropTargets.get(element)!;
   return cfg.getData({ input: { clientX } });
@@ -121,7 +149,7 @@ describe("edgeData — only the last pane under the cap accepts its right band",
 });
 
 describe("arming", () => {
-  function armingMonitor(): AnyRec {
+  function armingMonitor(): RecordedMonitor {
     return monitors.at(-1)!;
   }
 

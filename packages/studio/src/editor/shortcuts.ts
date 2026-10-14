@@ -30,6 +30,7 @@
  * to the code that runs, so a chord and its behaviour cannot drift apart again.
  */
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { childIndex, childList, getNodeAtPath, parentElementPath, projectState } from "../store";
 import { activeTab, workspace } from "../workspace/workspace";
 import {
@@ -45,8 +46,8 @@ import {
   mutateDuplicateNodes,
   mutateInsertNode,
   mutateRemoveNodes,
-  redo as tabRedo,
-  undo as tabUndo,
+  redo,
+  undo,
   transactDoc,
 } from "../tabs/transact";
 import {
@@ -81,6 +82,7 @@ import { runReported } from "../commands/run-reported";
 import { pointerAnchor } from "../canvas/iframe-host";
 import type { PointerAnchor } from "../canvas/iframe-host";
 import type { CommandContext } from "../commands/context";
+import type { CommandArgValues } from "../commands/command-args";
 import type { DockId as CommandDockId } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { DockId, FocusRegion } from "../shell";
@@ -165,11 +167,14 @@ function navigateSelection(direction: -1 | 1): void {
     tab.session.selection = [[]];
     return;
   }
-  if (selected.length < 2) {
+  // `parentElementPath` is null exactly when the path is the document element (length < 2).
+  const parentPath = parentElementPath(selected);
+  if (!parentPath) {
     return;
   }
-  const parentPath = parentElementPath(selected) as JxPath;
   const parent = getNodeAtPath(tab.doc.document, parentPath);
+  // SAFETY: a selection path of length >= 2 addresses a child as `[..., "children", n]`, so its
+  // Last segment is the numeric index `n` (the same invariant `insertSiblingParagraph` relies on).
   const newIndex = (childIndex(selected) as number) + direction;
   if (newIndex >= 0 && newIndex < childList(parent).length) {
     tab.session.selection = [[...parentPath, "children", newIndex]];
@@ -190,14 +195,10 @@ function selectSiblings(): void {
     return;
   }
   const selected = primarySelection(tab.session.selection);
-  const parentPath = (
-    selected && selected.length >= 2 ? parentElementPath(selected) : []
-  ) as JxPath;
+  const parentPath: JxPath = (selected ? parentElementPath(selected) : null) ?? [];
   const parent = getNodeAtPath(tab.doc.document, parentPath);
   const paths = childList(parent).flatMap((child, index) =>
-    typeof child === "object" && child !== null
-      ? [[...parentPath, "children", index] as JxPath]
-      : [],
+    isNonNullObject(child) ? [[...parentPath, "children", index]] : [],
   );
   if (paths.length > 0) {
     tab.session.selection = paths;
@@ -242,10 +243,16 @@ function selectParent(): void {
 function insertSiblingParagraph(): void {
   const tab = activeTab.value;
   const selected = primarySelection(tab?.session.selection);
-  if (!tab || !selected || selected.length < 2) {
+  if (!tab || !selected) {
     return;
   }
-  const parentPath = parentElementPath(selected) as JxPath;
+  // Null exactly when the selection is the document element, which has no sibling slot.
+  const parentPath = parentElementPath(selected);
+  if (!parentPath) {
+    return;
+  }
+  // SAFETY: a selection path of length >= 2 addresses a child as `[..., "children", n]`, so its
+  // Last segment is the numeric child index `n`.
   const index = childIndex(selected) as number;
   const newPath = [...parentPath, "children", index + 1];
   transactDoc(tab, (t) => {
@@ -303,14 +310,14 @@ function closeDocument(): void {
 function undoDocument(): void {
   const tab = activeTab.value;
   if (tab) {
-    tabUndo(tab);
+    undo(tab);
   }
 }
 
 function redoDocument(): void {
   const tab = activeTab.value;
   if (tab) {
-    tabRedo(tab);
+    redo(tab);
   }
 }
 
@@ -349,7 +356,7 @@ function zoomBy(ctx: CommandContext, factor: number, redraw: () => void): void {
     return;
   }
   if (isContentZoom(ctx)) {
-    setEditZoom((tab.session.ui.editZoom ?? 1) * factor);
+    setEditZoom(tab.session.ui.editZoom * factor);
     return;
   }
   // Around the stage's middle, like the zoom pod's buttons.
@@ -397,7 +404,7 @@ function toggleShellDock(registry: CommandRegistry, dock: CommandDockId): void {
  * a missing id must be inert rather than an exception thrown out of a keydown handler. A present
  * one that refuses its arguments is not inert: `commands/run-reported.ts` files it in Problems.
  */
-function runIfPresent(registry: CommandRegistry, id: string, args: Record<string, unknown>): void {
+function runIfPresent(registry: CommandRegistry, id: string, args: CommandArgValues): void {
   if (registry.get(id) && registry.isEnabled(id)) {
     void runReported(registry, id, args, "Keyboard");
   }
@@ -647,8 +654,9 @@ function askWhereToOpen(openName: string): Promise<ProjectOpenTarget | "cancel">
 export async function openProjectFlow(hooks: StudioCommandHooks): Promise<void> {
   const platform = hasPlatform() ? getPlatform() : null;
   const canOpenElsewhere =
-    typeof platform?.openProjectInNewWindow === "function" &&
-    typeof platform?.pickProject === "function";
+    platform !== null &&
+    isFunction(platform.openProjectInNewWindow) &&
+    isFunction(platform.pickProject);
   if (!projectState || !canOpenElsewhere) {
     await hooks.openProject("thisWindow");
     return;
@@ -959,7 +967,11 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
   document.addEventListener(
     "wheel",
     (e: WheelEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !(e.target as Element | null)?.closest(STAGE_SELECTOR)) {
+      const { target } = e;
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !(target instanceof Element && target.closest(STAGE_SELECTOR))
+      ) {
         e.preventDefault();
       }
     },
@@ -1022,7 +1034,7 @@ function wheelBelongsInside(
 ): boolean {
   const { target } = e;
   let el: Element | null =
-    target instanceof Element ? target : ((target as Node | null)?.parentElement ?? null);
+    target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
   while (el && el !== stage) {
     if (el instanceof HTMLElement && el !== pageScroller && canScrollBy(el, e.deltaX, e.deltaY)) {
       return true;

@@ -20,7 +20,9 @@ import {
   provenanceText,
   provenanceTitle,
 } from "../src/panels/provenance";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { ProvenanceState } from "../src/panels/provenance";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 describe("what a chip reads", () => {
   test("set says nothing — the dot is the whole statement", () => {
@@ -84,22 +86,23 @@ describe("where the chip's shape decisions went", () => {
       const json = await Bun.file(
         new URL(`../src/surfaces/${surface}.json`, import.meta.url),
       ).text();
-      const doc = JSON.parse(json) as unknown;
+      const doc: JsonValue = JSON.parse(json);
       const slot = findPart(doc, "chip-slot");
       expect(slot, `${surface}.json draws no chip slot`).not.toBeNull();
-      const cases = Object.keys((slot as { cases?: Record<string, unknown> }).cases ?? {});
+      const switchCases = slot?.["cases"];
+      const caseNodes: JsonObject = isJsonObject(switchCases) ? switchCases : {};
+      const cases = Object.keys(caseNodes);
       // A pressable case and a plain one, and NO case for `default`: an unset row draws no chip.
       expect(cases.length).toBeGreaterThan(1);
       expect(cases).not.toContain("default");
       expect(cases).not.toContain("none");
-      for (const [name, node] of Object.entries(
-        (slot as { cases: Record<string, { tagName: string }> }).cases,
-      )) {
+      for (const [name, node] of Object.entries(caseNodes)) {
         /* `text` is the only case reached with no handler, and it is the only `<span>`. Every
            other case — `button` on the Style tab, `dot` and `press` on Content — is a real
            `<button>`, including the 6px dot, which was a `<span>` under lit and reachable by
            mouse alone. */
-        expect(node.tagName, `${surface}.json draws case "${name}" as <${node.tagName}>`).toBe(
+        const tagName = isJsonObject(node) ? node["tagName"] : undefined;
+        expect(tagName, `${surface}.json draws case "${name}" as <${String(tagName)}>`).toBe(
           name === "text" ? "span" : "button",
         );
       }
@@ -137,7 +140,7 @@ describe("counting", () => {
 });
 
 /** The first node in a document whose `part` attribute is `name`. */
-function findPart(node: unknown, name: string): unknown {
+function findPart(node: JsonValue, name: string): JsonObject | null {
   if (Array.isArray(node)) {
     for (const child of node) {
       const found = findPart(child, name);
@@ -147,15 +150,14 @@ function findPart(node: unknown, name: string): unknown {
     }
     return null;
   }
-  if (typeof node !== "object" || node === null) {
+  if (!isJsonObject(node)) {
     return null;
   }
-  const record = node as Record<string, unknown>;
-  const attributes = record["attributes"] as Record<string, unknown> | undefined;
-  if (attributes?.["part"] === name) {
-    return record;
+  const { attributes } = node;
+  if (isJsonObject(attributes) && attributes["part"] === name) {
+    return node;
   }
-  for (const value of Object.values(record)) {
+  for (const value of Object.values(node)) {
     const found = findPart(value, name);
     if (found) {
       return found;

@@ -13,20 +13,32 @@
  */
 import { flush, installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { FunctionEditDef } from "../src/types";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** The one creation option the double reads; the mount passes Monaco's full option bag. */
+interface FakeEditorOptions {
+  value?: string;
+}
+
+/** Stands in for Monaco's text model, which the double only ever hands back. */
+interface FakeModel {
+  id: string;
+}
 
 class FakeEditor {
   value: string;
-  options: Record<string, unknown>;
+  options: FakeEditorOptions;
   disposed = false;
-  model: Record<string, unknown> | null = { id: "fake-model" };
+  model: FakeModel | null = { id: "fake-model" };
   _ignoreNextChange?: boolean;
   _editingTarget?: string | null;
   dom: HTMLElement | null = null;
   el: HTMLElement;
 
-  constructor(el: HTMLElement, options: Record<string, unknown>) {
+  constructor(el: HTMLElement, options: FakeEditorOptions) {
     this.el = el;
-    this.value = (options?.value as string) ?? "";
+    this.value = options.value ?? "";
     this.options = options;
   }
   /**
@@ -77,7 +89,7 @@ const fakeMonaco = {
   MarkerSeverity: { Error: 8, Warning: 4 },
   Uri: { parse: (u: string) => ({ target: u, toString: () => u }) },
   editor: {
-    create: (el: HTMLElement, options: Record<string, unknown>) => {
+    create: (el: HTMLElement, options: FakeEditorOptions) => {
       const ed = new FakeEditor(el, options);
       created.push(ed);
       return ed;
@@ -134,7 +146,7 @@ const { activeTab } = await import("../src/workspace/workspace");
  */
 let dock: HTMLElement;
 
-function docFixture() {
+function docFixture(): JxMutableNode {
   return {
     children: [],
     state: {
@@ -142,34 +154,38 @@ function docFixture() {
       wave: { $prototype: "Function", body: "return 2;", parameters: [{ name: "state" }] },
     },
     tagName: "div",
-  } as never;
+  };
 }
 
-function setEditing(editing: Record<string, unknown> | null) {
-  (activeTab.value!.session.ui as unknown as Record<string, unknown>).editingFunction = editing;
+function setEditing(editing: FunctionEditDef | null) {
+  activeTab.value!.session.ui.editingFunction = editing;
 }
 
 /**
  * One dock repaint, WITHOUT waiting for the load — the whole point of this file.
  *
- * Returns the container it painted, and every test that expects NOTHING to be created asserts on it
- * first: a mount that never started would satisfy those expectations for the wrong reason.
+ * Returns the container it painted, and throws when there is none, so every test that expects
+ * NOTHING to be created has first proved the mount had somewhere to start: a mount that never
+ * started would satisfy those expectations for the wrong reason.
  */
 function paintLogic(): HTMLElement {
   litRender(functionEditorTemplate(), dock);
   syncFunctionEditor(dock);
-  const container = dock.querySelector('[part="code-host"]') as HTMLElement;
-  expect(container).not.toBeNull();
+  const container = dock.querySelector('[part="code-host"]');
+  if (!(container instanceof HTMLElement)) {
+    throw new TypeError("the Logic tab painted no code host");
+  }
   return container;
 }
 
 beforeEach(() => {
-  document.body.innerHTML = `<div id="logic"></div>`;
-  dock = document.querySelector("#logic") as HTMLElement;
+  dock = document.createElement("div");
+  dock.id = "logic";
+  document.body.replaceChildren(dock);
   created.length = 0;
   view.functionEditor = null;
   view._completionRegistered = false;
-  installMockPlatform({ codeService: (async () => null) as never });
+  installMockPlatform({ codeService: async () => null });
   resetWorkspaceWithTab(docFixture(), { documentPath: "/project/pages/index.json" });
   shutGate();
 });
@@ -237,7 +253,8 @@ describe("a mount suspended inside the Monaco import", () => {
     await flush(4);
 
     expect(created).toHaveLength(1);
-    expect(view.functionEditor).toBe(created[0] as never);
+    // Identity across the double's type and Monaco's: the handle IS the one editor created.
+    expect(Object.is(view.functionEditor, created[0])).toBe(true);
     expect(created[0]!.disposed).toBe(false);
   });
 

@@ -21,6 +21,8 @@ import { describe, expect, test } from "bun:test";
 
 import * as css from "../src/css.ts";
 
+import type { JsonObject, JxStyle } from "@jxsuite/schema/types";
+
 const SOURCE = readFileSync(join(import.meta.dirname, "../src/css.ts"), "utf8");
 
 /** The source with comments removed — `localStorage` and the DOM are named in prose throughout. */
@@ -75,9 +77,9 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
   test("the root export still answers for every one of them", async () => {
     /* Moving these must not be a breaking change: the compiler and the studio both import
        camelToKebab from "@jxsuite/runtime", and canvas-media imports pureSchemeOf. */
-    const root = (await import("../src/runtime.ts")) as Record<string, unknown>;
-    for (const name of Object.keys(css)) {
-      expect({ name, same: root[name] === (css as Record<string, unknown>)[name] }).toEqual({
+    const root = new Map(Object.entries(await import("../src/runtime.ts")));
+    for (const [name, value] of Object.entries(css)) {
+      expect({ name, same: root.get(name) === value }).toEqual({
         name,
         same: true,
       });
@@ -442,7 +444,7 @@ describe("buildStyleRules on selectors", () => {
 });
 
 describe("buildStyleRules on a block that documents itself", () => {
-  const build = (style: unknown) => css.buildStyleRules(style as never, { scope: ":root" });
+  const build = (style: JxStyle) => css.buildStyleRules(style, { scope: ":root" });
 
   test("$description reaches the rule and stays out of its text", () => {
     /* Out of `text` is the load-bearing half. `text` is what a sheet inserts and what `hashCss`
@@ -492,8 +494,14 @@ describe("buildStyleRules on a block that documents itself", () => {
 });
 
 describe("buildStyleRules on a key written more than once", () => {
-  const rules = (style: unknown) =>
-    css.buildStyleRules(style as never, { scope: ":root" }).map((rule) => rule.text);
+  const rules = (style: JxStyle) =>
+    css.buildStyleRules(style, { scope: ":root" }).map((rule) => rule.text);
+
+  /** A block as an unvalidated JSON document can deliver it, holding a shape `JxStyle` forbids. */
+  const unvalidated = (style: JsonObject): JxStyle =>
+    // SAFETY: deliberately false for the one test that uses it: buildStyleRules must drop a shape
+    // JxStyle rules out, and an unvalidated document reaches it typed as a JxStyle all the same.
+    style as JxStyle;
 
   test("a declaration at-rule may hold several blocks, emitted in order", () => {
     /* An object's keys are unique, so `@font-face` — the at-rule whose identity is NOT in its key —
@@ -534,7 +542,7 @@ describe("buildStyleRules on a key written more than once", () => {
     // It used to reach `String(value)` and emit `@font-face: [object Object]` as a declaration.
     expect(rules({ color: [{ a: "1" }] })).toEqual([]);
     expect(rules({ "@font-face": [] })).toEqual([]);
-    expect(rules({ "@font-face": [{ fontFamily: "A" }, "not-a-block"] })).toEqual([]);
+    expect(rules(unvalidated({ "@font-face": [{ fontFamily: "A" }, "not-a-block"] }))).toEqual([]);
   });
 });
 

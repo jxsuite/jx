@@ -8,6 +8,7 @@
  */
 import { flush, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { isBoolean } from "@jxsuite/schema/guards";
 import { componentRegistry } from "../src/files/components";
 import { initLayers } from "../src/ui/layers";
 import { view } from "../src/view";
@@ -19,6 +20,7 @@ import { checkPlacements } from "../src/commands/levels";
 import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
+import { TWO_PARAGRAPHS } from "./shared-fixtures";
 
 // ─── Seams (both must precede the module-under-test import) ──────────────────
 
@@ -60,22 +62,23 @@ initLayers();
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const TWO_PARAGRAPHS: JxMutableNode = {
-  children: [
-    { tagName: "p", textContent: "A" },
-    { tagName: "p", textContent: "B" },
-  ],
-  tagName: "div",
-};
-
 function setup(node: JxMutableNode = TWO_PARAGRAPHS, selection: JxPath = ["children", 1]) {
   const tab = resetWorkspaceWithTab(structuredClone(node));
-  tab.session.selection = selection ? [selection] : [];
+  tab.session.selection = [selection];
   return tab;
 }
 
+/** The one element under `root` that matches `selector`; a missing one fails the test by name. */
+function one(root: ParentNode, selector: string): HTMLElement {
+  const el = root.querySelector<HTMLElement>(selector);
+  if (!el) {
+    throw new Error(`nothing matches ${selector}`);
+  }
+  return el;
+}
+
 function bar(): HTMLElement {
-  const el = view.blockActionBarEl?.querySelector('[part="bar"]') as HTMLElement | null;
+  const el = view.blockActionBarEl?.querySelector<HTMLElement>('[part="bar"]');
   if (!el) {
     throw new Error("the bar did not render");
   }
@@ -84,7 +87,7 @@ function bar(): HTMLElement {
 
 /** The toolbar itself — the kit group that owns the role, the label and the roving caret. */
 function toolbar(): HTMLElement {
-  return bar().querySelector('[part="tools"]') as HTMLElement;
+  return one(bar(), '[part="tools"]');
 }
 
 /** The controls the roving caret walks: the group's own action buttons, in order. */
@@ -94,7 +97,10 @@ function items(): HTMLElement[] {
 
 /** A kit button's own control: the focusable node, and the one that carries `disabled`. */
 function control(el: Element | null): HTMLElement {
-  return el!.querySelector('[part="control"]') as HTMLElement;
+  if (!el) {
+    throw new Error("no kit button to read a control from");
+  }
+  return one(el, '[part="control"]');
 }
 
 function isDisabled(el: Element | null): boolean {
@@ -118,9 +124,21 @@ function menuRows(): HTMLElement[] {
   ];
 }
 
+/**
+ * A `jx-menu-item` row's `destructive` state, read as the property its component state exposes on
+ * the element. Anything that is not a boolean there (including no property at all) reads as
+ * `undefined`, so neither `true` nor `false` can match it by accident.
+ */
+function destructiveOf(row: HTMLElement | undefined): boolean | undefined {
+  if (row === undefined || !("destructive" in row)) {
+    return undefined;
+  }
+  return isBoolean(row.destructive) ? row.destructive : undefined;
+}
+
 /** A slot the surface left empty prints nothing, exactly as it shows nothing. */
 function shownText(el: Element | null): string | undefined {
-  return el?.textContent?.trim() || undefined;
+  return el?.textContent.trim() || undefined;
 }
 
 /** A minimal selection-level record, so a test can decide exactly what the bar is asked to draw. */
@@ -134,7 +152,7 @@ function record(id: string, over: Partial<AnyCommand> = {}): AnyCommand {
     run: () => {},
     title: id.split(".")[1] ?? id,
     ...over,
-  } as AnyCommand;
+  };
 }
 
 /** Inject a registry holding exactly `commands`, evaluated against an always-true context. */
@@ -218,7 +236,7 @@ describe("the selection command records", () => {
     expect(registry.isVisible("selection.convertToComponent")).toBe(true);
     expect(registry.isVisible("selection.editComponent")).toBe(false);
 
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
     setup({ children: [{ tagName: "x-card" }], tagName: "div" }, ["children", 0]);
     expect(registry.isVisible("selection.convertToComponent")).toBe(false);
     expect(registry.isVisible("selection.editComponent")).toBe(true);
@@ -311,8 +329,8 @@ describe("the verb cluster", () => {
     /* Destructiveness reaches the row off the record. The kit PAINTS it only on a row that can
        act — a refused row is already dimmed and shouting at it says the wrong thing twice — so the
        flag is what this asserts, and the colour is asserted on the enabled row below. */
-    expect((rows[1] as unknown as { destructive?: boolean }).destructive).toBe(true);
-    expect((rows[0] as unknown as { destructive?: boolean }).destructive).toBe(false);
+    expect(destructiveOf(rows[1])).toBe(true);
+    expect(destructiveOf(rows[0])).toBe(false);
   });
 
   test("an enabled destructive ⋮ row is drawn in the danger colour", async () => {
@@ -415,11 +433,11 @@ describe("names, chords and refusals", () => {
 
     const plain = bar().querySelector('[data-command-id="test.plain"]')!;
     expect(shownText(plain.querySelector('[part="cmd-label"]'))).toBe("Duplicate");
-    expect((plain.querySelector('[part="icon"]') as HTMLElement).hidden).toBe(true);
+    expect(one(plain, '[part="icon"]').hidden).toBe(true);
 
     const iconed = bar().querySelector('[data-command-id="test.iconed"]')!;
     expect(iconed.querySelector('[part="cmd-label"]')).toBeNull();
-    expect((iconed.querySelector('[part="icon"]') as HTMLElement).hidden).toBe(false);
+    expect(one(iconed, '[part="icon"]').hidden).toBe(false);
   });
 
   test("runCommand refuses a disabled verb rather than throwing at the surface", () => {
@@ -587,7 +605,7 @@ describe("role=toolbar and the roving tabindex", () => {
       (document.activeElement ?? toolbar()).dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowRight" }),
       );
-      expect(refused).not.toContain(document.activeElement as HTMLElement);
+      expect(refused).not.toContain(document.activeElement);
     }
   });
 });
@@ -606,8 +624,8 @@ describe("a non-canvas editor refuses the movers, as it already refused Delete",
     const tab = resetWorkspaceWithTab({
       children: [{ tagName: "p" }, { tagName: "p" }],
       tagName: "div",
-    } as never);
-    tab.session.selection = [["children", 1]] as never;
+    });
+    tab.session.selection = [["children", 1]];
     tab.session.ui.canvasMode = mode;
     const registry = createCommandRegistry({ getContext: selectionCommandContext });
     registerSelectionCommands(registry, {

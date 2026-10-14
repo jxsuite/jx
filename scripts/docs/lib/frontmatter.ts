@@ -7,11 +7,16 @@
  * this version says which it is.
  */
 
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
+
 const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+/** One `---` line that opens or closes a frontmatter block, for the line-by-line scanners. */
+export const FRONTMATTER_DELIMITER = /^---\s*$/;
 
 export interface Frontmatter {
   /** The parsed mapping; an empty block parses to `{}`. */
-  data: Record<string, unknown>;
+  data: JsonObject;
   /** Everything after the closing `---`. */
   body: string;
   /** The 1-based source line the body starts on. */
@@ -45,8 +50,8 @@ export function splitFrontmatter(source: string): FrontmatterResult {
   if (parsed === null || parsed === undefined) {
     return { kind: "parsed", data: {}, body, bodyLine };
   }
-  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isJsonObject(parsed)) {
     return { kind: "invalid", error: "frontmatter is not a mapping", body, bodyLine };
   }
-  return { kind: "parsed", data: parsed as Record<string, unknown>, body, bodyLine };
+  return { kind: "parsed", data: parsed, body, bodyLine };
 }

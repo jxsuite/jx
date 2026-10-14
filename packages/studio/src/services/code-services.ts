@@ -6,7 +6,13 @@ import { projectState } from "../state";
 import { getNodeAtPath } from "../store";
 import { loadedMonaco } from "./monaco-lazy";
 import type { JxPath } from "../state";
-import type { JxFunctionDef, JxMutableNode } from "@jxsuite/schema/types";
+import type {
+  JsonObject,
+  JsonValue,
+  JxDocumentValue,
+  JxFunctionDef,
+  JxMutableNode,
+} from "@jxsuite/schema/types";
 import type { editor } from "monaco-editor";
 
 export interface OxLintDiagnostic {
@@ -19,15 +25,13 @@ export interface OxLintDiagnostic {
 }
 
 /**
+ * Run one code-service action. The payload travels to the backend as a JSON body.
+ *
  * @param {string} action
- * @param {unknown} payload
+ * @param {JsonValue} payload
  */
-export async function codeService(action: string, payload: unknown) {
-  const platform = getPlatform();
-  if (!platform.codeService) {
-    return null;
-  }
-  return platform.codeService(action, payload);
+export async function codeService(action: string, payload: JsonValue) {
+  return getPlatform().codeService(action, payload);
 }
 
 /**
@@ -36,21 +40,17 @@ export async function codeService(action: string, payload: unknown) {
  * @param {string} name
  */
 export async function locateDocument(name: string) {
-  const platform = getPlatform();
-  if (!platform.locateFile) {
-    return null;
-  }
-  return platform.locateFile(name);
+  return getPlatform().locateFile(name);
 }
 
 /** Schema returned by a plugin's `$prototype` module (loose superset used across panels). */
 export interface PluginSchema {
   type?: string;
   description?: string;
-  properties?: Record<string, unknown>;
+  properties?: JsonObject;
   required?: string[];
   returns?: { type?: string };
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /** Cache of plugin schemas keyed by "$src::$prototype". */
@@ -81,12 +81,12 @@ export async function fetchPluginSchema(
 
   try {
     const platform = getPlatform();
-    if (!platform.fetchPluginSchema) {
-      pluginSchemaCache.set(cacheKey, null);
-      return null;
-    }
     const base =
       !importedPath && state.documentPath ? `${location.origin}/${state.documentPath}` : undefined;
+    /* SAFETY: every platform answers with the plugin module's JSON Schema export, parsed from JSON,
+       Or null when it has none; PluginSchema is the all-optional, JSON-open view of that object. A
+       Platform without the method throws here, and the catch below caches null exactly as for a
+       Failed fetch. */
     const schema = (await platform.fetchPluginSchema(
       src,
       def.$prototype,
@@ -117,14 +117,14 @@ export function setLintMarkers(
   if (!monaco) {
     return;
   }
-  const markers = diagnostics
-    .map((d) => {
-      const label = d.labels?.[0];
-      if (!label) {
-        return null;
-      }
-      const { line, column, length } = label.span;
-      return {
+  const markers = diagnostics.flatMap((d) => {
+    const label = d.labels?.[0];
+    if (!label) {
+      return [];
+    }
+    const { line, column, length } = label.span;
+    return [
+      {
         code: d.url ? { target: monaco.Uri.parse(d.url), value: d.code } : d.code,
         endColumn: column + (length || 1),
         endLineNumber: line,
@@ -134,9 +134,12 @@ export function setLintMarkers(
         source: "oxlint",
         startColumn: column,
         startLineNumber: line,
-      };
-    })
-    .filter(Boolean);
+      },
+    ];
+  });
+  /* SAFETY: each marker is an IMarkerData except that `code` (and the object form's `value`) may be
+     Undefined when oxlint reports a diagnostic without a rule code; Monaco treats an undefined code
+     Exactly like an absent one. */
   monaco.editor.setModelMarkers(model, "oxlint", markers as editor.IMarkerData[]);
 }
 
@@ -149,7 +152,7 @@ export function getFunctionArgs(
   document: JxMutableNode | null | undefined,
 ): string[] {
   // Read parameters off any object-shaped def (covers legacy entries without $prototype).
-  const fromDef = (def: unknown): string[] | null => {
+  const fromDef = (def: JxDocumentValue | undefined): string[] | null => {
     if (!isJsonObject(def)) {
       return null;
     }
@@ -157,6 +160,9 @@ export function getFunctionArgs(
     if (!Array.isArray(params) || params.length === 0) {
       return null;
     }
+    /* SAFETY: a def's `parameters` array holds bare names or CEM parameter objects — the form the
+       Schema admits for Function, prototype and legacy handler entries alike — which is the
+       Element type paramNames reads. */
     return paramNames(params as JxFunctionDef["parameters"]);
   };
   if (editing.type === "def") {

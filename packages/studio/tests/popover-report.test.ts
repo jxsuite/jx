@@ -13,16 +13,20 @@ import {
   reportPopoverProblems,
 } from "../src/services/popover-report";
 import { createCommandRegistry } from "../src/commands/registry";
+import type { AnyCommand } from "../src/commands/registry";
+import type { CommandArgValues } from "../src/commands/command-args";
 import { makeContext } from "../src/commands/context";
 import { problems, resetNotifications } from "../src/services/notify";
+import { childList } from "../src/state";
 import { activeTab } from "../src/workspace/workspace";
-import type { JxElement, JxMutableNode } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxAttributeValue, JxElement, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+
+/** What a stored command's `report` is handed. */
+type ReportFacts = Parameters<NonNullable<AnyCommand["aiTool"]>["report"]>[0];
 
 /** A trigger plus a panel, with the panel's style under the test's control. */
-function docWith(
-  style: Record<string, unknown>,
-  panelAttrs: Record<string, unknown> = {},
-): JxElement {
+function docWith(style: JxStyle, panelAttrs: Record<string, JxAttributeValue> = {}): JxElement {
   return {
     children: [
       { attributes: { popovertarget: "menu", type: "button" }, tagName: "button" },
@@ -34,7 +38,16 @@ function docWith(
       },
     ],
     tagName: "div",
-  } as JxElement;
+  };
+}
+
+/** The element child at `index`, failing the test when that slot holds text or nothing. */
+function elementAt(node: JxMutableNode, index: number): JxMutableNode {
+  const child = childList(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new Error(`expected an element child at index ${index}`);
+  }
+  return child;
 }
 
 /** The conforming shape, so a test perturbs one thing and sees one finding. */
@@ -46,18 +59,18 @@ const GOOD = {
 
 /** Open a tab on `doc` so the commands have something to act on. */
 function openTab(doc: JxElement) {
-  return resetWorkspaceWithTab(doc as unknown as JxMutableNode, {
+  return resetWorkspaceWithTab(doc, {
     documentPath: "components/header.json",
   });
 }
 
 /** The panel node as it stands in the live document. */
 function panelNow(): JxMutableNode {
-  return (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
+  return elementAt(activeTab.value!.doc.document, 1);
 }
 
 /** Run one command by id against the live registry. */
-function run(id: string, args?: Record<string, unknown>) {
+function run(id: string, args?: CommandArgValues) {
   const registry = createCommandRegistry({
     getContext: () => makeContext({ document: { open: true } }),
   });
@@ -95,7 +108,7 @@ describe("reportPopoverProblems", () => {
     // Which panel an invoker should point at is the author's decision, so the finding is a
     // Sentence. A button that does not do what it says is worse than no button (ATAG B.3.2).
     const doc = docWith(GOOD);
-    (doc.children as JxElement[])[0]!.attributes!.popovertarget = "gone";
+    elementAt(doc, 0).attributes = { popovertarget: "gone", type: "button" };
     reportPopoverProblems(doc);
     const [rec] = forRule("target-missing");
     expect(rec).toBeDefined();
@@ -105,11 +118,11 @@ describe("reportPopoverProblems", () => {
   test("two popovers with the same defect file two records, not one", () => {
     // Keyed by rule AND path. A key that collapsed them would report one and drop the other.
     const doc = docWith({ ...GOOD, display: "flex" });
-    (doc.children as JxElement[]).push({
+    childList(doc).push({
       attributes: { id: "second", popover: "auto" },
       style: { ...GOOD, display: "block" },
       tagName: "nav",
-    } as JxElement);
+    });
     reportPopoverProblems(doc);
     expect(forRule("base-display")).toHaveLength(2);
   });
@@ -129,8 +142,9 @@ describe("reportPopoverProblems", () => {
     const rows = forRule("breakpoint-display");
     expect(rows).toHaveLength(2);
     expect(new Set(rows.map((p) => p.key)).size).toBe(2);
-    expect(rows.map((p) => p.message).join(" ")).toContain("@--md");
-    expect(rows.map((p) => p.message).join(" ")).toContain("@--lg");
+    const messages = rows.map((p) => p.message).join(" ");
+    expect(messages).toContain("@--md");
+    expect(messages).toContain("@--lg");
     // The count the command's toast reports agrees with the panel.
     expect(count).toBe(filed().length);
   });
@@ -157,12 +171,13 @@ describe("reportPopoverProblems — dialogs and invoker commands", () => {
         },
       ],
       tagName: "div",
-    } as JxElement);
-    const count = reportPopoverProblems(activeTab.value!.doc.document as unknown as JxElement);
+    });
+    const count = reportPopoverProblems(activeTab.value!.doc.document);
     const records = problems.filter((p) => p.source === POPOVER_PROBLEM_SOURCE);
     expect(count).toBe(records.length);
-    expect(records.map((p) => p.key)).toContain("dialog.dialog-display.children/1");
-    expect(records.map((p) => p.key)).toContain("dialog.modal-without-close.children/1");
+    const keys = records.map((p) => p.key);
+    expect(keys).toContain("dialog.dialog-display.children/1");
+    expect(keys).toContain("dialog.modal-without-close.children/1");
     for (const record of records) {
       if (record.key?.startsWith("dialog.")) {
         expect(record.action).toBeUndefined();
@@ -176,9 +191,11 @@ describe("document.repairPopoverDisplay", () => {
     const tab = openTab(docWith({ inset: "0", transition: "x", display: "flex" }));
     const before = tab.history.snapshots.length;
     void run("document.repairPopoverDisplay", { path: ["children", 1] });
-    const style = panelNow().style as Record<string, Record<string, string>>;
-    expect(style.display).toBeUndefined();
-    expect(style[":popover-open"]!.display).toBe("flex");
+    expect(panelNow().style).toEqual({
+      ":popover-open": { display: "flex" },
+      inset: "0",
+      transition: "x",
+    });
     expect(tab.history.snapshots.length - before).toBe(1);
   });
 
@@ -186,23 +203,19 @@ describe("document.repairPopoverDisplay", () => {
     // The open state is the author's intent; the base rule is the accident.
     openTab(docWith({ ":popover-open": { display: "grid" }, display: "flex" }));
     void run("document.repairPopoverDisplay", { path: ["children", 1] });
-    const style = panelNow().style as Record<string, Record<string, string>>;
-    expect(style.display).toBeUndefined();
-    expect(style[":popover-open"]!.display).toBe("grid");
+    expect(panelNow().style).toEqual({ ":popover-open": { display: "grid" } });
   });
 
   test("takes visibility with it — the ad-hoc second hiding mechanism", () => {
     openTab(docWith({ ...GOOD, display: "flex", visibility: "hidden" }));
     void run("document.repairPopoverDisplay", { path: ["children", 1] });
-    expect((panelNow().style as Record<string, unknown>).visibility).toBeUndefined();
+    expect(panelNow().style?.visibility).toBeUndefined();
   });
 
   test("clears a breakpoint-scoped display without deleting the breakpoint block", () => {
     openTab(docWith({ ...GOOD, "@--md": { display: "flex", gap: "1rem" } }));
     void run("document.repairPopoverDisplay", { path: ["children", 1] });
-    const md = (panelNow().style as Record<string, Record<string, string>>)["@--md"]!;
-    expect(md.display).toBeUndefined();
-    expect(md.gap).toBe("1rem");
+    expect(panelNow().style?.["@--md"]).toEqual({ gap: "1rem" });
   });
 
   test("refuses a popover with nothing to move", () => {
@@ -223,14 +236,14 @@ describe("document.repairPopoverInvoker", () => {
     // Not a conversion to <button>: the attributes are inert, so removing them changes no
     // Behaviour and tells the truth. Turning a link into a button changes the page.
     const doc = docWith(GOOD);
-    const link = (doc.children as JxElement[])[1]!.children as JxElement[];
-    link[0]!.attributes = { href: "/a", popovertarget: "menu", popovertargetaction: "hide" };
+    elementAt(elementAt(doc, 1), 0).attributes = {
+      href: "/a",
+      popovertarget: "menu",
+      popovertargetaction: "hide",
+    };
     openTab(doc);
     void run("document.repairPopoverInvoker", { path: ["children", 1, "children", 0] });
-    const attrs = (panelNow().children as JxMutableNode[])[0]!.attributes!;
-    expect(attrs.popovertarget).toBeUndefined();
-    expect(attrs.popovertargetaction).toBeUndefined();
-    expect(attrs.href).toBe("/a");
+    expect(elementAt(panelNow(), 0).attributes).toEqual({ href: "/a" });
   });
 });
 
@@ -260,16 +273,16 @@ describe("document.checkPopovers", () => {
   test("the assistant's report is the filed list as data, with a count or a clean sentence", () => {
     // `check_popovers` is this record; the report reads the Problems store by this source.
     const command = popoverCommands().find((c) => c.id === "document.checkPopovers")!;
-    const facts = { after: makeContext(), args: undefined as never, before: makeContext() };
+    /* SAFETY: `popoverCommands` erases every record to `AnyCommand`, whose `report` types `args`
+       as `never`; `document.checkPopovers` declares no argument record and its `report` takes no
+       parameter at all, so the empty record here is never read. */
+    const facts = { after: makeContext(), args: {}, before: makeContext() } as ReportFacts;
     openTab(docWith({ ...GOOD, display: "flex" }));
     void run("document.checkPopovers");
-    const report = command.aiTool!.report(facts) as {
-      data: { message: string; action?: string }[];
-      summary: string;
-    };
-    expect(report.summary).toMatch(/^Filed \d+ popover problems? in Problems\.$/);
-    expect(report.data.length).toBe(filed().length);
-    expect(report.data[0]!.message).toBe(filed()[0]!.message);
+    expect(command.aiTool!.report(facts)).toMatchObject({
+      data: filed().map((p) => ({ message: p.message })),
+      summary: expect.stringMatching(/^Filed \d+ popover problems? in Problems\.$/),
+    });
 
     openTab(docWith(GOOD));
     void run("document.checkPopovers");

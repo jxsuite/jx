@@ -79,7 +79,7 @@ export function close(host: HTMLElement, returnValue?: string): void {
 
 /** The platform's `toggle` on the inner dialog: the one source of truth for `open`. */
 export function onToggle(state: DialogState, event: Event): void {
-  state.open = (event as { newState?: string }).newState === "open";
+  state.open = "newState" in event && event.newState === "open";
 }
 
 /**
@@ -106,7 +106,7 @@ export function onNativeClose(state: DialogState, event: Event): void {
  */
 export function onCommand(_state: DialogState, event: Event): void {
   const host = hostOf(event);
-  const command = (event as { command?: string }).command ?? "";
+  const command = "command" in event ? event.command : undefined;
   if (!host) {
     return;
   }

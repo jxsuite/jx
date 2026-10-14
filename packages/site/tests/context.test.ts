@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { localeLabel } from "@jxsuite/schema/locale";
 import { injectContext } from "../src/context.ts";
 import type { SiteRoute } from "../src/context.ts";
+import type { JxDocument } from "@jxsuite/schema/types";
 
 describe("injectContext", () => {
   const baseProject = {
@@ -20,60 +21,56 @@ describe("injectContext", () => {
   };
 
   test("injects $site context into state", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     injectContext(doc, baseProject, baseRoute);
-    expect(doc.state.$site.name).toBe("Test Site");
-    expect(doc.state.$site.url).toBe("https://example.com");
+    expect(doc.state?.$site).toEqual({ name: "Test Site", url: "https://example.com" });
   });
 
   test("injects $page context into state", () => {
-    const doc: Record<string, any> = { title: "About Us" };
+    const doc: JxDocument = { title: "About Us" };
     injectContext(doc, baseProject, baseRoute);
-    expect(doc.state.$page.url).toBe("/about");
-    expect(doc.state.$page.title).toBe("About Us");
-    expect(doc.state.$page.params).toEqual({});
+    expect(doc.state?.$page).toEqual({ params: {}, title: "About Us", url: "/about" });
   });
 
   test("uses project name as fallback page title", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     injectContext(doc, baseProject, baseRoute);
-    expect(doc.state.$page.title).toBe("Test Site");
+    expect(doc.state?.$page).toMatchObject({ title: "Test Site" });
   });
 
   test("uses _pageTitle as intermediate fallback", () => {
-    const doc: Record<string, any> = { _pageTitle: "Layout Title" };
+    const doc: JxDocument = { _pageTitle: "Layout Title" };
     injectContext(doc, baseProject, baseRoute);
-    expect(doc.state.$page.title).toBe("Layout Title");
+    expect(doc.state?.$page).toMatchObject({ title: "Layout Title" });
   });
 
   test("includes route path params", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     const route = {
       _pathParams: { slug: "hello-world" },
       urlPattern: "/blog/:slug",
     };
     injectContext(doc, baseProject, route);
-    expect(doc.state.$page.params).toEqual({ slug: "hello-world" });
+    expect(doc.state?.$page).toMatchObject({ params: { slug: "hello-world" } });
   });
 
   test("merges project state into page state (page wins)", () => {
-    const doc: Record<string, any> = { state: { count: 42 } };
+    const doc: JxDocument = { state: { count: 42 } };
     const project = { ...baseProject, state: { count: 0, theme: "dark" } };
     injectContext(doc, project, baseRoute);
-    expect(doc.state.count).toBe(42);
-    expect(doc.state.theme).toBe("dark");
+    expect(doc.state).toMatchObject({ count: 42, theme: "dark" });
   });
 
   test("does not overwrite $site/$page with project state", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     const project = { ...baseProject, state: { $page: "bad", $site: "bad" } };
     injectContext(doc, project, baseRoute);
-    expect(doc.state.$site).not.toBe("bad");
-    expect(doc.state.$page).not.toBe("bad");
+    expect(doc.state?.$site).not.toBe("bad");
+    expect(doc.state?.$page).not.toBe("bad");
   });
 
   test("merges project $media into page $media", () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       $media: { "--sm": "(min-width: 640px)" },
     };
     const project = {
@@ -81,12 +78,11 @@ describe("injectContext", () => {
       $media: { "--lg": "(min-width: 1024px)" },
     };
     injectContext(doc, project, baseRoute);
-    expect(doc.$media["--sm"]).toBe("(min-width: 640px)");
-    expect(doc.$media["--lg"]).toBe("(min-width: 1024px)");
+    expect(doc.$media).toEqual({ "--lg": "(min-width: 1024px)", "--sm": "(min-width: 640px)" });
   });
 
   test("page $media overrides project $media on conflict", () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       $media: { "--md": "(min-width: 800px)" },
     };
     const project = {
@@ -94,11 +90,11 @@ describe("injectContext", () => {
       $media: { "--md": "(min-width: 768px)" },
     };
     injectContext(doc, project, baseRoute);
-    expect(doc.$media["--md"]).toBe("(min-width: 800px)");
+    expect(doc.$media).toEqual({ "--md": "(min-width: 800px)" });
   });
 
   test("merges project imports into page imports", () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       imports: { MyClass: "./local.class.json" },
     };
     const project = {
@@ -106,18 +102,20 @@ describe("injectContext", () => {
       imports: { Parser: "@jxsuite/parser/Parser.class.json" },
     };
     injectContext(doc, project, baseRoute);
-    expect(doc.imports.MyClass).toBe("./local.class.json");
-    expect(doc.imports.Parser).toBe("@jxsuite/parser/Parser.class.json");
+    expect(doc.imports).toEqual({
+      MyClass: "./local.class.json",
+      Parser: "@jxsuite/parser/Parser.class.json",
+    });
   });
 
   test("page imports win on collision", () => {
-    const doc: any = { imports: { Parser: "./my-parser.class.json" } };
+    const doc: JxDocument = { imports: { Parser: "./my-parser.class.json" } };
     const project = {
       ...baseProject,
       imports: { Parser: "@jxsuite/parser/Parser.class.json" },
     };
     injectContext(doc, project, baseRoute);
-    expect(doc.imports.Parser).toBe("./my-parser.class.json");
+    expect(doc.imports).toEqual({ Parser: "./my-parser.class.json" });
   });
 
   test("merges project $elements into page $elements (union, dedup)", () => {
@@ -145,35 +143,32 @@ describe("injectContext", () => {
   });
 
   test("creates state if not present on doc", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     injectContext(doc, baseProject, baseRoute);
-    expect(doc.state).toBeDefined();
-    expect(doc.state.$site).toBeDefined();
-    expect(doc.state.$page).toBeDefined();
+    expect(Object.keys(doc.state ?? {})).toEqual(["$site", "$page"]);
   });
 
   test("spreads project state into $site", () => {
     const project = { ...baseProject, state: { analytics: "GA-123" } };
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     injectContext(doc, project, baseRoute);
-    expect(doc.state.$site.analytics).toBe("GA-123");
+    expect(doc.state?.$site).toMatchObject({ analytics: "GA-123" });
   });
 
   test("defaults $site.name to 'Jx Site' when project name missing", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     injectContext(doc, {}, baseRoute);
-    expect(doc.state.$site.name).toBe("Jx Site");
+    expect(doc.state?.$site).toMatchObject({ name: "Jx Site" });
   });
 
   test("injects project $elements when page has none", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     const project = {
       ...baseProject,
       $elements: [{ $ref: "./components/card.json" }],
     };
     injectContext(doc, project, baseRoute);
-    expect(doc.$elements).toHaveLength(1);
-    expect(doc.$elements[0].$ref).toBe("./components/card.json");
+    expect(doc.$elements).toEqual([{ $ref: "./components/card.json" }]);
   });
 
   /*
@@ -182,37 +177,38 @@ describe("injectContext", () => {
    * only way to build one is a hardcoded list of URLs, which goes stale silently.
    */
   test("exposes the page's translation set to the template", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     const i18n = {
       defaultLocale: "en",
       locales: ["en", "fr-CA", "ar"],
       routing: "prefix-always" as const,
     };
-    injectContext(doc, baseProject, { urlPattern: "/fr-ca/about/" } as SiteRoute, null, i18n, [
+    injectContext(doc, baseProject, { urlPattern: "/fr-ca/about/" }, null, i18n, [
       { locale: "ar", urlPattern: "/ar/about/" },
       { locale: "en", urlPattern: "/about/" },
       { locale: "fr-CA", urlPattern: "/fr-ca/about/" },
     ]);
-    expect(doc.state.$page.alternates).toEqual([
-      { code: "ar", current: false, dir: "rtl", label: localeLabel("ar"), url: "/ar/about/" },
-      { code: "en", current: false, dir: "ltr", label: localeLabel("en"), url: "/about/" },
-      {
-        code: "fr-CA",
-        current: true,
-        dir: "ltr",
-        label: localeLabel("fr-CA"),
-        url: "/fr-ca/about/",
-      },
-    ]);
-    // The autonym, not the name in the site's language: a menu reading "French" is unreadable to
-    // Exactly the person looking for it.
-    expect(doc.state.$page.alternates[1].label).toBe("English");
+    /* The autonym, not the name in the site's language: a menu reading "French" is unreadable to
+       exactly the person looking for it. So the English entry says "English" in full. */
+    expect(doc.state?.$page).toMatchObject({
+      alternates: [
+        { code: "ar", current: false, dir: "rtl", label: localeLabel("ar"), url: "/ar/about/" },
+        { code: "en", current: false, dir: "ltr", label: "English", url: "/about/" },
+        {
+          code: "fr-CA",
+          current: true,
+          dir: "ltr",
+          label: localeLabel("fr-CA"),
+          url: "/fr-ca/about/",
+        },
+      ],
+    });
   });
 
   test("no translation set, no key — a monolingual page carries nothing extra", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     injectContext(doc, baseProject, baseRoute);
-    expect("alternates" in doc.state.$page).toBe(false);
+    expect(doc.state?.$page).not.toHaveProperty("alternates");
   });
 
   /*
@@ -221,18 +217,23 @@ describe("injectContext", () => {
    * offer the reader a link to the page they are already on.
    */
   test("current follows the route, not an overriding $lang", () => {
-    const doc: Record<string, any> = { $lang: "de" };
+    const doc: JxDocument = { $lang: "de" };
     const i18n = {
       defaultLocale: "en",
       locales: ["en", "fr-CA"],
       routing: "prefix-except-default" as const,
     };
-    injectContext(doc, baseProject, { urlPattern: "/about/" } as SiteRoute, null, i18n, [
+    injectContext(doc, baseProject, { urlPattern: "/about/" }, null, i18n, [
       { locale: "en", urlPattern: "/about/" },
       { locale: "fr-CA", urlPattern: "/fr-ca/about/" },
     ]);
-    expect(doc.state.$page.locale).toBe("de");
-    expect(doc.state.$page.alternates.find((a: { current: boolean }) => a.current).code).toBe("en");
+    expect(doc.state?.$page).toMatchObject({
+      alternates: [
+        { code: "en", current: true },
+        { code: "fr-CA", current: false },
+      ],
+      locale: "de",
+    });
   });
 });
 
@@ -240,33 +241,33 @@ describe("injectContext import rebasing", () => {
   const route: SiteRoute = { sourcePath: "/site/pages/blog/hello.json", urlPattern: "/blog/hello" };
 
   test("a relative project import is handed to the rebaser", () => {
-    const doc: Record<string, any> = {};
-    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } } as any, route, (src, r) => {
+    const doc: JxDocument = {};
+    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } }, route, (src, r) => {
       expect(src).toBe("./lib/helpers.ts");
       expect(r.sourcePath).toBe("/site/pages/blog/hello.json");
       return "./../../lib/helpers.ts";
     });
-    expect(doc.imports.helpers).toBe("./../../lib/helpers.ts");
+    expect(doc.imports).toEqual({ helpers: "./../../lib/helpers.ts" });
   });
 
   test("bare and npm specifiers pass through unrebased", () => {
-    const doc: Record<string, any> = {};
+    const doc: JxDocument = {};
     const rebase = () => "SHOULD NOT HAPPEN";
-    injectContext(doc, { imports: { lit: "lit", pkg: "npm:thing" } } as any, route, rebase);
+    injectContext(doc, { imports: { lit: "lit", pkg: "npm:thing" } }, route, rebase);
     expect(doc.imports).toEqual({ lit: "lit", pkg: "npm:thing" });
   });
 
   test("without a rebaser the authored path is used as written", () => {
     /* A live renderer serves the project at a root where `./lib/helpers.ts` already means what it
        says, so there is nothing to rebase and nothing to inject. */
-    const doc: Record<string, any> = {};
-    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } } as any, route);
-    expect(doc.imports.helpers).toBe("./lib/helpers.ts");
+    const doc: JxDocument = {};
+    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } }, route);
+    expect(doc.imports).toEqual({ helpers: "./lib/helpers.ts" });
   });
 
   test("a page import wins over the project's", () => {
-    const doc: Record<string, any> = { imports: { helpers: "./own.ts" } };
-    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } } as any, route, () => "rebased");
-    expect(doc.imports.helpers).toBe("./own.ts");
+    const doc: JxDocument = { imports: { helpers: "./own.ts" } };
+    injectContext(doc, { imports: { helpers: "./lib/helpers.ts" } }, route, () => "rebased");
+    expect(doc.imports).toEqual({ helpers: "./own.ts" });
   });
 });

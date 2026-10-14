@@ -27,7 +27,7 @@
  * already holds, so there is nothing to withhold.
  */
 
-import { getNodeAtPath, nodeLabel, rightPanel } from "../store";
+import { getNodeAtPath, nodeLabel, requireShellRef, rightPanel } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
@@ -74,7 +74,7 @@ let _dock: InspectorDockHandle | null = null;
  * reports whether the assistant is showing, and a plain field would leave that button lying on the
  * welcome screen — which is the whole class of bug `shell.ts` was split out to end.
  */
-const _detached = reactive({ tab: DEFAULT_INSPECTOR_TAB as InspectorTabId });
+const _detached = reactive({ tab: DEFAULT_INSPECTOR_TAB });
 
 /**
  * Hand one tab's body host to its owner, once, and never let that stop the dock.
@@ -158,7 +158,7 @@ function tabViews(selected: InspectorTabId): InspectorTabView[] {
  */
 export function mount(ctx: RightPanelCtx) {
   _dock = mountInspectorDock(
-    rightPanel,
+    requireShellRef(rightPanel, "right-panel"),
     values(),
     { selectTab: (id) => selectFromStrip(id) },
     { onBody: (tabId, host) => bindBody(ctx, tabId, host) },

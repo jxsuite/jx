@@ -32,31 +32,28 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { documents as kitDocuments } from "@jxsuite/ui/documents";
-
-type Json = Record<string, unknown>;
+import { documents } from "@jxsuite/ui/documents";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const dir = resolve(import.meta.dir, "../src/surfaces");
 const surfaces = readdirSync(dir)
   .filter((name) => name.endsWith(".json"))
   .toSorted();
 
-const isObject = (value: unknown): value is Json =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * The object nodes under `value`, depth first, never descending into a `style` block.
  *
- * @yields {Json} Each object node, `value` itself first when it is one.
+ * @yields {JsonObject} Each object node, `value` itself first when it is one.
  */
-function* nodesUnder(value: unknown): Generator<Json> {
+function* nodesUnder(value: JsonValue | undefined): Generator<JsonObject> {
   if (Array.isArray(value)) {
     for (const item of value) {
       yield* nodesUnder(item);
     }
     return;
   }
-  if (!isObject(value)) {
+  if (!isJsonObject(value)) {
     return;
   }
   yield value;
@@ -70,11 +67,12 @@ function* nodesUnder(value: unknown): Generator<Json> {
 /**
  * Every nested rule of a style block, with the selector it is reached by.
  *
- * @yields {[string, Json]} The selector (every key from the block down, space-joined) and the rule.
+ * @yields {[string, JsonObject]} The selector (every key from the block down, space-joined) and the
+ *   rule.
  */
-function* rulesOf(block: Json, selector = ""): Generator<[string, Json]> {
+function* rulesOf(block: JsonObject, selector = ""): Generator<[string, JsonObject]> {
   for (const [key, value] of Object.entries(block)) {
-    if (isObject(value)) {
+    if (isJsonObject(value)) {
       const nested = `${selector} ${key}`;
       yield [nested, value];
       yield* rulesOf(value, nested);
@@ -85,14 +83,16 @@ function* rulesOf(block: Json, selector = ""): Generator<[string, Json]> {
 /** The part name each comma-separated piece of a selector ends on, where it names one. */
 function lastParts(selector: string): string[] {
   return selector.split(",").flatMap((piece) => {
-    const parts = [...piece.matchAll(/\[part="([^"]+)"\]/g)].map((m) => m[1] as string);
+    const parts = [...piece.matchAll(/\[part="([^"]+)"\]/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    );
     const last = parts.at(-1);
     return last === undefined ? [] : [last];
   });
 }
 
 /** Whether a `contain` value includes layout containment (`strict` and `content` both do). */
-const containsLayout = (value: unknown): boolean =>
+const containsLayout = (value: JsonValue | undefined): boolean =>
   /\b(layout|strict|content)\b/.test(String(value ?? ""));
 
 /**
@@ -102,11 +102,11 @@ const containsLayout = (value: unknown): boolean =>
  */
 function baselinelessControls(): Map<string, Set<string>> {
   const found = new Map<string, Set<string>>();
-  for (const [tag, doc] of Object.entries(kitDocuments)) {
-    const style = isObject(doc.style) ? doc.style : {};
+  for (const [tag, doc] of Object.entries(documents)) {
+    const style = isJsonObject(doc.style) ? doc.style : {};
     for (const [key, block] of Object.entries(style)) {
       const m = /^&(?:\[data-size="(\w+)"\])? > \[part="control"\]$/.exec(key);
-      if (!m || !isObject(block) || !containsLayout(block["contain"])) {
+      if (!m || !isJsonObject(block) || !containsLayout(block["contain"])) {
         continue;
       }
       const sizes = found.get(tag) ?? new Set<string>();
@@ -120,17 +120,17 @@ function baselinelessControls(): Map<string, Set<string>> {
 const BASELINELESS = baselinelessControls();
 
 /** The size a surface declares for a kit control, when it is a literal. */
-function sizeOf(node: Json): string | undefined {
-  const props = isObject(node["$props"]) ? node["$props"] : {};
-  const attributes = isObject(node["attributes"]) ? node["attributes"] : {};
+function sizeOf(node: JsonObject): string | undefined {
+  const props = isJsonObject(node["$props"]) ? node["$props"] : {};
+  const attributes = isJsonObject(node["attributes"]) ? node["attributes"] : {};
   const size = props["size"] ?? attributes["size"];
-  return typeof size === "string" ? size : undefined;
+  return isString(size) ? size : undefined;
 }
 
 /** Whether a node is a kit control that exports no baseline. */
-function isBaselineless(node: Json): boolean {
+function isBaselineless(node: JsonObject): boolean {
   const { tagName } = node;
-  const sizes = typeof tagName === "string" ? BASELINELESS.get(tagName) : undefined;
+  const sizes = isString(tagName) ? BASELINELESS.get(tagName) : undefined;
   if (!sizes) {
     return false;
   }
@@ -138,13 +138,14 @@ function isBaselineless(node: Json): boolean {
 }
 
 /** The part names a node carries (the attribute is a space-separated list). */
-function partsOf(node: Json): string[] {
-  const attributes = isObject(node["attributes"]) ? node["attributes"] : {};
-  return typeof attributes["part"] === "string" ? attributes["part"].split(/\s+/) : [];
+function partsOf(node: JsonObject): string[] {
+  const attributes = isJsonObject(node["attributes"]) ? node["attributes"] : {};
+  const { part } = attributes;
+  return isString(part) ? part.split(/\s+/) : [];
 }
 
 /** The parts a surface's own sheet renders as `display: contents`. */
-function contentsParts(style: Json): Set<string> {
+function contentsParts(style: JsonObject): Set<string> {
   const parts = new Set<string>();
   for (const [selector, rule] of rulesOf(style)) {
     if (rule["display"] === "contents") {
@@ -156,30 +157,30 @@ function contentsParts(style: Json): Set<string> {
   return parts;
 }
 
-const aligned = (value: unknown): boolean => String(value ?? "").includes("baseline");
+const aligned = (value: JsonValue | undefined): boolean => String(value ?? "").includes("baseline");
 
 /**
  * The boxes a container lays out as its own items: a mapped array's `map` renders straight into the
  * parent, and a node that is `display: contents` (by inline style or by its part's rule) hands its
  * children up, a `$switch` container's children being its cases.
  */
-function flexItems(container: Json, contents: Set<string>): Json[] {
-  const items: Json[] = [];
-  const visit = (value: unknown): void => {
+function flexItems(container: JsonObject, contents: Set<string>): JsonObject[] {
+  const items: JsonObject[] = [];
+  const visit = (value: JsonValue | undefined): void => {
     if (Array.isArray(value)) {
       for (const item of value) {
         visit(item);
       }
       return;
     }
-    if (!isObject(value)) {
+    if (!isJsonObject(value)) {
       return;
     }
     if (value["$prototype"] === "Array") {
       visit(value["map"]);
       return;
     }
-    const style = isObject(value["style"]) ? value["style"] : {};
+    const style = isJsonObject(value["style"]) ? value["style"] : {};
     const passesThrough =
       style["display"] === "contents" || partsOf(value).some((part) => contents.has(part));
     if (!passesThrough) {
@@ -187,7 +188,7 @@ function flexItems(container: Json, contents: Set<string>): Json[] {
       return;
     }
     visit(value["children"]);
-    if (isObject(value["cases"])) {
+    if (isJsonObject(value["cases"])) {
       visit(Object.values(value["cases"]));
     }
   };
@@ -196,7 +197,7 @@ function flexItems(container: Json, contents: Set<string>): Json[] {
 }
 
 /** A readable name for a node: its tag, size and part. */
-function nameOf(node: Json): string {
+function nameOf(node: JsonObject): string {
   const size = sizeOf(node);
   const parts = partsOf(node);
   const sized = size === undefined ? "" : `(${size})`;
@@ -208,10 +209,10 @@ function nameOf(node: Json): string {
  * Every baseline-aligned container in a surface, by the part (or inline style) that aligns it,
  * crossed with the flex items it holds that have no baseline.
  */
-function offenders(doc: Json): string[] {
-  const style = isObject(doc["style"]) ? doc["style"] : {};
+function offenders(doc: JsonObject): string[] {
+  const style = isJsonObject(doc["style"]) ? doc["style"] : {};
   const contents = contentsParts(style);
-  const containers: [string, Json][] = [];
+  const containers: [string, JsonObject][] = [];
   for (const [selector, rule] of rulesOf(style)) {
     if (!aligned(rule["alignItems"]) && !aligned(rule["placeItems"])) {
       continue;
@@ -226,7 +227,7 @@ function offenders(doc: Json): string[] {
   }
   for (const node of nodesUnder(doc)) {
     const inline = node["style"];
-    if (typeof node["tagName"] === "string" && isObject(inline) && aligned(inline["alignItems"])) {
+    if (isString(node["tagName"]) && isJsonObject(inline) && aligned(inline["alignItems"])) {
       containers.push([`inline style on ${nameOf(node)}`, node]);
     }
   }
@@ -237,7 +238,23 @@ function offenders(doc: Json): string[] {
   );
 }
 
-const read = (name: string): Json => JSON.parse(readFileSync(join(dir, name), "utf8")) as Json;
+/** A surface document, refused unless its top level is a JSON object. */
+function read(name: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(join(dir, name), "utf8"));
+  if (!isJsonObject(parsed)) {
+    throw new Error(`${name} is not a JSON object`);
+  }
+  return parsed;
+}
+
+/** A nested object of `doc` that the test is about to edit, refused unless it is one. */
+function objectAt(doc: JsonObject, key: string): JsonObject {
+  const value = doc[key];
+  if (!isJsonObject(value)) {
+    throw new Error(`expected an object at ${JSON.stringify(key)}`);
+  }
+  return value;
+}
 
 /**
  * The tags whose UA sheet gives them a block margin. A row's item left on one is the same defect as
@@ -260,11 +277,17 @@ const UA_BLOCK_MARGIN = new Set([
   "ul",
 ]);
 
+/** An item's block-start and block-end margins, each absent when nothing sets it. */
+interface BlockMargins {
+  start?: string;
+  end?: string;
+}
+
 /** A rule's own block-start and block-end margins, reading the shorthands the surfaces use. */
-function blockMargins(rule: Json): { start?: string; end?: string } {
-  const out: { start?: string; end?: string } = {};
+function blockMargins(rule: JsonObject): BlockMargins {
+  const out: BlockMargins = {};
   for (const [property, value] of Object.entries(rule)) {
-    if (typeof value !== "string") {
+    if (!isString(value)) {
       continue;
     }
     const sides = value.trim().split(/\s+/);
@@ -288,7 +311,7 @@ const isZero = (value: string | undefined): boolean =>
   value === undefined || /^0(\D|$)/.test(value.trim());
 
 /** Whether a rule lays its items out as a flex ROW, the one axis a block margin can spoil. */
-function isFlexRow(rule: Json): boolean {
+function isFlexRow(rule: JsonObject): boolean {
   return (
     /flex/.test(String(rule["display"] ?? "")) &&
     !String(rule["flexDirection"] ?? "row").startsWith("column")
@@ -303,11 +326,11 @@ function isFlexRow(rule: Json): boolean {
  * so `[part="section-header"] [part="section-title"]` overriding `[part="section-title"]` reads the
  * way the cascade reads it.
  */
-function marginOffenders(doc: Json): string[] {
-  const style = isObject(doc["style"]) ? doc["style"] : {};
+function marginOffenders(doc: JsonObject): string[] {
+  const style = isJsonObject(doc["style"]) ? doc["style"] : {};
   const contents = contentsParts(style);
   const centred = new Set<string>();
-  const margins = new Map<string, { start?: string; end?: string }>();
+  const margins = new Map<string, BlockMargins>();
   for (const [selector, rule] of rulesOf(style)) {
     const parts = lastParts(selector);
     if (
@@ -331,11 +354,11 @@ function marginOffenders(doc: Json): string[] {
       continue;
     }
     for (const item of flexItems(node, contents)) {
-      const margin: { start?: string; end?: string } = {};
+      const margin: BlockMargins = {};
       for (const part of partsOf(item)) {
         Object.assign(margin, margins.get(part));
       }
-      if (isObject(item["style"])) {
+      if (isJsonObject(item["style"])) {
         Object.assign(margin, blockMargins(item["style"]));
       }
       const untouchedUa =
@@ -369,8 +392,15 @@ describe("kit controls without a baseline", () => {
     /* Preferences' key row is the case this file exists for, put back the way it shipped: the
        rows come from a mapped array, and `Reset` sits in a `display: contents` `$switch`. */
     const doc = read("preferences.json");
-    const style = doc["style"] as Json;
-    style['& [part="key"]'] = { ...(style['& [part="key"]'] as Json), alignItems: "baseline" };
+    const style = objectAt(doc, "style");
+    // The sheet has no bare `[part="key"]` rule today, so this usually starts from nothing.
+    const keyRule: JsonObject = {};
+    const existing = style['& [part="key"]'];
+    if (isJsonObject(existing)) {
+      Object.assign(keyRule, existing);
+    }
+    keyRule["alignItems"] = "baseline";
+    style['& [part="key"]'] = keyRule;
     expect(offenders(doc)).toEqual([
       '[part="key"] aligns jx-action-button(sm)[change] on a baseline it does not have',
       '[part="key"] aligns jx-action-button(sm)[reset] on a baseline it does not have',
@@ -378,7 +408,7 @@ describe("kit controls without a baseline", () => {
   });
 
   test("an inline baseline style and a contents part are read too", () => {
-    const doc: Json = {
+    const doc: JsonObject = {
       tagName: "div",
       style: { '& [part="wrap"]': { display: "contents" } },
       children: [
@@ -424,7 +454,7 @@ describe("a centred row centres what a reader sees", () => {
        the header had nothing to centre, because the margin box already filled the line. */
     const doc = read("welcome.json");
     expect(marginOffenders(doc)).toEqual([]);
-    const style = doc["style"] as Json;
+    const style = objectAt(doc, "style");
     delete style['& [part="section-header"] [part="section-title"]'];
     expect(marginOffenders(doc)).toEqual([
       "h2[section-title] carries an uneven block margin (0 / var(--jx-space-3)) in a centred row",
@@ -432,7 +462,7 @@ describe("a centred row centres what a reader sees", () => {
   });
 
   test("a UA block margin counts, and a column's cross axis does not", () => {
-    const row: Json = {
+    const row: JsonObject = {
       tagName: "div",
       style: {
         '& [part="row"]': { display: "flex", alignItems: "center" },
@@ -456,7 +486,7 @@ describe("a centred row centres what a reader sees", () => {
   });
 
   test("an even margin is not an offender, however it is spelled", () => {
-    const doc: Json = {
+    const doc: JsonObject = {
       tagName: "div",
       style: {
         '& [part="row"]': { display: "flex", alignItems: "center" },

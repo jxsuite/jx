@@ -17,6 +17,7 @@
  * between runs is a CI diff nobody can review.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { formatChord, normalizeChord } from "./keymap";
 import { CATEGORIES } from "./levels";
 import type { KeybindingOverrides } from "./keymap";
@@ -83,7 +84,7 @@ function chordsOf(command: AnyCommand): string[] {
   if (!raw) {
     return [];
   }
-  return (typeof raw === "string" ? [raw] : [...raw]).map((chord) => normalizeChord(chord));
+  return (isString(raw) ? [raw] : [...raw]).map((chord) => normalizeChord(chord));
 }
 
 /**

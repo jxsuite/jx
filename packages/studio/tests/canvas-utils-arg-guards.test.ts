@@ -24,8 +24,10 @@ import {
   openTab,
   splitRight,
 } from "../src/workspace/workspace";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { CommandContext } from "../src/commands/context";
 import type { CommandRegistry } from "../src/commands/registry";
+import { PARAGRAPH_DOC } from "./shared-fixtures";
 
 const { canvasViewCommands } = await import("../src/canvas/canvas-utils");
 
@@ -46,17 +48,12 @@ const deps = {
 let ctx: CommandContext = makeContext();
 let registry: CommandRegistry;
 
-const DOC = {
-  children: [{ tagName: "p", textContent: "Hi" }],
-  tagName: "div",
-};
-
 /** One open tab, replacing whatever was open, with the document and path a test needs. */
-function openDoc(opts: { document?: Record<string, unknown>; documentPath?: string } = {}) {
+function openDoc(opts: { document?: JxMutableNode; documentPath?: string } = {}) {
   closeAllTabs();
   return openTab({
     capabilities: { modes: ["edit", "design"] },
-    document: opts.document ?? structuredClone(DOC),
+    document: opts.document ?? structuredClone(PARAGRAPH_DOC),
     documentPath: opts.documentPath ?? "pages/index.json",
     id: "t1",
   });
@@ -66,7 +63,7 @@ function openDoc(opts: { document?: Record<string, unknown>; documentPath?: stri
 function openWithMedia() {
   return openDoc({
     document: {
-      ...structuredClone(DOC),
+      ...structuredClone(PARAGRAPH_DOC),
       $media: { lg: "(min-width: 1024px)", md: "(min-width: 768px)" },
     },
   });
@@ -172,7 +169,7 @@ describe("canvas.setTestProp", () => {
   /** A component document declaring one prop. */
   const withState = () =>
     openDoc({
-      document: { ...structuredClone(DOC), state: { count: 0, label: "Hi" } },
+      document: { ...structuredClone(PARAGRAPH_DOC), state: { count: 0, label: "Hi" } },
       documentPath: "components/counter.json",
     });
 

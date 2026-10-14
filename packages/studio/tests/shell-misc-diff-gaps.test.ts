@@ -37,8 +37,11 @@ import { resetCollabForTests, setCollabEnabled } from "../src/collab/collab-sess
 import { collabState } from "../src/collab/collab-state";
 import type { MockPlatformState } from "./harness";
 import type { EditorKind } from "../src/commands/context";
+import type { CommandRegistry } from "../src/commands/registry";
+import type { StudioCommandHooks } from "../src/editor/shortcuts";
+import type { saveFile } from "../src/files/file-ops";
+import type { JxPath } from "../src/state";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import type { StudioPlatform } from "../src/types";
 
 mountOverlayLayers(document.body);
 initLayers();
@@ -146,7 +149,7 @@ async function waitFor(cond: () => boolean, tries = 60): Promise<void> {
 describe("the reference control reads a collection once", () => {
   test("a second field drawn while the first read is still in flight starts no second read", async () => {
     const { state } = installMockPlatform(
-      { formatAction: mockFormatAction } as unknown as Partial<StudioPlatform>,
+      { formatAction: mockFormatAction },
       {
         "content/authors/ada.md": "---\ntitle: Ada\n---\n",
         "content/authors/grace.md": "---\ntitle: Grace\n---\n",
@@ -182,7 +185,7 @@ function publishBodyText(): string {
   return (
     document
       .querySelector('#layer-modal jx-dialog[part="publish"]')
-      ?.textContent?.replaceAll(/\s+/g, " ") ?? ""
+      ?.textContent.replaceAll(/\s+/g, " ") ?? ""
   );
 }
 
@@ -208,7 +211,7 @@ describe("the publish panel's Refresh button", () => {
     });
     // The credential was revoked since the panel was seeded: the refresh must find that out.
     const cfConnection = mock(() => Promise.resolve(null));
-    installMockPlatform({ cfApi: mock(async () => ({})), cfConnection } as never);
+    installMockPlatform({ cfApi: mock(async () => ({})), cfConnection });
 
     seedPublishConnected({
       deployment: {
@@ -229,8 +232,9 @@ describe("the publish panel's Refresh button", () => {
     await flush();
 
     expect(cfConnection).toHaveBeenCalledTimes(1);
-    expect(publishBodyText()).not.toContain("Connected to Pages project");
-    expect(publishBodyText()).toContain("Cloudflare API token");
+    const refreshed = publishBodyText();
+    expect(refreshed).not.toContain("Connected to Pages project");
+    expect(refreshed).toContain("Cloudflare API token");
   });
 });
 
@@ -252,7 +256,7 @@ describe("the project.json bind effect", () => {
     const alpha = { name: "Alpha" };
     resetStudioState({ projectConfig: alpha });
     const tab = openTab({
-      document: alpha as unknown as Record<string, unknown>,
+      document: alpha,
       documentPath: PROJECT_CONFIG_PATH,
       id: PROJECT_CONFIG_PATH,
     });
@@ -264,14 +268,14 @@ describe("the project.json bind effect", () => {
        nobody adopted. */
     resetProjectConfigDocument();
     const stateBefore = projectState!.projectConfig;
-    tab.doc.document = { name: "Beta" } as unknown as JxMutableNode;
+    tab.doc.document = { name: "Beta" };
     expect(projectState!.projectConfig).toBe(stateBefore);
-    expect((projectState!.projectConfig as { name?: string } | null)?.name).not.toBe("Beta");
+    expect(projectState!.projectConfig?.name).not.toBe("Beta");
 
     // Re-bound, the very same swap DOES land — the effect was live all along.
     projectConfigDocument();
-    tab.doc.document = { name: "Gamma" } as unknown as JxMutableNode;
-    expect((projectState!.projectConfig as unknown as { name: string }).name).toBe("Gamma");
+    tab.doc.document = { name: "Gamma" };
+    expect(projectState!.projectConfig?.name).toBe("Gamma");
   });
 });
 
@@ -333,6 +337,20 @@ describe("setCollabEnabled is idempotent", () => {
 
 // ─── studio.ts — the save hook takes no target ───────────────────────────────
 
+/** The bootstrap's save hook, typed with the stray arguments a command registry may pass it. */
+interface CapturedHooks {
+  saveDocument: (...args: (string | { id: string })[]) => void | Promise<void>;
+}
+
+/**
+ * Where the stubbed `registerStudioCommands` leaves the hooks it was handed. A holder rather than a
+ * `let`, because control flow cannot see the boot's callback assign a local and would keep it
+ * `null`.
+ */
+interface HookCapture {
+  hooks: CapturedHooks | null;
+}
+
 /**
  * LAST in the file, deliberately. Booting `src/studio.ts` needs a dozen leaf modules mocked, and
  * `mock.module` is process-wide and permanent — every describe above must have run against the real
@@ -348,15 +366,20 @@ describe("the bootstrap's saveDocument hook", () => {
       removeEventListener = noop;
       close = noop;
     }
-    (globalThis as Record<string, unknown>).EventSource = StubEventSource;
-    (globalThis as Record<string, unknown>).requestIdleCallback = (cb: (d: unknown) => void) =>
-      setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0);
-    (globalThis as Record<string, unknown>).cancelIdleCallback = (id: number) => {
-      clearTimeout(id);
-    };
-    globalThis.fetch = mock(
-      async () => new Response("{}", { status: 404 }),
-    ) as unknown as typeof fetch;
+    /* The boot only constructs an EventSource and adds or removes listeners on it, only ever
+       schedules idle work through the pair below, and only calls `fetch` itself, answered here as a
+       server with nothing to serve; so these stand-ins cover every member it reads. */
+    Object.assign(globalThis, {
+      EventSource: StubEventSource,
+      cancelIdleCallback: (id: number) => {
+        clearTimeout(id);
+      },
+      fetch: mock(async () => new Response("{}", { status: 404 })),
+      requestIdleCallback: (cb: IdleRequestCallback) =>
+        setTimeout(() => {
+          cb({ didTimeout: false, timeRemaining: () => 50 });
+        }, 0),
+    });
 
     document.body.innerHTML = `
       <div id="app">
@@ -421,7 +444,7 @@ describe("the bootstrap's saveDocument hook", () => {
       }),
       showCommandOverflow: mock(() => {}),
       suppressBlockActionBar: mock(() => {}),
-      withCommandTarget: <T>(_path: unknown, fn: () => T) => fn(),
+      withCommandTarget: <T>(_path: JxPath, fn: () => T) => fn(),
     }));
     void mock.module("../src/canvas/canvas-render.ts", () => ({
       handOverCanvasStage: mock(() => {}),
@@ -443,7 +466,7 @@ describe("the bootstrap's saveDocument hook", () => {
     /* The module under assertion. `saveFile` is the only export the hook touches; the other seven
        exist because a `mock.module` replaces the WHOLE module for every importer in the boot
        graph. */
-    const saveFileSpy = mock(async (..._args: unknown[]) => true);
+    const saveFileSpy = mock(async (..._args: Parameters<typeof saveFile>) => true);
     void mock.module("../src/files/file-ops.ts", () => ({
       confirmFileDelete: mock(async () => false),
       exportFile: mock(async () => {}),
@@ -455,12 +478,15 @@ describe("the bootstrap's saveDocument hook", () => {
       serializeDocument: mock(async () => ""),
     }));
 
-    let hooks: { saveDocument: (...args: unknown[]) => Promise<unknown> } | null = null;
+    /* The registry calls a hook with whatever the command's argument record carried, so the captured
+       `saveDocument` is typed with the argument list this test hands it; a zero-parameter hook is
+       assignable to it, which is the point under test. */
+    const captured: HookCapture = { hooks: null };
     void mock.module("../src/editor/shortcuts.ts", () => ({
       initShortcuts: mock(() => {}),
       installStageGestures: () => () => {},
-      registerStudioCommands: (_registry: unknown, given: unknown) => {
-        hooks = given as { saveDocument: (...args: unknown[]) => Promise<unknown> };
+      registerStudioCommands: (_registry: CommandRegistry, given: StudioCommandHooks) => {
+        captured.hooks = given;
       },
     }));
 
@@ -481,9 +507,7 @@ describe("the bootstrap's saveDocument hook", () => {
     console.error = consoleError;
     expect(logged.some((args) => args[0] === "Boot activation failed:")).toBe(true);
 
-    const hook = hooks as unknown as {
-      saveDocument: (...args: unknown[]) => Promise<unknown>;
-    } | null;
+    const hook = captured.hooks;
     expect(hook).not.toBeNull();
 
     /* The registry calls its hooks with whatever a command's argument record carried. `saveFile`
@@ -495,7 +519,7 @@ describe("the bootstrap's saveDocument hook", () => {
 
     expect(saveFileSpy).toHaveBeenCalledTimes(1);
     expect(saveFileSpy.mock.calls[0]).toHaveLength(1);
-    expect((saveFileSpy.mock.calls[0]![0] as { id: string }).id).toBe("save-hook-tab");
+    expect(saveFileSpy.mock.calls[0]![0]?.id).toBe("save-hook-tab");
     // And it does not forward the verdict either — the hook's contract is Promise<void>.
     expect(answer).toBeUndefined();
   });

@@ -15,7 +15,15 @@ import {
   startPush,
 } from "../src/panels/data-grid";
 import { closeAllTabs } from "../src/workspace/workspace";
-import type { DataPushResult, DataRowsQuery, StudioPlatform } from "../src/types";
+import type { JsonObject } from "@jxsuite/schema/types";
+import type {
+  DataPushResult,
+  DataRowDelete,
+  DataRowInsert,
+  DataRowsQuery,
+  DataRowUpdate,
+  StudioPlatform,
+} from "../src/types";
 import type { SectionActionsContext } from "../src/settings/contributed-section";
 
 beforeAll(() => {
@@ -37,7 +45,7 @@ function part(root: ParentNode | null, name: string): HTMLElement | null {
 }
 
 function textOf(root: ParentNode | null, name: string): string {
-  return part(root, name)?.textContent?.replaceAll(/\s+/g, " ").trim() ?? "";
+  return part(root, name)?.textContent.replaceAll(/\s+/g, " ").trim() ?? "";
 }
 
 function control(root: ParentNode, name: string): HTMLElement {
@@ -55,10 +63,10 @@ async function answer(kind: "confirm" | "cancel"): Promise<void> {
 
 interface Calls {
   rows: DataRowsQuery[];
-  updates: unknown[];
-  inserts: unknown[];
-  deletes: unknown[];
-  pushes: Record<string, unknown>[];
+  updates: DataRowUpdate[];
+  inserts: DataRowInsert[];
+  deletes: DataRowDelete[];
+  pushes: { connection?: string; dryRun?: boolean }[];
   tests: string[];
 }
 
@@ -69,7 +77,7 @@ const COLUMNS = [
   { name: "views", type: "integer" },
 ];
 
-function makeRows(count: number): Record<string, unknown>[] {
+function makeRows(count: number): JsonObject[] {
   return Array.from({ length: count }, (_, i) => ({
     created_at: "2026-01-01",
     id: `r${i}`,
@@ -162,8 +170,8 @@ function installDataPlatform(opts: InstallOptions = {}): Calls {
     },
     dataUpdateRow: async (req) => {
       calls.updates.push(req);
-      const base = allRows.find((r) => r.id === (req as { pk: unknown }).pk) ?? {};
-      return { row: { ...base, ...(req as { set: Record<string, unknown> }).set } };
+      const base = allRows.find((r) => r["id"] === req.pk) ?? {};
+      return { row: { ...base, ...req.set } };
     },
     ...opts.overrides,
   });
@@ -198,7 +206,7 @@ describe("grid opening", () => {
     control(host, "grid").click();
     await flush(4);
     const labels = [...document.querySelectorAll('#layer-dialog [part="source"]')].map((el) =>
-      el.textContent?.trim(),
+      el.textContent.trim(),
     );
     expect(labels).toContain("Pages");
     expect(labels).toContain("posts");
@@ -206,7 +214,7 @@ describe("grid opening", () => {
     // The connection with no tables says so instead of contributing a silent empty group.
     expect(
       [...document.querySelectorAll('#layer-dialog [part="group-empty"]')].map((el) =>
-        el.textContent?.trim(),
+        el.textContent.trim(),
       ),
     ).toEqual(["No tables — push a schema first."]);
     host.remove();
@@ -310,9 +318,9 @@ describe("push dialog", () => {
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute("headline")).toBe("Push Schema — main");
     expect(calls.pushes).toEqual([{ connection: "main", dryRun: true }]);
-    expect([...dialog.querySelectorAll('[part="step"]')].map((s) => s.textContent?.trim())).toEqual(
-      ['Create table "posts"'],
-    );
+    expect([...dialog.querySelectorAll('[part="step"]')].map((s) => s.textContent.trim())).toEqual([
+      'Create table "posts"',
+    ]);
     expect(textOf(dialog, "warning")).toContain("type drift");
     // There is something to apply, so the primary answer exists and says what it does.
     expect(dialog.getAttribute("confirm-label")).toBe("Apply");

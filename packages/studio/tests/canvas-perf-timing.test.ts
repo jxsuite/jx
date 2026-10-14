@@ -101,8 +101,10 @@ describe("beginSpan", () => {
   });
 
   test("emits mark/measure only when debug mode is on", () => {
-    const mark = spyOn(performance, "mark").mockImplementation(() => undefined as never);
-    const measure = spyOn(performance, "measure").mockImplementation(() => undefined as never);
+    // Spies call through: the real entries are what a DevTools flame chart would show, and
+    // BeginSpan clears its start mark after measuring, so nothing leaks into later tests.
+    const mark = spyOn(performance, "mark");
+    const measure = spyOn(performance, "measure");
     try {
       beginSpan("quiet")();
       expect(mark).not.toHaveBeenCalled();

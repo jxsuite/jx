@@ -30,13 +30,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** One project.json section an extension's classes claim (specs/extensions.md §9). */
-export interface CatalogSection {
-  /** The project.json top-level property, e.g. "content". */
-  key: string;
-  /** The owning class's `project.title`, e.g. "Content Types". */
-  title?: string;
-}
+import type { ExtensionSectionInfo } from "@jxsuite/protocol";
+
+/**
+ * One project.json section an extension's classes claim (specs/extensions.md §9). The wire contract
+ * owns the declaration; this package keeps exporting it under its published name.
+ */
+export type { ExtensionSectionInfo as CatalogSection } from "@jxsuite/protocol";
 
 /** One first-party extension, as the generator derives it from the package's own manifest. */
 export interface ExtensionCatalogMeta {
@@ -47,7 +47,7 @@ export interface ExtensionCatalogMeta {
   /** Manifest `description`, one line. */
   description: string;
   /** The project.json sections enabling it makes legal, in class declaration order. */
-  sections: CatalogSection[];
+  sections: ExtensionSectionInfo[];
   /** File extensions its format classes claim (".md", ".csv"), when it claims any. */
   formats?: string[];
   /** Other catalogue members it depends on — auth needs connector. */
@@ -68,6 +68,10 @@ let _cache: ExtensionCatalogMeta[] | null = null;
 export function listCatalog(): ExtensionCatalogMeta[] {
   if (!_cache) {
     const raw = readFileSync(join(CATALOG_DIR, "catalog.json"), "utf8");
+    /* SAFETY: catalog.json is a generated build output, written from the extension manifests by
+       `bun run catalog:sync` in exactly the ExtensionCatalogMeta[] shape; `bun run catalog:verify`
+       fails when the committed bytes differ from that generator's output, and
+       tests/catalog.test.ts checks every entry's required members. */
     _cache = JSON.parse(raw) as ExtensionCatalogMeta[];
   }
   return _cache;

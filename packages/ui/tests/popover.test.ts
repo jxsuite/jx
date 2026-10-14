@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { documentStyleText, setCanvasDelinkPopovers } from "@jxsuite/runtime";
+import { getNestedStyle, hasSchemaKeywords, isString } from "@jxsuite/schema/guards";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
 import type { JxElement } from "@jxsuite/schema/types";
 
@@ -23,7 +24,7 @@ import {
   openAt,
   supportsAnchorPositioning,
 } from "../src/behaviors/popover.ts";
-import type { PopoverElement, PopoverState } from "../src/behaviors/popover.ts";
+import type { PopoverState } from "../src/behaviors/popover.ts";
 
 /** Let the popover shim's queued `toggle` and the runtime's reactive flush settle. */
 const tick = () =>
@@ -60,11 +61,11 @@ afterEach(() => {
 });
 
 /** A panel on the page, with whatever props the case needs. */
-async function panel(props: Record<string, unknown> = {}): Promise<JxPopover> {
+async function panel(props: Partial<JxPopover> = {}): Promise<JxPopover> {
+  /* SAFETY: registerUi() in beforeAll defined jx-popover from its component document, which
+     declares every prop `JxPopover` lists, so createElement returns that upgraded element. */
   const el = document.createElement("jx-popover") as JxPopover;
-  for (const [key, value] of Object.entries(props)) {
-    (el as unknown as Record<string, unknown>)[key] = value;
-  }
+  Object.assign(el, props);
   const text = document.createElement("p");
   text.textContent = "Panel content";
   el.append(text);
@@ -78,15 +79,72 @@ function stubRect(
   el: Element,
   rect: { left: number; top: number; width: number; height: number },
 ): void {
-  el.getBoundingClientRect = () =>
-    ({
-      ...rect,
-      bottom: rect.top + rect.height,
-      right: rect.left + rect.width,
-      x: rect.left,
-      y: rect.top,
-      toJSON: () => rect,
-    }) as DOMRect;
+  el.getBoundingClientRect = () => new DOMRect(rect.left, rect.top, rect.width, rect.height);
+}
+
+/** The element children of a document node, in order, skipping text; none for a repeater. */
+function elementChildren(node: JxElement | undefined): JxElement[] {
+  const children = node?.children;
+  return Array.isArray(children)
+    ? children.flatMap((child) => (isString(child) ? [] : [child]))
+    : [];
+}
+
+/** The first child of a document node, which must be an element rather than text or a repeater. */
+function firstElement(node: JxElement): JxElement {
+  const [first] = Array.isArray(node.children) ? node.children : [];
+  if (first === undefined || isString(first)) {
+    throw new Error("expected an element as the node's first child");
+  }
+  return first;
+}
+
+/** The stylebook page that demonstrates the panel, as committed. */
+function stylebookPage(): JxElement {
+  /* SAFETY: stylebook/jx-popover.json is a committed stylebook page, and conformance.test.ts
+     validates every stylebook page against the Jx document schema, so the parse is a JxElement. */
+  return JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../stylebook/jx-popover.json"), "utf8"),
+  ) as JxElement;
+}
+
+/**
+ * An animation list holding one running animation, for a `getAnimations` stub.
+ *
+ * @returns {Animation[]} One placeholder animation
+ */
+function oneRunningAnimation(): Animation[] {
+  /* SAFETY: popover.ts reads only `getAnimations().length`, to tell whether a transition is still
+     running, so no member of the placeholder is ever touched. */
+  return [{} as Animation];
+}
+
+/**
+ * An event as the platform dispatches it on `host`, carrying whichever extra members the handler
+ * under test reads (`newState`, `source`, `target`). `currentTarget` is the dispatch's own field,
+ * defined here because a handler is called directly rather than through a listener.
+ */
+function eventOn(
+  type: string,
+  host: HTMLElement,
+  members: { newState?: string; source?: Element; target?: Element } = {},
+): Event {
+  const event = new Event(type);
+  Object.defineProperty(event, "currentTarget", { value: host });
+  for (const [key, value] of Object.entries(members)) {
+    Object.defineProperty(event, key, { value });
+  }
+  return event;
+}
+
+/** An element as an engine with no popover API presents it: neither method exists. */
+function withoutPopoverApi(): HTMLElement {
+  const el = document.createElement("div");
+  Object.defineProperties(el, {
+    hidePopover: { value: undefined },
+    showPopover: { value: undefined },
+  });
+  return el;
 }
 
 /**
@@ -132,10 +190,10 @@ function resolved(el: HTMLElement, property: string): string {
 }
 
 describe("jx-popover the document", () => {
-  const doc = documents["jx-popover"]!;
+  const doc = documents["jx-popover"];
 
   test('declares popover="auto" as a literal, carries no id, and is overlay-lint clean', () => {
-    const attributes = (doc.attributes ?? {}) as Record<string, unknown>;
+    const attributes = doc.attributes ?? {};
     // A literal, never a template or a `$ref`: `popoverModeOf` reads the raw string and
     // `literalAttr` answers null for anything else, so a bound value would blank the very check
     // `invalid-mode` exists for.
@@ -146,10 +204,10 @@ describe("jx-popover the document", () => {
   });
 
   test("has no `mode` prop, and every numeric prop defaults to 0", () => {
-    const state = (doc.state ?? {}) as Record<string, { type?: string; default?: unknown }>;
+    const state = doc.state ?? {};
     expect(state["mode"]).toBeUndefined();
     for (const [key, entry] of Object.entries(state)) {
-      if (entry && typeof entry === "object" && entry.type === "number") {
+      if (hasSchemaKeywords(entry) && entry.type === "number") {
         // A non-zero numeric default cannot express "unset": removing the attribute coerces
         // Through the current value's type, so `Number(null)` writes 0 anyway. The panel's gap
         // From its anchor is the `--jx-popover-offset` token for exactly that reason.
@@ -160,9 +218,10 @@ describe("jx-popover the document", () => {
   });
 
   test("says in the open prop's own description that writing it is not how a panel opens", () => {
-    const open = (doc.state as Record<string, { description?: string }>)["open"]!;
-    expect(open.description).toContain("showPopover()");
-    expect(open.description).toContain("hidePopover()");
+    const open = doc.state?.["open"];
+    const description = hasSchemaKeywords(open) ? open.description : undefined;
+    expect(description).toContain("showPopover()");
+    expect(description).toContain("hidePopover()");
   });
 });
 
@@ -172,7 +231,7 @@ describe("how a consumer opens one", () => {
     return {
       tagName: "main",
       children: [invoker, { attributes: { id: "p1" }, tagName: "jx-popover" }],
-    } as JxElement;
+    };
   }
 
   const defectRules = (doc: JxElement, scope?: Parameters<typeof findPopoverDefects>[1]) =>
@@ -182,14 +241,14 @@ describe("how a consumer opens one", () => {
     /* The lints judge the tag the DOCUMENT writes, not the tag the definition renders, and they
        read `node.attributes` and never `$props`. So of the three natural spellings only two pass
        with no scope — and the failure is a red CI check in a file the author never opened. */
+    expect(defectRules(page({ attributes: { popovertarget: "p1" }, tagName: "button" }))).toEqual(
+      [],
+    );
+    expect(defectRules(page({ $props: { popovertarget: "p1" }, tagName: "jx-button" }))).toEqual(
+      [],
+    );
     expect(
-      defectRules(page({ attributes: { popovertarget: "p1" }, tagName: "button" } as JxElement)),
-    ).toEqual([]);
-    expect(
-      defectRules(page({ $props: { popovertarget: "p1" }, tagName: "jx-button" } as JxElement)),
-    ).toEqual([]);
-    expect(
-      defectRules(page({ attributes: { popovertarget: "p1" }, tagName: "jx-button" } as JxElement)),
+      defectRules(page({ attributes: { popovertarget: "p1" }, tagName: "jx-button" })),
     ).toContain("invoker-not-button");
   });
 
@@ -197,27 +256,22 @@ describe("how a consumer opens one", () => {
     const doc = page({
       attributes: { command: "toggle-popover", commandfor: "p1" },
       tagName: "button",
-    } as JxElement);
+    });
     expect(POPOVER_TAGS.has("jx-popover")).toBe(true);
     // The `popover` attribute lives in the DEFINITION, so a consumer's node carries none: without
     // The tags the whole document reads as having no popover in it at all.
     expect(defectRules(doc, { popoverTags: POPOVER_TAGS })).toEqual([]);
     expect(
-      defectRules(
-        page({ attributes: { popovertarget: "p1" }, tagName: "jx-button" } as JxElement),
-        {
-          invokerTags: INVOKER_TAGS,
-          popoverTags: POPOVER_TAGS,
-        },
-      ),
+      defectRules(page({ attributes: { popovertarget: "p1" }, tagName: "jx-button" }), {
+        invokerTags: INVOKER_TAGS,
+        popoverTags: POPOVER_TAGS,
+      }),
     ).toEqual([]);
   });
 
   test("the stylebook page opens its panel with a spelling the lints accept", () => {
-    const sheet = JSON.parse(
-      readFileSync(resolve(import.meta.dir, "../stylebook/jx-popover.json"), "utf8"),
-    ) as JxElement;
-    const invoker = (sheet.children as JxElement[]).find(
+    const sheet = stylebookPage();
+    const invoker = elementChildren(sheet).find(
       (child) => child.attributes?.["popovertarget"] !== undefined,
     );
     expect(invoker?.tagName).toBe("button");
@@ -225,35 +279,30 @@ describe("how a consumer opens one", () => {
     /* And it demonstrates a NAMED panel, because the element cannot force one: `role="group"` is
        in neither the accessibility lint's content-named roles nor its labelled roles, so an
        unnamed panel of controls is invisible to every gate. */
-    const panelNode = (sheet.children as JxElement[]).find(
-      (child) => child.tagName === "jx-popover",
-    );
-    const props = (panelNode as { $props?: Record<string, unknown> }).$props ?? {};
+    const panelNode = elementChildren(sheet).find((child) => child.tagName === "jx-popover");
+    const props = panelNode?.$props ?? {};
     expect(props["label"]).toBeString();
     expect(props["label"]).not.toBe("");
-    expect((panelNode!.children as JxElement[]).length).toBeGreaterThan(0);
+    const panelChildren = panelNode?.children;
+    expect(Array.isArray(panelChildren) ? panelChildren.length : 0).toBeGreaterThan(0);
   });
 
   test("the stylebook's invoker paragraph says what the lints answer, for both kinds of caller", () => {
-    const shape = page({
+    const invokerPage = page({
       attributes: { popovertarget: "p1" },
       tagName: "jx-button",
-    } as JxElement);
+    });
     /* The measurement the paragraph has to match: since the scope seam landed, this spelling is
        an error only to a caller that names no invoker tags. Studio names the kit's and reports
        nothing, so a page asserting the error unconditionally steers an author away from a
        spelling their own editor accepts. */
-    expect(defectRules(shape)).toContain("invoker-not-button");
-    expect(defectRules(shape, { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS })).toEqual(
-      [],
-    );
+    expect(defectRules(invokerPage)).toContain("invoker-not-button");
+    expect(
+      defectRules(invokerPage, { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS }),
+    ).toEqual([]);
 
-    const sheet = JSON.parse(
-      readFileSync(resolve(import.meta.dir, "../stylebook/jx-popover.json"), "utf8"),
-    ) as JxElement;
-    const prose = (sheet.children as JxElement[])
-      .filter((child) => child.tagName === "p")
-      .map((child) => String(child.textContent ?? ""))
+    const prose = elementChildren(stylebookPage())
+      .flatMap((child) => (child.tagName === "p" ? [String(child.textContent ?? "")] : []))
       .join(" ");
     expect(prose).toContain("invoker-not-button");
     // The claim and its condition travel together or the page teaches a rule that is false.
@@ -282,7 +331,7 @@ describe("jx-popover the sheet", () => {
        panel is drawn over the artboard (measured in Chrome 152: `inline`, 35x17). `revert-layer`
        rolls back one layer onto Studio's own rule and measures `none` at 0x0 in both places. */
     expect(base?.block).toContain("display: revert-layer");
-    expect(base?.block?.match(/display:/g)).toHaveLength(1);
+    expect(base?.block.match(/display:/g)).toHaveLength(1);
     for (const value of ["block", "flex", "grid", "inline", "contents", "flow-root", "revert;"]) {
       expect(base?.block, value).not.toContain(`display: ${value}`);
     }
@@ -371,8 +420,8 @@ describe("jx-popover the sheet", () => {
   });
 
   test("transitions display together with overlay, and puts no display inside @starting-style", () => {
-    const style = documents["jx-popover"]!.style as Record<string, unknown>;
-    const transition = String(style["transition"]);
+    const { style } = documents["jx-popover"];
+    const transition = String(style?.["transition"]);
     expect(transition).toContain("display");
     // Without `overlay …allow-discrete` the panel drops out of the top layer a frame early and
     // The exit reads as a flicker, which is the `cut-exit` rule.
@@ -385,9 +434,9 @@ describe("jx-popover the sheet", () => {
       const clause = transition.split(",").find((part) => part.trim().startsWith(property));
       expect(clause, property).toContain("allow-discrete");
     }
-    const starting = style["@starting-style"] as Record<string, unknown>;
+    const starting = getNestedStyle(style, "@starting-style");
     expect(starting).toBeDefined();
-    expect("display" in starting).toBe(false);
+    expect(starting !== undefined && "display" in starting).toBe(false);
     expect(JSON.stringify(starting)).toContain("opacity");
   });
 });
@@ -422,9 +471,9 @@ describe("jx-popover on the page", () => {
        children silently — `distributeSlots` matches on `slot="…"`, so nothing goes in and the
        panel renders empty with every gate green. The slot is gone from the DOM, so the document
        is where that is asserted. */
-    const box = (documents["jx-popover"]!.children as JxElement[])[0]!;
+    const box = firstElement(documents["jx-popover"]);
     expect(box.attributes?.["part"]).toBe("content");
-    const slot = (box.children as JxElement[])[0]!;
+    const slot = firstElement(box);
     expect(slot.tagName).toBe("slot");
     expect(slot.attributes?.["name"]).toBeUndefined();
     expect(plain.querySelector('[part="arrow"]')!.hasAttribute("hidden")).toBe(true);
@@ -441,7 +490,7 @@ describe("jx-popover on the page", () => {
     await tick();
     expect(el.open).toBe(true);
     expect(el.dataset["open"]).toBe("");
-    el.getAnimations = () => [{} as Animation];
+    el.getAnimations = oneRunningAnimation;
     close(el);
     await tick();
     expect(el.open).toBe(false);
@@ -452,10 +501,12 @@ describe("jx-popover on the page", () => {
   });
 
   test("announces jx-ready once it has rendered, which is when a host may show it", async () => {
-    const el = document.createElement("jx-popover") as JxPopover;
+    const el = document.createElement("jx-popover");
     const seen: string[] = [];
     const listen = (event: Event) => {
-      seen.push((event.target as Element).tagName.toLowerCase());
+      if (event.target instanceof Element) {
+        seen.push(event.target.tagName.toLowerCase());
+      }
     };
     document.addEventListener("jx-ready", listen);
     document.body.append(el);
@@ -482,7 +533,7 @@ describe("jx-popover on the page", () => {
 
   test("raises data-jx-settling while a transition runs and clears it when the host comes to rest", async () => {
     const el = await panel();
-    el.getAnimations = () => [{} as Animation];
+    el.getAnimations = oneRunningAnimation;
     el.showPopover();
     await tick();
     await frame();
@@ -730,15 +781,14 @@ describe("the popover behaviour", () => {
   });
 
   test("openAt falls back to a bare showPopover when the options bag is rejected", () => {
-    const calls: unknown[][] = [];
-    const host = {
-      showPopover(...args: unknown[]) {
-        calls.push(args);
-        if (args.length > 0) {
-          throw new TypeError("no overload takes 1 argument");
-        }
-      },
-    } as unknown as PopoverElement;
+    const calls: Parameters<HTMLElement["showPopover"]>[] = [];
+    const host = document.createElement("div");
+    host.showPopover = (...args) => {
+      calls.push(args);
+      if (args.length > 0) {
+        throw new TypeError("no overload takes 1 argument");
+      }
+    };
     const anchor = document.createElement("button");
     openAt(host, anchor);
     // `showPopover.length` is 0 even in an engine that accepts the bag, so arity detection cannot
@@ -749,13 +799,12 @@ describe("the popover behaviour", () => {
   });
 
   test("openAt re-raises a refused show instead of retrying it and throwing twice", () => {
-    const calls: unknown[][] = [];
-    const host = {
-      showPopover(...args: unknown[]) {
-        calls.push(args);
-        throw new DOMException("Not a popover element", "NotSupportedError");
-      },
-    } as unknown as PopoverElement;
+    const calls: Parameters<HTMLElement["showPopover"]>[] = [];
+    const host = document.createElement("div");
+    host.showPopover = (...args) => {
+      calls.push(args);
+      throw new DOMException("Not a popover element", "NotSupportedError");
+    };
     const anchor = document.createElement("button");
     /* Only a `TypeError` means "this engine has no options bag". A `DOMException` is the call
        itself refusing, and the bare retry ran OUTSIDE the try — so it threw the same error a
@@ -764,7 +813,7 @@ describe("the popover behaviour", () => {
       openAt(host, anchor);
     }).toThrow("Not a popover element");
     expect(calls.length).toBe(1);
-    expect(anchorOf(host as unknown as HTMLElement)).toBeNull();
+    expect(anchorOf(host)).toBeNull();
   });
 
   test("a panel that never opened records no anchor, and a closed one stops holding its trigger", async () => {
@@ -803,29 +852,28 @@ describe("the popover behaviour", () => {
     const state: PopoverState = { matchWidth: true };
     // Chrome 152 carries `source` on the toggle for an invoker click and for
     // `showPopover({ source })` alike, so it is the platform's own answer and outranks the rest.
-    onToggle(state, { currentTarget: host, newState: "open", source: named } as unknown as Event);
+    onToggle(state, eventOn("toggle", host, { newState: "open", source: named }));
     expect(state.anchorWidth).toBe(133);
     // With no source, the invoker that names the panel is the fallback for an engine that has none.
     const older: PopoverState = { matchWidth: true };
-    onToggle(older, { currentTarget: host, newState: "open" } as unknown as Event);
+    onToggle(older, eventOn("toggle", host, { newState: "open" }));
     expect(older.anchorWidth).toBe(44);
   });
 
   test("openAt with no anchor makes a bare call, and does nothing at all without the API", () => {
-    const calls: unknown[][] = [];
-    const host = {
-      showPopover(...args: unknown[]) {
-        calls.push(args);
-      },
-    } as unknown as PopoverElement;
+    const calls: Parameters<HTMLElement["showPopover"]>[] = [];
+    const host = document.createElement("div");
+    host.showPopover = (...args) => {
+      calls.push(args);
+    };
     openAt(host);
     expect(calls).toEqual([[]]);
-    expect(anchorOf(host as unknown as HTMLElement)).toBeNull();
+    expect(anchorOf(host)).toBeNull();
     expect(() => {
-      openAt({} as unknown as PopoverElement, document.createElement("button"));
+      openAt(withoutPopoverApi(), document.createElement("button"));
     }).not.toThrow();
     expect(() => {
-      close({} as unknown as PopoverElement);
+      close(withoutPopoverApi());
     }).not.toThrow();
   });
 
@@ -834,19 +882,19 @@ describe("the popover behaviour", () => {
     const child = document.createElement("span");
     host.append(child);
     const state: PopoverState = { settling: true };
-    onTransitionEnd(state, { currentTarget: host, target: child } as unknown as Event);
+    onTransitionEnd(state, eventOn("transitionend", host, { target: child }));
     // A transition on a child is not the panel coming to rest.
     expect(state.settling).toBe(true);
-    onTransitionEnd(state, { currentTarget: host, target: host } as unknown as Event);
+    onTransitionEnd(state, eventOn("transitionend", host, { target: host }));
     expect(state.settling).toBe(false);
   });
 
   test("onToggle keeps settling raised while the host is still animating", async () => {
     const host = document.createElement("div");
     document.body.append(host);
-    host.getAnimations = () => [{} as Animation];
+    host.getAnimations = oneRunningAnimation;
     const state: PopoverState = {};
-    onToggle(state, { currentTarget: host, newState: "open" } as unknown as Event);
+    onToggle(state, eventOn("toggle", host, { newState: "open" }));
     expect(state.open).toBe(true);
     expect(state.settling).toBe(true);
     await frame();
@@ -858,10 +906,11 @@ describe("the popover behaviour", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    // An engine with no frames: the same plain write the platform global takes.
+    Object.assign(globalThis, { requestAnimationFrame: undefined });
     try {
       const state: PopoverState = {};
-      onToggle(state, { currentTarget: host, newState: "open" } as unknown as Event);
+      onToggle(state, eventOn("toggle", host, { newState: "open" }));
       // No `await frame()`: `clearWhenStill` already ran inline, on the call itself.
       expect(state.settling).toBe(false);
     } finally {
@@ -874,7 +923,7 @@ describe("the popover behaviour", () => {
     document.body.append(host);
     stubRect(host, { height: 300, left: 10, top: 400, width: 200 });
     const state: PopoverState = { floor: 500, matchWidth: true, open: true, y: 400 };
-    onToggle(state, { currentTarget: host, newState: "closed" } as unknown as Event);
+    onToggle(state, eventOn("toggle", host, { newState: "closed" }));
     expect(state.open).toBe(false);
     await frame();
     expect(state.y).toBe(400);
@@ -903,7 +952,7 @@ describe("the popover behaviour", () => {
     orphan.id = "nothing-aims-here";
     document.body.append(orphan);
     const lonely: PopoverState = { matchWidth: true };
-    onToggle(lonely, { currentTarget: orphan, newState: "open" } as unknown as Event);
+    onToggle(lonely, eventOn("toggle", orphan, { newState: "open" }));
     expect(lonely.anchorWidth).toBeUndefined();
   });
 
@@ -950,7 +999,8 @@ describe("the popover behaviour", () => {
     document.body.append(panelEl);
     stubRect(panelEl, { height: 80, left: window.innerWidth - 20, top: 10, width: 180 });
     const raf = globalThis.requestAnimationFrame;
-    (globalThis as unknown as Record<string, unknown>)["requestAnimationFrame"] = undefined;
+    // An engine with no frames: the same plain write the platform global takes.
+    Object.assign(globalThis, { requestAnimationFrame: undefined });
     try {
       const state: PopoverState = {};
       clampIntoViewport(state, panelEl);

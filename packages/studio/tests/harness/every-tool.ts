@@ -26,6 +26,7 @@ import { makeContext } from "../../src/commands/context";
 import { setActiveRegistry } from "../../src/commands/active-registry";
 import { setExtensionCatalog } from "../../src/format/format-host";
 import { setProjectState } from "../../src/store";
+import type { ProjectState } from "../../src/types";
 
 /** The three registries: the hand tools, the command view, and their union the model is shown. */
 export interface EveryTool {
@@ -44,11 +45,15 @@ export async function withEveryTool<T>(fn: (tools: EveryTool) => T | Promise<T>)
   setExtensionCatalog([
     { name: "@jxsuite/parser", sections: [{ key: "content" }], source: "first-party" },
   ]);
+  /* SAFETY: a deliberately partial project, the same shape `resetStudioState` installs. The tool
+     modules read only `projectState?.projectConfig` (ai-command-tools.ts derives the extension enum
+     from its `extensions`, ai-project-tools.ts validates it), and the context the command view
+     consults comes from `makeContext` below, never from this record. */
   setProjectState({
     dirs: new Map(),
     expanded: new Set(),
     projectConfig: { extensions: ["@jxsuite/parser"] },
-  } as never);
+  } as ProjectState);
 
   const hand = createToolRegistry();
   registerAskTool(hand);

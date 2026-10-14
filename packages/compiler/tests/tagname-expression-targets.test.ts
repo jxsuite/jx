@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isTagExpression, tagNameCandidates } from "@jxsuite/schema/guards";
 import { compileClient } from "../src/targets/compile-client";
 import { renderStaticNode, resolveStaticTagName } from "../src/shared";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JsonObject, JxDocument, JxElement } from "@jxsuite/schema/types";
 
 /*
  * A tag chosen at element creation, seen by the two targets that cannot bind one:
@@ -29,14 +29,17 @@ const multiway = {
   },
 };
 
-const compile = (doc: unknown) => compileClient(doc as JxDocument, { title: "Test" });
+const compile = (doc: JxDocument) => compileClient(doc, { title: "Test" });
 
 /** The message `compileClient` refused a document with, or "" when it did not refuse at all. */
-const refusal = (doc: unknown) => {
+const refusal = (doc: JxDocument) => {
   try {
     compile(doc);
   } catch (error) {
-    return (error as Error).message;
+    if (error instanceof Error) {
+      return error.message;
+    }
+    throw error;
   }
   return "";
 };
@@ -81,11 +84,11 @@ describe("resolveStaticTagName — a chosen tag resolved for the prerender", () 
 
 describe("renderStaticNode — the element the prerender commits to", () => {
   test("the chosen tag follows the node's own scope, opening and closing the same element", () => {
-    const node = {
+    const node: JxElement = {
       attributes: { href: "${state.href}" },
       children: ["Docs"],
       tagName: conditional,
-    } as unknown as JxElement;
+    };
 
     const chosen = renderStaticNode(node, { href: "/docs" });
     expect(chosen).toStartWith("<a ");
@@ -98,13 +101,16 @@ describe("renderStaticNode — the element the prerender commits to", () => {
   });
 
   test("the multiway form picks the heading level out of the component's own state", () => {
-    const node = { children: ["Title"], tagName: multiway } as unknown as JxElement;
+    const node: JxElement = { children: ["Title"], tagName: multiway };
     expect(renderStaticNode(node, { level: 2 })).toBe("<h2>Title</h2>");
     expect(renderStaticNode(node, { level: 9 })).toBe("<p>Title</p>");
   });
 
   test("a tagName whose `$expression` is not an object renders as the div fallback", () => {
-    const node = { children: ["Title"], tagName: { $expression: null } } as unknown as JxElement;
+    const raw: JsonObject = { children: ["Title"], tagName: { $expression: null } };
+    /* SAFETY: deliberately unsound. A half-written `$expression` choice only reaches the renderer
+       from a parsed document the type cannot police, and the renderer must fall back to a div. */
+    const node = raw as JxElement;
     expect(renderStaticNode(node, { level: 2 })).toBe("<div>Title</div>");
   });
 });

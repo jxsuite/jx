@@ -15,7 +15,6 @@ import { dismissContextMenu, showContextMenu } from "./context-menu";
 import { bubbleInlinePath } from "../canvas/canvas-helpers";
 import { activeTab } from "../workspace/workspace";
 import type { CanvasContextMenuHandler } from "../canvas/iframe-host";
-import type { JxPath } from "../state";
 
 /**
  * Build the handler.
@@ -34,7 +33,7 @@ export function makeCanvasContextMenuHandler(): CanvasContextMenuHandler {
       }
       // Lift inline-element paths (a <strong> inside a <p>) to their block parent — right-clicking
       // Formatted text should act on the block, matching the legacy handler.
-      const bubbled = bubbleInlinePath(activeTab.value?.doc.document, path as JxPath);
+      const bubbled = bubbleInlinePath(activeTab.value?.doc.document, path);
       // ShowContextMenu reads only preventDefault/clientX/clientY from the event, so a synthetic
       // MouseEvent carries the converted coords safely.
       const evt = new MouseEvent("contextmenu", { clientX, clientY });

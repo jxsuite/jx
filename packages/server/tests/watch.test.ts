@@ -15,6 +15,61 @@ async function readOpeningRetry(reader: ReadableStreamDefaultReader<Uint8Array>)
   expect(new TextDecoder().decode(opening.value)).toBe(`retry: ${RECONNECT_MS}\n\n`);
 }
 
+/** The reader over an SSE response's body, which `handleSSE` always attaches. */
+function streamReader(response: Response): ReadableStreamDefaultReader<Uint8Array> {
+  if (response.body === null) {
+    throw new Error("handleSSE answered without a stream body");
+  }
+  return response.body.getReader();
+}
+
+/** The next chunk off `reader`, or a rejection once three seconds pass without one. */
+function readWithinTimeout(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  return Promise.race([
+    reader.read(),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("timeout")), 3000);
+    }),
+  ]);
+}
+
+/**
+ * Run the code inside SSE_SCRIPT the way a page runs an inline script, against a stand-in
+ * `EventSource` and `location`, and report what it did: the URLs it subscribed to, and a way to
+ * deliver a message to each subscription while counting the reloads that follow.
+ */
+function runSseScript() {
+  const code = /^\n<script>(?<code>[^<]*)<\/script>$/.exec(SSE_SCRIPT)?.groups?.code;
+  if (code === undefined) {
+    throw new Error("SSE_SCRIPT is not exactly one inline <script> element");
+  }
+  const subscribed: string[] = [];
+  const listeners: (() => void)[] = [];
+  let reloads = 0;
+  class StandInEventSource {
+    constructor(url: string) {
+      subscribed.push(url);
+      listeners.push(() => this.onmessage?.());
+    }
+    onmessage: (() => void) | null = null;
+  }
+  const location = {
+    reload: () => {
+      reloads += 1;
+    },
+  };
+  new Function("EventSource", "location", code)(StandInEventSource, location);
+  return {
+    deliverMessage: () => {
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    reloads: () => reloads,
+    subscribed,
+  };
+}
+
 // ─── injectSSE ──────────────────────────────────────────────────────────────
 
 describe("injectSSE", () => {
@@ -34,9 +89,11 @@ describe("injectSSE", () => {
   });
 
   test("includes EventSource reload script", () => {
-    expect(SSE_SCRIPT).toContain("EventSource");
-    expect(SSE_SCRIPT).toContain("__reload");
-    expect(SSE_SCRIPT).toContain("location.reload()");
+    const page = runSseScript();
+    expect(page.subscribed).toEqual(["/__reload"]);
+    expect(page.reloads()).toBe(0);
+    page.deliverMessage();
+    expect(page.reloads()).toBe(1);
   });
 });
 
@@ -44,8 +101,8 @@ describe("injectSSE", () => {
 
 describe("SSE_SCRIPT", () => {
   test("is a valid script tag", () => {
-    expect(SSE_SCRIPT).toContain("<script>");
-    expect(SSE_SCRIPT).toContain("</script>");
+    // Running it throws unless the constant is exactly one inline <script> whose code parses.
+    expect(runSseScript).not.toThrow();
   });
 });
 
@@ -56,8 +113,8 @@ describe("createWatcher", () => {
     mkdirSync(FIXTURES, { recursive: true });
     try {
       const { broadcast, handleSSE } = createWatcher(FIXTURES, []);
-      expect(typeof broadcast).toBe("function");
-      expect(typeof handleSSE).toBe("function");
+      expect(broadcast).toBeTypeOf("function");
+      expect(handleSSE).toBeTypeOf("function");
     } finally {
       rmSync(FIXTURES, { force: true, recursive: true });
     }
@@ -81,7 +138,7 @@ describe("createWatcher", () => {
     try {
       const { broadcast, handleSSE } = createWatcher(FIXTURES, []);
       const response = handleSSE();
-      const reader = (response.body as ReadableStream).getReader();
+      const reader = streamReader(response);
       await readOpeningRetry(reader);
 
       broadcast();
@@ -101,7 +158,7 @@ describe("createWatcher", () => {
     const { handleSSE, watcher } = createWatcher(fsFix, [], { debounce: 10 });
     try {
       const response = handleSSE();
-      const reader = (response.body as ReadableStream).getReader();
+      const reader = streamReader(response);
       await readOpeningRetry(reader);
 
       await new Promise<void>((resolve) => {
@@ -110,12 +167,7 @@ describe("createWatcher", () => {
 
       writeFileSync(join(fsFix, "note.json"), `{"v":${Date.now()}}`);
 
-      const { value } = (await Promise.race([
-        reader.read(),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("timeout")), 3000);
-        }),
-      ])) as ReadableStreamReadResult<Uint8Array>;
+      const { value } = await readWithinTimeout(reader);
       const text = new TextDecoder().decode(value);
       expect(text).toContain("event: fs");
       expect(text).toContain("note.json");
@@ -133,7 +185,7 @@ describe("createWatcher", () => {
         debounce: 10,
         ignore: ["**/temp/**"],
       });
-      expect(typeof broadcast).toBe("function");
+      expect(broadcast).toBeTypeOf("function");
     } finally {
       rmSync(FIXTURES, { force: true, recursive: true });
     }
@@ -147,7 +199,7 @@ describe("createWatcher", () => {
         reloadOnAnyChange: true,
       });
       const response = handleSSE();
-      const reader = (response.body as ReadableStream).getReader();
+      const reader = streamReader(response);
       await readOpeningRetry(reader);
 
       // Wait for chokidar to be ready before writing
@@ -159,12 +211,7 @@ describe("createWatcher", () => {
       writeFileSync(join(FIXTURES, "trigger.txt"), `change-${Date.now()}`);
 
       // Wait for debounce + watcher to fire
-      const { value } = (await Promise.race([
-        reader.read(),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("timeout")), 3000);
-        }),
-      ])) as ReadableStreamReadResult<Uint8Array>;
+      const { value } = await readWithinTimeout(reader);
       const text = new TextDecoder().decode(value);
       expect(text).toContain("data: reload");
       void reader.cancel();

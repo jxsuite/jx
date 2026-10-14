@@ -22,10 +22,9 @@ import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import contextsDoc from "./settings-contexts.json";
 
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("settings-contexts", contextsDoc as unknown as JxDocument);
+registerSurface("settings-contexts", contextsDoc);
 
 /** One `$media` row, as the document draws it. */
 export interface ContextRowView {
@@ -111,7 +110,7 @@ export interface ContextsSurfaceHandle {
  * would be a second place to get it wrong. The refusal lines need none — `invalid` already says
  * which control the message belongs to.
  */
-interface ContextsScope extends Record<string, unknown>, ContextsView, ContextsActions {
+interface ContextsScope extends ContextsView, ContextsActions {
   hasSectionError: boolean;
   hasNotice: boolean;
 }
@@ -141,7 +140,7 @@ export function mountContextsSurface(
   actions: ContextsActions,
 ): ContextsSurfaceHandle {
   host.textContent = "";
-  const scope = reactive<ContextsScope>({
+  const scope: ContextsScope = reactive<ContextsScope>({
     ...emptyView(),
     add: actions.add,
     hasNotice: false,
@@ -151,17 +150,20 @@ export function mountContextsSurface(
     setBase: actions.setBase,
     setQuery: actions.setQuery,
     setScheme: actions.setScheme,
-  }) as ContextsScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   const ready = mountSurface("settings-contexts", scope, host).then((surface) => {
+    /* SAFETY: `settings-contexts.json`'s root definition carries `tagName: "div"`, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
+    const root = surface.root as HTMLElement;
     if (disposed) {
       surface.dispose();
-      return surface.root as HTMLElement;
+      return root;
     }
     mounted = surface;
-    return surface.root as HTMLElement;
+    return root;
   });
 
   return {

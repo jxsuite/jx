@@ -7,7 +7,7 @@
 
 import { postMessageChannel } from "./iframe-channel";
 import { rectOf } from "../utils/geometry";
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isNonNullObject } from "@jxsuite/schema/guards";
 import {
   applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
@@ -59,16 +59,17 @@ import {
 import { resolveAssetRef } from "./asset-resolve";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
-import type { IframeChannel } from "./iframe-channel";
+import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
 import type {
   CanvasMode,
+  DragOverMsg,
   DragSrcKind,
   FileDropHit,
   IframeToParent,
   LayoutHit,
   ParentToIframe,
 } from "./iframe-protocol";
-import type { JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
 import type { IframeRenderCtx, RenderHandle } from "./iframe-render";
 import { setBundleBase } from "../services/bundle-base";
 
@@ -153,12 +154,12 @@ export function fileDropHitFor(
   targetEl: HTMLElement,
   shadowDoc: JxMutableNode | null,
 ): FileDropHit | null {
-  const serialized = targetEl.dataset?.jxPath;
+  const serialized = targetEl.dataset.jxPath;
   if (serialized == null) {
     return null;
   }
   const path = parseJxPath(serialized);
-  const node = shadowDoc ? (getNodeAtPath(shadowDoc, path as JxPath) as JxMutableNode) : undefined;
+  const node = shadowDoc ? getNodeAtPath(shadowDoc, path) : undefined;
   return {
     path,
     rect: rectFor(targetEl),
@@ -186,12 +187,41 @@ export function layoutHitFor(target: EventTarget | null): LayoutHit | null {
     return null;
   }
   return {
-    className: typeof el.className === "string" ? el.className : "",
+    // An `HTMLElement`'s `className` is always the string form (only SVG's is an animated value).
+    className: el.className,
     layoutFile: el.dataset.jxLayoutFile ?? "",
     layoutPath: parseJxPath(el.dataset.jxLayoutPath ?? "[]"),
     rect: rectFor(el),
     tagName: el.tagName.toLowerCase(),
   };
+}
+
+/**
+ * The text a failed patch or render reports: the thrown value's `message` when it has one, the
+ * value itself otherwise.
+ */
+function failureText(cause: unknown): string {
+  const message = isNonNullObject(cause) && "message" in cause ? cause.message : undefined;
+  return String(message ?? cause);
+}
+
+/** The edge-hold auto-scroll loop's last cursor, and the drag it belongs to. */
+interface AutoScrollCursor {
+  x: number;
+  y: number;
+  dragSeq: number;
+  withCursor: boolean;
+  src?: DragSrcKind;
+  gen?: number;
+}
+
+/**
+ * The two document APIs the `idle` sample reads, as a frame may or may not provide them. lib.dom
+ * declares both unconditionally; happy-dom implements neither.
+ */
+interface IdleProbeDocument {
+  getAnimations?: Document["getAnimations"];
+  fonts?: FontFaceSet;
 }
 
 /** Set-key keys the patcher applies IN PLACE (never a subtree re-render) — safe under a live edit. */
@@ -317,14 +347,7 @@ export function startCanvasIframe(opts: {
   // (the parent has no pointer of its own then). Parent-driven flows (1/2/4) leave `src` undefined
   // And `withCursor` false — the tick falls back to `dragSrc`/`dragGen` and the parent moves the
   // Ghost from its own raw pointer.
-  let autoScrollCursor: {
-    x: number;
-    y: number;
-    dragSeq: number;
-    withCursor: boolean;
-    src?: DragSrcKind;
-    gen?: number;
-  } | null = null;
+  let autoScrollCursor: AutoScrollCursor | null = null;
   const win = container.ownerDocument.defaultView;
 
   function stopAutoScroll(): void {
@@ -353,16 +376,17 @@ export function startCanvasIframe(opts: {
       return;
     }
     const preview = previewAt(autoScrollCursor, src, shadowDoc, container.ownerDocument);
-    channel.post({
-      // Flow 3 (withCursor) re-posts the cursor so the parent keeps tracking the ghost at an edge-hold.
-      ...(autoScrollCursor.withCursor
-        ? { cursor: { x: autoScrollCursor.x, y: autoScrollCursor.y } }
-        : {}),
+    const over: DragOverMsg = {
       dragSeq: autoScrollCursor.dragSeq,
       gen: autoScrollCursor.gen ?? dragGen,
       kind: "dragOver",
       preview,
-    });
+    };
+    // Flow 3 (withCursor) re-posts the cursor so the parent keeps tracking the ghost at an edge-hold.
+    if (autoScrollCursor.withCursor) {
+      over.cursor = { x: autoScrollCursor.x, y: autoScrollCursor.y };
+    }
+    channel.post(over);
     autoScrollFrame = win.requestAnimationFrame(autoScrollTick);
   }
 
@@ -381,13 +405,12 @@ export function startCanvasIframe(opts: {
       stopAutoScroll();
       return;
     }
-    autoScrollCursor = {
-      dragSeq,
-      withCursor: flow3 != null,
-      x: cursor.x,
-      y: cursor.y,
-      ...(flow3 ? { gen: flow3.gen, src: flow3.src } : {}),
-    };
+    const next: AutoScrollCursor = { dragSeq, withCursor: flow3 != null, x: cursor.x, y: cursor.y };
+    if (flow3) {
+      next.gen = flow3.gen;
+      next.src = flow3.src;
+    }
+    autoScrollCursor = next;
     if (!autoScrollFrame) {
       autoScrollFrame = win.requestAnimationFrame(autoScrollTick);
     }
@@ -522,13 +545,11 @@ export function startCanvasIframe(opts: {
   }
 
   function sampleIdle(): Extract<IframeToParent, { kind: "idle" }> {
-    const running =
-      typeof frameDoc.getAnimations === "function"
-        ? frameDoc.getAnimations().filter((a) => a.playState === "running").length
-        : 0;
+    const probe: IdleProbeDocument = frameDoc;
+    const running = probe.getAnimations?.().filter((a) => a.playState === "running").length ?? 0;
     return {
       animations: running,
-      fonts: frameDoc.fonts ? frameDoc.fonts.status === "loaded" : true,
+      fonts: probe.fonts ? probe.fonts.status === "loaded" : true,
       gen: renderedGen,
       images: pendingImageRetries(),
       kind: "idle",
@@ -750,12 +771,7 @@ export function startCanvasIframe(opts: {
       // The wrong scope); the parent additionally gen-gates the reply against its own state.
       const results =
         msg.gen === renderedGen && renderCtx && shadowDoc
-          ? evaluateLiveExprs(
-              msg.exprs,
-              renderCtx.defs as Record<string, unknown>,
-              shadowDoc,
-              msg.contextPath,
-            )
+          ? evaluateLiveExprs(msg.exprs, renderCtx.defs, shadowDoc, msg.contextPath)
           : [];
       channel.post({ gen: msg.gen, kind: "evalResult", reqId: msg.reqId, results });
       return;
@@ -820,11 +836,7 @@ export function startCanvasIframe(opts: {
         channel.post({ gen, kind: "patchComplete" });
         armIdleWatch();
       } catch (error) {
-        channel.post({
-          gen,
-          kind: "patchError",
-          message: String((error as Error)?.message ?? error),
-        });
+        channel.post({ gen, kind: "patchError", message: failureText(error) });
       }
       return;
     }
@@ -835,14 +847,10 @@ export function startCanvasIframe(opts: {
       if (msg.gen !== renderedGen || !shadowDoc) {
         return;
       }
-      (shadowDoc as { style?: JxStyle }).style = msg.style as JxStyle;
+      shadowDoc.style = msg.style;
       const rootEl = container.firstElementChild;
       if (rootEl instanceof HTMLElement) {
-        reapplyStyle(
-          rootEl,
-          msg.style as JxStyle,
-          (shadowDoc as { $media?: Record<string, string> }).$media ?? {},
-        );
+        reapplyStyle(rootEl, msg.style, shadowDoc.$media ?? {});
       }
       return;
     }
@@ -945,7 +953,10 @@ export function startCanvasIframe(opts: {
     if (msg.kind === "redefineElement") {
       /* The canvas half of embedding.md §7. The definition is replaced in THIS realm; instances
          already on the canvas keep the old one until the host's next render replaces them. */
-      void redefineElement(msg.doc as never, msg.base);
+      /* SAFETY: The host posts only the component definition a save just wrote
+         (`redefineElementOnCanvases`), a whole `.json` element document, and `redefineElement`
+         itself rejects one whose `tagName` is not a hyphenated literal. */
+      void redefineElement(msg.doc as JxDocument, msg.base);
       return;
     }
     if (msg.kind === "setLocale") {
@@ -988,6 +999,8 @@ export function startCanvasIframe(opts: {
     // A document with no format, where the studio's own element metadata answers on its own.
     setEditableVerdicts(msg.editableTags ?? null);
     const { gen, mapperCtx } = msg;
+    /* SAFETY: The host posts `shadowDoc` as a JSON round-trip of the tab's raw page document (or of
+       the stylebook specimen), so it is a `JxMutableNode` in the forward-op coordinate space. */
     const rawDoc = msg.shadowDoc as JxMutableNode;
     void (async () => {
       try {
@@ -1002,9 +1015,11 @@ export function startCanvasIframe(opts: {
            than a theoretical one. It used to be exactly that, one orphaned `<style>` per styled
            element per render. */
         resetDocumentStyles(container.ownerDocument);
-        handle = await renderResolvedDocument({
+        const renderOpts: Parameters<typeof renderResolvedDocument>[0] = {
           assets: versionedAssets(msg.assets ?? null),
           container,
+          /* SAFETY: The host posts `doc` as a JSON round-trip of `resolveCanvasDocument`'s render
+             document (or the stylebook specimen), which is the resolved `JxDocument` it renders. */
           doc: msg.doc as JxDocument,
           docBase: msg.docBase,
           mapperCtx: {
@@ -1019,8 +1034,11 @@ export function startCanvasIframe(opts: {
           popoverOpen: msg.popoverOpen ? serializeJxPath(msg.popoverOpen) : null,
           dialogOpen: msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null,
           siteStyle: msg.siteStyle,
-          ...(msg.allowAutoRequests ? { allowAutoRequests: true } : {}),
-        });
+        };
+        if (msg.allowAutoRequests) {
+          renderOpts.allowAutoRequests = true;
+        }
+        handle = await renderResolvedDocument(renderOpts);
         if (gen === latestGen) {
           /* A render replaces the DOM, so the open attribute goes with it. The host sends the value
              on the render message for exactly this reason; a frame that kept only its own copy
@@ -1042,7 +1060,7 @@ export function startCanvasIframe(opts: {
           // BuildScope returns, and serializeDataScope reads defs[key], so the effect tracks those
           // Refs and RE-POSTS an updated snapshot when the data settles (the host gen-gates stale
           // Ones). Isolated in try/catch: a serialization failure never breaks the render ack above.
-          const defs = handle.ctx.defs as Record<string, unknown>;
+          const { defs } = handle.ctx;
           stopDataScopeWatch = observeScope(() => {
             try {
               channel.post({ gen, kind: "dataScope", scope: serializeDataScope(defs) });
@@ -1054,11 +1072,7 @@ export function startCanvasIframe(opts: {
           postContentHeight();
         }
       } catch (error) {
-        channel.post({
-          gen,
-          kind: "renderError",
-          message: String((error as Error)?.message ?? error),
-        });
+        channel.post({ gen, kind: "renderError", message: failureText(error) });
       }
     })();
   });
@@ -1094,7 +1108,9 @@ export function startCanvasIframe(opts: {
 interface BootWindow {
   location: { search: string };
   document: { querySelector: (selectors: string) => Element | null; body: HTMLElement };
-  parent: { postMessage: (message: unknown, targetOrigin: string) => void };
+  parent: {
+    postMessage: (message: CanvasEnvelope<IframeToParent>, targetOrigin: string) => void;
+  };
   addEventListener: (type: "message", listener: (event: MessageEvent) => void) => void;
   removeEventListener: (type: "message", listener: (event: MessageEvent) => void) => void;
 }
@@ -1122,8 +1138,9 @@ export function bootCanvasIframe(win: BootWindow): () => void {
         "The parent origin did not round-trip; the channel relies on the shared token alone.",
     );
   }
-  const container = (win.document.querySelector("#jx-canvas-root") ??
-    win.document.body) as HTMLElement;
+  // `canvas.html` draws `#jx-canvas-root` as a `<div>`; a page without it renders into `<body>`.
+  const root = win.document.querySelector("#jx-canvas-root");
+  const container = root instanceof HTMLElement ? root : win.document.body;
   const channel = postMessageChannel<IframeToParent, ParentToIframe>({
     acceptOrigin: parentOrigin,
     source: win,
@@ -1136,5 +1153,5 @@ export function bootCanvasIframe(win: BootWindow): () => void {
 
 // Boot only when actually loaded as the iframe document (has a real parent frame), never in tests.
 if (typeof window !== "undefined" && window.parent !== window) {
-  bootCanvasIframe(window as unknown as BootWindow);
+  bootCanvasIframe(window);
 }

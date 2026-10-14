@@ -1,8 +1,9 @@
 /** `--breakpoints` names the widths the project keeps, and wins over any count. */
 import { describe, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import type { ImportSiteOptions, ImportSiteResult } from "../src/run.ts";
 
-const importSite = mock((_opts: Record<string, unknown>) =>
+const importSite = mock((_opts: ImportSiteOptions): Promise<ImportSiteResult> =>
   Promise.resolve({
     outDir: resolve("bp-out"),
     pages: [{ route: "pages/index.json", title: "Cloned", nodeCount: 1 }],
@@ -31,13 +32,13 @@ process.argv = [
   "9",
 ];
 
-const cliModule = (await import("../src/cli")) as { ready?: Promise<unknown> };
+const cliModule = await import("../src/cli");
 await cliModule.ready;
 
 describe("jx-import --breakpoints", () => {
   test("passes an explicit policy, trimming and parsing the width list", () => {
-    const opts = importSite.mock.calls[0]?.[0] as { breakpoints?: unknown };
-    expect(opts.breakpoints).toEqual({
+    const opts = importSite.mock.calls[0]?.[0];
+    expect(opts?.breakpoints).toEqual({
       mode: "explicit",
       rounding: "down",
       widths: [640, 1024, 1440],

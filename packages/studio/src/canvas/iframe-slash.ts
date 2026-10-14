@@ -21,7 +21,17 @@ import type { IframeToParent, ParentToIframe } from "./iframe-protocol";
 
 type SlashNavKey = Extract<IframeToParent, { kind: "slashNav" }>["key"];
 
-const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "Enter", "Escape"]);
+const NAV_KEYS = new Set<string>([
+  "ArrowUp",
+  "ArrowDown",
+  "Enter",
+  "Escape",
+] satisfies SlashNavKey[]);
+
+/** Whether `key` is one of the four keys the parent menu navigates by. */
+function isNavKey(key: string): key is SlashNavKey {
+  return NAV_KEYS.has(key);
+}
 
 /**
  * Register the bridge SlashController for this iframe realm and wire its keyboard/dismissal
@@ -55,28 +65,31 @@ export function startIframeSlashBridge(
       open = true;
       lastPostedFilter = filter;
       const r = rectOf(anchorEl);
-      channel.post({
+      const message: Extract<IframeToParent, { kind: "slashShow" }> = {
         filter,
         kind: "slashShow",
         rect: { height: r.height, width: r.width, x: r.left, y: r.top },
-        /* Carried, because the parent draws the menu and only the FRAME knows why it opened. A
-           menu opened by name has no "/…" run in the document to filter with, so it needs its own
-           field; the "/" gesture needs none, because the author types into the block. This option
-           was dropped at this boundary and the loss was invisible — the menu still appeared, just
-           with no way past fifteen items but scrolling. */
-        ...(cbs.showFilter === true ? { showFilter: true } : {}),
-      });
+      };
+      /* Carried, because the parent draws the menu and only the FRAME knows why it opened. A
+         menu opened by name has no "/…" run in the document to filter with, so it needs its own
+         field; the "/" gesture needs none, because the author types into the block. This option
+         was dropped at this boundary and the loss was invisible — the menu still appeared, just
+         with no way past fifteen items but scrolling. */
+      if (cbs.showFilter === true) {
+        message.showFilter = true;
+      }
+      channel.post(message);
     },
   };
   setSlashController(controller);
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (!open || !NAV_KEYS.has(e.key)) {
+    if (!open || !isNavKey(e.key)) {
       return;
     }
     e.preventDefault();
     e.stopPropagation();
-    channel.post({ key: e.key as SlashNavKey, kind: "slashNav" });
+    channel.post({ key: e.key, kind: "slashNav" });
   };
   const onMouseDown = () => {
     // The parent menu's outside-click listener can't see iframe clicks — any in-iframe press while

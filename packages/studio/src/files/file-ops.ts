@@ -28,6 +28,8 @@ import { showConfirmDialog } from "../ui/layers";
 import { locateDocument } from "../services/code-services";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
+import type { NotifyOptions } from "../services/notify";
+import { isString } from "@jxsuite/schema/guards";
 import { validateComponentSlots } from "../services/cem-export";
 import { reportPopoverProblems } from "../services/popover-report";
 import { getPlatform } from "../platform";
@@ -103,19 +105,66 @@ export async function parseSourceForPath(path: string, source: string) {
 export const parseCollabSource: CollabParser = async (tab, text) => {
   if (tab.documentPath && formatForPath(tab.documentPath)) {
     const parsed = await parseSourceForPath(tab.documentPath, text);
-    return { document: parsed.document as JxMutableNode, frontmatter: parsed.frontmatter };
+    return { document: parsed.document, frontmatter: parsed.frontmatter };
   }
   const parsed = parseJsonDocument(text);
   tab.doc.layout = parsed.layout;
+  /* SAFETY: a co-edited path no format class claims is a `.json` Jx document (every other path
+     `ensureCollab` attaches to is a format file, handled above), and that file's schema makes its
+     Top-level object a node — the object `parseJsonDocument` already states it returns. */
   return { document: parsed.document as JxMutableNode };
 };
+
+/** One `accept` group of a File System Access picker: media type → extensions, with a label. */
+interface FilePickerAcceptType {
+  accept: Record<string, string[]>;
+  description: string;
+}
+
+/**
+ * The File System Access pickers (WICG), which TypeScript's DOM lib does not declare. Only what
+ * this module passes and reads is spelled out.
+ */
+interface FilePickerWindow {
+  showOpenFilePicker: (options: {
+    types: FilePickerAcceptType[];
+  }) => Promise<FileSystemFileHandle[]>;
+  /* Export's single extension is `format.extensions[0]`, absent for a format that declares none —
+     So the save picker is typed with the value it is actually handed. */
+  showSaveFilePicker: (options: {
+    suggestedName?: string | undefined;
+    types: { accept: Record<string, (string | undefined)[]>; description: string }[];
+  }) => Promise<FileSystemFileHandle>;
+}
+
+/** Whether this browser offers `showOpenFilePicker` (Chromium does; Firefox and Safari do not). */
+function hasOpenFilePicker(
+  win: Window,
+): win is Window & Pick<FilePickerWindow, "showOpenFilePicker"> {
+  return "showOpenFilePicker" in win;
+}
+
+/** Whether this browser offers `showSaveFilePicker` (Chromium does; Firefox and Safari do not). */
+function hasSaveFilePicker(
+  win: Window,
+): win is Window & Pick<FilePickerWindow, "showSaveFilePicker"> {
+  return "showSaveFilePicker" in win;
+}
+
+/** Attach the tab's file to a notification's options, when it has one. */
+function atTabPath(tab: Tab, options: NotifyOptions): NotifyOptions {
+  if (tab.documentPath !== null) {
+    options.path = tab.documentPath;
+  }
+  return options;
+}
 
 /** Open a file via the File System Access API (or fallback input). */
 export async function openFile() {
   try {
     await loadFormats();
     const formats = getFormats();
-    const pickerTypes = [
+    const pickerTypes: FilePickerAcceptType[] = [
       {
         accept: { "application/json": [".json"] },
         description: "Jx Component",
@@ -160,12 +209,8 @@ export async function openFile() {
       // Trail; it does not need a message that erases itself.
     };
 
-    if ("showOpenFilePicker" in window) {
-      const [handle] = await (
-        window as unknown as {
-          showOpenFilePicker: (options?: unknown) => Promise<FileSystemFileHandle[]>;
-        }
-      ).showOpenFilePicker({ types: pickerTypes });
+    if (hasOpenFilePicker(window)) {
+      const [handle] = await window.showOpenFilePicker({ types: pickerTypes });
       const file = await handle!.getFile();
       await handleSource(handle!.name, await file.text(), handle!);
     } else {
@@ -230,16 +275,16 @@ function reportSaved(tab: Tab) {
   const doc = tab.doc.document;
   _onDocumentSaved(tab.documentPath, doc);
   const warning =
-    typeof doc.tagName === "string" && doc.tagName.includes("-")
-      ? validateComponentSlots(doc)
-      : null;
+    isString(doc.tagName) && doc.tagName.includes("-") ? validateComponentSlots(doc) : null;
   if (warning) {
-    notify.warn(warning, {
-      key: `slots:${tab.documentPath ?? tab.id}`,
-      ...(tab.documentPath === null ? {} : { path: tab.documentPath }),
-      source: "Components",
-      tier: "problem",
-    });
+    notify.warn(
+      warning,
+      atTabPath(tab, {
+        key: `slots:${tab.documentPath ?? tab.id}`,
+        source: "Components",
+        tier: "problem",
+      }),
+    );
   }
   /* Popover correctness, beside the slot check and for the same reason it is here: a successful
      save is the one chokepoint every edit passes through, whichever surface made it. A render-time
@@ -311,12 +356,11 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
     notify.warn(
       `You have read access to this session — changes to ${tab.documentPath ?? "this document"} ` +
         `stay in your browser and cannot be saved.`,
-      {
+      atTabPath(tab, {
         action: "file.save",
         key: `save.readOnly:${tab.documentPath ?? tab.id}`,
-        ...(tab.documentPath === null ? {} : { path: tab.documentPath }),
         source: "Collaboration",
-      },
+      }),
     );
     return false;
   }
@@ -327,11 +371,10 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
   if (!hasSerializableDocument(tab)) {
     notify.warn(
       `${tab.documentPath ?? "This file"} is a media file, so there is no document for Save to write.`,
-      {
+      atTabPath(tab, {
         key: `save.notADocument:${tab.documentPath ?? tab.id}`,
-        ...(tab.documentPath === null ? {} : { path: tab.documentPath }),
         source: "Save",
-      },
+      }),
     );
     return false;
   }
@@ -381,13 +424,15 @@ export async function saveFile(tab: Tab | null = activeTab.value): Promise<boole
     notify.warn("This document has no save target — use Export.", { key: "save.noTarget" });
   } catch (error) {
     if (!(error instanceof Error && error.name === "AbortError")) {
-      notify.error(`Could not save ${tab.documentPath ?? tab.id}.`, {
-        action: "file.save",
-        detail: errorMessage(error),
-        key: `save:${tab.documentPath ?? tab.id}`,
-        ...(tab.documentPath === null ? {} : { path: tab.documentPath }),
-        source: "Save",
-      });
+      notify.error(
+        `Could not save ${tab.documentPath ?? tab.id}.`,
+        atTabPath(tab, {
+          action: "file.save",
+          detail: errorMessage(error),
+          key: `save:${tab.documentPath ?? tab.id}`,
+          source: "Save",
+        }),
+      );
     }
   }
   return false;
@@ -418,13 +463,9 @@ export async function exportFile() {
     const description = format ? format.name : "Jx Component";
     const fallbackName = format ? `content${ext}` : "component.json";
 
-    if ("showSaveFilePicker" in window) {
+    if (hasSaveFilePicker(window)) {
       const suggestedName = tab.documentPath ? tab.documentPath.split("/").pop() : fallbackName;
-      const handle = await (
-        window as unknown as {
-          showSaveFilePicker: (options?: unknown) => Promise<FileSystemFileHandle>;
-        }
-      ).showSaveFilePicker({
+      const handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{ accept: { [mimeType]: [ext] }, description }],
       });

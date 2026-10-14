@@ -68,7 +68,7 @@ async function getSharp() {
   // Production installs where @img/sharp-* native packages are adjacent to cli.js.
   try {
     const sharpMod = await import("sharp");
-    _sharp = sharpMod.default as SharpModule;
+    _sharp = sharpMod.default;
     return _sharp;
   } catch {
     // Fall through to CJS fallback below.
@@ -79,6 +79,7 @@ async function getSharp() {
   // Unreachable via the primary import path.
   try {
     const req = createRequire(resolve(process.cwd(), "package.json"));
+    // SAFETY: sharp's CommonJS entry is `module.exports = sharp`, the value its ESM default exports.
     _sharp = req("sharp") as SharpModule;
     return _sharp;
   } catch (error) {
@@ -92,6 +93,17 @@ async function getSharp() {
 const OPTIMIZED_DIR = "images/_optimized";
 
 /**
+ * The part of sharp's metadata this module reads, with every member optional. The sharp these types
+ * describe always reports all three, but `getSharp` may load the project's own copy instead, and
+ * sharp before 0.34 declared each of them optional.
+ */
+interface ReportedMetadata {
+  format?: string;
+  height?: number;
+  width?: number;
+}
+
+/**
  * Get image metadata (dimensions and format) via Sharp.
  *
  * @param {string} srcPath - Absolute path to source image
@@ -99,9 +111,9 @@ const OPTIMIZED_DIR = "images/_optimized";
  */
 export async function getImageMetadata(srcPath: string) {
   const sharp = await getSharp();
-  const meta = await sharp(srcPath).metadata();
+  const meta: ReportedMetadata = await sharp(srcPath).metadata();
   return {
-    format: (meta.format ?? "unknown") as string,
+    format: meta.format ?? "unknown",
     height: meta.height ?? 0,
     width: meta.width ?? 0,
   };
@@ -216,7 +228,10 @@ export async function processImage(srcPath: string, cacheImgDir: string, config:
         continue;
       }
 
+      /* SAFETY: `format` is a free string from project config; a name outside the four keyed
+         qualities reads `undefined` from the lookup and takes the default of 80. */
       const quality = config.quality[format as keyof ImageConfig["quality"]] ?? 80;
+      // SAFETY: toFormat checks the name itself and throws for a format sharp cannot encode.
       const task = sharp(srcPath)
         .resize(width)
         .toFormat(format as SharpFormat, { quality })
@@ -248,7 +263,6 @@ export async function processImage(srcPath: string, cacheImgDir: string, config:
  */
 export function buildSrcset(variants: ImageVariant[], format: string) {
   return variants
-    .filter((v) => v.format === format)
-    .map((v) => `${v.outputPath} ${v.width}w`)
+    .flatMap((v) => (v.format === format ? [`${v.outputPath} ${v.width}w`] : []))
     .join(", ");
 }

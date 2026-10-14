@@ -19,11 +19,13 @@ import { join } from "node:path";
 
 // Dir → rationale. Keep this list short and honest: every entry weakens the
 // Rule, so it must say why the exception is architecturally sound.
-const ALLOWLIST: Record<string, string> = {
-  "packages/desktop":
+const ALLOWLIST = new Map<string, string>([
+  [
+    "packages/desktop",
     "Bundling carve-out: an offline app shipping a complete environment as installers; " +
-    "never published to npm. Extensions ship inside the app bundle by design.",
-};
+      "never published to npm. Extensions ship inside the app bundle by design.",
+  ],
+]);
 
 interface Pkg {
   dir: string; // Repo-relative, e.g. "packages/compiler"
@@ -76,7 +78,7 @@ const extensionNames = new Set(extensions.map((p) => p.name));
 const violations: string[] = [];
 
 for (const pkg of core) {
-  const allowReason = ALLOWLIST[pkg.dir];
+  const allowReason = ALLOWLIST.get(pkg.dir);
 
   const badDeps = pkg.runtimeDeps.filter((d) => extensionNames.has(d));
   if (badDeps.length > 0 && !allowReason) {
@@ -118,7 +120,7 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-const allowed = Object.keys(ALLOWLIST).filter((dir) => core.some((p) => p.dir === dir));
+const allowed = [...ALLOWLIST.keys()].filter((dir) => core.some((p) => p.dir === dir));
 console.log(
   `dep-rules OK: ${core.length} core, ${extensions.length} extension package(s); ` +
     `${allowed.length} allowlisted carve-out(s)${allowed.length > 0 ? ` (${allowed.join(", ")})` : ""}.`,

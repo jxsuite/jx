@@ -26,6 +26,9 @@ import {
   useNodeFallback,
 } from "./bundler.ts";
 import { DEFAULT_LIT_HTML_SRC, DEFAULT_REACTIVITY_SRC } from "../shared.ts";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** One import-map entry the build can satisfy itself. */
 interface RuntimeModule {
@@ -63,6 +66,12 @@ export const CLIENT_RUNTIME_MODULES: readonly RuntimeModule[] = [
 /** An import-map prefix key — `"lit-html/"` — as opposed to an exact specifier. */
 export function isPrefixSpecifier(specifier: string): boolean {
   return specifier.endsWith("/");
+}
+
+/** What a runtime write reports: files written, and the failures it carried on past. */
+export interface RuntimeWriteReport {
+  written: number;
+  errors: string[];
 }
 
 export interface ClientRuntime {
@@ -125,14 +134,14 @@ export function resolveClientRuntime(resolveDir: string = PACKAGE_DIR): ClientRu
  * @param {ClientRuntime} runtime
  * @param {string} outDir
  * @param {string} [resolveDir]
- * @returns {Promise<{ written: number; errors: string[] }>}
+ * @returns {Promise<RuntimeWriteReport>}
  */
 export async function writeClientRuntime(
   runtime: ClientRuntime,
   outDir: string,
   resolveDir: string = PACKAGE_DIR,
   minify = true,
-): Promise<{ written: number; errors: string[] }> {
+): Promise<RuntimeWriteReport> {
   const errors: string[] = [];
   let written = 0;
 
@@ -155,7 +164,7 @@ export async function writeClientRuntime(
       );
       written += 1;
     } catch (error) {
-      errors.push(`Bundling client runtime "${mod.specifier}": ${(error as Error).message}`);
+      errors.push(`Bundling client runtime "${mod.specifier}": ${errorMessage(error)}`);
     }
   }
   return { errors, written };
@@ -189,18 +198,21 @@ export function importMapAssets(imports: Record<string, string>): string[] {
 export function importMapAssetsInHtml(html: string): string[] {
   const found: string[] = [];
   for (const match of html.matchAll(/<script type="importmap">([\s\S]*?)<\/script>/g)) {
-    let imports: unknown;
+    let map: JsonValue;
     try {
-      ({ imports } = JSON.parse(match[1] as string) as { imports?: unknown });
+      /* SAFETY: capture group 1 is not optional in the pattern, so every match carries it, and
+         JSON.parse only ever yields JSON values; its `any` return type says nothing more. */
+      map = JSON.parse(match[1] as string) as JsonValue;
     } catch {
       // A map the build did not write and cannot parse names nothing this build must produce.
       continue;
     }
-    if (typeof imports !== "object" || imports === null) {
+    const imports = isJsonObject(map) ? map.imports : undefined;
+    if (!isNonNullObject(imports)) {
       continue;
     }
-    const entries = Object.entries(imports as Record<string, unknown>).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string",
+    const entries = Object.entries(imports).flatMap(([specifier, url]): [string, string][] =>
+      isString(url) ? [[specifier, url]] : [],
     );
     found.push(...importMapAssets(Object.fromEntries(entries)));
   }
@@ -224,10 +236,13 @@ export function renderImportMap(imports: Record<string, string>): string {
  */
 function canResolve(specifier: string, resolveDir: string): boolean {
   try {
+    // Both resolvers throw when the specifier does not resolve, and return its path when it does.
     if (useNodeFallback()) {
-      return typeof createRequire(join(resolveDir, "x.js")).resolve(specifier) === "string";
+      createRequire(join(resolveDir, "x.js")).resolve(specifier);
+    } else {
+      Bun.resolveSync(specifier, resolveDir);
     }
-    return typeof Bun.resolveSync(specifier, resolveDir) === "string";
+    return true;
   } catch {
     return false;
   }
@@ -264,13 +279,13 @@ const MAX_SUBPATH_PASSES = 10;
  * @param {string} outDir - Build output root
  * @param {string} [resolveDir] - Directory bare specifiers resolve from
  * @param {boolean} [minify] - Minify the emitted bundles (defaults to the browser-target default)
- * @returns {Promise<{ written: number; errors: string[] }>}
+ * @returns {Promise<RuntimeWriteReport>}
  */
 export async function writeRuntimeSubpaths(
   outDir: string,
   resolveDir: string = PACKAGE_DIR,
   minify = true,
-): Promise<{ written: number; errors: string[] }> {
+): Promise<RuntimeWriteReport> {
   const errors: string[] = [];
   const done = new Set<string>();
   /** Output path of a core re-export stub → the bare specifier it must re-export. */
@@ -293,6 +308,7 @@ export async function writeRuntimeSubpaths(
   /** `from "lit-html/directives/class-map.js"` — the import forms a bundler emits. */
   const importedSpecifiers = async (file: string): Promise<string[]> => {
     const text = readFileSync(file, "utf8");
+    // SAFETY: capture group 1 is not optional in the pattern, so every match carries it.
     return [...text.matchAll(/(?:from|import)\s*["']([^"']+)["']/g)].map((m) => m[1] as string);
   };
 
@@ -337,7 +353,7 @@ export async function writeRuntimeSubpaths(
           written += 1;
           discovered += 1;
         } catch (error) {
-          errors.push(`Bundling runtime subpath "${specifier}": ${(error as Error).message}`);
+          errors.push(`Bundling runtime subpath "${specifier}": ${errorMessage(error)}`);
         }
       }
     }
@@ -413,7 +429,7 @@ function finish(
   mirrors: Map<string, string>,
   errors: string[],
   written: number,
-): { written: number; errors: string[] } {
+): RuntimeWriteReport {
   let total = written;
   for (const [path, specifier] of mirrors) {
     if (existsSync(path)) {
@@ -424,9 +440,7 @@ function finish(
       writeFileSync(path, `export * from ${JSON.stringify(specifier)};\n`, "utf8");
       total += 1;
     } catch (error) {
-      errors.push(
-        `Writing shared core stub ${relative(outDir, path)}: ${(error as Error).message}`,
-      );
+      errors.push(`Writing shared core stub ${relative(outDir, path)}: ${errorMessage(error)}`);
     }
   }
   return { errors, written: total };

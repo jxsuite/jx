@@ -24,6 +24,12 @@ export interface HeaderRule {
   headers: Record<string, string>;
 }
 
+/** The generated `_headers` stanzas, and the configuration problems found while deriving them. */
+export interface HeaderRuleSet {
+  rules: HeaderRule[];
+  errors: string[];
+}
+
 /**
  * The only content-addressed output the build produces. `variantFilename()` embeds an 8-character
  * digest of the source bytes, so a changed image is a changed URL and the old one can be cached
@@ -56,10 +62,7 @@ const AUTHOR_BANNER =
 export function buildHeaderRules(
   build: ProjectConfig["build"],
   cspSources?: CspSources,
-): {
-  rules: HeaderRule[];
-  errors: string[];
-} {
+): HeaderRuleSet {
   const cfg: HeadersConfig = build?.headers ?? {};
   const errors: string[] = [];
   if (cfg.enabled === false) {

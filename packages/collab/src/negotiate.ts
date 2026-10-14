@@ -21,9 +21,13 @@
  * merge `schema.ts` warns about. Negotiation has to conclude before a byte of document state
  * moves.
  *
- * This module imports nothing, deliberately: the Studio platform adapters read it eagerly, before
- * the dynamic import that pulls in Yjs, so it must not drag the CRDT into the initial bundle.
+ * This module imports nothing but the dependency-free `@jxsuite/schema/guards`, deliberately: the
+ * Studio platform adapters read it eagerly, before the dynamic import that pulls in Yjs, so it must
+ * not drag the CRDT into the initial bundle.
  */
+
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /** The subprotocol token for the envelope in `envelope.ts`. One token per envelope major. */
 export const COLLAB_SUBPROTOCOL = "jx.collab.v1";
@@ -47,22 +51,22 @@ export interface CollabNegotiation {
 /**
  * Decide what to offer, from the body of a `GET /__studio/collab` capability probe.
  *
- * @param {unknown} probe The parsed probe body, or null if it did not parse as JSON.
+ * @param {JsonValue} probe The parsed probe body, or null if it did not parse as JSON.
  * @returns {CollabNegotiation}
  */
-export function negotiateCollab(probe: unknown): CollabNegotiation {
-  if (probe === null || typeof probe !== "object") {
-    // A 200 that is not a JSON object: pre-negotiation server. Connect as before, offering nothing.
+export function negotiateCollab(probe: JsonValue): CollabNegotiation {
+  if (!isJsonObject(probe)) {
+    /* A 200 that is not a JSON object: pre-negotiation server. Connect as before, offering nothing.
+       (A JSON array lands here too; it carries no `protocols`, so it always meant the same.) */
     return { offer: [], refused: null };
   }
-  const body = probe as { collab?: unknown; detail?: unknown; protocols?: unknown };
-  if (body.collab === false) {
+  const { collab, detail, protocols } = probe;
+  if (collab === false) {
     /* The server's own sentence wins when it sends one. "Disabled" is true of a flag that is off,
        and false of a room an action would open: that server knows which it is and says so. */
-    const detail = typeof body.detail === "string" ? body.detail.trim() : "";
-    return { offer: [], refused: detail || "This server has collaboration disabled." };
+    const sentence = isString(detail) ? detail.trim() : "";
+    return { offer: [], refused: sentence || "This server has collaboration disabled." };
   }
-  const { protocols } = body;
   if (!Array.isArray(protocols) || protocols.length === 0) {
     // A server that predates negotiation. It would echo nothing, so we must offer nothing.
     return { offer: [], refused: null };
@@ -70,7 +74,7 @@ export function negotiateCollab(probe: unknown): CollabNegotiation {
   if (protocols.includes(COLLAB_SUBPROTOCOL)) {
     return { offer: [COLLAB_SUBPROTOCOL], refused: null };
   }
-  const theirs = protocols.filter((p) => typeof p === "string").join(", ") || "none";
+  const theirs = protocols.filter((p) => isString(p)).join(", ") || "none";
   return {
     offer: [],
     refused: `This server speaks collab envelope ${theirs}; this editor speaks ${COLLAB_SUBPROTOCOL}.`,

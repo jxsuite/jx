@@ -17,8 +17,22 @@ import { checkChromeBudget, dockTabs } from "../src/commands/budget";
 import { railDeclarations } from "../src/panels/panel-registry";
 import { emptyContext } from "../src/commands/context";
 import { createCommandRegistry } from "../src/commands/registry";
+import type { AnyCommand, Command } from "../src/commands/registry";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { ShortcutPointerContext } from "../src/editor/shortcuts";
 
 const COMMANDS = appCommandSet();
+
+/**
+ * A record from the erased list, typed back to the argument record its `args` schema declares.
+ * `AnyCommand` is `Command<never>` only so one array can hold records of every argument type.
+ */
+function withArgs(command: AnyCommand | undefined): Command<CommandArgValues> | undefined {
+  /* SAFETY: callers pass only records that declare an `args` object schema (view.setAssistant's
+     `{ open }`, view.setRightTab's `{ tab }`), and each run reads its args through the
+     command-args readers (`booleanArg`, `enumArg`), which take a CommandArgValues record. */
+  return command as Command<CommandArgValues> | undefined;
+}
 
 describe("the set", () => {
   /*
@@ -172,7 +186,7 @@ describe("the set", () => {
 
   test("this workstream's own records add no toggle", () => {
     const namespaces = new Set(["canvas", "collection", "data", "formula", "inspector", "state"]);
-    const added = COMMANDS.filter((c) => namespaces.has(c.id.split(".")[0] as string));
+    const added = COMMANDS.filter((c) => namespaces.has(c.id.split(".")[0] ?? ""));
     expect(added.filter((c) => /\.toggle[A-Z]/.test(c.id))).toEqual([]);
   });
 
@@ -181,9 +195,9 @@ describe("the set", () => {
     // Process. They still have to be honest functions: `view.setAssistant {open:false}` only acts
     // When the Assistant is the tab on screen, so it calls the getter rather than assuming.
     const byId = new Map(COMMANDS.map((c) => [c.id, c]));
-    const setAssistant = byId.get("view.setAssistant")!;
-    expect(() => setAssistant.run(emptyContext(), { open: false } as never)).not.toThrow();
-    expect(() => setAssistant.run(emptyContext(), { open: true } as never)).not.toThrow();
+    const setAssistant = withArgs(byId.get("view.setAssistant"))!;
+    expect(() => setAssistant.run(emptyContext(), { open: false })).not.toThrow();
+    expect(() => setAssistant.run(emptyContext(), { open: true })).not.toThrow();
   });
 
   test("every declared args schema is an object schema with named properties", () => {
@@ -191,7 +205,7 @@ describe("the set", () => {
       if (!command.args) {
         continue;
       }
-      const schema = command.args as { properties?: object; type?: string };
+      const schema = command.args;
       expect(schema.type).toBe("object");
       expect(Object.keys(schema.properties ?? {}).length).toBeGreaterThan(0);
     }
@@ -254,15 +268,19 @@ describe("the injected no-op deps", () => {
        checks read `id`, `level`, `menus` and `args`, never behaviour. Running one here is what
        proves the stub is a stage and not an `undefined` waiting to throw the first time a check
        (or the palette's `enablement`) reaches it. */
-    const zoom = appCommandSet().find((command) => command.id === "canvas.zoomReset");
+    /* SAFETY: canvas.zoomReset declares no `args` (its run reads only the context), so it is a
+       Command<void>; AnyCommand erases that to never only so one array can hold every record. */
+    const zoom = appCommandSet().find((command) => command.id === "canvas.zoomReset") as
+      | Command
+      | undefined;
     expect(zoom).toBeDefined();
-    expect(() => zoom?.run(emptyContext(), undefined as never)).not.toThrow();
+    expect(() => zoom?.run(emptyContext())).not.toThrow();
     // …and the stage itself is a STAGE: the zoom verbs only reach it with a document open, which
     // No check has, so nothing else would ever prove it is not an `undefined` waiting to throw.
-    const stage = noopStage();
+    const stage: ShortcutPointerContext = noopStage();
     expect(stage.canvasMode).toBe("design");
     expect(() => {
-      (stage.setPan as (x: number, y: number) => void)(0, 0);
+      stage.setPan(0, 0);
       stage.applyTransform();
     }).not.toThrow();
   });
@@ -278,8 +296,8 @@ describe("the injected no-op deps", () => {
   });
 
   test("a `run` that reaches a dep is inert", () => {
-    const command = byId.get("view.setRightTab");
-    expect(() => command?.run(emptyContext(), { tab: "style" } as never)).not.toThrow();
+    const command = withArgs(byId.get("view.setRightTab"));
+    expect(() => command?.run(emptyContext(), { tab: "style" })).not.toThrow();
   });
 });
 

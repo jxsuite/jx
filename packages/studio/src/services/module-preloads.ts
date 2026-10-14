@@ -19,6 +19,11 @@
  * studio's own lazy surfaces runs.
  */
 
+/** A document head carrying the batcher's install flag. */
+interface BatchedHead extends HTMLHeadElement {
+  __modulePreloadsBatched?: boolean;
+}
+
 const QUEUED: HTMLLinkElement[] = [];
 let frame: number | null = null;
 let originalAppend: (<T extends Node>(node: T) => T) | null = null;
@@ -53,15 +58,14 @@ function appendChildPatched<T extends Node>(this: Node, node: T): T {
 }
 
 export function installModulePreloadBatcher(): void {
-  const { head } = document;
-  if (
-    !head ||
-    (head as HTMLElement & { __modulePreloadsBatched?: boolean }).__modulePreloadsBatched
-  ) {
+  /* SAFETY: a widening. The DOM standard declares `document.head` nullable (a document with no head
+     element has none) where lib.dom says it is always there; the install flag is an optional expando
+     this module alone writes. */
+  const head = document.head as BatchedHead | null;
+  if (!head || head.__modulePreloadsBatched) {
     return;
   }
-  const patched = head as HTMLElement & { __modulePreloadsBatched?: boolean };
   originalAppend = Node.prototype.appendChild.bind(head);
-  patched.__modulePreloadsBatched = true;
-  head.appendChild = appendChildPatched as unknown as typeof head.appendChild;
+  head.__modulePreloadsBatched = true;
+  head.appendChild = appendChildPatched;
 }

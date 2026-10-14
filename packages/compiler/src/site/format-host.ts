@@ -12,8 +12,14 @@ import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import { buildExtensionRegistry, EXTENSION_MANIFEST } from "@jxsuite/schema/extension-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { FormatHostIO, FormatRegistry, ProjectBlock } from "@jxsuite/schema/format-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  FormatHostIO,
+  ImplementationExport,
+  ProjectBlock,
+  StudioHints,
+} from "@jxsuite/schema/format-registry";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 
 export type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 export type { FormatRegistry, FormatEntry } from "@jxsuite/schema/format-registry";
@@ -27,9 +33,10 @@ export type { FormatRegistry, FormatEntry } from "@jxsuite/schema/format-registr
  * built module is JavaScript), and .js → .ts.
  *
  * @param {string} path - Absolute path to the implementation module
- * @returns {Promise<Record<string, unknown>>}
+ * @returns {Promise<ImplementationExport>} The module's namespace object, whose named exports (and
+ *   `default`) are read by name
  */
-export async function importImplementation(path: string): Promise<Record<string, unknown>> {
+export async function importImplementation(path: string): Promise<ImplementationExport> {
   const candidates = [path];
   const srcSeg = `${sep}src${sep}`;
   const distSeg = `${sep}dist${sep}`;
@@ -131,7 +138,11 @@ export function probeExtension(projectRoot: string, name: string): ExtensionReso
     // Not shipped by this host either.
   }
 
-  return { host, project, ...(manifestPath === undefined ? {} : { manifestPath }) };
+  const resolution: ExtensionResolution = { host, project };
+  if (manifestPath !== undefined) {
+    resolution.manifestPath = manifestPath;
+  }
+  return resolution;
 }
 
 /** Build the extension registry for a project from its project.json `extensions` array. */
@@ -146,20 +157,6 @@ export async function buildProjectExtensionRegistry(
   );
 }
 
-/**
- * Format-dispatch view of the project's extension registry.
- *
- * @deprecated Part-3 cleanup: the desktop app still imports this; use
- *   `buildProjectExtensionRegistry(...).then((r) => r.formats)` instead.
- */
-export async function buildProjectFormatRegistry(
-  projectRoot: string,
-  projectConfig?: ProjectConfig,
-): Promise<FormatRegistry> {
-  const registry = await buildProjectExtensionRegistry(projectRoot, projectConfig);
-  return registry.formats;
-}
-
 // ─── Studio extensions payload ────────────────────────────────────────────────
 
 /** One project-section contribution on the studio wire (specs/extensions.md §9/§9.1). */
@@ -169,12 +166,24 @@ export interface ExtensionsPayloadContribution {
   /** The class descriptor's `project` admission block. */
   project: ProjectBlock;
   /** The class descriptor's `$studio` block (settings section vocabulary), when declared. */
-  studio: Record<string, unknown> | null;
+  studio: StudioHints | null;
   /**
-   * The section's value schema — `properties[<key>]` of the extension's project fragment — or null
-   * when the extension ships no project fragment (or it lacks the key).
+   * The section's value schema — `properties[<key>]` of the extension's project fragment, which
+   * JSON Schema lets be a boolean as well as an object — or null when the extension ships no
+   * project fragment (or it lacks the key).
    */
-  entrySchema: Record<string, unknown> | null;
+  entrySchema: JsonValue;
+}
+
+/** One manifest class of an extension on the studio wire. */
+export interface ExtensionsPayloadClass {
+  name: string;
+  /** The class's resolved descriptor path. */
+  path: string;
+  /** Present on a plain state class: one with no admission blocks. */
+  state?: boolean;
+  /** The descriptor's `$studio.stateDefaults` hint (specs/extensions.md §10), when it is an object. */
+  stateDefaults?: JsonObject;
 }
 
 /** One extension package on the studio wire (the formats route's `extensions` sibling array). */
@@ -191,12 +200,7 @@ export interface ExtensionsPayloadEntry {
    * carry `state: true` plus their `$studio.stateDefaults` hint (specs/extensions.md §10), so the
    * studio can offer them in its add-state picker and seed new defs (e.g. `timing: "client"`).
    */
-  classes: {
-    name: string;
-    path: string;
-    state?: boolean;
-    stateDefaults?: Record<string, unknown>;
-  }[];
+  classes: ExtensionsPayloadClass[];
 }
 
 /**
@@ -211,13 +215,13 @@ export interface ExtensionsPayloadEntry {
 export function buildExtensionsPayload(registry: ExtensionRegistry): ExtensionsPayloadEntry[] {
   const payload: ExtensionsPayloadEntry[] = [];
   for (const ext of registry.extensions) {
-    let fragmentProperties: Record<string, Record<string, unknown>> = {};
+    let fragmentProperties: JsonObject = {};
     if (ext.schemas.project) {
       try {
-        const fragment = JSON.parse(readFileSync(ext.schemas.project, "utf8")) as {
-          properties?: Record<string, Record<string, unknown>>;
-        };
-        fragmentProperties = fragment.properties ?? {};
+        // SAFETY: JSON.parse only ever yields JSON values; its `any` return type says nothing more.
+        const fragment = JSON.parse(readFileSync(ext.schemas.project, "utf8")) as JsonValue;
+        const properties = isJsonObject(fragment) ? fragment.properties : undefined;
+        fragmentProperties = isJsonObject(properties) ? properties : {};
       } catch {
         fragmentProperties = {};
       }
@@ -234,27 +238,34 @@ export function buildExtensionsPayload(registry: ExtensionRegistry): ExtensionsP
         studio: cls.studio,
       });
     }
-    payload.push({
+    const entry: ExtensionsPayloadEntry = {
       classes: ext.classes.map((cls) => {
-        const stateDefaults = cls.studio?.stateDefaults as Record<string, unknown> | undefined;
+        const stateDefaults = cls.studio?.stateDefaults;
         const isState =
           cls.project === null &&
           cls.server === null &&
           cls.connector === null &&
           cls.extensions.length === 0;
-        return {
-          name: cls.name,
-          path: cls.classPath,
-          ...(isState ? { state: true } : {}),
-          ...(stateDefaults && typeof stateDefaults === "object" ? { stateDefaults } : {}),
-        };
+        const payloadClass: ExtensionsPayloadClass = { name: cls.name, path: cls.classPath };
+        if (isState) {
+          payloadClass.state = true;
+        }
+        if (isJsonObject(stateDefaults)) {
+          payloadClass.stateDefaults = stateDefaults;
+        }
+        return payloadClass;
       }),
       contributions,
       name: ext.manifest.name,
       specifier: ext.specifier,
-      ...(ext.manifest.title === undefined ? {} : { title: ext.manifest.title }),
-      ...(ext.manifest.description === undefined ? {} : { description: ext.manifest.description }),
-    });
+    };
+    if (ext.manifest.title !== undefined) {
+      entry.title = ext.manifest.title;
+    }
+    if (ext.manifest.description !== undefined) {
+      entry.description = ext.manifest.description;
+    }
+    payload.push(entry);
   }
   return payload;
 }

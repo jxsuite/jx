@@ -12,8 +12,9 @@
  */
 
 import { activeTab } from "../workspace/workspace";
-import { getNodeAtPath } from "../state";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { documentHasDialog, isDialog } from "@jxsuite/schema/dialogs";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { primarySelection } from "../tabs/selection";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
@@ -39,7 +40,8 @@ export function ancestorDialogPath(
   for (let end = path.length; end >= 0; end -= 1) {
     const prefix = path.slice(0, end);
     const node = getNodeAtPath(doc, prefix);
-    if (node && typeof node === "object" && isDialog(node)) {
+    // A path can end on a text child or a value, so only an element is asked about its tag.
+    if (isNonNullObject(node) && isDialog(node)) {
       return prefix;
     }
   }
@@ -58,19 +60,22 @@ export function ancestorDialogPath(
  * @returns The dialog's path, or null.
  */
 export function dialogPathFor(tab: Tab, explicit?: JxPath): JxPath | null {
+  /* SAFETY: a widening, so it cannot hide a mismatch: `Tab` declares the document always present,
+     but a tab record without one must answer null rather than throw (tests/dialog-path.test.ts,
+     "a tab with no document"), and the widened type keeps that guard checked. */
   const doc = tab.doc.document as JxMutableNode | undefined;
   if (!doc) {
     return null;
   }
   if (explicit) {
     const node = getNodeAtPath(doc, explicit);
-    return node && typeof node === "object" && isDialog(node) ? explicit : null;
+    return isNonNullObject(node) && isDialog(node) ? explicit : null;
   }
   return ancestorDialogPath(doc, primarySelection(tab.session.selection));
 }
 
 /** Whether the active document holds a `<dialog>` at all — the command's `enablement`. */
 export function activeDocumentHasDialog(): boolean {
-  const doc = activeTab.value?.doc.document as JxMutableNode | undefined;
+  const doc = activeTab.value?.doc.document;
   return doc ? documentHasDialog(doc) : false;
 }

@@ -2,11 +2,12 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildProjectFormatRegistry, createNodeFormatIO } from "@jxsuite/compiler/format-host";
-import { buildFormatRegistry } from "@jxsuite/schema/format-registry";
+import { buildProjectExtensionRegistry, createNodeFormatIO } from "@jxsuite/compiler/format-host";
+import { buildFormatRegistry, FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
 import { applyRename, deriveTag } from "../src/refactor/index";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { FormatHostIO } from "@jxsuite/schema/format-registry";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 
 let root = "";
 const tmpRoots: string[] = [];
@@ -57,7 +58,7 @@ describe("applyRename", () => {
     write("broken.json", "{ not valid json ");
 
     renameSync(join(root, "components/counter.json"), join(root, "components/my-button.json"));
-    const registry = await buildProjectFormatRegistry(root);
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
     const report = await applyRename({
       absFrom: join(root, "components/counter.json"),
       absTo: join(root, "components/my-button.json"),
@@ -85,7 +86,7 @@ describe("applyRename", () => {
     write("pages/detail.json", JSON.stringify({ children: [] }));
 
     renameSync(join(root, "pages/detail.json"), join(root, "pages/info.json"));
-    const registry = await buildProjectFormatRegistry(root);
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
     const report = await applyRename({
       absFrom: join(root, "pages/detail.json"),
       absTo: join(root, "pages/info.json"),
@@ -150,9 +151,9 @@ describe("applyRename", () => {
     write("img/old.png", "binary");
     write("content/banner.toy", "../img/old.png");
 
-    const config = { extensions: ["./toy-ext"] } as ProjectConfig;
+    const config: ProjectConfig = { extensions: ["./toy-ext"] };
     renameSync(join(root, "img/old.png"), join(root, "img/new.png"));
-    const registry = await buildProjectFormatRegistry(root, config);
+    const { formats: registry } = await buildProjectExtensionRegistry(root, config);
     const report = await applyRename({
       absFrom: join(root, "img/old.png"),
       absTo: join(root, "img/new.png"),
@@ -165,7 +166,7 @@ describe("applyRename", () => {
   });
 
   test("a missing rename target is reported as a plain file rename", async () => {
-    const registry = await buildProjectFormatRegistry(root);
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
     const report = await applyRename({
       absFrom: join(root, "ghost-old.json"),
       absTo: join(root, "ghost-new.json"),
@@ -182,7 +183,7 @@ describe("applyRename", () => {
     write("pages/index.json", JSON.stringify({ children: [{ tagName: "my-counter" }] }));
 
     renameSync(join(root, "my-counter.json"), join(root, "button.json"));
-    const registry = await buildProjectFormatRegistry(root);
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
     const report = await applyRename({
       absFrom: join(root, "my-counter.json"),
       absTo: join(root, "button.json"),
@@ -197,13 +198,25 @@ describe("applyRename", () => {
   });
 
   test("reports files whose format can parse but not serialize", async () => {
-    const parseOnlyRegistry = {
-      byExtension: (_ext: string, capability: string) =>
-        capability === "parse"
-          ? { call: (_op: string, raw: unknown) => Promise.resolve(JSON.parse(String(raw))) }
-          : null,
-      documentExtensions: () => [".toy"],
-    } as unknown as Parameters<typeof applyRename>[0]["registry"];
+    // A real registry whose one format declares `parse` and nothing to write back with.
+    const parseOnlyIo: FormatHostIO = {
+      importModule: () =>
+        Promise.resolve({ ParseOnly: { parse: (raw: string): JsonValue => JSON.parse(raw) } }),
+      loadJson: () => Promise.reject(new Error("The parse-only format loads no JSON")),
+      resolvePath: (_base, ref) => ref,
+    };
+    const parseOnlyRegistry = new FormatRegistry([
+      new FormatEntry(
+        "ParseOnly",
+        "/virtual/ParseOnly.class.json",
+        {
+          $defs: { methods: { parse: { identifier: "parse", role: "parse", scope: "static" } } },
+          $implementation: "./parse-only.js",
+          format: { extensions: [".toy"] },
+        },
+        parseOnlyIo,
+      ),
+    ]);
 
     write("old.json", "{}");
     write("content/card.toy", JSON.stringify({ $ref: "../old.json" }));
@@ -227,18 +240,21 @@ describe("applyRename", () => {
 async function move(from: string, to: string, mounts?: readonly AssetMount[]) {
   mkdirSync(join(root, to, ".."), { recursive: true });
   renameSync(join(root, from), join(root, to));
-  const registry = await buildProjectFormatRegistry(root);
-  return applyRename({
+  const { formats: registry } = await buildProjectExtensionRegistry(root);
+  const options: Parameters<typeof applyRename>[0] = {
     absFrom: join(root, from),
     absTo: join(root, to),
     registry,
     root,
-    ...(mounts ? { mounts } : {}),
-  });
+  };
+  if (mounts) {
+    options.mounts = mounts;
+  }
+  return applyRename(options);
 }
 
 /** The bytes `loadDoc`'s JSON serializer writes for `doc` (two-space, no trailing newline). */
-const serialized = (doc: unknown) => JSON.stringify(doc, null, 2);
+const serialized = (doc: JsonValue) => JSON.stringify(doc, null, 2);
 
 /*
  * Issue 239, on the write side and asserted on the bytes.
@@ -438,7 +454,7 @@ describe("applyRename — rooted references through an asset mount", () => {
     write("pages/index.json", before);
 
     renameSync(join(root, "assets/media/x.png"), join(root, "assets/media/y.png"));
-    const registry = await buildProjectFormatRegistry(root);
+    const { formats: registry } = await buildProjectExtensionRegistry(root);
     const opts = {
       absFrom: join(root, "assets/media/x.png"),
       absTo: join(root, "assets/media/y.png"),

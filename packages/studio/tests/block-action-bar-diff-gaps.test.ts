@@ -28,9 +28,11 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import { initLayers } from "../src/ui/layers";
 
-import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
+import { isString } from "@jxsuite/schema/guards";
+import type { AnyCommand, Command, CommandRegistry } from "../src/commands/registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
+import { TWO_PARAGRAPHS } from "./shared-fixtures";
 
 // ─── Seams (both must precede the module-under-test import) ──────────────────
 
@@ -42,7 +44,12 @@ import type { JxPath } from "../src/state";
  * fires BEFORE the runtime applies attributes, so the node has no `part` of its own yet at the
  * moment the mock sees it.
  */
-const dnd: { log: string[]; elements: HTMLElement[] } = { elements: [], log: [] };
+interface DndRegistrations {
+  log: string[];
+  elements: HTMLElement[];
+}
+
+const dnd: DndRegistrations = { elements: [], log: [] };
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: ({ element }: { element: HTMLElement }) => {
@@ -86,14 +93,6 @@ initLayers();
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const TWO_PARAGRAPHS: JxMutableNode = {
-  children: [
-    { tagName: "p", textContent: "A" },
-    { tagName: "p", textContent: "B" },
-  ],
-  tagName: "div",
-};
-
 const NESTED: JxMutableNode = {
   children: [
     {
@@ -130,14 +129,35 @@ function invokeRecord(registry: CommandRegistry, id: string): void {
   if (!command) {
     throw new Error(`no record for "${id}"`);
   }
-  void command.run(selectionCommandContext(), undefined as never);
+  /* SAFETY: every id passed here is one of the structural movers registerSelectionCommands adds
+     (selection.moveUp / moveDown / moveIn / moveOut), none of which declares `args`, so each is a
+     Command<void>; the registry hands records back erased to AnyCommand. */
+  void (command as Command).run(selectionCommandContext());
+}
+
+/** A node's static children list; a repeater or an absent list fails the test by name. */
+function childList(node: JxMutableNode): (JxMutableNode | string)[] {
+  if (!Array.isArray(node.children)) {
+    throw new TypeError("expected a static children array");
+  }
+  return node.children;
+}
+
+/** A node's children, every one an element; a text child fails the test by name. */
+function elementChildren(node: JxMutableNode): JxMutableNode[] {
+  return childList(node).map((child) => {
+    if (isString(child)) {
+      throw new TypeError("expected element children only");
+    }
+    return child;
+  });
 }
 
 function childTexts(node: JxMutableNode): (string | undefined)[] {
   // Non-string `textContent` — a `$ref`, or nothing at all — reads back as undefined, not coerced.
   // A child that stopped carrying literal text therefore cannot pass for one that still does.
-  return (node.children as JxMutableNode[]).map((c) =>
-    typeof c.textContent === "string" ? c.textContent : undefined,
+  return childList(node).map((c) =>
+    !isString(c) && isString(c.textContent) ? c.textContent : undefined,
   );
 }
 
@@ -185,7 +205,7 @@ describe("a mover invoked past the registry's gate refuses on its own", () => {
 
     invokeRecord(registry, "selection.moveIn");
 
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.tagName)).toEqual(["img", "p"]);
     expect(children[0]!.children).toBeUndefined();
     expect(tab.session.selection).toEqual([["children", 1]]);
@@ -198,7 +218,7 @@ describe("a mover invoked past the registry's gate refuses on its own", () => {
 
     invokeRecord(registry, "selection.moveOut");
 
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.tagName)).toEqual(["section"]);
     expect(childTexts(children[0]!)).toEqual(["A", "B"]);
     expect(tab.session.selection).toEqual([]);
@@ -248,7 +268,7 @@ describe("the same verbs, over a state that admits them", () => {
 
     void registry.run("selection.moveOut");
 
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.tagName)).toEqual(["section", "p"]);
     expect(childTexts(children[0]!)).toEqual(["B"]);
     expect(tab.session.selection).toEqual([["children", 1]]);
@@ -288,7 +308,7 @@ describe("the preconditions the movers read", () => {
 
     void registry.run("selection.moveIn");
 
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.tagName)).toEqual(["section"]);
     expect(childTexts(children[0]!)).toEqual(["A"]);
     expect(tab.session.selection).toEqual([["children", 0, "children", 0]]);
@@ -319,7 +339,7 @@ function record(id: string): AnyCommand {
     menus: ["blockbar"],
     run: () => {},
     title: id.split(".")[1] ?? id,
-  } as AnyCommand;
+  };
 }
 
 const raf = () =>
@@ -383,8 +403,8 @@ describe("⌥↑ into a bar where nothing can act", () => {
     /* A component instance AT THE ROOT is the one selection on which every control is refused: no
        parent to select, no tag to convert to, no inline markup to format — and the one registry
        verb above is refused too. */
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
-    setup({ tagName: "x-card" } as JxMutableNode, []);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
+    setup({ tagName: "x-card" }, []);
 
     const sentinel = document.createElement("button");
     document.body.append(sentinel);
@@ -423,8 +443,10 @@ describe("⌥↑ into a bar where nothing can act", () => {
  * from a stand-in assigned to `view.selDragCleanup` by hand.
  */
 describe("the drag handle across a re-render", () => {
-  const handle = () =>
-    document.querySelector('#layer-popover [part="drag-handle"]') as HTMLElement | null;
+  const handle = () => {
+    const el = document.querySelector('#layer-popover [part="drag-handle"]');
+    return el instanceof HTMLElement ? el : null;
+  };
 
   beforeEach(() => {
     dnd.log.length = 0;

@@ -12,13 +12,22 @@
  */
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
+import { CHARS_PER_TOKEN } from "@jxsuite/ai/harness";
 import {
   SEAL_RELOADED,
   repairToolPairs,
   toChatMessages,
   toLiveMessages,
 } from "@jxsuite/ai/messages";
+import { isString } from "@jxsuite/schema/guards";
 import { modelContextWindow } from "./ai-models";
+
+/** How many tool messages {@link pruneOrphanToolMessages} dropped, moved and sealed. */
+export interface OrphanToolRepair {
+  dropped: number;
+  moved: number;
+  sealed: number;
+}
 
 /** Shape of a single entry returned by `chatState.toMessagesArray()`. */
 interface MessageArrayEntry {
@@ -30,9 +39,6 @@ interface MessageArrayEntry {
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-
-/** Rough heuristic: average 4 characters per token. */
-const CHARS_PER_TOKEN = 4;
 
 /**
  * Approximate context windows (in tokens) per model id, longest-prefix matched. Used to derive a
@@ -109,7 +115,7 @@ const MIN_USER_TURNS = 3;
  * @returns {number}
  */
 function estimateTokens(input: string | MessageArrayEntry[]): number {
-  if (typeof input === "string") {
+  if (isString(input)) {
     return Math.ceil(input.length / CHARS_PER_TOKEN);
   }
   let total = 0;
@@ -174,7 +180,7 @@ function contextTokens(
       return reused;
     }
   }
-  return systemTokens + estimateTokens(chatState.toMessagesArray() as MessageArrayEntry[]);
+  return systemTokens + estimateTokens(chatState.toMessagesArray());
 }
 
 /**
@@ -316,11 +322,9 @@ export const UNANSWERED_TOOL_RESULT = JSON.stringify({ success: false, error: SE
  * @param {ReturnType<typeof createChatState>} chatState
  * @returns {{ dropped: number; moved: number; sealed: number }}
  */
-export function pruneOrphanToolMessages(chatState: ReturnType<typeof createChatState>): {
-  dropped: number;
-  moved: number;
-  sealed: number;
-} {
+export function pruneOrphanToolMessages(
+  chatState: ReturnType<typeof createChatState>,
+): OrphanToolRepair {
   const live = chatState.messages;
   const neutral = toChatMessages(live);
   const { messages, sealed, dropped, moved } = repairToolPairs(neutral);

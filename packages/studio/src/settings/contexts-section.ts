@@ -76,6 +76,12 @@ export interface ContextEntry {
   kind: ContextKind;
 }
 
+/** A `$media` map, split: the base width, and every other entry classified. */
+export interface ContextSplit {
+  base: string;
+  entries: ContextEntry[];
+}
+
 /**
  * Which kind of context an entry is.
  *
@@ -98,12 +104,9 @@ export function contextKindOf(query: string): ContextKind {
  * Split a `$media` map into the base width and the three context groups.
  *
  * @param {Record<string, string> | undefined} media
- * @returns {{ base: string; entries: ContextEntry[] }}
+ * @returns {ContextSplit}
  */
-export function splitContexts(media?: Record<string, string> | undefined): {
-  base: string;
-  entries: ContextEntry[];
-} {
+export function splitContexts(media?: Record<string, string> | undefined): ContextSplit {
   const source = media ?? {};
   const entries: ContextEntry[] = [];
   for (const [key, raw] of Object.entries(source)) {
@@ -232,11 +235,11 @@ export function contextsError(container: HTMLElement): { target: string; message
  * a projection, which makes reading through to the store the thing that keeps them honest.
  */
 function currentConfig(): ProjectConfig {
-  return (projectState?.projectConfig || {}) as ProjectConfig;
+  return projectState?.projectConfig ?? {};
 }
 
 function currentMedia(): Record<string, string> {
-  return (currentConfig().$media || {}) as Record<string, string>;
+  return currentConfig().$media ?? {};
 }
 
 // ─── Writing ──────────────────────────────────────────────────────────────────
@@ -271,7 +274,7 @@ async function persistMedia(
   target: ErrorTarget,
 ): Promise<void> {
   const config = currentConfig();
-  const candidate = { ...config, $media: next } as unknown;
+  const candidate: ProjectConfig = { ...config, $media: next };
   let schemaErrors: string[] = [];
   let inherited: string[] = [];
   try {

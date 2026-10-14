@@ -22,6 +22,8 @@ import { join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import type { Page } from "puppeteer-core";
 import { buildSite } from "@jxsuite/compiler/site";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { launchBrowser } from "./lib/browser";
 
 const repoRoot = resolve(import.meta.dir, "../..");
@@ -35,10 +37,17 @@ const THUMB = { height: 400, quality: 0.72, width: 640 };
 const SHOWCASE = { height: 800, quality: 0.82, width: 1280 };
 const COPY_SKIP = new Set(["node_modules", "dist", ".cache", ".jx-cache", ".git"]);
 
-interface StarterEntry {
+/**
+ * One registry.json entry: the id this script reads, the thumbnail it writes (absent on a starter
+ * that has never been captured), and the rest kept verbatim.
+ */
+interface StarterEntry extends JsonObject {
   id: string;
-  thumbnail: string;
-  [k: string]: unknown;
+  thumbnail?: string;
+}
+
+function isStarterEntry(value: JsonValue): value is StarterEntry {
+  return isJsonObject(value) && isString(value.id);
 }
 
 /** Copy a starter to a temp dir, force image optimization off, and build it. Returns the dist dir. */
@@ -54,8 +63,13 @@ async function buildToTemp(slug: string): Promise<{ dist: string; tmp: string }>
     recursive: true,
   });
   const cfgPath = join(tmp, "project.json");
-  const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as Record<string, unknown>;
-  cfg.images = { ...(cfg.images as object), optimize: false };
+  const cfg: JsonValue = JSON.parse(await readFile(cfgPath, "utf8"));
+  if (!isJsonObject(cfg)) {
+    throw new Error(`${cfgPath} must hold a JSON object`);
+  }
+  const images: JsonObject = isJsonObject(cfg.images) ? { ...cfg.images } : {};
+  images.optimize = false;
+  cfg.images = images;
   await writeFile(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`);
 
   const result = await buildSite(tmp, { clean: true });
@@ -123,7 +137,13 @@ async function downscaleJpeg(
 }
 
 async function main(): Promise<void> {
-  const registry = JSON.parse(await readFile(registryPath, "utf8")) as StarterEntry[];
+  const registry: JsonValue = JSON.parse(await readFile(registryPath, "utf8"));
+  if (
+    !Array.isArray(registry) ||
+    !registry.every((entry): entry is StarterEntry => isStarterEntry(entry))
+  ) {
+    throw new Error(`${registryPath} must be an array of starter entries with an id`);
+  }
   const only = new Set(
     (process.argv[2] ?? "")
       .split(",")

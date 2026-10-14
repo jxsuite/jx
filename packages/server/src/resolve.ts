@@ -3,6 +3,7 @@
 import { siteBasePath } from "@jxsuite/schema/asset-paths";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { projectDevEnv } from "./dev-vars.ts";
@@ -11,35 +12,115 @@ import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { loadProjectSections } from "@jxsuite/compiler/project-sections";
 import { loadAssetMounts } from "@jxsuite/compiler/asset-mounts";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
-import type { DynamicClass } from "@jxsuite/runtime/types";
-import type { JxClassDef, ProjectConfig } from "@jxsuite/schema/types";
+import type { DynamicMethod } from "@jxsuite/runtime/types";
+import type { ProjectSections } from "@jxsuite/compiler/project-sections";
+import type {
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  JxClassCtorDef,
+  JxClassDef,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
+import type { ProjectDevEnv } from "./dev-vars.ts";
 import { problem } from "./problem.ts";
 
-interface ModuleNamespace {
-  default?: Record<string, unknown>;
-  [key: string]: unknown;
+/**
+ * Any value a module exports, as the proxies see it before they check it. Nothing about an export
+ * is known statically (it is project or package code loaded by path), so the type only says what
+ * reading it can yield: a function, an object whose members can be read in turn, or a primitive.
+ */
+type ExportedValue =
+  | ExportedFunction
+  | ExportedConstructor
+  | ExportedObject
+  | JsonPrimitive
+  | bigint
+  | symbol
+  | undefined;
+
+/** A function export as it is called. Its real signature is the contract of whoever calls it. */
+type ExportedFunction = (...args: never[]) => ExportedValue | Promise<ExportedValue>;
+
+/** A class export as it is constructed. Its real signature is the contract of whoever builds it. */
+type ExportedConstructor = new (...args: never[]) => object;
+
+/** A non-primitive export. Reading any member of it yields another {@link ExportedValue}. */
+interface ExportedObject {
+  readonly [member: string]: ExportedValue;
 }
 
-interface ClassInstance {
-  resolve?: () => unknown;
-  value?: unknown;
-  [key: string]: unknown;
+/**
+ * A loaded module's namespace object. `default` is read as an object because the proxies only ever
+ * read a named member off it, which is defined for any non-nullish value.
+ */
+interface ModuleNamespace extends ExportedObject {
+  readonly default?: ExportedObject;
 }
+
+/**
+ * The project context a class receives as `config._project`: the config, the root, and every
+ * extension-loaded section under its section key (the compiler's `_project` shape).
+ */
+type ProjectContext = ProjectSections & { config: ProjectConfig; root: string };
+
+/** A cached project context, its extension asset mounts, and the `project.json` mtime it is for. */
+interface ProjectEntry {
+  mtime: number;
+  context: ProjectContext;
+  mounts: AssetMount[];
+}
+
+/** A value the resolve proxy hands a class constructor under one config key. */
+type ConfigValue = JsonValue | ProjectContext | undefined;
+
+/**
+ * The `config` a class is constructed with: the request's own members, plus the injected project
+ * context and an empty document scope.
+ */
+interface ResolveConfig {
+  [key: string]: ConfigValue;
+  _project?: ProjectContext;
+}
+
+/** A class `/__jx_resolve__` constructs from an `$implementation` module. */
+type ResolvableClass = new (config: ResolveConfig) => ResolvableInstance;
+
+/**
+ * What the resolve proxy reads off a constructed instance, in the order spec.md §12.3 fixes:
+ * `resolve()` when it is a method, else `value` when the instance has one, else the instance.
+ */
+interface ResolvableInstance {
+  readonly resolve?: ExportedValue;
+  readonly value?: ExportedValue;
+}
+
+/**
+ * What a server function may answer: a JSON value, sent as the response body (`undefined` →
+ * `null`).
+ */
+type ServerFunctionResult = JsonValue | undefined;
+
+/** A `timing: "server"` function: `fn(args, env)`, the production contract the compiler emits. */
+type ServerFunction = (
+  args: JsonObject,
+  env: ProjectDevEnv,
+) => ServerFunctionResult | Promise<ServerFunctionResult>;
 
 interface ResolveBody {
   $src?: string;
   $prototype?: string;
   $export?: string;
   $base?: string;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 interface ServerFunctionBody {
   $src?: string;
   $export?: string;
   $base?: string;
-  arguments?: Record<string, unknown>;
-  [key: string]: unknown;
+  arguments?: JsonObject;
+  [key: string]: JsonValue | undefined;
 }
 
 /**
@@ -93,10 +174,7 @@ function baseDirectory($base: string, root: string, projectRoot: string): string
 }
 
 /** Per-project context cache, invalidated when project.json changes on disk. */
-const projectContextCache = new Map<
-  string,
-  { mtime: number; context: Record<string, unknown>; mounts: AssetMount[] }
->();
+const projectContextCache = new Map<string, ProjectEntry>();
 
 /**
  * Lazy-load project context (project.json + extension-loaded sections) for class instantiation.
@@ -104,15 +182,15 @@ const projectContextCache = new Map<
  * `_project` shape.
  *
  * @param {string} projectRoot
- * @returns {Promise<Record<string, unknown> | null>} `{ config, root, ...sections }` or null
+ * @returns {Promise<ProjectContext | null>} `{ config, root, ...sections }` or null
  */
-async function loadProjectContext(projectRoot: string) {
+async function loadProjectContext(projectRoot: string): Promise<ProjectContext | null> {
   const entry = await loadProjectEntry(projectRoot);
   return entry?.context ?? null;
 }
 
 /** Load (or reuse) the cached project context plus its extension asset mounts. */
-async function loadProjectEntry(projectRoot: string) {
+async function loadProjectEntry(projectRoot: string): Promise<ProjectEntry | null> {
   const projectJsonPath = resolve(projectRoot, "project.json");
   if (!existsSync(projectJsonPath)) {
     return null;
@@ -123,12 +201,15 @@ async function loadProjectEntry(projectRoot: string) {
     if (cached && cached.mtime === mtimeMs) {
       return cached;
     }
+    /* SAFETY: trust boundary. project.json is the project's own config file, which the editor
+       and `jx validate` hold to its per-project schema. Any failure reading it below is caught
+       here and answers "no project context". */
     const config = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
     const registry = await buildProjectExtensionRegistry(projectRoot, config);
     const sections = await loadProjectSections(projectRoot, config, registry);
     const { mounts } = await loadAssetMounts(registry, config, projectRoot);
-    const context = { config, root: projectRoot, ...sections };
-    const entry = { context, mounts, mtime: mtimeMs };
+    const context: ProjectContext = { config, root: projectRoot, ...sections };
+    const entry: ProjectEntry = { context, mounts, mtime: mtimeMs };
     projectContextCache.set(projectRoot, entry);
     return entry;
   } catch {
@@ -148,8 +229,7 @@ async function loadProjectEntry(projectRoot: string) {
  */
 export async function projectSiteBase(projectRoot: string): Promise<string> {
   const entry = await loadProjectEntry(projectRoot);
-  const config = entry?.context.config as ProjectConfig | undefined;
-  return siteBasePath(config?.url);
+  return siteBasePath(entry?.context.config.url);
 }
 
 /**
@@ -178,12 +258,16 @@ export async function handleResolve(
 ) {
   let body: ResolveBody;
   try {
+    /* SAFETY: trust boundary. The body parsed as JSON, and this route's caller is the runtime's
+       `$prototype` proxy, which posts the entry's own JSON members with string `$`-keys. A body
+       that breaks that throws in this handler, as it always has. */
     body = (await req.json()) as ResolveBody;
   } catch {
     return problem("invalidRequest", "Invalid JSON body");
   }
 
-  const { $src, $prototype, $export: xport, $base, ...config } = body;
+  const { $src, $prototype, $export: xport, $base, ...members } = body;
+  const config: ResolveConfig = members;
   if (!$src) {
     return problem("invalidRequest", "Missing $src");
   }
@@ -228,7 +312,7 @@ export async function handleResolve(
     const docDir = docUrlPath.slice(0, docUrlPath.lastIndexOf("/") + 1);
     const docAbsDir = resolve(root, `.${docDir}`);
     for (const [k, v] of Object.entries(config)) {
-      if (typeof v === "string" && (v.startsWith("./") || v.startsWith("../"))) {
+      if (isString(v) && (v.startsWith("./") || v.startsWith("../"))) {
         config[k] = `./${relative(process.cwd(), resolve(docAbsDir, v)).split("\\").join("/")}`;
       }
     }
@@ -257,38 +341,25 @@ export async function handleResolve(
           return problem("pathOutsideProject", "$implementation escapes the project root");
         }
         const exportName = xport ?? classDef.title ?? $prototype;
-        const mod = (await import(implPath)) as ModuleNamespace;
+        const mod = await importModule(implPath);
         const ExportedClass =
           exportName === undefined ? undefined : (mod[exportName] ?? mod.default?.[exportName]);
-        if (typeof ExportedClass !== "function") {
+        if (!isExportedFunction(ExportedClass)) {
           return new Response(`Export "${exportName}" not found in "${classDef.$implementation}"`, {
             status: 500,
           });
         }
-        const ClassCtor = ExportedClass as new (config: unknown) => ClassInstance;
-        const instance = new ClassCtor(config);
-        const value =
-          typeof instance.resolve === "function"
-            ? await instance.resolve()
-            : "value" in instance
-              ? instance.value
-              : instance;
-        return Response.json(value);
+        /* SAFETY: trust boundary. A class file's `$implementation` names the module exporting the
+           class it describes, whose constructor takes one config object (spec.md §12.3, §12.4).
+           It is a function, checked above; one that is not constructible throws here, inside the
+           try whose catch answers a problem. */
+        const ClassCtor = ExportedClass as ResolvableClass;
+        return Response.json(await instanceResult(new ClassCtor(config)));
       }
 
       // Self-contained: construct class from schema
       const DynClass = classFromSchema(classDef);
-      const instance = new DynClass(config) as {
-        resolve?: () => unknown;
-        value?: unknown;
-      };
-      const value =
-        typeof instance.resolve === "function"
-          ? await instance.resolve()
-          : "value" in instance
-            ? instance.value
-            : instance;
-      return Response.json(value);
+      return Response.json(await instanceResult(new DynClass(config)));
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -319,6 +390,10 @@ export async function handleResolve(
 export async function handleServerFunction(req: Request, root: string, projectRoot = root) {
   let body: ServerFunctionBody;
   try {
+    /* SAFETY: trust boundary. The body parsed as JSON, and this route's caller is the runtime's
+       server-function proxy, which posts `{ $src, $export, $base, arguments }` with string
+       `$`-keys and an object of arguments. A body that breaks that throws in this handler, as it
+       always has. */
     body = (await req.json()) as ServerFunctionBody;
   } catch {
     return problem("invalidRequest", "Invalid JSON body");
@@ -344,7 +419,7 @@ export async function handleServerFunction(req: Request, root: string, projectRo
 
   let mod: ModuleNamespace;
   try {
-    mod = (await import(moduleAbsPath)) as ModuleNamespace;
+    mod = await importModule(moduleAbsPath);
   } catch (error) {
     return new Response(`Failed to import "${$src}": ${errorMessage(error)}`, {
       status: 500,
@@ -352,7 +427,7 @@ export async function handleServerFunction(req: Request, root: string, projectRo
   }
 
   const fn = mod[xport] ?? mod.default?.[xport];
-  if (typeof fn !== "function") {
+  if (!isExportedFunction(fn)) {
     return new Response(`Export "${xport}" not found in "${$src}"`, {
       status: 500,
     });
@@ -362,14 +437,51 @@ export async function handleServerFunction(req: Request, root: string, projectRo
     /* Match the production contract `fn(args, env)` (compiler emits `fn(args, c.env)`): the dev
        proxy runs server-side, so its `env` is the extension mounts' own, `process.env` merged under
        the project's `.dev.vars` plus `JX_PROJECT_ROOT` (server.md §3.3). */
-    const result = await (fn as (args: Record<string, unknown>, env: unknown) => unknown)(
-      args,
-      projectDevEnv(projectRoot),
-    );
+    /* SAFETY: trust boundary. A `timing: "server"` module exports its functions with the signature
+       `fn(args, env)` and a JSON answer (spec.md §11.4); this one is a function, checked above. */
+    const serverFn = fn as ServerFunction;
+    const result = await serverFn(args, projectDevEnv(projectRoot));
     return Response.json(result ?? null);
   } catch (error) {
     return problem("internalError", errorMessage(error));
   }
+}
+
+/**
+ * Whether an export is a function. Every function is callable, constructible or both, which is all
+ * the narrowed type claims; which of the two a proxy needs is that proxy's own contract.
+ */
+function isExportedFunction(value: ExportedValue): value is ExportedFunction | ExportedConstructor {
+  return isFunction(value);
+}
+
+/** Import a module by absolute path, as its namespace object. */
+async function importModule(path: string): Promise<ModuleNamespace> {
+  /* SAFETY: a dynamic import() resolves to the module's namespace object, whose own members are its
+     exports; every member the proxies read off one is checked to be a function before use. */
+  return (await import(path)) as ModuleNamespace;
+}
+
+/** What a constructed class answers with: its `resolve()` result, else its `value`, else itself. */
+async function instanceResult(
+  instance: ResolvableInstance,
+): Promise<ExportedValue | ResolvableInstance> {
+  if (isFunction(instance.resolve)) {
+    return await instance.resolve();
+  }
+  return "value" in instance ? instance.value : instance;
+}
+
+/**
+ * Whether a class document's `$defs.constructor` is its own constructor definition, rather than the
+ * `Object.prototype.constructor` function every object parsed from JSON inherits.
+ *
+ * @param rawCtor What `$defs.constructor` reads as
+ */
+function isCtorDef(
+  rawCtor: NonNullable<JxClassDef["$defs"]>["constructor"],
+): rawCtor is JxClassCtorDef {
+  return isNonNullObject(rawCtor);
 }
 
 /**
@@ -380,26 +492,24 @@ export async function handleServerFunction(req: Request, root: string, projectRo
  */
 function classFromSchema(classDef: JxClassDef) {
   const fields = classDef.$defs?.fields ?? {};
-  // JSON objects inherit Object.prototype.constructor — only an own object value counts.
   const rawCtor = classDef.$defs?.constructor;
-  const ctor = typeof rawCtor === "object" ? rawCtor : undefined;
+  const ctor = isCtorDef(rawCtor) ? rawCtor : undefined;
   const methods = classDef.$defs?.methods ?? {};
 
   // oxlint-disable-next-line typescript/no-extraneous-class -- methods are attached to the prototype dynamically below
   class DynClass {
-    constructor(config = {}) {
-      const self = this as Record<string, unknown>;
-      const cfg = config as Record<string, unknown>;
+    constructor(config: ResolveConfig = {}) {
+      // Each field lands as an own property by assignment, as `this[id] = value` would put it.
       for (const [key, field] of Object.entries(fields)) {
         const id = field.identifier ?? key;
-        if (cfg[id] !== undefined) {
-          self[id] = cfg[id];
+        if (config[id] !== undefined) {
+          Object.assign(this, { [id]: config[id] });
         } else if (field.initializer !== undefined) {
-          self[id] = field.initializer;
+          Object.assign(this, { [id]: field.initializer });
         } else if (field.default !== undefined) {
-          self[id] = structuredClone(field.default);
+          Object.assign(this, { [id]: structuredClone(field.default) });
         } else {
-          self[id] = null;
+          Object.assign(this, { [id]: null });
         }
       }
       if (ctor?.body) {
@@ -416,27 +526,29 @@ function classFromSchema(classDef: JxClassDef) {
         return p.$ref.split("/").pop() ?? "arg";
       }
       const n = p.identifier ?? p.name;
-      return typeof n === "string" ? n : "arg";
+      return isString(n) ? n : "arg";
     });
     const bodyStr = Array.isArray(method.body) ? method.body.join("\n") : (method.body ?? "");
 
     if (method.role === "accessor") {
       const descriptor: PropertyDescriptor = {};
       if (method.getter) {
-        descriptor.get = new Function(method.getter.body ?? "") as () => unknown;
+        // SAFETY: `new Function(body)` with no parameter names builds the zero-argument getter.
+        descriptor.get = new Function(method.getter.body ?? "") as DynamicMethod;
       }
       if (method.setter) {
         const sp = (method.setter.parameters ?? []).map((p) => p.$ref?.split("/").pop() ?? "v");
-        descriptor.set = new Function(...sp, method.setter.body ?? "") as (v: unknown) => void;
+        // SAFETY: `new Function(...sp, body)` builds a function over the setter's own parameters.
+        descriptor.set = new Function(...sp, method.setter.body ?? "") as DynamicMethod;
       }
       Object.defineProperty(DynClass.prototype, name, {
         ...descriptor,
         configurable: true,
       });
     } else if (method.scope === "static") {
-      (DynClass as DynamicClass)[name] = new Function(...params, bodyStr);
+      Object.assign(DynClass, { [name]: new Function(...params, bodyStr) });
     } else {
-      (DynClass as DynamicClass).prototype[name] = new Function(...params, bodyStr);
+      Object.assign(DynClass.prototype, { [name]: new Function(...params, bodyStr) });
     }
   }
 

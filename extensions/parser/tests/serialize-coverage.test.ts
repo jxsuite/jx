@@ -1,44 +1,65 @@
 import { describe, expect, test } from "bun:test";
-import { jxToMdast as jxToMd, mdastToJx as mdToJx, serializeJxMarkdown } from "../src/serialize";
-import type { JxDocument, JxElement, JxStateDefinition } from "@jxsuite/schema/types";
+import { jxToMdast, mdastToJx, serializeJxMarkdown } from "../src/serialize";
+import type { SerializeOptions } from "../src/serialize";
+import type { MdastNode } from "../src/types";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue, JxDocument, JxElement, JxStateDefinition } from "@jxsuite/schema/types";
 
 // ─── Export-mode helpers (mirror serialize-export.test.ts) ───────────────────
-function evaluateTemplate(str: string, scope: Record<string, unknown>) {
-  if (!str.includes("${")) {
-    return;
-  }
-  try {
-    const singleExprMatch = str.match(/^\$\{(.+)\}$/s);
-    if (singleExprMatch) {
-      const fn = new Function("state", "$map", `return (${singleExprMatch[1]})`);
-      return fn(scope, scope?.$map) ?? str;
+// Typed through SerializeOptions so each hook takes exactly the parameters the serializer passes.
+const templateHooks: Pick<SerializeOptions, "buildScope" | "evaluateTemplate"> = {
+  buildScope(stateDefs) {
+    const scope: Record<string, JsonValue | JxStateDefinition> = {};
+    for (const [key, def] of Object.entries(stateDefs)) {
+      scope[key] = isJsonObject(def) && "default" in def ? def.default : def;
     }
-    const fn = new Function("state", "$map", `return \`${str}\``);
-    return fn(scope, scope?.$map) ?? str;
-  } catch {
-    return str;
+    return scope;
+  },
+  evaluateTemplate(str, scope) {
+    if (!str.includes("${")) {
+      return;
+    }
+    try {
+      const singleExprMatch = str.match(/^\$\{(.+)\}$/s);
+      if (singleExprMatch) {
+        const fn = new Function("state", "$map", `return (${singleExprMatch[1]})`);
+        return fn(scope, scope.$map) ?? str;
+      }
+      const fn = new Function("state", "$map", `return \`${str}\``);
+      return fn(scope, scope.$map) ?? str;
+    } catch {
+      return str;
+    }
+  },
+};
+
+function exportMd(doc: JxDocument, componentDefs?: Map<string, JxElement>) {
+  const options: SerializeOptions = { mode: "export", ...templateHooks };
+  if (componentDefs) {
+    options.componentDefs = componentDefs;
   }
+  return serializeJxMarkdown(doc, options);
 }
 
-function buildScope(stateDefs: Record<string, JxStateDefinition>) {
-  const scope: Record<string, unknown> = {};
-  for (const [key, def] of Object.entries(stateDefs ?? {})) {
-    scope[key] =
-      def && typeof def === "object" && !Array.isArray(def) && "default" in def
-        ? (def as { default: unknown }).default
-        : def;
-  }
-  return scope;
+/** An mdast tree as a remark plugin can leave it: a children array may hold a null hole. */
+interface AuthoredMdast {
+  type: string;
+  children?: (AuthoredMdast | null)[];
+  value?: string;
 }
 
-function exportMd(doc: unknown, componentDefs?: Map<string, JxElement>) {
-  return serializeJxMarkdown(doc as JxDocument, {
-    mode: "export",
-    ...(componentDefs && { componentDefs }),
-    evaluateTemplate,
-    buildScope,
-  });
-}
+/* SAFETY: deliberately outside MdastNode, whose `children` holds only nodes. convertMdastNode
+   returns null for a falsy node before any typed access, so a null hole reaches no field read; the
+   tests using this pin that the hole is dropped. */
+const authoredMdast = (node: AuthoredMdast) => node as MdastNode;
+
+/* SAFETY: deliberately outside JxElement["children"], which holds only elements and strings (and an
+   element's own `children` only a list or a repeater). A hand-built tree can carry a null hole or an
+   element whose `children` is a plain object. nodeToMdast returns [] for anything that is not a
+   string, number or non-null object, and collectDirectiveAttrs copies a non-array object `children`
+   into the directive attributes without reading any repeater field, so neither reaches a typed
+   access; the tests using this pin both. */
+const authoredChildren = (children: JsonValue[]) => children as (JxElement | string)[];
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Roundtrip: mdast → Jx (mdastToJx)
@@ -46,65 +67,66 @@ function exportMd(doc: unknown, componentDefs?: Map<string, JxElement>) {
 
 describe("mdToJx — uncovered node types", () => {
   test("non-root node is converted directly", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ type: "text", value: "hi" }],
       type: "paragraph",
-    } as any);
+    });
     expect(el.tagName).toBe("p");
     expect(el.textContent).toBe("hi");
   });
 
   test("null children are dropped (convertMdastNode null guard)", () => {
-    const el: any = mdToJx({
-      children: [
-        {
-          children: [null, { children: [{ type: "text", value: "x" }], type: "paragraph" }],
-          type: "blockquote",
-        },
-      ],
-      type: "root",
-    } as any);
+    const el: any = mdastToJx(
+      authoredMdast({
+        children: [
+          {
+            children: [null, { children: [{ type: "text", value: "x" }], type: "paragraph" }],
+            type: "blockquote",
+          },
+        ],
+        type: "root",
+      }),
+    );
     const [bq] = el.children;
     expect(bq.tagName).toBe("blockquote");
     expect(bq.children.length).toBe(1);
   });
 
   test("html node with single element", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ type: "html", value: "<strong>bold</strong>" }],
       type: "root",
-    } as any);
+    });
     expect(el.children.length).toBeGreaterThan(0);
     expect(el.children[0].tagName).toBe("strong");
   });
 
   test("html node with empty value is dropped", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ type: "html", value: "" }],
       type: "root",
-    } as any);
+    });
     expect(el.children.length).toBe(0);
   });
 
   test("html node with multiple elements wraps in div", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ type: "html", value: "<strong>a</strong><em>b</em>" }],
       type: "root",
-    } as any);
+    });
     expect(el.children[0].tagName).toBe("div");
     expect(el.children[0].children.length).toBe(2);
   });
 
   test("unknown mdast node type yields null", () => {
-    const el: any = mdToJx({
-      children: [{ identifier: "x", type: "definition", url: "y" }],
-      type: "root",
-    } as any);
+    // A definition node carries an `identifier` that MdastNode does not name; it is still a node.
+    const definition = { identifier: "x", type: "definition", url: "y" };
+    const el: any = mdastToJx({ children: [definition], type: "root" });
     expect(el.children.length).toBe(0);
   });
 
   test("link with title attribute", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [
         {
           children: [
@@ -119,14 +141,14 @@ describe("mdToJx — uncovered node types", () => {
         },
       ],
       type: "root",
-    } as any);
+    });
     const [a] = el.children[0].children;
     expect(a.attributes.href).toBe("u");
     expect(a.attributes.title).toBe("T");
   });
 
   test("ordered list with non-default start gets start attribute", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [
         {
           children: [
@@ -141,14 +163,14 @@ describe("mdToJx — uncovered node types", () => {
         },
       ],
       type: "root",
-    } as any);
+    });
     expect(el.children[0].attributes.start).toBe("3");
   });
 
   test("table with header and body rows splits into thead/tbody", () => {
     const cell = (v: string) => ({ children: [{ type: "text", value: v }], type: "tableCell" });
     const row = (...cells: any[]) => ({ children: cells, type: "tableRow" });
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [
         {
           children: [row(cell("H1")), row(cell("C1"))],
@@ -156,7 +178,7 @@ describe("mdToJx — uncovered node types", () => {
         },
       ],
       type: "root",
-    } as any);
+    });
     const [table] = el.children;
     expect(table.tagName).toBe("table");
     expect(table.children[0].tagName).toBe("thead");
@@ -165,27 +187,27 @@ describe("mdToJx — uncovered node types", () => {
 
   test("table with one row produces thead only", () => {
     const cell = (v: string) => ({ children: [{ type: "text", value: v }], type: "tableCell" });
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ children: [{ children: [cell("only")], type: "tableRow" }], type: "table" }],
       type: "root",
-    } as any);
+    });
     const [table] = el.children;
     expect(table.children.length).toBe(1);
     expect(table.children[0].tagName).toBe("thead");
   });
 
   test("table with zero rows produces no sections", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ children: [], type: "table" }],
       type: "root",
-    } as any);
+    });
     expect(el.children[0].children).toEqual([]);
   });
 });
 
 describe("mdToJx — directives", () => {
   test("prototype directive (Array) becomes $prototype with map", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [
         {
           attributes: { items: "#/state/list" },
@@ -195,32 +217,32 @@ describe("mdToJx — directives", () => {
         },
       ],
       type: "root",
-    } as any);
+    });
     const [node] = el.children;
     expect(node.$prototype).toBe("Array");
     expect(node.map).toBeTruthy();
   });
 
   test("leaf directive with attributes", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ attributes: { color: "red" }, name: "my-widget", type: "leafDirective" }],
       type: "root",
-    } as any);
+    });
     const [node] = el.children;
     expect(node.tagName).toBe("my-widget");
     expect(node.attributes.color).toBe("red");
   });
 
   test("text directive with single text child", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [{ children: [{ type: "text", value: "hi" }], name: "foo", type: "textDirective" }],
       type: "root",
-    } as any);
+    });
     expect(el.children[0].textContent).toBe("hi");
   });
 
   test("text directive with multiple children", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [
         {
           children: [
@@ -232,12 +254,12 @@ describe("mdToJx — directives", () => {
         },
       ],
       type: "root",
-    } as any);
+    });
     expect(el.children[0].children.length).toBe(2);
   });
 
   test("container directive with children", () => {
-    const el: any = mdToJx({
+    const el: any = mdastToJx({
       children: [
         {
           children: [{ children: [{ type: "text", value: "note" }], type: "paragraph" }],
@@ -246,7 +268,7 @@ describe("mdToJx — directives", () => {
         },
       ],
       type: "root",
-    } as any);
+    });
     const [node] = el.children;
     expect(node.tagName).toBe("callout");
     expect(node.children[0].tagName).toBe("p");
@@ -259,7 +281,7 @@ describe("mdToJx — directives", () => {
 
 describe("jxToMd — uncovered tag types", () => {
   test("span maps to text node (custom allowlist)", () => {
-    const result: any = jxToMd(
+    const result: any = jxToMdast(
       { children: [{ tagName: "span", textContent: "hi" }], tagName: "div" },
       {
         allowlist: ["span"],
@@ -269,7 +291,7 @@ describe("jxToMd — uncovered tag types", () => {
   });
 
   test("allowlisted tag with no mdast mapping yields nothing (array allowlist)", () => {
-    const result: any = jxToMd(
+    const result: any = jxToMdast(
       { children: [{ tagName: "custom" }], tagName: "div" },
       {
         allowlist: ["custom"],
@@ -279,7 +301,7 @@ describe("jxToMd — uncovered tag types", () => {
   });
 
   test("emphasis, strong, delete", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [
         {
           children: [
@@ -299,7 +321,7 @@ describe("jxToMd — uncovered tag types", () => {
   });
 
   test("inline code", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [{ children: [{ tagName: "code", textContent: "x" }], tagName: "p" }],
       tagName: "div",
     });
@@ -307,7 +329,7 @@ describe("jxToMd — uncovered tag types", () => {
   });
 
   test("blockquote", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [{ children: [{ tagName: "p", textContent: "q" }], tagName: "blockquote" }],
       tagName: "div",
     });
@@ -316,12 +338,12 @@ describe("jxToMd — uncovered tag types", () => {
   });
 
   test("line break", () => {
-    const result: any = jxToMd({ children: [{ tagName: "br" }], tagName: "div" });
+    const result: any = jxToMdast({ children: [{ tagName: "br" }], tagName: "div" });
     expect(result.children[0]).toEqual({ type: "break" });
   });
 
   test("table with thead/tbody, rows and header cells", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [
         {
           children: [
@@ -351,7 +373,7 @@ describe("jxToMd — uncovered tag types", () => {
 
 describe("jxToMd — directive conversion", () => {
   test("inline custom element with textContent becomes textDirective", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [{ children: [{ tagName: "x-icon", textContent: "star" }], tagName: "p" }],
       tagName: "div",
     });
@@ -362,7 +384,7 @@ describe("jxToMd — directive conversion", () => {
   });
 
   test("inline custom element with children becomes textDirective with child nodes", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [
         {
           children: [{ children: [{ tagName: "em", textContent: "i" }], tagName: "x-wrap" }],
@@ -377,8 +399,9 @@ describe("jxToMd — directive conversion", () => {
   });
 
   test("directive collects object-valued children into attributes", () => {
-    const result: any = jxToMd({
-      children: [{ children: { foo: "bar" } as any, tagName: "my-widget" }],
+    const result: any = jxToMdast({
+      // A hand-built element whose `children` is a plain object rather than a list or repeater.
+      children: authoredChildren([{ children: { foo: "bar" }, tagName: "my-widget" }]),
       tagName: "div",
     });
     const [directive] = result.children;
@@ -386,7 +409,7 @@ describe("jxToMd — directive conversion", () => {
   });
 
   test("directive attribute key normalization (annotations, pseudo, media)", () => {
-    const result: any = jxToMd({
+    const result: any = jxToMdast({
       children: [
         {
           "@": { margin: "0" },
@@ -394,7 +417,7 @@ describe("jxToMd — directive conversion", () => {
           ":hover": { color: "red" },
           $title: "My Title",
           tagName: "my-widget",
-        } as any,
+        },
       ],
       tagName: "div",
     });
@@ -498,7 +521,7 @@ describe("export mode — uncovered branches", () => {
       [
         "my-comp",
         {
-          children: [null as any, { tagName: "p", textContent: "hi" }],
+          children: authoredChildren([null, { tagName: "p", textContent: "hi" }]),
           state: {},
           tagName: "my-comp",
         },

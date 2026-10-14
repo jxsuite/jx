@@ -2,18 +2,8 @@ import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
-
-if (globalThis.localStorage === undefined) {
-  const store = new Map();
-  globalThis.localStorage = {
-    clear: () => store.clear(),
-    getItem: (k: string) => store.get(k) ?? null,
-    removeItem: (k: string) => store.delete(k),
-    setItem: (k: string, v: string) => store.set(k, v),
-  } as any;
-}
-
-const STORAGE_KEY = "jx_github_token";
+import { STORAGE_KEY } from "../src/github/github-auth-status";
+import type { NativeGithubAuth } from "../src/github/github-auth-status";
 
 let mockFetchResponses: { ok?: boolean; json: unknown; status?: number }[] = [];
 let mockFetchCalls: {
@@ -300,26 +290,27 @@ describe("authenticateGithub", () => {
 const { hydrateGithubToken, githubTokenStored, githubTokenLocation } =
   await import("../src/github/github-auth.js");
 
-interface NativeStub {
-  signIn: (force?: boolean) => Promise<{ token: string }>;
-  signOut: () => Promise<{ ok: boolean }>;
-  status: () => Promise<{ stored: boolean }>;
-}
-
-function installNative(stub: Partial<NativeStub>): { signOuts: number } {
+function installNative(stub: Partial<NativeGithubAuth>) {
   const counters = { signOuts: 0 };
-  (globalThis as unknown as { __jxPlatform?: unknown }).__jxPlatform = {
-    githubAuth: {
-      signIn: stub.signIn ?? (async () => ({ token: "gho_native" })),
-      signOut:
-        stub.signOut ??
-        (async () => {
-          counters.signOuts += 1;
-          return { ok: true };
-        }),
-      status: stub.status ?? (async () => ({ stored: false })),
-    },
+  const githubAuth: NativeGithubAuth = {
+    signIn: stub.signIn ?? (async () => ({ token: "gho_native" })),
+    signOut:
+      stub.signOut ??
+      (async () => {
+        counters.signOuts += 1;
+        return { ok: true };
+      }),
+    status: stub.status ?? (async () => ({ stored: false })),
   };
+  /* A launcher's adapter is a StudioPlatform plus a `githubAuth` member the declared global type
+     does not model, and the sign-in path only ever looks for that member. Define the slot the way
+     a plain assignment would (writable, enumerable, configurable) with just that member in it. */
+  Object.defineProperty(globalThis, "__jxPlatform", {
+    configurable: true,
+    enumerable: true,
+    value: { githubAuth },
+    writable: true,
+  });
   return counters;
 }
 
@@ -331,7 +322,8 @@ describe("the desktop loopback flow", () => {
   });
 
   afterEach(() => {
-    delete (globalThis as unknown as Record<string, unknown>).__jxPlatform;
+    // The launcher slot is tested with `in`, so it is removed rather than set to undefined.
+    Reflect.deleteProperty(globalThis, "__jxPlatform");
   });
 
   test("a desktop build signs in through the launcher, never the device endpoints", async () => {

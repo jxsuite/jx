@@ -23,6 +23,11 @@
  * judging produces findings nobody can reproduce by looking.
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+import { FRONTMATTER_DELIMITER } from "./frontmatter.ts";
+import { FENCE } from "./spec-status.ts";
+
 /** Where a span of prose sits. Rules use this to exempt what is structure rather than writing. */
 export type Ctx = "blockquote" | "frontmatter" | "heading" | "listItem" | "paragraph" | "tableCell";
 
@@ -38,8 +43,12 @@ export interface Segment {
   col: number;
 }
 
-const FENCE = /^\s*(```|~~~)/;
-const FRONTMATTER = /^---\s*$/;
+/** A 1-based place in a source document. */
+interface SourcePosition {
+  line: number;
+  col: number;
+}
+
 const HEADING = /^\s*#{1,6}\s+/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+/;
 const BLOCKQUOTE = /^\s*>\s?/;
@@ -161,14 +170,14 @@ export function segment(source: string): Segment[] {
     const lineNumber = i + 1;
 
     if (inFrontmatter) {
-      inFrontmatter = !FRONTMATTER.test(line);
+      inFrontmatter = !FRONTMATTER_DELIMITER.test(line);
       const kv = /^([a-z]+):\s*"?(.*?)"?\s*$/i.exec(line);
       if (kv && PROSE_KEYS.has(kv[1]?.toLowerCase() ?? "")) {
         push("frontmatter", lineNumber, line.indexOf(kv[2] ?? "") + 1, kv[2] ?? "");
       }
       continue;
     }
-    if (i === 0 && FRONTMATTER.test(line)) {
+    if (i === 0 && FRONTMATTER_DELIMITER.test(line)) {
       inFrontmatter = true;
       continue;
     }
@@ -233,7 +242,7 @@ export function segmentJson(source: string): Segment[] {
   const segments: Segment[] = [];
   const lines = source.split("\n");
 
-  const locate = (value: string): { line: number; col: number } => {
+  const locate = (value: string): SourcePosition => {
     const needle =
       JSON.stringify(value)
         .slice(1, -1)
@@ -247,20 +256,20 @@ export function segmentJson(source: string): Segment[] {
     return { col: 1, line: 1 };
   };
 
-  const walk = (node: unknown, key: string) => {
+  const walk = (node: JsonValue, key: string) => {
     if (Array.isArray(node)) {
       for (const item of node) {
         walk(item, key);
       }
       return;
     }
-    if (node !== null && typeof node === "object") {
-      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (isJsonObject(node)) {
+      for (const [k, v] of Object.entries(node)) {
         walk(v, k);
       }
       return;
     }
-    if (typeof node !== "string" || !JSON_PROSE_KEYS.has(key) || node.trim() === "") {
+    if (!isString(node) || !JSON_PROSE_KEYS.has(key) || node.trim() === "") {
       return;
     }
     const { col, line } = locate(node);

@@ -10,11 +10,22 @@
 
 import { createAuthClient } from "better-auth/client";
 import { AUTH_BASE_PATH } from "./config.ts";
+import type { AuthSessionPayload } from "./config.ts";
 
-/** The `{ data, error }` envelope every client call resolves to. */
+/** The `{ data, error }` envelope every client call resolves to (only `error` is consumed). */
 export interface AuthClientResult {
-  data?: unknown;
-  error?: { message?: string; status?: number } | null;
+  error?: { message?: string | undefined; status?: number | undefined } | null;
+}
+
+/** The `getSession()` envelope: `data` is the parsed `{ user, session }` payload, or null. */
+export interface AuthSessionResult extends AuthClientResult {
+  data?: AuthSessionPayload | null;
+}
+
+/** The `signIn.social` input: the provider id, plus where to land after the OAuth round trip. */
+export interface SocialSignInInput {
+  provider: string;
+  callbackURL?: string;
 }
 
 /** The Better Auth client slice consumed by the session store and the auth actions. */
@@ -25,13 +36,13 @@ export interface JxAuthClient {
       password: string;
       callbackURL?: string;
     }) => Promise<AuthClientResult>;
-    social: (input: { provider: string; callbackURL?: string }) => Promise<AuthClientResult>;
+    social: (input: SocialSignInInput) => Promise<AuthClientResult>;
   };
   signUp: {
     email: (input: { email: string; password: string; name: string }) => Promise<AuthClientResult>;
   };
   signOut: () => Promise<AuthClientResult>;
-  getSession: () => Promise<AuthClientResult>;
+  getSession: () => Promise<AuthSessionResult>;
 }
 
 let client: JxAuthClient | null = null;
@@ -63,7 +74,7 @@ export function getAuthClient(baseUrl?: string): JxAuthClient {
   }
   const base = resolveAuthBaseUrl(baseUrl);
   if (!client || clientBase !== base) {
-    client = createAuthClient({ baseURL: base }) as unknown as JxAuthClient;
+    client = createAuthClient({ baseURL: base });
     clientBase = base;
   }
   return client;

@@ -22,10 +22,12 @@
  * And a switch declares NO `interestfor`. Interest invokers are supported on `a`, `area` and
  * `button` only, so on a label the attribute shows nothing — while the sidecar, which decides by
  * the attribute, would take it to mean the platform had the pair and bind nothing either. So the
- * shape says whether the pair is declarative, and the one test that stands in for Chrome 152
+ * wiring says whether the pair is declarative, and the one test that stands in for Chrome 152
  * asserts the OPPOSITE outcome for the switch: the tip must still open, because it is bound.
  */
 import { describe, expect, test } from "bun:test";
+
+import { getNestedStyle } from "@jxsuite/schema/guards";
 
 import { documents } from "../src/documents.ts";
 
@@ -38,8 +40,7 @@ const tick = () =>
   });
 
 /** The shim marks a showing popover with `data-popover-open`; `:popover-open` never matches here. */
-const shown = (el: Element | null) =>
-  el !== null && (el as HTMLElement).dataset["popoverOpen"] !== undefined;
+const shown = (el: HTMLElement | null) => el !== null && el.dataset["popoverOpen"] !== undefined;
 
 /**
  * Where an element puts the two ends of its hint pair.
@@ -50,7 +51,7 @@ const shown = (el: Element | null) =>
  * `aria-describedby`). On a button they are one node; on a switch the trigger is the label and the
  * control is the input inside it.
  */
-export interface HintShape {
+export interface HintWiring {
   /** Selector of the wired node, inside the element. Defaults to `[part="control"]`. */
   trigger?: string;
   /** Selector of the focusable, named node. Defaults to the trigger. */
@@ -62,8 +63,8 @@ export interface HintShape {
   declarative: boolean;
 }
 
-/** The default shape: `jx-button` and `jx-action-button`, one `<button part="control">`. */
-const BUTTON_SHAPE: Required<HintShape> = {
+/** The default wiring: `jx-button` and `jx-action-button`, one `<button part="control">`. */
+const BUTTON_WIRING: Required<HintWiring> = {
   control: '[part="control"]',
   declarative: true,
   trigger: '[part="control"]',
@@ -94,11 +95,11 @@ const tipOf = (el: Element) => el.querySelector<HTMLElement>('[part="tooltip"] >
 export function describeHint(
   tag: "jx-action-button" | "jx-button" | "jx-switch",
   make: (attrs: Record<string, string>) => Promise<HTMLElement>,
-  shape: HintShape = BUTTON_SHAPE,
+  wiring: HintWiring = BUTTON_WIRING,
 ): void {
   const idPattern = new RegExp(`^${tag}-\\d+$`);
-  const triggerSelector = shape.trigger ?? BUTTON_SHAPE.trigger;
-  const controlSelector = shape.control ?? triggerSelector;
+  const triggerSelector = wiring.trigger ?? BUTTON_WIRING.trigger;
+  const controlSelector = wiring.control ?? triggerSelector;
   /** The node the tip is wired to: id, title while disabled, interestfor when declarative. */
   const trigger = (el: Element) => el.querySelector<HTMLElement>(triggerSelector)!;
   /** The node that takes the focus and carries the name and the description. */
@@ -123,7 +124,7 @@ export function describeHint(
       expect(wired.id).toMatch(idPattern);
       expect(tip!.id).toBe(`${wired.id}-tip`);
       expect(tip!.getAttribute("for")).toBe(wired.id);
-      if (shape.declarative) {
+      if (wiring.declarative) {
         expect(wired.getAttribute("interestfor")).toBe(tip!.id);
       } else {
         expect(wired.hasAttribute("interestfor")).toBe(false);
@@ -180,20 +181,26 @@ export function describeHint(
          the trigger declares nothing the platform reads, so the sidecar must still bind it and the
          tip must still open — a switch that wrote `interestfor` on its label would satisfy the
          first branch and show nothing on any engine. */
-      const proto = HTMLButtonElement.prototype as unknown as Record<string, unknown>;
-      proto["interestForElement"] = null;
+      /* An own, writable, enumerable data property, exactly what a plain assignment would create:
+         the sidecar only asks whether the name is `in` the prototype. */
+      Object.defineProperty(HTMLButtonElement.prototype, "interestForElement", {
+        configurable: true,
+        enumerable: true,
+        value: null,
+        writable: true,
+      });
       try {
         const el = await make({ hint: "Save the page", label: "Save" });
         const inner = control(el);
         const tip = tipOf(el)!;
-        expect(trigger(el).getAttribute("interestfor")).toBe(shape.declarative ? tip.id : null);
+        expect(trigger(el).getAttribute("interestfor")).toBe(wiring.declarative ? tip.id : null);
         focusIn(inner);
         // Declarative: the platform's, so nothing here opened it. Bound: the sidecar's, so it did.
-        expect(shown(tip)).toBe(!shape.declarative);
+        expect(shown(tip)).toBe(!wiring.declarative);
         inner.dispatchEvent(new Event("focusout", { bubbles: true }));
         expect(shown(tip)).toBe(false);
       } finally {
-        delete proto["interestForElement"];
+        Reflect.deleteProperty(HTMLButtonElement.prototype, "interestForElement");
       }
     });
 
@@ -270,6 +277,9 @@ export function describeHint(
     });
 
     test("toggling disabled at runtime swaps the two affordances", async () => {
+      /* SAFETY: make() renders one of jx-action-button, jx-button or jx-switch, and each of those
+         component documents declares `disabled` and `hint` props, which the runtime defines as
+         element properties before make() resolves. */
       const el = (await make({ hint: "Save the page", label: "Save" })) as Hinted;
       const inner = control(el);
       const wired = trigger(el);
@@ -314,9 +324,14 @@ export function describeHint(
       /* A `$map` row that carries no hint hands the prop `undefined` through `$props`, and the
          switch used to be `hint !== ""` — which is true of undefined, so every such button rendered
          an empty tip. The test writes the property the way a binding does. */
-      /* `HTMLElement & { hint: unknown }`, not `Hinted & …`: an intersection of `hint: string`
-         with `hint: unknown` is `string`, and the two writes below are the point. */
-      const el = (await make({ label: "Save" })) as HTMLElement & { hint: unknown };
+      /* `HTMLElement & { hint: string | null | undefined }`, not `Hinted & …`: an intersection
+         with `hint: string` is `string`, and the two non-string writes below are the point. */
+      /* SAFETY: make() renders one of jx-action-button, jx-button or jx-switch, each of whose
+         component documents declares a `hint` prop the runtime defines as an element property, and
+         that property takes whatever a `$props` binding writes, null and undefined included. */
+      const el = (await make({ label: "Save" })) as HTMLElement & {
+        hint: string | null | undefined;
+      };
       el.hint = null;
       await tick();
       expect(tipOf(el)).toBeNull();
@@ -341,6 +356,9 @@ export function describeHint(
       /* The text is a span the element owns rather than `textContent` on the tip: a reactive write
          of `textContent` on the tip's host would replace everything the tip rendered for itself —
          its arrow part included — on the first hint that changes under it. */
+      /* SAFETY: make() renders one of jx-action-button, jx-button or jx-switch, and each of those
+         component documents declares `disabled` and `hint` props, which the runtime defines as
+         element properties before make() resolves. */
       const el = (await make({ hint: "Dock", label: "Dock" })) as Hinted;
       const tip = tipOf(el)!;
       expect(tip.querySelector('[part="arrow"]')).not.toBeNull();
@@ -353,8 +371,7 @@ export function describeHint(
 
     test("the hint's slot generates no box, and the tip is registered before the button", () => {
       const doc = documents[tag]!;
-      const style = doc.style as Record<string, Record<string, string>>;
-      expect(style['& > [part="tooltip"]']!["display"]).toBe("contents");
+      expect(getNestedStyle(doc.style, '& > [part="tooltip"]')?.["display"]).toBe("contents");
       expect(JSON.stringify(doc.$elements)).toContain("./jx-tooltip.json");
       /* `defineElement` is awaited per document, and an element registered before a dependency it
          renders gets an HTMLUnknownElement child instead. */

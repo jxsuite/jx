@@ -55,7 +55,7 @@ function seed(overrides: Partial<StudioPlatform> = {}): void {
     projectConfig: { name: "Demo" },
     projectRoot: "/demo",
   });
-  installMockPlatform(overrides as Partial<StudioPlatform>, { ...FILES });
+  installMockPlatform(overrides, { ...FILES });
 }
 
 /** Open a file and draw its pane, returning the rendered root. */
@@ -161,7 +161,7 @@ describe("what it draws", () => {
   test("an image, at its own size, with the file's name", async () => {
     const { el } = await open("public/hero.png");
     expect(el.querySelector('img[part="image"]')).toBeTruthy();
-    expect(el.querySelector('[part="title"]')?.textContent?.trim()).toBe("hero.png");
+    expect(el.querySelector('[part="title"]')?.textContent.trim()).toBe("hero.png");
   });
 
   test("a video gets controls, not an img tag", async () => {
@@ -215,7 +215,7 @@ describe("what it draws", () => {
        file. Getting it wrong is the commonest way an image goes missing from a page, and the
        importer got it wrong for every asset it downloaded. */
     const { el } = await open("public/hero.png");
-    expect(el.querySelector('[part="ref-value"]')?.textContent?.trim()).toBe("/hero.png");
+    expect(el.querySelector('[part="ref-value"]')?.textContent.trim()).toBe("/hero.png");
   });
 
   test("the kind, always; the numbers only when they are known", async () => {
@@ -249,7 +249,7 @@ describe("mounting", () => {
 
   test("a different file in the same pane replaces the viewer rather than stacking one", async () => {
     const first = await open("public/hero.png");
-    expect(first.el.querySelector('[part="title"]')?.textContent?.trim()).toBe("hero.png");
+    expect(first.el.querySelector('[part="title"]')?.textContent.trim()).toBe("hero.png");
 
     await openFileInTab("public/promo.mp4");
     const video = workspace.tabs.get("public/promo.mp4")!;
@@ -300,7 +300,7 @@ describe("what it can say about the file", () => {
           type: "file" as const,
         },
       ],
-    } as Partial<StudioPlatform>);
+    });
     const { el } = await open("public/hero.png");
     await flush(4);
     const facts = el.querySelector('[part="facts"]')?.textContent ?? "";
@@ -314,14 +314,14 @@ describe("what it can say about the file", () => {
        not find out". The harness's listing carries no size, which is exactly that case. */
     const { el } = await open("public/hero.png");
     await flush(4);
-    expect(el.querySelector('[part="facts"]')?.textContent?.trim()).toBe("image");
+    expect(el.querySelector('[part="facts"]')?.textContent.trim()).toBe("image");
   });
 
   test("pixel dimensions arrive from the image that is already on screen", async () => {
     /* There is no stat that returns them and no decoder in the shell, so the only honest source is
        an `<img>` that has loaded — which this pane is showing at full size anyway. */
     const { el } = await open("public/hero.png");
-    const img = el.querySelector('img[part="image"]') as HTMLImageElement;
+    const img = el.querySelector('img[part="image"]')!;
     Object.defineProperty(img, "naturalWidth", { configurable: true, value: 1200 });
     Object.defineProperty(img, "naturalHeight", { configurable: true, value: 630 });
     img.dispatchEvent(new Event("load"));
@@ -332,7 +332,7 @@ describe("what it can say about the file", () => {
 
   test("a second load of the same image does not repaint again", async () => {
     const { el } = await open("public/hero.png");
-    const img = el.querySelector('img[part="image"]') as HTMLImageElement;
+    const img = el.querySelector('img[part="image"]')!;
     Object.defineProperty(img, "naturalWidth", { configurable: true, value: 800 });
     Object.defineProperty(img, "naturalHeight", { configurable: true, value: 600 });
     img.dispatchEvent(new Event("load"));
@@ -368,9 +368,7 @@ describe("what it can say about the file", () => {
       value: { writeText: (text: string) => written.push(text) },
     });
     const { el } = await open("public/hero.png");
-    (el.querySelector('[part="copy"]') as HTMLElement).dispatchEvent(
-      new Event("click", { bubbles: true }),
-    );
+    el.querySelector('[part="copy"]')!.dispatchEvent(new Event("click", { bubbles: true }));
     expect(written).toEqual(["/hero.png"]);
   });
 });
@@ -395,7 +393,7 @@ describe("which documents use it", () => {
         refsTotal: target.path === "public/hero.png" ? files.reduce((n, f) => n + f.count, 0) : 0,
         tagName: null,
       }),
-    } as Partial<StudioPlatform>);
+    });
   }
 
   test("lists them, with a count each", async () => {
@@ -405,9 +403,9 @@ describe("which documents use it", () => {
     const { el } = await open("public/hero.png");
     await flush(6);
 
-    const links = [...el.querySelectorAll('[part="file-path"]')].map((n) => n.textContent?.trim());
+    const links = [...el.querySelectorAll('[part="file-path"]')].map((n) => n.textContent.trim());
     expect(links).toContain("pages/index.json");
-    expect(el.querySelector('[part="count"]')?.textContent?.trim()).toBe("2");
+    expect(el.querySelector('[part="count"]')?.textContent.trim()).toBe("2");
   });
 
   test("a row opens the document that references it", async () => {
@@ -415,9 +413,7 @@ describe("which documents use it", () => {
     const { el } = await open("public/hero.png");
     await flush(6);
 
-    (el.querySelector('[part="file-path"]') as HTMLElement).dispatchEvent(
-      new Event("click", { bubbles: true }),
-    );
+    el.querySelector('[part="file-path"]')!.dispatchEvent(new Event("click", { bubbles: true }));
     await flush(4);
     expect(workspace.tabs.has("pages/index.json")).toBe(true);
   });
@@ -426,7 +422,7 @@ describe("which documents use it", () => {
     withReferences([]);
     const { el } = await open("public/hero.png");
     await flush(6);
-    expect(el.querySelector('[part="message"]')?.textContent?.trim()).toBeTruthy();
+    expect(el.querySelector('[part="message"]')?.textContent.trim()).toBeTruthy();
     expect(el.querySelector('[part="list"]')).toBeNull();
   });
 

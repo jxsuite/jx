@@ -15,7 +15,11 @@ test("rawDoc clones the live document out of its reactive proxy", () => {
   });
   const copy = rawDoc(tab);
   expect(copy).toEqual({ children: [{ tagName: "p" }], tagName: "div" });
-  (copy.children as object[]).push({ tagName: "span" });
+  const { children } = copy;
+  if (!Array.isArray(children)) {
+    throw new TypeError("the cloned document lost its children array");
+  }
+  children.push({ tagName: "span" });
   expect(tab.doc.document.children).toHaveLength(1);
   disposeTab(tab);
 });

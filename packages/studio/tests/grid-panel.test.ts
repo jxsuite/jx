@@ -33,6 +33,9 @@ import { FakeTabulator, tabulatorMockModule } from "./tabulator-mock";
 import { initLayers } from "../src/ui/layers";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import type { GridEditBatch, GridSource } from "../src/grid/grid-source";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { CommandContext } from "../src/commands/context";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 
 void mock.module("tabulator-tables", () => tabulatorMockModule);
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
@@ -59,6 +62,8 @@ const {
   saveGridLayout,
   saveViewAs,
 } = await import("../src/grid/grid-layout");
+const { makeContext } = await import("../src/commands/context");
+const { createCommandRegistry } = await import("../src/commands/registry");
 
 beforeAll(() => {
   mountOverlayLayers();
@@ -66,6 +71,17 @@ beforeAll(() => {
 });
 
 // ─── Addressing ───────────────────────────────────────────────────────────────
+
+/** The `field` of every column a table was built with, in order (`undefined` for one without). */
+function columnFields(table: FakeTabulator): (string | undefined)[] {
+  const { columns } = table.options;
+  if (!Array.isArray(columns)) {
+    throw new TypeError("the table was built without a columns array");
+  }
+  return columns.map((column) =>
+    isJsonObject(column) && isString(column.field) ? column.field : undefined,
+  );
+}
 
 /** A node by its `part`, anywhere under `root`. */
 function part(root: ParentNode, name: string): HTMLElement | null {
@@ -250,7 +266,9 @@ describe("renderGridMode", () => {
     /* Not one CSS class between them. Mapped to names rather than compared as elements: `toEqual`
        over a happy-dom node walks its whole parent chain and never comes back. */
     expect(
-      [...wrap.querySelectorAll("[class]")].map((el) => el.className).filter((name) => name !== ""),
+      [...wrap.querySelectorAll("[class]")].flatMap((el) =>
+        el.className === "" ? [] : [el.className],
+      ),
     ).toEqual([]);
   });
 
@@ -639,10 +657,7 @@ describe("saved views", () => {
     expect(before.destroyed).toBeTrue();
     const after = FakeTabulator.instances.at(-1)!;
     expect(after).not.toBe(before);
-    expect((after.options.columns as { field?: string }[]).map((c) => c.field)).toEqual([
-      "title",
-      "status",
-    ]);
+    expect(columnFields(after)).toEqual(["title", "status"]);
 
     // And back: the open panel has re-projected, so the box shows what storage now holds.
     expect(columnBox(viewsPanel()!, "body").checked).toBeFalse();
@@ -721,10 +736,7 @@ describe("saved views", () => {
     expect(controller.state.query).toEqual({ dir: "desc", orderBy: "title" });
     expect(loadGridLayout(VIEW_GRID)?.hidden).toEqual(["body"]);
     const table = FakeTabulator.instances.at(-1)!;
-    expect((table.options.columns as { field?: string }[]).map((c) => c.field)).toEqual([
-      "title",
-      "status",
-    ]);
+    expect(columnFields(table)).toEqual(["title", "status"]);
     expect(viewsPanel()).toBeNull(); // Applying closes the panel.
   });
 
@@ -801,6 +813,19 @@ describe("saved-view commands", () => {
 
   const byId = (id: string) => gridViewCommands().find((command) => command.id === id)!;
 
+  /** Run a saved-view record directly, with an empty context and the arguments given. */
+  const runView = (id: string, args?: CommandArgValues) => {
+    /* SAFETY: `gridViewCommands()` returns `AnyCommand`, which erases each record's argument type
+       to `never`. `grid.applyView` and `grid.deleteView` read their one argument through
+       `stringArg(commandId, args, "name")`, and `grid.saveView` and `grid.resetView` read none, so a
+       `CommandArgValues` record or `undefined` is exactly what each record was declared to take. */
+    const run = byId(id).run as (
+      ctx: CommandContext,
+      args: CommandArgValues | undefined,
+    ) => void | Promise<void>;
+    return run(makeContext(), args);
+  };
+
   test("every record is a document-level palette verb", () => {
     const records = gridViewCommands();
     expect(records.map((r) => r.id).toSorted()).toEqual([
@@ -815,41 +840,40 @@ describe("saved-view commands", () => {
       expect(record.requires).toBe("a grid on screen");
       // Visible only inside a project, and enabled only with a grid on screen — two questions,
       // Asked separately, so a closed project hides the row and an open one explains the refusal.
-      expect(record.when!({ project: { open: true } } as never)).toBeTrue();
-      expect(record.when!({ project: { open: false } } as never)).toBeFalse();
-      expect(record.enablement!({} as never)).toBeFalse();
+      expect(record.when!(makeContext({ project: { open: true } }))).toBeTrue();
+      expect(record.when!(makeContext({ project: { open: false } }))).toBeFalse();
+      expect(record.enablement!(makeContext())).toBeFalse();
     }
   });
 
   test("they are disabled, and refuse, when no grid is on screen", () => {
     detachGridPanel("primary");
-    const record = byId("grid.resetView");
-    expect(record.enablement!({} as never)).toBeFalse();
-    expect(() => record.run({} as never, undefined as never)).toThrow("needs a grid on screen");
+    expect(byId("grid.resetView").enablement!(makeContext())).toBeFalse();
+    expect(() => runView("grid.resetView")).toThrow("needs a grid on screen");
   });
 
   test("save, apply, delete and reset go through the same store as the panel", async () => {
     const { controller, wrap } = await mountGrid(viewSource());
-    expect(byId("grid.saveView").enablement!({} as never)).toBeTrue();
+    expect(byId("grid.saveView").enablement!(makeContext())).toBeTrue();
 
     saveGridLayout(VIEW_GRID, { hidden: ["body"] });
-    const saving = byId("grid.saveView").run({} as never, undefined as never);
+    const saving = runView("grid.saveView");
     await flush(3);
     await answerDialog("confirm", "By command");
     await saving;
     expect(listSavedViews(VIEW_GRID).map((v) => v.name)).toEqual(["By command"]);
 
     resetGridLayout(VIEW_GRID);
-    await byId("grid.applyView").run({} as never, { name: "By command" } as never);
+    await runView("grid.applyView", { name: "By command" });
     await flush(3);
     expect(loadGridLayout(VIEW_GRID)?.hidden).toEqual(["body"]);
     expect(printedBy(part(wrap, "views")!)).toBe("By command");
 
-    await byId("grid.resetView").run({} as never, undefined as never);
+    await runView("grid.resetView");
     expect(loadGridLayout(VIEW_GRID)).toEqual({});
     expect(controller.state.grouping).toBeNull();
 
-    await byId("grid.deleteView").run({} as never, { name: "By command" } as never);
+    await runView("grid.deleteView", { name: "By command" });
     await flush(2);
     expect(listSavedViews(VIEW_GRID)).toEqual([]);
     expect(printedBy(part(wrap, "views")!)).toBe("View");
@@ -859,17 +883,20 @@ describe("saved-view commands", () => {
     await mountGrid(viewSource());
     saveGridLayout(VIEW_GRID, {});
     saveViewAs(VIEW_GRID, "Real");
-    expect(() => byId("grid.applyView").run({} as never, { name: "ghost" } as never)).toThrow(
+    expect(() => runView("grid.applyView", { name: "ghost" })).toThrow(
       /"ghost" is not a saved view of views — it has: Real/,
     );
   });
 
   test("registerGridViewCommands puts all four into a registry", () => {
-    const ids: string[] = [];
-    registerGridViewCommands({
-      registerAll: (commands: readonly { id: string }[]) => ids.push(...commands.map((c) => c.id)),
-    } as never);
-    expect(ids).toHaveLength(4);
+    const registry = createCommandRegistry({ getContext: () => makeContext() });
+    registerGridViewCommands(registry);
+    expect(registry.list().map((command) => command.id)).toEqual([
+      "grid.saveView",
+      "grid.applyView",
+      "grid.deleteView",
+      "grid.resetView",
+    ]);
   });
 });
 
@@ -887,8 +914,9 @@ describe("saved views — the awkward corners", () => {
     // Refused: the dialog is still up, saying why, and nothing was written.
     const dialog = document.querySelector<HTMLElement>("#layer-dialog jx-dialog")!;
     expect(dialog).not.toBeNull();
-    expect(text(dialog)).toContain("Name the view.");
-    expect(text(dialog)).toContain("saved for views");
+    const said = text(dialog);
+    expect(said).toContain("Name the view.");
+    expect(said).toContain("saved for views");
     expect(listSavedViews(VIEW_GRID)).toEqual([]);
     await answerDialog("cancel");
   });

@@ -35,6 +35,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import { beginActivity } from "../panels/activity-panel";
 import { showPromptDialog } from "../ui/layers";
+import type { PromptDialogOptions } from "../ui/layers";
 import { openMenu } from "../surfaces/menu";
 import { rectOf } from "../utils/geometry";
 import { getPlatform } from "../platform";
@@ -63,7 +64,7 @@ import { paneRegion } from "../ui/regions";
 import { LAYOUT_METRICS, boardView, calendarView, columnsAt, libraryRow } from "./library-layouts";
 import { mountLibrarySurface } from "../surfaces/library-pane";
 import type { ActivityHandle } from "../panels/activity-panel";
-import type { FormatChoice } from "../files/files";
+import type { FormatChoice, NewFileRequest } from "../files/files";
 import type { EffectScope } from "@vue/reactivity";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import type { LibraryFile, LibraryLayout } from "./library-model";
@@ -195,13 +196,18 @@ const SCAN_PROBLEM_KEY = "library.scan";
  * contract exists to end. The row is informational, and it only appears when the scan is slow
  * enough that its absence would look like a hang.
  */
+/** The scan's Activity row, filled in only once the scan outlasts {@link SCAN_ACTIVITY_DELAY_MS}. */
+interface SlowScanActivity {
+  handle: ActivityHandle | null;
+}
+
 async function loadLibrary(): Promise<void> {
   const current = librarySource();
   scanAttempted = true;
   libraryView.loading = true;
   bump();
 
-  const slow: { handle: ActivityHandle | null } = { handle: null };
+  const slow: SlowScanActivity = { handle: null };
   const timer = setTimeout(() => {
     slow.handle = beginActivity({
       source: "Library",
@@ -584,13 +590,16 @@ function showLibraryNewMenu(opener: HTMLElement): void {
  */
 async function renameLibraryFile(file: LibraryFile) {
   const message = await renamePromptMessage(file.path);
-  const newName = await showPromptDialog("Rename", {
+  const prompt: PromptDialogOptions = {
     confirmLabel: "Rename",
-    ...(message === undefined ? {} : { message }),
     select: "stem",
     validate: (value) => (value.trim() ? "" : "Enter a file name."),
     value: file.name,
-  });
+  };
+  if (message !== undefined) {
+    prompt.message = message;
+  }
+  const newName = await showPromptDialog("Rename", prompt);
   if (!newName || newName === file.name) {
     return;
   }
@@ -724,11 +733,11 @@ export function libraryNewEntries(): LibraryNewEntry[] {
  * through the format's own serializer, because this module knows no format's syntax.
  */
 /** How each document kind's extension is settled. Anything else falls back to the full picker. */
-const FORMAT_CHOICE_BY_KIND: Record<string, FormatChoice> = {
-  component: { defaultExt: ".json", docKind: "component", kind: "choose" },
-  layout: { ext: ".json", kind: "fixed" },
-  page: { defaultExt: ".json", docKind: "page", kind: "choose" },
-};
+const FORMAT_CHOICE_BY_KIND = new Map<string, FormatChoice>([
+  ["component", { defaultExt: ".json", docKind: "component", kind: "choose" }],
+  ["layout", { ext: ".json", kind: "fixed" }],
+  ["page", { defaultExt: ".json", docKind: "page", kind: "choose" }],
+]);
 
 /**
  * The body a new component starts as, when the reader picked a format rather than `.json`.
@@ -767,17 +776,22 @@ export async function createLibraryEntry(key: string): Promise<string | null> {
   if (!entry) {
     return null;
   }
-  const created =
-    entry.collection === undefined
-      ? await createFileIn({
-          ...(entry.key === "component" ? { content: componentSeed } : {}),
-          dir: entry.dir,
-          format: FORMAT_CHOICE_BY_KIND[entry.key] ?? { defaultExt: ".json", kind: "choose" },
-          source: "Library",
-          suggestedName: "untitled",
-          title: `New ${entry.label}`,
-        })
-      : await createEntry(entry.collection);
+  let created: string | null;
+  if (entry.collection === undefined) {
+    const request: NewFileRequest = {
+      dir: entry.dir,
+      format: FORMAT_CHOICE_BY_KIND.get(entry.key) ?? { defaultExt: ".json", kind: "choose" },
+      source: "Library",
+      suggestedName: "untitled",
+      title: `New ${entry.label}`,
+    };
+    if (entry.key === "component") {
+      request.content = componentSeed;
+    }
+    created = await createFileIn(request);
+  } else {
+    created = await createEntry(entry.collection);
+  }
   if (created === null) {
     return null;
   }
@@ -1017,6 +1031,8 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     },
     search: (value) => setLibrarySearch(value),
     setCategory: (key) => setLibraryCategory(key),
+    /* SAFETY: the surface's layout buttons pass `$map.item.key`, and the `layouts` state they map is
+       built from LIBRARY_LAYOUTS in the projection above, so every key is a LibraryLayout. */
     setLayout: (key) => setLibraryLayout(key as LibraryLayout),
     setLocale: (value) => setLibraryLocale(value === "all" ? "" : value),
     upload: (input) => {

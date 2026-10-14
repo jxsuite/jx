@@ -170,7 +170,7 @@ describe("FocusRegion map", () => {
     const declared: FocusRegion[] = ["rail", "navigator", "pane", "inspector", "dock", "status"];
     for (const focus of declared) {
       const id = REGION_FOR_FOCUS[focus];
-      expect(typeof id).toBe("string");
+      expect(id).toBeTypeOf("string");
       expect(isRegionId(id)).toBe(true);
     }
   });

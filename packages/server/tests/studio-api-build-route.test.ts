@@ -14,17 +14,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { ReferencesResult } from "../src/refactor/find-refs.ts";
+import type { buildSite } from "@jxsuite/compiler/site";
 
-interface BuildOptions {
-  clean?: boolean;
-  verbose?: boolean;
-}
+/** What the route hands the compiler's `buildSite`, read off the real signature. */
+type BuildOptions = NonNullable<Parameters<typeof buildSite>[1]>;
 
-interface BuildResult {
-  errors: string[];
-  files: number;
-  routes: number;
-}
+/** What the compiler's `buildSite` resolves to, read off the real signature. */
+type BuildResult = Awaited<ReturnType<typeof buildSite>>;
 
 const buildCalls: { options: BuildOptions; root: string }[] = [];
 let buildResult: BuildResult = { errors: [], files: 0, routes: 0 };
@@ -52,7 +49,16 @@ void mock.module("../src/site-preview.ts", () => ({
 }));
 
 const findRefsCalls: { path: string | null; root: string; tagName: string | null }[] = [];
-let findRefsResult: unknown = {};
+/** The report a sweep that found nothing answers with. */
+const NO_REFERENCES: ReferencesResult = {
+  errors: [],
+  files: [],
+  filesReferencing: 0,
+  path: null,
+  refsTotal: 0,
+  tagName: null,
+};
+let findRefsResult = NO_REFERENCES;
 let findRefsFailure: string | null = null;
 
 void mock.module("../src/refactor/find-refs.ts", () => ({
@@ -105,7 +111,7 @@ beforeEach(() => {
   buildResult = { errors: [], files: 0, routes: 0 };
   buildFailure = null;
   previewResult = { origin: "http://127.0.0.1:41234", port: 41_234 };
-  findRefsResult = {};
+  findRefsResult = NO_REFERENCES;
   findRefsFailure = null;
 });
 
@@ -132,9 +138,10 @@ describe("POST /__studio/build — which directory is built", () => {
     expect(res.status).toBe(400);
     // RFC 9457: the type is what a client keys on, `detail` is what a human reads.
     expect(res.headers.get("content-type")).toBe("application/problem+json");
-    const body = (await res.json()) as { type: string; detail: string };
-    expect(body.type).toBe("https://jxsuite.com/problems/invalid-request");
-    expect(body.detail).toBe("Not a site project");
+    expect(await res.json()).toMatchObject({
+      detail: "Not a site project",
+      type: "https://jxsuite.com/problems/invalid-request",
+    });
     expect(buildCalls).toEqual([]);
     expect(previewCalls).toEqual([]);
   });
@@ -145,9 +152,10 @@ describe("POST /__studio/build — which directory is built", () => {
     expect(res.status).toBe(400);
     // RFC 9457: the type is what a client keys on, `detail` is what a human reads.
     expect(res.headers.get("content-type")).toBe("application/problem+json");
-    const body = (await res.json()) as { type: string; detail: string };
-    expect(body.type).toBe("https://jxsuite.com/problems/invalid-request");
-    expect(body.detail).toBe("Not a site project");
+    expect(await res.json()).toMatchObject({
+      detail: "Not a site project",
+      type: "https://jxsuite.com/problems/invalid-request",
+    });
     expect(buildCalls).toEqual([]);
   });
 });
@@ -164,12 +172,13 @@ describe("POST /__studio/build — the reply", () => {
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as BuildResult & { url?: string };
-    expect(payload.errors).toEqual(["pages/broken.json: unresolved $ref"]);
-    expect(payload.files).toBe(7);
-    expect(payload.routes).toBe(4);
-    // The built site is served on the PREVIEW server's port, which the caller cannot guess.
-    expect(payload.url).toBe("http://127.0.0.1:41234");
+    expect(await res.json()).toMatchObject({
+      errors: ["pages/broken.json: unresolved $ref"],
+      files: 7,
+      routes: 4,
+      // The built site is served on the PREVIEW server's port, which the caller cannot guess.
+      url: "http://127.0.0.1:41234",
+    });
   });
 
   test("omits the origin when there is nothing built to serve", async () => {
@@ -178,9 +187,9 @@ describe("POST /__studio/build — the reply", () => {
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as BuildResult & { url?: string };
-    expect("url" in payload).toBe(false);
-    expect(payload.routes).toBe(1);
+    const payload = await res.json();
+    expect(payload).not.toHaveProperty("url");
+    expect(payload).toMatchObject({ routes: 1 });
   });
 
   test("a build that throws is a 500 carrying the compiler's message", async () => {
@@ -188,8 +197,7 @@ describe("POST /__studio/build — the reply", () => {
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(500);
-    const payload = (await res.json()) as { error: string };
-    expect(payload.error).toContain("compiler exploded");
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("compiler exploded") });
     // The failure happened before there was anything to preview.
     expect(previewCalls).toEqual([]);
   });
@@ -202,11 +210,25 @@ describe("GET /__studio/references", () => {
   }
 
   test("answers with the walker's report for the queried tag", async () => {
-    findRefsResult = { files: [{ count: 2, path: "pages/index.json" }], total: 2 };
+    const report: ReferencesResult = {
+      errors: [],
+      files: [
+        {
+          count: 2,
+          path: "pages/index.json",
+          refs: [{ count: 2, ref: "<my-card>", refType: "tagName" }],
+        },
+      ],
+      filesReferencing: 1,
+      path: null,
+      refsTotal: 2,
+      tagName: "my-card",
+    };
+    findRefsResult = report;
     const { req, url } = refsReq("?tag=my-card");
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ files: [{ count: 2, path: "pages/index.json" }], total: 2 });
+    expect(await res.json()).toEqual(report);
     expect(findRefsCalls).toEqual([{ path: null, root: SITE, tagName: "my-card" }]);
   });
 
@@ -215,7 +237,8 @@ describe("GET /__studio/references", () => {
     const { req, url } = refsReq("?tag=my-card");
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(500);
-    const payload = (await res.json()) as { error: string };
-    expect(payload.error).toContain("reference sweep exploded");
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("reference sweep exploded"),
+    });
   });
 });

@@ -38,7 +38,8 @@ type MenuEl = HTMLElement & {
   area: string;
 };
 
-type RowEl = HTMLElement & { expanded: boolean };
+/** One menu row, as the sidecar's own `rowsOf` types it. */
+type RowEl = ReturnType<typeof rowsOf>[number];
 
 interface RowSpec {
   disabled?: boolean;
@@ -73,7 +74,7 @@ function row(value: string, title: string, spec: RowSpec = {}): JxElement {
       haspopup: Boolean(spec.submenu),
     },
     children,
-  } as JxElement;
+  };
 }
 
 const DOC: JxDocument = {
@@ -95,7 +96,7 @@ const DOC: JxDocument = {
       ],
     },
   ],
-} as unknown as JxDocument;
+};
 
 let dispose: (() => void) | null = null;
 
@@ -104,14 +105,27 @@ async function open(): Promise<{ menu: MenuEl; rows: RowEl[]; selected: string[]
   document.body.append(host);
   ({ dispose } = await mount(DOC, host));
   await flush();
+  /* SAFETY: DOC renders exactly one root jx-menu (its submenu comes later in document order), which
+     registerUi() in beforeAll defined, and jx-menu.json declares every prop MenuEl names. */
   const menu = host.querySelector("jx-menu") as MenuEl;
   const selected: string[] = [];
   menu.addEventListener("select", (e) => {
-    selected.push(String((e as CustomEvent).detail));
+    selected.push(String("detail" in e ? e.detail : undefined));
   });
   menu.showPopover();
   await flush();
-  return { menu, rows: rowsOf(menu, { includeDisabled: true }) as RowEl[], selected };
+  return { menu, rows: rowsOf(menu, { includeDisabled: true }), selected };
+}
+
+/** The submenu a row hangs, as the element its document defines. */
+function submenuIn(item: HTMLElement): MenuEl {
+  const sub = submenuOf(item);
+  if (sub === null) {
+    throw new Error("the row hangs no submenu");
+  }
+  /* SAFETY: submenuOf() only answers a jx-menu element, which registerUi() in beforeAll defined,
+     and jx-menu.json declares every prop MenuEl names; MenuElement merely types them optional. */
+  return sub as MenuEl;
 }
 
 /**
@@ -148,8 +162,9 @@ describe("jx-menu", () => {
     expect(menu.getAttribute("popover")).toBe("auto");
     expect(menu.getAttribute("aria-label")).toBe("Actions");
     // A bound style value is carried by an inline `--jx-r…` custom property the rule reads.
-    expect(menu.getAttribute("style")).toContain("10px");
-    expect(menu.getAttribute("style")).toContain("20px");
+    const style = menu.getAttribute("style");
+    expect(style).toContain("10px");
+    expect(style).toContain("20px");
     expect(menu.x).toBe(10);
     expect(menu.open).toBe(true);
     expect(menu.dataset.popoverOpen !== undefined).toBe(true);
@@ -160,7 +175,9 @@ describe("jx-menu", () => {
     document.body.append(host);
     const seen: string[] = [];
     host.addEventListener("jx-ready", (e) => {
-      seen.push((e.target as Element).localName);
+      if (e.target instanceof Element) {
+        seen.push(e.target.localName);
+      }
     });
     ({ dispose } = await mount(DOC, host));
     await flush();
@@ -203,6 +220,8 @@ describe("jx-menu", () => {
        from quietly becoming a second tooltip channel. The row's own `title` binding gates on
        `disabled` for the same reason, which is what this asserts from both sides. */
     const { rows } = await open();
+    /* SAFETY: every row DOC renders is a jx-menu-item, which registerUi() in beforeAll defined, and
+       jx-menu-item.json declares both the `disabled` and the `requires` prop. */
     const [copy, paste] = rows as (RowEl & { disabled: boolean; requires: string })[];
     expect(copy!.getAttribute("title")).toBeNull();
     copy!.requires = "a reason it was never given";
@@ -328,7 +347,7 @@ describe("jx-menu", () => {
   test("ArrowRight opens the row's submenu beside it and moves the caret in; ArrowLeft comes back", async () => {
     const { menu, rows } = await open();
     const settings = rows[3]!;
-    const sub = submenuOf(settings) as MenuEl;
+    const sub = submenuIn(settings);
     expect(sub).not.toBeNull();
     expect(rootMenuOf(sub)).toBe(menu);
     key(menu, "ArrowDown");
@@ -339,7 +358,7 @@ describe("jx-menu", () => {
     expect(sub.open).toBe(true);
     expect(settings.getAttribute("aria-expanded")).toBe("true");
     const subRows = rowsOf(sub);
-    expect(subRows.map((r) => r.textContent?.trim())).toEqual(["General", "Media"]);
+    expect(subRows.map((r) => r.textContent.trim())).toEqual(["General", "Media"]);
     expect(document.activeElement).toBe(subRows[0]!);
     expect(menu.open).toBe(true);
 
@@ -356,7 +375,7 @@ describe("jx-menu", () => {
 
   test("a submenu row selects through the root menu", async () => {
     const { menu, rows, selected } = await open();
-    const sub = submenuOf(rows[3]!) as MenuEl;
+    const sub = submenuIn(rows[3]!);
     key(menu, "ArrowDown");
     key(menu, "ArrowDown");
     key(menu, "ArrowRight");
@@ -367,7 +386,7 @@ describe("jx-menu", () => {
 
   test("Escape in a submenu closes one level; Tab closes the whole stack", async () => {
     const { menu, rows } = await open();
-    const sub = submenuOf(rows[3]!) as MenuEl;
+    const sub = submenuIn(rows[3]!);
     key(menu, "ArrowDown");
     key(menu, "ArrowDown");
     key(menu, "ArrowRight");
@@ -390,7 +409,7 @@ describe("jx-menu", () => {
   test("hovering a row opens its submenu and hovering another closes it", async () => {
     const { rows } = await open();
     const settings = rows[3]!;
-    const sub = submenuOf(settings) as MenuEl;
+    const sub = submenuIn(settings);
     settings.dispatchEvent(new Event("pointerover", { bubbles: true }));
     await flush();
     expect(sub.open).toBe(true);
@@ -403,7 +422,7 @@ describe("jx-menu", () => {
 
   test("hiding the root hides an open submenu with it", async () => {
     const { menu, rows } = await open();
-    const sub = submenuOf(rows[3]!) as MenuEl;
+    const sub = submenuIn(rows[3]!);
     key(menu, "ArrowDown");
     key(menu, "ArrowDown");
     key(menu, "ArrowRight");
@@ -426,15 +445,7 @@ describe("jx-menu", () => {
     el: Element,
     rect: { left: number; top: number; width: number; height: number },
   ) {
-    el.getBoundingClientRect = () =>
-      ({
-        ...rect,
-        bottom: rect.top + rect.height,
-        right: rect.left + rect.width,
-        x: rect.left,
-        y: rect.top,
-        toJSON: () => rect,
-      }) as DOMRect;
+    el.getBoundingClientRect = () => new DOMRect(rect.left, rect.top, rect.width, rect.height);
   }
 
   async function frame(): Promise<void> {
@@ -449,7 +460,7 @@ describe("jx-menu", () => {
     try {
       const { menu, rows } = await open();
       const settings = rows[3]!;
-      const sub = submenuOf(settings) as MenuEl;
+      const sub = submenuIn(settings);
       stubRect(menu, { height: 200, left: window.innerWidth - 220, top: 100, width: 200 });
       stubRect(settings, { height: 24, left: window.innerWidth - 220, top: 160, width: 200 });
       key(menu, "ArrowDown");
@@ -476,7 +487,7 @@ describe("jx-menu", () => {
     try {
       const { menu, rows } = await open();
       const settings = rows[3]!;
-      const sub = submenuOf(settings) as MenuEl;
+      const sub = submenuIn(settings);
       stubRect(menu, { height: 200, left: window.innerWidth - 220, top: 100, width: 200 });
       stubRect(settings, { height: 24, left: window.innerWidth - 220, top: 160, width: 200 });
       key(menu, "ArrowDown");
@@ -571,9 +582,12 @@ describe("jx-menu", () => {
     expect(document.activeElement === rows[3]).toBe(true);
     key(menu, "ArrowRight");
     await flush();
-    const sub = submenuOf(rows[3]!) as MenuEl;
+    const sub = submenuIn(rows[3]!);
     expect(sub.open).toBe(true);
-    (document.activeElement as HTMLElement).blur();
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement) {
+      focused.blur();
+    }
     expect(menu.contains(document.activeElement)).toBe(false);
     ensureCaret(menu);
     expect(document.activeElement === rowsOf(sub)[0]).toBe(true);
@@ -594,20 +608,28 @@ describe("jx-menu", () => {
     const stray = document.createElement("div");
     document.body.append(stray);
     const state: MenuState = {};
-    let prevented = false;
-    onMenuKeydown(state, {
-      currentTarget: stray,
+    /* Each handler is called from a listener on the stray node, so `currentTarget` and `target`
+       are both that node, exactly as a binding reused off a menu would see them. */
+    stray.addEventListener("keydown", (e) => {
+      onMenuKeydown(state, e);
+    });
+    stray.addEventListener("toggle", (e) => {
+      onMenuToggle(state, e);
+    });
+    stray.addEventListener("pointerover", (e) => {
+      onMenuPointerOver(state, e);
+    });
+    const keydown = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
       key: "ArrowDown",
-      preventDefault: () => {
-        prevented = true;
-      },
-      stopPropagation: () => {},
-      target: stray,
-    } as unknown as KeyboardEvent);
-    expect(prevented).toBe(false);
-    onMenuToggle(state, { currentTarget: stray, newState: "open" } as unknown as Event);
+    });
+    stray.dispatchEvent(keydown);
+    expect(keydown.defaultPrevented).toBe(false);
+    // The shim's own spelling of a ToggleEvent: a plain Event carrying `newState`.
+    stray.dispatchEvent(Object.assign(new Event("toggle"), { newState: "open" }));
     expect(state.open).toBeUndefined();
-    onMenuPointerOver(state, { currentTarget: stray, target: stray } as unknown as Event);
+    stray.dispatchEvent(new Event("pointerover", { bubbles: true }));
     expect(stray.childElementCount).toBe(0);
   });
 
@@ -617,7 +639,12 @@ describe("jx-menu", () => {
     const { menu } = await open();
     const state: MenuState = {};
     const hr = menu.querySelector("hr")!;
-    onMenuPointerOver(state, { currentTarget: menu, target: hr } as unknown as Event);
+    /* Called from a listener on the menu for a hover dispatched at the separator, so
+       `currentTarget` is the menu and `target` the separator. */
+    menu.addEventListener("pointerover", (e) => {
+      onMenuPointerOver(state, e);
+    });
+    hr.dispatchEvent(new Event("pointerover", { bubbles: true }));
     // A hover over the panel's own furniture opens nothing: it is not "entering a row".
     expect(menu.querySelector("jx-menu[open]")).toBeNull();
   });
@@ -659,7 +686,7 @@ describe("jx-menu", () => {
        submenu it had just opened. */
     const { menu, rows } = await open();
     const settings = rows[3]!;
-    const sub = submenuOf(settings) as MenuEl;
+    const sub = submenuIn(settings);
     key(menu, "ArrowDown");
     key(menu, "ArrowDown");
     key(menu, "ArrowRight");

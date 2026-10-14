@@ -28,6 +28,7 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 - `bun run dev`: start the dev server and open Studio in a browser.
 - `bun test --isolate` (per package): the supported test mode; plain `bun test` has known order-dependent failures.
 - `bun run typecheck`, `bun run lint`, `bun run format`: tsgo, oxlint (all categories at error), oxfmt.
+- `bun run lint` also runs the [ai-deslop](https://github.com/maharshi365/deslop) rules, which reject unchecked type assertions, `unknown` parameters and returns, runtime `typeof` branching outside type guards, and duplicate constants and types. `bun run lint:typecheck` is the type-aware pass (deprecated APIs, unnecessary conditions, floating promises, unsafe `any` flow). Both run at error in CI, and neither is turned off for tests or scripts; `.oxlintrc.json` explains each choice.
 
 ## Testing policy
 

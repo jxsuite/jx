@@ -16,6 +16,7 @@ import { emptyContext, makeContext } from "../src/commands/context";
 import type { CommandContext } from "../src/commands/context";
 import { KeybindingConflictError } from "../src/commands/keymap";
 import { argsSchema, enumProperty, stringProperty } from "../src/commands/command-args";
+import type { CommandArgValues } from "../src/commands/command-args";
 
 /** A registry over a mutable context the test can move underneath it. */
 function harness(initial: CommandContext = emptyContext()) {
@@ -31,14 +32,15 @@ function harness(initial: CommandContext = emptyContext()) {
 
 const noop = () => {};
 
-function command(over: Partial<Command> & Pick<Command, "id">): AnyCommand {
-  return {
+function command<A = void>(over: Partial<Command<A>> & Pick<Command<A>, "id">): AnyCommand {
+  const record: Command<A> = {
     title: "Test Command",
     category: "Edit",
     level: "application",
     run: noop,
     ...over,
-  } as AnyCommand;
+  };
+  return record;
 }
 
 describe("registration", () => {
@@ -181,7 +183,10 @@ describe("an aiTool declaration that cannot be completed is refused at registrat
 
   test("a projection with no report — the JS caller the type cannot stop", () => {
     const { registry } = harness();
-    const reportless = { name: "do_thing", description: "d" } as unknown as AiToolProjection;
+    const declared: Omit<AiToolProjection, "report"> = { name: "do_thing", description: "d" };
+    /* SAFETY: deliberately off-contract. The type requires `report`; this test is the JS caller
+       that omits it, and `register` must refuse the record by reading the field at runtime. */
+    const reportless = declared as AiToolProjection;
     const record = projected({ id: "a.one", aiTool: reportless });
     expect(() => registry.register(record)).toThrow(/declares aiTool without a report/);
   });
@@ -340,7 +345,11 @@ describe("requires — one string, three consumers", () => {
 
 describe("run", () => {
   test("passes the live context and the args through", () => {
-    const seen: { ctx: CommandContext | null; args: unknown } = { ctx: null, args: null };
+    interface SeenRun {
+      args: { value: string } | null;
+      ctx: CommandContext | null;
+    }
+    const seen: SeenRun = { args: null, ctx: null };
     const { registry, setContext } = harness();
     registry.register({
       id: "grid.setCell",
@@ -359,10 +368,10 @@ describe("run", () => {
   });
 
   test("defaults args to an empty object so a no-arg command needs no call-site ceremony", () => {
-    let received: unknown = "unset";
+    let received: CommandArgValues | undefined;
     const { registry } = harness();
     registry.register(
-      command({
+      command<CommandArgValues>({
         id: "a.one",
         run: (_ctx, args) => {
           received = args;
@@ -381,15 +390,21 @@ describe("run", () => {
   test("a refused command throws CommandUnavailableError carrying its reason", () => {
     const { registry } = harness();
     registry.register(command({ id: "a.one", when: () => false, requires: "an open project" }));
-    let thrown: unknown;
+    let refusal: CommandUnavailableError | undefined;
     try {
       void registry.run("a.one");
     } catch (error) {
-      thrown = error;
+      if (!(error instanceof CommandUnavailableError)) {
+        throw error;
+      }
+      refusal = error;
     }
-    expect(thrown).toBeInstanceOf(CommandUnavailableError);
-    expect((thrown as CommandUnavailableError).commandId).toBe("a.one");
-    expect((thrown as CommandUnavailableError).requires).toBe("an open project");
+    if (!refusal) {
+      throw new Error("running a refused command did not throw");
+    }
+    expect(refusal).toBeInstanceOf(CommandUnavailableError);
+    expect(refusal.commandId).toBe("a.one");
+    expect(refusal.requires).toBe("an open project");
   });
 
   test("an async run is returned, not swallowed", async () => {
@@ -413,7 +428,7 @@ describe("run coerces the args against the record's schema", () => {
   /** `view.setActivity` in miniature: one enum argument, and a `run` that records what it got. */
   function build() {
     const h = harness(makeContext({ document: { open: true } }));
-    const received: unknown[] = [];
+    const received: { tab: string }[] = [];
     h.registry.register({
       id: "view.setActivity",
       title: "Show Panel",
@@ -468,7 +483,7 @@ describe("run coerces the args against the record's schema", () => {
     const { registry, received } = build();
     void registry.run("view.setActivity", { pane: undefined, tab: "layers" });
     expect(received).toEqual([{ tab: "layers" }]);
-    expect(Object.keys(received[0] as object)).toEqual(["tab"]);
+    expect(Object.keys(received[0] ?? {})).toEqual(["tab"]);
   });
 
   test("a record with no schema takes whatever it was handed, as it always has", () => {

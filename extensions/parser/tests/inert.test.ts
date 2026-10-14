@@ -6,38 +6,51 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue, JxElement } from "@jxsuite/schema/types";
 import {
   escapeTemplateText,
   makeTemplatesInert,
   neutralizeTemplateAttribute,
 } from "../src/inert.ts";
+import type { ContentNodes } from "../src/inert.ts";
 import { processMarkdown } from "../src/md.ts";
 
-const render = (source: string) =>
-  processMarkdown(source, "/x/a.md").$children as (JxElement | string)[];
+const render = (source: string): ContentNodes => processMarkdown(source, "/x/a.md").$children;
+
+/** The element at `index`, failing the test when a string or a nested list sits there instead. */
+function elementAt(nodes: ContentNodes, index: number): JxElement {
+  const node = nodes[index];
+  if (node === undefined || isString(node) || Array.isArray(node)) {
+    throw new Error(`node ${index} is not an element`);
+  }
+  return node;
+}
 
 /** The text of a tree, reading innerHTML back the way a browser would. */
-function visible(nodes: (JxElement | string)[]): string {
+function visible(nodes: ContentNodes): string {
   let out = "";
   for (const node of nodes) {
-    if (typeof node === "string") {
+    if (isString(node)) {
       out += node;
-    } else if (typeof node.innerHTML === "string") {
+    } else if (Array.isArray(node)) {
+      out += visible(node);
+    } else if (isString(node.innerHTML)) {
       out += node.innerHTML
         .replaceAll("&#36;", "$")
         .replaceAll("&lt;", "<")
         .replaceAll("&gt;", ">")
         .replaceAll("&amp;", "&");
     } else {
-      out += (node.textContent ?? "") + visible((node.children as (JxElement | string)[]) ?? []);
+      out +=
+        (node.textContent ?? "") + (Array.isArray(node.children) ? visible(node.children) : "");
     }
   }
   return out;
 }
 
 /** True when nothing in the tree contains the two characters a template starts with. */
-const hasTemplate = (nodes: unknown): boolean => JSON.stringify(nodes).includes("${");
+const hasTemplate = (nodes: ContentNodes): boolean => JSON.stringify(nodes).includes("${");
 
 describe("escapeTemplateText", () => {
   it("escapes markup and spells ${ as an entity", () => {
@@ -59,8 +72,7 @@ describe("makeTemplatesInert", () => {
       { children: ["plain ", "and ${x}", { tagName: "em", textContent: "${y}" }], tagName: "p" },
     ];
     makeTemplatesInert(nodes);
-    const [p] = nodes as JxElement[];
-    expect(p!.children).toEqual([
+    expect(elementAt(nodes, 0).children).toEqual([
       "plain ",
       { innerHTML: "and &#36;{x}", tagName: "span" },
       { innerHTML: "&#36;{y}", tagName: "em" },
@@ -68,12 +80,17 @@ describe("makeTemplatesInert", () => {
   });
 
   it("leaves text without ${ alone, and non-array children and odd nodes", () => {
-    const nodes = [
+    // What a hand-built tree can hold: a `null` hole, and `children` that is not an array.
+    const authored: JsonValue[] = [
       { tagName: "p", textContent: "$ {not} a template" },
       "text",
       null,
       { children: { $prototype: "Array" }, tagName: "div" },
-    ] as unknown as (JxElement | string)[];
+    ];
+    /* SAFETY: deliberately outside ContentNodes. makeTemplatesInert reads a node only after
+       isString, Array.isArray and isNonNullObject, and walks `children` only behind Array.isArray,
+       so the hole and the object `children` reach no typed access; that tolerance is what this pins. */
+    const nodes = authored as ContentNodes;
     const before = JSON.stringify(nodes);
     makeTemplatesInert(nodes);
     expect(JSON.stringify(nodes)).toBe(before);
@@ -94,8 +111,9 @@ describe("through processMarkdown", () => {
   it("an unhighlighted fence and inline code keep it too", () => {
     const out = render("```text\nplain ${VAR} {{ jinja }}\n```\n\nUse `${y}` here.\n");
     expect(hasTemplate(out)).toBe(false);
-    expect(visible(out)).toContain("plain ${VAR} {{ jinja }}");
-    expect(visible(out)).toContain("${y}");
+    const text = visible(out);
+    expect(text).toContain("plain ${VAR} {{ jinja }}");
+    expect(text).toContain("${y}");
   });
 
   it("prose, headings, list items and table cells keep it", () => {
@@ -114,12 +132,11 @@ describe("through processMarkdown", () => {
   it("the heading id and the table of contents are built from the original text", () => {
     const result = processMarkdown("## Use ${name} wisely\n", "/x/a.md");
     expect(result.$toc).toEqual([{ depth: 2, id: "use-name-wisely", text: "Use ${name} wisely" }]);
-    const [h2] = result.$children as JxElement[];
-    expect(h2!.id).toBe("use-name-wisely");
+    expect(elementAt(result.$children, 0).id).toBe("use-name-wisely");
   });
 
   it("text without ${ is exactly as it was", () => {
-    const [p] = render("Plain {{ text }} and $5.\n") as JxElement[];
+    const [p] = render("Plain {{ text }} and $5.\n");
     expect(p).toEqual({ tagName: "p", textContent: "Plain {{ text }} and $5." });
   });
 
@@ -139,10 +156,11 @@ describe("attributes that carry prose", () => {
       { attributes: { "data-title": "Use ${HOME}" }, tagName: "doc-note" },
     ];
     makeTemplatesInert(nodes);
-    const [img, note] = nodes as JxElement[];
-    expect(img!.attributes?.alt).toBe("set $\u200B{HOME}");
-    expect(img!.attributes?.title).toBe("tip $\u200B{x}");
-    expect(note!.attributes?.["data-title"]).toBe("Use $\u200B{HOME}");
+    const img = elementAt(nodes, 0);
+    const note = elementAt(nodes, 1);
+    expect(img.attributes?.alt).toBe("set $\u200B{HOME}");
+    expect(img.attributes?.title).toBe("tip $\u200B{x}");
+    expect(note.attributes?.["data-title"]).toBe("Use $\u200B{HOME}");
     expect(JSON.stringify(nodes)).not.toContain("${");
   });
 
@@ -157,20 +175,23 @@ describe("attributes that carry prose", () => {
       { attributes: { src: "${state.cdn}/a.png" }, tagName: "img" },
     ];
     makeTemplatesInert(nodes);
-    expect(JSON.stringify(nodes)).toContain("${state.base}/x");
-    expect(JSON.stringify(nodes)).toContain("${state.cdn}/a.png");
+    const json = JSON.stringify(nodes);
+    expect(json).toContain("${state.base}/x");
+    expect(json).toContain("${state.cdn}/a.png");
   });
 
   it("through processMarkdown: an image description and a callout title", () => {
-    const [p, note] = processMarkdown(
+    const children = processMarkdown(
       '![diagram of ${HOME}](x.png "t ${y}")\n\n> [!NOTE] Use ${HOME}\n> body\n',
       "/x/a.md",
       { alerts: { NOTE: "doc-note" } },
-    ).$children as JxElement[];
-    const img = (p!.children as JxElement[])[0]!;
+    ).$children;
+    const p = elementAt(children, 0);
+    const note = elementAt(children, 1);
+    const img = elementAt(Array.isArray(p.children) ? p.children : [], 0);
     expect(img.attributes?.alt).toContain("$\u200B{");
     expect(img.attributes?.title).toContain("$\u200B{");
-    expect(note!.attributes?.["data-title"]).toBe("Use $\u200B{HOME}");
+    expect(note.attributes?.["data-title"]).toBe("Use $\u200B{HOME}");
   });
 });
 
@@ -178,11 +199,12 @@ describe("a raw HTML block", () => {
   it("is a nested list of nodes, and its text is made inert too", () => {
     const out = render('<div class="a">\n<b>${y}</b>\n</div>\n');
     expect(hasTemplate(out)).toBe(false);
-    expect(visible(out.flat() as (JxElement | string)[])).toContain("${y}");
+    expect(out.some((node) => Array.isArray(node))).toBe(true);
+    expect(visible(out)).toContain("${y}");
   });
 
   it("makeTemplatesInert descends into a nested array", () => {
-    const nodes = [[{ tagName: "b", textContent: "${x}" }, "and ${y}"]] as never;
+    const nodes: ContentNodes = [[{ tagName: "b", textContent: "${x}" }, "and ${y}"]];
     makeTemplatesInert(nodes);
     expect(JSON.stringify(nodes)).not.toContain("${");
   });

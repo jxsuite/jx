@@ -3,6 +3,7 @@
 // This page cannot drift from what ships.
 
 import { catalog } from "@jxsuite/formulas/catalog";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { CemParameter } from "@jxsuite/schema/types";
 import { BANNER, frontmatter } from "./shared.ts";
 
@@ -23,14 +24,15 @@ function cell(text: string): string {
 }
 
 function parameterRow(param: string | CemParameter): string {
-  if (typeof param === "string") {
+  if (isString(param)) {
     return `| \`${cell(param)}\` | — | — |`;
   }
+  const declared = param.type;
   const type =
-    typeof param.type === "object" && param.type !== null && "text" in param.type
-      ? String((param.type as { text: string }).text)
-      : param.type !== undefined
-        ? JSON.stringify(param.type)
+    isJsonObject(declared) && "text" in declared
+      ? String(declared.text)
+      : declared !== undefined
+        ? JSON.stringify(declared)
         : "—";
   return `| \`${cell(param.name)}\`${param.optional ? " (optional)" : ""} | ${cell(type)} | ${cell(param.description ?? "—")} |`;
 }

@@ -18,17 +18,20 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { importImplementation } from "./format-host.ts";
-import { isPrototypeDef } from "@jxsuite/schema/guards";
+import { isFunction, isJsonObject, isPrototypeDef, isString } from "@jxsuite/schema/guards";
 import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
   JsonObject,
   JsonValue,
   JxDocument,
+  JxDocumentValue,
   JxMutableNode,
   JxPrototypeDef,
   JxStateDefinition,
+  ProjectConfig,
 } from "@jxsuite/schema/types";
+import type { ProjectSectionData, ProjectSections } from "./project-sections.ts";
 
 /**
  * Prototype names handled elsewhere (builtins + legacy content system). These are skipped by the
@@ -49,6 +52,66 @@ const RESERVED_KEYS = new Set([
   "description",
 ]);
 
+/** The route a document is being resolved for, as far as classes and `lower` read it. */
+interface PrototypeRoute {
+  sourcePath?: string;
+  _pathParams?: Record<string, string>;
+}
+
+/** Project-level context the build threads into every resolved class. */
+interface PrototypeProjectContext {
+  config?: ProjectConfig;
+  sections?: ProjectSections;
+  registry?: ExtensionRegistry;
+  registerBundle?: (specifier: string) => void;
+}
+
+/** `config._project`: the project config and root, plus every loaded section under its key. */
+interface ClassProjectContext {
+  config: ProjectConfig | null;
+  root: string;
+  [sectionKey: string]: ProjectSectionData | ProjectConfig | string | null;
+}
+
+/** `config._document`: the route being built and the page's whole state. */
+interface ClassDocumentContext {
+  route: PrototypeRoute;
+  state: Record<string, JxStateDefinition>;
+}
+
+/**
+ * The config an external class is constructed with: the def's own non-reserved keys, plus the
+ * universal `_project` and `_document` context.
+ */
+type ExternalClassConfig = Record<
+  string,
+  JxDocumentValue | ClassProjectContext | ClassDocumentContext | undefined
+>;
+
+/** A class instance that computes its value: `resolve()` answers with the JSON to bake in. */
+interface ResolvingInstance {
+  resolve: () => JsonValue | Promise<JsonValue>;
+}
+
+/**
+ * What an external class constructs (specs/extensions.md §8): either an instance that resolves its
+ * value, or an instance whose own fields ARE the value.
+ */
+type ExternalClassInstance = ResolvingInstance | JsonObject;
+
+/** An external class as its implementation module exports it. */
+type ExternalClass = new (config: ExternalClassConfig) => ExternalClassInstance;
+
+/**
+ * Whether a constructed instance computes its value through `resolve()`.
+ *
+ * @param {ExternalClassInstance} instance
+ * @returns {boolean}
+ */
+function isResolvingInstance(instance: ExternalClassInstance): instance is ResolvingInstance {
+  return isFunction(instance.resolve);
+}
+
 /**
  * Resolve all generic $prototype entries in a document's state at build time.
  *
@@ -61,27 +124,18 @@ const RESERVED_KEYS = new Set([
  *   result
  *
  * @param {JxMutableNode | JxDocument} doc - The page document (mutated in place)
- * @param {{ sourcePath?: string; _pathParams?: Record<string, string> }} route - Route info
+ * @param {PrototypeRoute} route - Route info
  * @param {string} projectRoot - Absolute path to the project root
- * @param {{
- *   config?: Record<string, unknown>;
- *   sections?: Record<string, unknown>;
- *   registry?: ExtensionRegistry;
- * }} [projectContext]
- *   - Project-level context injected into all classes; `sections` holds the extension-loaded project
- *     sections keyed by section key (spread into `_project`); `registry` enables manifest class
- *     resolution and the generic `lower` capability
+ * @param {PrototypeProjectContext} [projectContext] - Project-level context injected into all
+ *   classes; `sections` holds the extension-loaded project sections keyed by section key (spread
+ *   into `_project`); `registry` enables manifest class resolution and the generic `lower`
+ *   capability
  */
 export async function resolvePrototypes(
   doc: JxMutableNode | JxDocument,
-  route: { sourcePath?: string; _pathParams?: Record<string, string> },
+  route: PrototypeRoute,
   projectRoot: string,
-  projectContext: {
-    config?: Record<string, unknown>;
-    sections?: Record<string, unknown>;
-    registry?: ExtensionRegistry;
-    registerBundle?: (specifier: string) => void;
-  } = {},
+  projectContext: PrototypeProjectContext = {},
 ) {
   const imports = doc.imports ?? {};
   const { state } = doc;
@@ -112,18 +166,18 @@ export async function resolvePrototypes(
           // A lowered def may name client modules it depends on via `$bundle`
           // (extensions.md §8.3): the site build bundles each specifier for the browser.
           // The key is host metadata, not part of the core def shape — strip it.
-          if (lowered && typeof lowered === "object" && !Array.isArray(lowered)) {
-            const bundles = (lowered as JsonObject).$bundle;
+          if (isJsonObject(lowered)) {
+            const bundles = lowered.$bundle;
             if (Array.isArray(bundles)) {
               for (const specifier of bundles) {
-                if (typeof specifier === "string") {
+                if (isString(specifier)) {
                   projectContext.registerBundle?.(specifier);
                 }
               }
             }
-            delete (lowered as JsonObject).$bundle;
+            delete lowered.$bundle;
           }
-          state[key] = lowered as JxStateDefinition;
+          state[key] = lowered;
         } catch (error) {
           console.warn(
             `prototype-resolver: failed to lower "${key}" ($prototype: "${def.$prototype}"):`,
@@ -146,8 +200,8 @@ export async function resolvePrototypes(
     try {
       const resolved = await resolveClassPrototype(def, route, projectRoot, state, projectContext);
       // Preserve timing metadata on the resolved value so compilePage() can strip it
-      if (def.timing && resolved && typeof resolved === "object" && !Array.isArray(resolved)) {
-        (resolved as JsonObject).timing = def.timing;
+      if (def.timing && isJsonObject(resolved)) {
+        resolved.timing = def.timing;
       }
       state[key] = resolved;
     } catch (error) {
@@ -179,22 +233,19 @@ function registryClassPath(
  * Resolve a single $prototype entry via its .class.json.
  *
  * @param {JxPrototypeDef} def - The state entry definition
- * @param {{ sourcePath?: string; _pathParams?: Record<string, string> }} route
+ * @param {PrototypeRoute} route
  * @param {string} projectRoot
- * @param {Record<string, unknown>} state - The full page state object
- * @param {{ config?: Record<string, unknown>; sections?: Record<string, unknown> }} projectContext
+ * @param {Record<string, JxStateDefinition>} state - The full page state object
+ * @param {PrototypeProjectContext} projectContext
  * @returns {Promise<JsonValue>} The resolved value
  */
 async function resolveClassPrototype(
   def: JxPrototypeDef,
-  route: { sourcePath?: string; _pathParams?: Record<string, string> },
+  route: PrototypeRoute,
   projectRoot: string,
-  state: Record<string, unknown>,
-  projectContext: {
-    config?: Record<string, unknown>;
-    sections?: Record<string, unknown>;
-  },
-) {
+  state: Record<string, JxStateDefinition>,
+  projectContext: PrototypeProjectContext,
+): Promise<JsonValue> {
   const src = def.$src;
   if (!src) {
     throw new Error(`$prototype "${def.$prototype}" has no $src to resolve`);
@@ -229,16 +280,17 @@ async function resolveClassPrototype(
 
   // 5. Find the exported class
   const exportName = def.$export ?? classDef.title ?? def.$prototype;
-  const ExportedClass = (mod[exportName] ??
-    (mod.default as Record<string, unknown> | undefined)?.[exportName]) as
-    | (new (config: Record<string, unknown>) => { resolve?: () => unknown })
-    | undefined;
+  /* SAFETY: what is found is the export a `.class.json` names as its implementation, which by the
+     external-class contract (specs/extensions.md §8) is a class taking this config and building an
+     ExternalClassInstance; only its presence is checked below, and the result is baked into the
+     page as JSON. */
+  const ExportedClass = (mod[exportName] ?? mod.default?.[exportName]) as ExternalClass | undefined;
   if (!ExportedClass) {
     throw new Error(`Module ${classDef.$implementation} does not export "${exportName}"`);
   }
 
   // 6. Build config — filter out reserved keys
-  const config: Record<string, unknown> = {};
+  const config: ExternalClassConfig = {};
   for (const [k, v] of Object.entries(def)) {
     if (!RESERVED_KEYS.has(k)) {
       config[k] = v;
@@ -262,8 +314,8 @@ async function resolveClassPrototype(
   // 7. Instantiate and resolve. Trust boundary: external classes contractually
   // Return JSON-serializable data (the result is baked into the compiled page).
   const instance = new ExportedClass(config);
-  if (typeof instance.resolve === "function") {
-    return (await instance.resolve()) as JsonValue;
+  if (isResolvingInstance(instance)) {
+    return await instance.resolve();
   }
-  return instance as unknown as JsonValue;
+  return instance;
 }

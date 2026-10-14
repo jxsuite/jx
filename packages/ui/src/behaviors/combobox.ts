@@ -49,6 +49,7 @@
  */
 
 import { close, openAt } from "./popover.ts";
+import type { PlacedPopover } from "./popover.ts";
 
 /** A row as the element draws it. */
 export interface ComboboxRow {
@@ -84,7 +85,6 @@ export interface ComboboxState {
   disabled?: boolean;
   readonly?: boolean;
   uid?: string;
-  [key: string]: unknown;
 }
 
 const HOST = "jx-combobox";
@@ -103,9 +103,9 @@ export function inputOf(host: HTMLElement): HTMLInputElement | null {
   return host.querySelector<HTMLInputElement>('input[part="input"]');
 }
 
-/** The element's own panel. */
-function panelOf(host: HTMLElement): HTMLElement | null {
-  return host.querySelector<HTMLElement>('[part="popup"]');
+/** The element's own panel: the `jx-popover` jx-combobox.json renders as its `popup` part. */
+function panelOf(host: HTMLElement): PlacedPopover | null {
+  return host.querySelector<PlacedPopover>('[part="popup"]');
 }
 
 /** The rows the element was handed, whatever it was handed. */
@@ -146,9 +146,8 @@ export function openList(host: HTMLElement): void {
     return;
   }
   const box = host.getBoundingClientRect();
-  const placed = panel as HTMLElement & { x: number; y: number };
-  placed.x = Math.round(box.left);
-  placed.y = Math.round(box.bottom);
+  panel.x = Math.round(box.left);
+  panel.y = Math.round(box.bottom);
   openAt(panel, host);
 }
 
@@ -295,7 +294,7 @@ export function onComboboxInput(state: ComboboxState, event: Event): void {
  * @param event The platform's ToggleEvent, from the panel.
  */
 export function onComboboxToggle(state: ComboboxState, event: Event): void {
-  const opening = (event as { newState?: string }).newState === "open";
+  const opening = "newState" in event && event.newState === "open";
   state.open = opening;
   if (!opening) {
     state.activeIndex = -1;
@@ -332,7 +331,7 @@ export function onComboboxButton(state: ComboboxState, event: Event): void {
  */
 export function onComboboxPick(state: ComboboxState, event: Event): void {
   const host = comboboxOf(event);
-  const picked = String((event as CustomEvent<unknown>).detail ?? "");
+  const picked = "detail" in event ? String(event.detail ?? "") : "";
   const row = rowFor(rowsOf(state), picked);
   if (!host || !row) {
     return;

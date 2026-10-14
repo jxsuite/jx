@@ -43,11 +43,36 @@ import {
 import { problem } from "./problem.ts";
 import { createLoopbackAuthorizer, OAUTH_CALLBACK_PATH } from "./oauth-loopback.ts";
 import type { LoopbackAuthorizer } from "./oauth-loopback.ts";
+import type { FsEventBatch } from "./sse.ts";
+import type { JsonPrimitive, JsonValue } from "@jxsuite/schema/types";
+
+/**
+ * What a handler answers, sent as the reply frame's `result`: anything `JSON.stringify` encodes,
+ * with `undefined` sent as `null`. Objects are admitted by kind rather than by JSON shape because
+ * handlers answer with typed values, and TypeScript never treats an interface as a `JsonValue`.
+ */
+export type RpcResult = JsonPrimitive | object | undefined;
+
+/** One RPC method: the request frame's decoded `params` in, the reply's `result` out. */
+export type RpcHandler = (params: JsonValue | undefined) => Promise<RpcResult>;
+
+/**
+ * What an unsolicited push carries as its `params`: JSON, or the filesystem batch the sidebar
+ * consumes (the same batch the dev server sends as its SSE `fs` event).
+ */
+export type RpcPushParams = JsonValue | FsEventBatch;
+
+/** An RPC request frame as the shell sends it: the id the reply echoes, and what to dispatch. */
+export interface RpcRequestFrame {
+  id: number;
+  method: string;
+  params?: JsonValue;
+}
 
 /** A resolved per-window session: its project root plus its RPC handler map. */
 export interface ProjectServerSession {
   projectRoot: string | null;
-  handlers: Record<string, (params: unknown) => Promise<unknown>>;
+  handlers: Record<string, RpcHandler>;
 }
 
 export interface CreateProjectServerOptions {
@@ -89,7 +114,7 @@ export interface ProjectServerHandle {
    * @param winId Deliver only to sockets stashed with this window id; omit for every socket.
    * @returns How many sockets the message reached — 0 means nothing is listening yet.
    */
-  push: (method: string, params?: unknown, winId?: string | null) => number;
+  push: (method: string, params?: RpcPushParams, winId?: string | null) => number;
   /**
    * The RFC 8252 loopback authorization host. The desktop launcher drives it: `begin()` for the URL
    * to open in the user's browser, then `await pending.code` and {@link exchangeCode}.
@@ -337,9 +362,14 @@ export function createProjectServer(options: CreateProjectServerOptions): Projec
         sockets.delete(ws);
       },
       async message(ws, raw) {
-        let msg: { id: number; method: string; params?: unknown };
+        let msg: RpcRequestFrame;
         try {
-          msg = JSON.parse(raw as string) as { id: number; method: string; params?: unknown };
+          /* SAFETY: trust boundary. A binary frame decodes as UTF-8, exactly as JSON.parse's own
+             string coercion would, and the parse yields a JSON value. The only client on this
+             token-gated socket is the shell's RPC transport, which sends `{ id, method, params }`;
+             a frame that breaks that finds no handler under its `method` and is answered with an
+             error (a `null` frame throws in this callback, as it always has). */
+          msg = JSON.parse(raw.toString()) as RpcRequestFrame;
         } catch {
           ws.send(JSON.stringify({ error: "Invalid JSON", id: 0 }));
           return;

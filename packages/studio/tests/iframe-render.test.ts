@@ -10,9 +10,7 @@ import {
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
   applySiteStyle,
-  CANVAS_OVERLAY_CSS,
   CANVAS_OVERLAY_STYLE_ID,
-  EDIT_PLACEHOLDER_CSS,
   EDIT_PLACEHOLDER_STYLE_ID,
   injectHead,
   installCanvasImageRetry,
@@ -29,8 +27,52 @@ import { BUILD_LANES } from "@jxsuite/schema/asset-paths";
 import { CANVAS_MODES } from "../src/canvas/iframe-protocol";
 import { SITE_STYLE_ID } from "@jxsuite/site/site-style";
 import type { AssetContext } from "../src/canvas/asset-refs";
+import type { JxDocument } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
 import { serializeJxPath } from "../src/canvas/path-mapping";
+
+/** The first element `root` holds for `selector`; a render that drew none fails the test here. */
+function rendered(root: ParentNode, selector: string): HTMLElement {
+  const el = root.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`nothing rendered for ${selector}`);
+  }
+  return el;
+}
+
+/** The element a render put first in `container`. */
+function firstElementOf(container: HTMLElement): HTMLElement {
+  const el = container.firstElementChild;
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("the render left the container empty");
+  }
+  return el;
+}
+
+/** The text of the stylesheet a sync installed under `id`, read back out of the document head. */
+function installedSheet(id: string): string {
+  const text = document.head.querySelector(`#${id}`)?.textContent;
+  if (!text) {
+    throw new Error(`no stylesheet #${id} is installed`);
+  }
+  return text;
+}
+
+/** The sheet an edit-mode render installs, removed again once read. */
+function editModeSheet(): string {
+  syncEditModeCss(document, "edit");
+  const css = installedSheet(EDIT_PLACEHOLDER_STYLE_ID);
+  syncEditModeCss(document, "preview");
+  return css;
+}
+
+/** The overlay sheet a de-linking (design) render installs, removed again once read. */
+function overlaySheet(): string {
+  syncCanvasOverlayCss(document, "design");
+  const css = installedSheet(CANVAS_OVERLAY_STYLE_ID);
+  syncCanvasOverlayCss(document, "preview");
+  return css;
+}
 
 const ctx: PathMapCtx = {
   arrayPaths: new Set(),
@@ -43,7 +85,7 @@ const ctx: PathMapCtx = {
 describe("syncEditableRoot accessibility", () => {
   test("the editable region announces as a multiline textbox, and drops it when not editable", () => {
     const container = document.createElement("div");
-    syncEditableRoot(container, "edit" as never);
+    syncEditableRoot(container, "edit");
     // A bare contenteditable div announces as an unlabelled group; the one surface an author types
     // Into was the least described thing in the editor.
     expect(container.getAttribute("role")).toBe("textbox");
@@ -51,7 +93,7 @@ describe("syncEditableRoot accessibility", () => {
     expect(container.getAttribute("aria-label")).toBeTruthy();
     expect(container.getAttribute("contenteditable")).toBe("true");
 
-    syncEditableRoot(container, "preview" as never);
+    syncEditableRoot(container, "preview");
     expect(container.getAttribute("role")).toBeNull();
     expect(container.getAttribute("aria-multiline")).toBeNull();
     expect(container.getAttribute("aria-label")).toBeNull();
@@ -62,7 +104,7 @@ describe("syncEditableRoot accessibility", () => {
 describe("renderResolvedDocument", () => {
   test("renders a resolved doc into the container and stamps data-jx-path", async () => {
     const container = document.createElement("div");
-    const doc = {
+    const doc: JxDocument = {
       children: [
         { children: ["hi"], tagName: "p" },
         { attributes: { src: "/images/x.jpg" }, tagName: "img" },
@@ -71,21 +113,21 @@ describe("renderResolvedDocument", () => {
     };
     const handle = await renderResolvedDocument({
       container,
-      doc: doc as never,
+      doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
     });
 
-    const root = container.firstElementChild as HTMLElement;
+    const root = firstElementOf(container);
     expect(root.tagName).toBe("DIV");
     expect(root.dataset.jxPath).toBe("[]");
 
-    const p = root.querySelector("p") as HTMLElement;
+    const p = rendered(root, "p");
     expect(p.textContent).toBe("hi");
     expect(p.dataset.jxPath).toBe('["children",0]');
 
-    const img = root.querySelector("img") as HTMLElement;
+    const img = rendered(root, "img");
     // The asset src is left verbatim — it resolves natively against the iframe's real origin
     // (no data: URL rewriting), which is the bug this migration fixes.
     expect(img.getAttribute("src")).toBe("/images/x.jpg");
@@ -98,7 +140,7 @@ describe("renderResolvedDocument", () => {
     const container = document.createElement("div");
     await renderResolvedDocument({
       container,
-      doc: { children: ["one"], tagName: "section" } as never,
+      doc: { children: ["one"], tagName: "section" },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -107,7 +149,7 @@ describe("renderResolvedDocument", () => {
 
     await renderResolvedDocument({
       container,
-      doc: { children: ["two"], tagName: "article" } as never,
+      doc: { children: ["two"], tagName: "article" },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "preview",
@@ -122,23 +164,23 @@ describe("renderResolvedDocument", () => {
     // Collects NOTHING, so dispose() would silently leak every binding effect of the superseded
     // Render (they keep re-running against detached DOM and pin it in memory).
     const container = document.createElement("div");
-    const doc = {
+    const doc: JxDocument = {
       children: [{ children: ["${state.msg}"], tagName: "p" }],
       state: { msg: "one" },
       tagName: "div",
     };
     const handle = await renderResolvedDocument({
       container,
-      doc: doc as never,
+      doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "preview",
     });
-    const p = container.querySelector("p") as HTMLElement;
+    const p = rendered(container, "p");
     expect(p.textContent).toBe("one");
 
     // Sanity: the binding is live before dispose (the effect tracks the reactive $defs).
-    const defs = handle.ctx.defs as Record<string, unknown>;
+    const { defs } = handle.ctx;
     defs.msg = "two";
     expect(p.textContent).toBe("two");
 
@@ -162,7 +204,7 @@ describe("component registration ordering (props applied)", () => {
     const tag = uniqueTag();
     // Component whose child <img> src is driven purely by a state value fed via $props. The default
     // Is "" — the exact empty-render regression symptom — so a real src proves the prop was applied.
-    const doc = {
+    const doc: JxDocument = {
       $elements: [
         {
           children: [{ attributes: { class: "thumb", src: "${state.imgSrc}" }, tagName: "img" }],
@@ -179,7 +221,7 @@ describe("component registration ordering (props applied)", () => {
     document.body.append(container);
     const handle = await renderResolvedDocument({
       container,
-      doc: doc as never,
+      doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -189,9 +231,9 @@ describe("component registration ordering (props applied)", () => {
       setTimeout(r, 150);
     });
 
-    const host = container.querySelector(tag) as HTMLElement;
+    const host = rendered(container, tag);
     expect(host).not.toBeNull();
-    const img = host.querySelector("img.thumb") as HTMLImageElement;
+    const img = rendered(host, "img.thumb");
     expect(img).not.toBeNull();
     // The prop reached the component's state and drove the child src — NOT the empty "" default.
     expect(img.getAttribute("src")).toBe("/images/real.jpg");
@@ -206,7 +248,7 @@ describe("component registration ordering (props applied)", () => {
     // Prove ordering directly: renderResolvedDocument must have registered the tag by the time it
     // Returns (which only happens if registration is awaited before renderNode), so the custom
     // Element is defined and its host node — not an inert unknown element — is in the container.
-    const doc = {
+    const doc: JxDocument = {
       $elements: [{ children: [{ tagName: "span" }], state: {}, tagName: tag }],
       children: [{ tagName: tag }],
       tagName: "div",
@@ -218,7 +260,7 @@ describe("component registration ordering (props applied)", () => {
     document.body.append(container);
     const handle = await renderResolvedDocument({
       container,
-      doc: doc as never,
+      doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -261,7 +303,7 @@ describe("canvas transpose + anchor de-link flags", () => {
   });
 
   test("renderResolvedDocument de-links <a href> in edit mode but keeps it live in preview", async () => {
-    const anchorDoc = {
+    const anchorDoc: JxDocument = {
       children: [{ attributes: { href: "/x" }, children: ["go"], tagName: "a" }],
       tagName: "div",
     };
@@ -269,12 +311,12 @@ describe("canvas transpose + anchor de-link flags", () => {
     const editContainer = document.createElement("div");
     const editHandle = await renderResolvedDocument({
       container: editContainer,
-      doc: anchorDoc as never,
+      doc: anchorDoc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "edit",
     });
-    const editAnchor = editContainer.querySelector("a") as HTMLElement;
+    const editAnchor = rendered(editContainer, "a");
     // Design/edit: the target is stamped on `data-jx-href`, leaving the anchor inert (no real href).
     expect(editAnchor.getAttribute("href")).toBeNull();
     expect(editAnchor.dataset.jxHref).toBe("/x");
@@ -283,12 +325,12 @@ describe("canvas transpose + anchor de-link flags", () => {
     const previewContainer = document.createElement("div");
     const previewHandle = await renderResolvedDocument({
       container: previewContainer,
-      doc: anchorDoc as never,
+      doc: anchorDoc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "preview",
     });
-    const previewAnchor = previewContainer.querySelector("a") as HTMLElement;
+    const previewAnchor = rendered(previewContainer, "a");
     // Preview keeps a real, live link (no de-linking).
     expect(previewAnchor.getAttribute("href")).toBe("/x");
     expect(previewAnchor.dataset.jxHref).toBeUndefined();
@@ -302,12 +344,12 @@ describe("canvas transpose + anchor de-link flags", () => {
       doc: {
         children: [{ attributes: { href: "#" }, children: ["Visit"], tagName: "a" }],
         tagName: "div",
-      } as never,
+      },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "stylebook",
     });
-    const anchor = container.querySelector("a") as HTMLElement;
+    const anchor = rendered(container, "a");
     expect(anchor.getAttribute("href")).toBe("#");
     expect(anchor.dataset.jxHref).toBeUndefined();
     handle.dispose();
@@ -324,7 +366,7 @@ describe("prop-binding markers (inline prop editing)", () => {
   let uid = 0;
   const uniqueTag = () => `eer-propmark-${(uid += 1)}`;
 
-  const instanceDoc = (tag: string) => ({
+  const instanceDoc = (tag: string): JxDocument => ({
     $elements: [
       {
         children: [{ tagName: "h3", textContent: "${state.title}" }],
@@ -337,8 +379,9 @@ describe("prop-binding markers (inline prop editing)", () => {
   });
 
   test("the edit-mode canvas CSS carries the prop-bound hover/empty affordances", () => {
-    expect(EDIT_PLACEHOLDER_CSS).toContain("[data-jx-bound-prop]:hover");
-    expect(EDIT_PLACEHOLDER_CSS).toContain("[data-jx-bound-prop]:empty");
+    const css = editModeSheet();
+    expect(css).toContain("[data-jx-bound-prop]:hover");
+    expect(css).toContain("[data-jx-bound-prop]:empty");
   });
 
   test("a design-mode render stamps component internals with data-jx-bound-prop", async () => {
@@ -347,7 +390,7 @@ describe("prop-binding markers (inline prop editing)", () => {
     document.body.append(container);
     const handle = await renderResolvedDocument({
       container,
-      doc: instanceDoc(tag) as never,
+      doc: instanceDoc(tag),
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -357,7 +400,7 @@ describe("prop-binding markers (inline prop editing)", () => {
       setTimeout(r, 150);
     });
 
-    const h3 = container.querySelector(`${tag} h3`) as HTMLElement;
+    const h3 = rendered(container, `${tag} h3`);
     expect(h3).not.toBeNull();
     expect(h3.dataset.jxBoundProp).toBe("title");
     expect(h3.textContent).toBe("Local");
@@ -374,7 +417,7 @@ describe("prop-binding markers (inline prop editing)", () => {
     document.body.append(container);
     const handle = await renderResolvedDocument({
       container,
-      doc: instanceDoc(tag) as never,
+      doc: instanceDoc(tag),
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "preview",
@@ -383,7 +426,7 @@ describe("prop-binding markers (inline prop editing)", () => {
       setTimeout(r, 150);
     });
 
-    const h3 = container.querySelector(`${tag} h3`) as HTMLElement;
+    const h3 = rendered(container, `${tag} h3`);
     expect(h3).not.toBeNull();
     expect(h3.dataset.jxBoundProp).toBeUndefined();
 
@@ -496,7 +539,7 @@ describe("component-definition root vs a registered custom element (cross-tab re
         children: [{ children: ["Authored Heading"], tagName: "h2" }],
         state: { heading: "Authored Heading" },
         tagName: "x-defroot-test",
-      } as never,
+      },
       docBase: "http://localhost:3000/components/x-defroot-test.json",
       mapperCtx: ctx,
       mode: "design",
@@ -506,11 +549,11 @@ describe("component-definition root vs a registered custom element (cross-tab re
       setTimeout(r, 100);
     });
 
-    const root = container.firstElementChild as HTMLElement;
+    const root = firstElementOf(container);
     expect(root.tagName.toLowerCase()).toBe("x-defroot-test");
     expect(root.dataset.jxDefinitionRoot).toBe("");
     // The editable, path-stamped tree survived (not the instance's unstamped re-render).
-    const h2 = root.querySelector("h2") as HTMLElement;
+    const h2 = rendered(root, "h2");
     expect(h2.textContent).toBe("Authored Heading");
     expect(h2.dataset.jxPath).toBe('["children",0]');
 
@@ -526,7 +569,7 @@ describe("applySiteStyle", () => {
   });
 
   test("emits a stylesheet: custom properties on :root, plain properties on body", () => {
-    applySiteStyle({ "--brand": "#0f0", color: "red", margin: {} as unknown });
+    applySiteStyle({ "--brand": "#0f0", color: "red", margin: {} });
     const css = document.head.querySelector("#jx-site-style")!.textContent!;
     expect(css).toContain(":root { --brand: #0f0 }");
     expect(css).toContain("body { color: red }");
@@ -584,7 +627,7 @@ describe("injectHead", () => {
   });
 
   test("injects link/meta, rewrites bare specifiers, skips inline scripts, and de-dupes", () => {
-    const doc = {
+    const doc: JxDocument = {
       $head: [
         { attributes: { href: "/x.css", rel: "stylesheet" }, tagName: "link" },
         { attributes: { content: "bar", name: "foo" }, tagName: "meta" },
@@ -592,7 +635,7 @@ describe("injectHead", () => {
         { attributes: { href: "pkg/y.css", rel: "stylesheet" }, tagName: "link" },
       ],
     };
-    injectHead(doc as never);
+    injectHead(doc);
     expect(document.head.querySelector('link[href="/x.css"]')).not.toBeNull();
     expect(document.head.querySelector('meta[name="foo"]')).not.toBeNull();
     expect(document.head.querySelector("script")).toBeNull(); // Inline script skipped.
@@ -600,12 +643,12 @@ describe("injectHead", () => {
     expect(document.head.querySelector('link[href="/node_modules/pkg/y.css"]')).not.toBeNull();
 
     // Re-injecting the same head de-dupes by href/src (no duplicate /x.css link).
-    injectHead(doc as never);
+    injectHead(doc);
     expect(document.head.querySelectorAll('link[href="/x.css"]')).toHaveLength(1);
   });
 
   test("is a no-op when there is no $head array", () => {
-    expect(() => injectHead({} as never)).not.toThrow();
+    expect(() => injectHead({})).not.toThrow();
     expect(document.head.children).toHaveLength(0);
   });
 });
@@ -618,19 +661,21 @@ describe("registerElements", () => {
 
   test("registers $ref/inline components, tolerates failures, and skips non-array $elements", async () => {
     // Reject all fetches so $ref resolution fails fast (exercises the catch path without a hang).
-    globalThis.fetch = (() => Promise.reject(new Error("no network"))) as unknown as typeof fetch;
-    const doc = {
+    globalThis.fetch = Object.assign(() => Promise.reject(new Error("no network")), {
+      preconnect: realFetch.preconnect,
+    });
+    const doc: JxDocument = {
       $elements: [
         "nonexistent-pkg-xyz", // String → dynamic import (fails) → caught.
         { $ref: "comp.json" }, //  $ref → defineElement(fetch fails) → caught.
         { tagName: "x-inline-comp" }, // Inline def → defineElement registers it.
       ],
     };
-    await registerElements(doc as never, "http://localhost:3000/page.json");
+    await registerElements(doc, "http://localhost:3000/page.json");
     expect(customElements.get("x-inline-comp")).toBeDefined();
 
     // Missing/non-array $elements is a no-op.
-    expect(await registerElements({} as never, "http://localhost:3000/")).toBeUndefined();
+    expect(await registerElements({}, "http://localhost:3000/")).toBeUndefined();
   });
 });
 
@@ -641,13 +686,16 @@ describe("installCanvasImageRetry", () => {
   function withCapturedTimers<T>(fn: (runPending: () => void) => T): T {
     const origSet = globalThis.setTimeout;
     const origClear = globalThis.clearTimeout;
-    const pending: (() => unknown)[] = [];
-    (globalThis as unknown as { setTimeout: unknown }).setTimeout = ((cb: () => unknown) => {
-      pending.push(cb);
-      return 0 as unknown as ReturnType<typeof setTimeout>;
-    }) as typeof setTimeout;
-    (globalThis as unknown as { clearTimeout: unknown }).clearTimeout =
-      (() => {}) as typeof clearTimeout;
+    const pending: (() => void)[] = [];
+    /* Plain-function stand-ins, installed by descriptor: the retry only hands the returned id back
+       to `clearTimeout`, which is stubbed alongside, so neither needs Bun's Timer object. */
+    Object.defineProperty(globalThis, "setTimeout", {
+      value: (cb: () => void) => {
+        pending.push(cb);
+        return 0;
+      },
+    });
+    Object.defineProperty(globalThis, "clearTimeout", { value: () => {} });
     try {
       return fn(() => {
         for (const cb of pending.splice(0)) {
@@ -772,10 +820,12 @@ describe("installCanvasImageRetry", () => {
 
       let scheduled = false;
       const origSetTimeout = globalThis.setTimeout;
-      (globalThis as unknown as { setTimeout: unknown }).setTimeout = ((cb: () => unknown) => {
-        scheduled = true;
-        return origSetTimeout(cb as () => void, 0);
-      }) as typeof setTimeout;
+      Object.defineProperty(globalThis, "setTimeout", {
+        value: (cb: () => void) => {
+          scheduled = true;
+          return origSetTimeout(cb, 0);
+        },
+      });
       try {
         script.dispatchEvent(new Event("error"));
         runPending();
@@ -913,7 +963,7 @@ describe("syncStylebookCss", () => {
     const container = document.createElement("div");
     const handle = await renderResolvedDocument({
       container,
-      doc: { children: ["x"], tagName: "div" } as never,
+      doc: { children: ["x"], tagName: "div" },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: { ...ctx, canvasMode: "stylebook" },
       mode: "stylebook",
@@ -1075,7 +1125,7 @@ describe("asset context", () => {
           { attributes: { src: "/logo.png" }, tagName: "img" },
         ],
         tagName: "div",
-      } as never,
+      },
       docBase: "https://studio.example.com/p/o/r/main/raw/content/posts/hello.md",
       mapperCtx: ctx,
       mode: "design",
@@ -1093,14 +1143,14 @@ describe("asset context", () => {
 
   test("with NO context the reference is left verbatim, and a stale one never leaks", async () => {
     const container = document.createElement("div");
-    const doc = {
+    const doc: JxDocument = {
       children: [{ attributes: { src: "./images/hero.png" }, tagName: "img" }],
       tagName: "div",
     };
     const withCtx = await renderResolvedDocument({
       assets: REPO,
       container,
-      doc: doc as never,
+      doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -1109,7 +1159,7 @@ describe("asset context", () => {
     // The very next render says nothing about assets — so nothing may be resolved.
     const plain = await renderResolvedDocument({
       container,
-      doc: doc as never,
+      doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -1128,7 +1178,7 @@ describe("asset context", () => {
           { attributes: { href: "/styles/main.css", rel: "stylesheet" }, tagName: "link" },
           { attributes: { href: "some-head-pkg/x.css", rel: "stylesheet" }, tagName: "link" },
         ],
-      } as never,
+      },
       REPO,
     );
     expect(
@@ -1150,7 +1200,7 @@ describe("asset context", () => {
     const handle = await renderResolvedDocument({
       assets: REPO,
       container: document.createElement("div"),
-      doc: { tagName: "div" } as never,
+      doc: { tagName: "div" },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
       mode: "design",
@@ -1184,7 +1234,7 @@ describe("applyCanvasDialogOpen", () => {
     applyCanvasDialogOpen(root, '["children",1]');
     const open = root.querySelectorAll("[data-jx-dialog-open]");
     expect(open).toHaveLength(1);
-    expect((open[0] as HTMLElement).dataset.jxPath).toBe('["children",1]');
+    expect(rendered(root, "[data-jx-dialog-open]").dataset.jxPath).toBe('["children",1]');
   });
 
   test("a path that is not a dialog opens nothing, and null closes them all", () => {
@@ -1216,7 +1266,7 @@ describe("applyCanvasPopoverOpen", () => {
     applyCanvasPopoverOpen(root, '["children",1]');
     const open = root.querySelectorAll("[data-jx-popover-open]");
     expect(open).toHaveLength(1);
-    expect((open[0] as HTMLElement).dataset.jxPath).toBe('["children",1]');
+    expect(rendered(root, "[data-jx-popover-open]").dataset.jxPath).toBe('["children",1]');
   });
 
   test("null closes them all", () => {
@@ -1250,17 +1300,19 @@ describe("applyCanvasPopoverOpen", () => {
 
 describe("CANVAS_OVERLAY_CSS — the canvas UA substitute", () => {
   test("the closed rule is inside a cascade layer, so author styles still beat it", () => {
-    expect(CANVAS_OVERLAY_CSS).toContain("@layer jx-canvas-ua {");
-    expect(CANVAS_OVERLAY_CSS).toContain("[data-jx-popover]:not([data-jx-popover-open])");
+    const css = overlaySheet();
+    expect(css).toContain("@layer jx-canvas-ua {");
+    expect(css).toContain("[data-jx-popover]:not([data-jx-popover-open])");
   });
 
   test("the closed rule is never forced — the canvas must SHOW a base-display defect", () => {
     // A base `display` on a popover defeats the real UA rule on the shipped page too, so forcing
     // The canvas rule would hide a live defect. `@jxsuite/schema/overlays` reports it as
     // `base-display` and the author fixes the document.
-    const layer = CANVAS_OVERLAY_CSS.slice(
-      CANVAS_OVERLAY_CSS.indexOf("@layer jx-canvas-ua"),
-      CANVAS_OVERLAY_CSS.indexOf("[data-jx-popover][data-jx-popover-open]"),
+    const css = overlaySheet();
+    const layer = css.slice(
+      css.indexOf("@layer jx-canvas-ua"),
+      css.indexOf("[data-jx-popover][data-jx-popover-open]"),
     );
     expect(layer).not.toContain("!important");
     expect(layer).toContain("display: none");
@@ -1270,30 +1322,33 @@ describe("CANVAS_OVERLAY_CSS — the canvas UA substitute", () => {
     // Measured, not reasoned: every drawer in the fleet sits in its header's flex row, and
     // `align-items: center` centred a 904px panel on a 64px header — half of it above the artboard
     // At a negative offset, contributing nothing to the overflow the host measures.
-    expect(CANVAS_OVERLAY_CSS).toContain("align-self: start !important");
-    expect(CANVAS_OVERLAY_CSS).toContain("flex: none !important");
+    const css = overlaySheet();
+    expect(css).toContain("align-self: start !important");
+    expect(css).toContain("flex: none !important");
   });
 
   test("`position` IS forced, because shown-in-place is the editing model", () => {
     // A panel that sets `position: fixed` itself would be laid out against the frame's viewport,
     // Which in a de-linked mode is the document's full height. Preview still renders it natively.
-    expect(CANVAS_OVERLAY_CSS).toContain("position: relative !important");
+    const css = overlaySheet();
+    expect(css).toContain("position: relative !important");
     // The position rules are the OTHER half and live outside the layer, where an author rule
     // Cannot silently win them.
-    expect(CANVAS_OVERLAY_CSS.indexOf("[data-jx-popover][data-jx-popover-open]")).toBeGreaterThan(
-      CANVAS_OVERLAY_CSS.indexOf("@layer jx-canvas-ua"),
+    expect(css.indexOf("[data-jx-popover][data-jx-popover-open]")).toBeGreaterThan(
+      css.indexOf("@layer jx-canvas-ua"),
     );
   });
 
   test("an open panel is labelled without a wrapper element", () => {
-    expect(CANVAS_OVERLAY_CSS).toContain("[data-jx-popover][data-jx-popover-open]::before");
+    expect(overlaySheet()).toContain("[data-jx-popover][data-jx-popover-open]::before");
   });
 
   test("the editing affordances no longer carry them", () => {
     // The split IS the fix: while these rules shipped inside the design/edit sheet, Stylebook and
     // A git-diff side renamed their overlay attributes with nothing to draw them.
-    expect(EDIT_PLACEHOLDER_CSS).not.toContain("data-jx-popover");
-    expect(EDIT_PLACEHOLDER_CSS).not.toContain("data-jx-dialog-open");
+    const css = editModeSheet();
+    expect(css).not.toContain("data-jx-popover");
+    expect(css).not.toContain("data-jx-dialog-open");
   });
 });
 
@@ -1344,16 +1399,16 @@ describe("syncCanvasOverlayCss", () => {
           { attributes: { open: "" }, children: ["dialog"], tagName: "dialog" },
         ],
         tagName: "div",
-      } as never,
+      },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: { ...ctx, canvasMode: "git-diff" },
       mode: "git-diff",
     });
 
-    const nav = container.querySelector("nav") as HTMLElement;
+    const nav = rendered(container, "nav");
     expect(nav.hasAttribute("popover")).toBe(false);
     expect(nav.dataset.jxPopover).toBe("auto");
-    const dialog = container.querySelector("dialog") as HTMLElement;
+    const dialog = rendered(container, "dialog");
     expect(dialog.hasAttribute("open")).toBe(false);
     expect(dialog.dataset.jxDialogOpen).toBe("");
 
@@ -1370,12 +1425,12 @@ describe("syncCanvasOverlayCss", () => {
       doc: {
         children: [{ attributes: { popover: "auto" }, children: ["panel"], tagName: "nav" }],
         tagName: "div",
-      } as never,
+      },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: { ...ctx, canvasMode: "preview" },
       mode: "preview",
     });
-    expect((container.querySelector("nav") as HTMLElement).hasAttribute("popover")).toBe(true);
+    expect(rendered(container, "nav").hasAttribute("popover")).toBe(true);
     expect(sheet()).toBeNull();
     handle.dispose();
   });

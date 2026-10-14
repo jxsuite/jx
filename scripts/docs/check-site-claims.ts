@@ -11,6 +11,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
+import type { AllowEntry } from "./check-prose.ts";
+
 const ROOT = resolve(import.meta.dir, "../..");
 const SITE_PAGES = join(ROOT, "sites/jxsuite.com/pages");
 const README = join(ROOT, "README.md");
@@ -33,13 +38,6 @@ interface Pattern {
   flags?: string;
   hint: string;
 }
-interface AllowEntry {
-  id: string;
-  file: string;
-  text: string;
-  evidence?: string;
-  reason?: string;
-}
 interface Claims {
   patterns: Pattern[];
   allow: AllowEntry[];
@@ -51,20 +49,31 @@ interface ReleaseAsset {
   downloadable: boolean;
 }
 
-const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
+/** A repository JSON file, parsed: whatever it holds is a JSON value, decoded where it is read. */
+const readJson = (path: string): JsonValue => JSON.parse(readFileSync(path, "utf8"));
 
-const claims = readJson<Claims>(CLAIMS_PATH);
-const releaseAssets = readJson<{ assets: ReleaseAsset[] }>(RELEASE_ASSETS_PATH).assets;
+/* SAFETY: claims.json is a repository-owned file whose only reader is this gate, and its
+ * `$comment` documents exactly the `patterns` + `allow` shape `Claims` names; `docs:claims`
+ * (blocking in CI) compiles every pattern and walks every allow entry of the committed file. */
+const claims = JSON.parse(readFileSync(CLAIMS_PATH, "utf8")) as Claims;
+/* SAFETY: release-assets.json is the committed single source of truth for release asset names,
+ * also read by packages/desktop/scripts/build-msix.ts; its `assets` entries carry the
+ * `ReleaseAsset` members, which the download-link checks below read on every `docs:claims` run. */
+const releaseAssets = (
+  JSON.parse(readFileSync(RELEASE_ASSETS_PATH, "utf8")) as { assets: ReleaseAsset[] }
+).assets;
 const downloadableAssets = new Set(releaseAssets.filter((a) => a.downloadable).map((a) => a.file));
 /*
  * The registry is an ARRAY of starter entries. `Object.keys(...).length` answered 13 only
  * because Object.keys on an array enumerates its indices — typed as a Record it claimed to be
  * counting keys, so the day the file grows a wrapper object it would count 1 and say nothing.
  */
-const registry = readJson<unknown>(REGISTRY_PATH);
+const registry = readJson(REGISTRY_PATH);
 if (!Array.isArray(registry)) {
   throw new TypeError(`${relative(ROOT, REGISTRY_PATH)} must be a JSON array of starter entries.`);
 }
+/* SAFETY: packages/starters/tests/registry.test.ts asserts that every registry entry carries a
+ * non-empty string `id`, and packages/starters/index.ts reads the same file as `StarterMeta[]`. */
 export const starterIds: string[] = registry.map((entry) => (entry as { id: string }).id);
 export const starterCount = registry.length;
 
@@ -199,7 +208,7 @@ function checkDownloadLinks(): void {
 
 // ─── Starter count ────────────────────────────────────────────────────────────
 
-export const NUMBER_WORDS: Record<string, number> = {
+export const NUMBER_WORDS = {
   one: 1,
   two: 2,
   three: 3,
@@ -216,7 +225,9 @@ export const NUMBER_WORDS: Record<string, number> = {
   fourteen: 14,
   fifteen: 15,
   sixteen: 16,
-};
+} satisfies Record<string, number>;
+/** {@link NUMBER_WORDS} as a lookup keyed by the lower-cased token a match captures. */
+const NUMBER_BY_WORD = new Map(Object.entries(NUMBER_WORDS));
 
 /** Markdown emphasis and code ticks may hug either end: `**13** starters`, `_thirteen_ starters`. */
 const EMPH = "[*_`]*";
@@ -249,7 +260,7 @@ export function starterCountsIn(line: string): number[] {
   // `matchAll` clones the regex, so this shared /g pattern carries no lastIndex between calls.
   for (const match of line.matchAll(STARTER_COUNT_RE)) {
     const token = match[1]!.toLowerCase();
-    const n = NUMBER_WORDS[token] ?? (/^\d+$/.test(token) ? Number(token) : null);
+    const n = NUMBER_BY_WORD.get(token) ?? (/^\d+$/.test(token) ? Number(token) : null);
     if (n !== null) {
       out.push(n);
     }
@@ -323,8 +334,14 @@ const SCREENSHOT_RE = /\/content\/docs\/images\/([A-Za-z0-9_-]+)\.(?:png|webp|jp
 function checkScreenshots(): void {
   let manifestNames: Set<string>;
   try {
-    const manifest = readJson<{ shots?: { name: string }[] }>(MANIFEST_PATH);
-    manifestNames = new Set((manifest.shots ?? []).map((s) => s.name));
+    const manifest = readJson(MANIFEST_PATH);
+    if (!isJsonObject(manifest)) {
+      return; // Not a manifest → nothing to check.
+    }
+    const shots = Array.isArray(manifest.shots) ? manifest.shots : [];
+    manifestNames = new Set(
+      shots.flatMap((shot) => (isJsonObject(shot) && isString(shot.name) ? [shot.name] : [])),
+    );
   } catch {
     return; // No manifest → nothing to check.
   }
@@ -372,8 +389,8 @@ function checkLicenses(): void {
   if (!existsSync(join(ROOT, "LICENSE"))) {
     fail(join(ROOT, "LICENSE"), "root LICENSE file is missing.");
   }
-  const rootPkg = readJson<{ license?: string }>(join(ROOT, "package.json"));
-  if (!rootPkg.license) {
+  const rootPkg = readJson(join(ROOT, "package.json"));
+  if (!isJsonObject(rootPkg) || !rootPkg.license) {
     fail(join(ROOT, "package.json"), 'root package.json is missing a "license" field.');
   }
   for (const group of ["packages", "extensions"]) {
@@ -386,8 +403,8 @@ function checkLicenses(): void {
       if (!existsSync(pkgPath)) {
         continue;
       }
-      const pkg = readJson<{ private?: boolean }>(pkgPath);
-      if (pkg.private) {
+      const pkg = readJson(pkgPath);
+      if (isJsonObject(pkg) && pkg.private) {
         continue;
       }
       if (!existsSync(join(dir, name, "LICENSE"))) {

@@ -1,5 +1,8 @@
-import "./harness";
+import { CLOUD_SESSION_BASE } from "./harness";
+import type { RecordedFetch } from "./harness";
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import {
   createCloudPlatform,
   editUrl,
@@ -11,9 +14,9 @@ import {
   sessionBase,
 } from "../src/platforms/cloud";
 import { recordCollabSockets } from "./collab-socket-recorder";
+import type { DirEntry } from "../src/types";
 
 const PROJECT = { owner: "octocat", repo: "my-site", branch: "main" };
-const BASE = "/api/v1/p/octocat/my-site/main/studio";
 
 const realFetch = globalThis.fetch;
 /* Captured before any test stubs window.setTimeout — `until` must keep running on the real clock
@@ -43,9 +46,58 @@ async function until(done: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-interface Call {
-  url: string;
-  init?: RequestInit | undefined;
+/** A fetch stub as the tests write it: the platform addresses every request by a string URL. */
+type FetchHandler = (url: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * Answer every `fetch` from `handler`, keeping Bun's `preconnect` so the stub is a whole `fetch`.
+ * The platform only ever passes a string URL, which `String` hands through unchanged.
+ */
+function stubFetch(handler: FetchHandler): void {
+  globalThis.fetch = Object.assign(
+    (resource: RequestInfo | URL, init?: RequestInit) => handler(String(resource), init),
+    { preconnect: realFetch.preconnect },
+  );
+}
+
+/** The JSON document a stubbed call sent as its body. Every platform write sends a string body. */
+function sentJson(init: RequestInit | undefined): JsonValue {
+  const body = init?.body;
+  if (!isString(body)) {
+    throw new Error("expected the request to carry a JSON string body");
+  }
+  return JSON.parse(body);
+}
+
+/** The `paths` a batch read asked for: the POST /files/read body is `{ paths: string[] }`. */
+function requestedPaths(init: RequestInit | undefined): string[] {
+  const body = sentJson(init);
+  const paths = isJsonObject(body) ? body["paths"] : undefined;
+  if (!Array.isArray(paths) || !paths.every((path) => isString(path))) {
+    throw new Error("expected a batch read naming its paths");
+  }
+  return paths;
+}
+
+/** The package.json a manifest write carried: the PUT /file body's `content`, parsed. */
+function writtenManifest(init: RequestInit | undefined): JsonObject {
+  const body = sentJson(init);
+  if (!isJsonObject(body) || !isString(body["content"])) {
+    throw new Error("expected a file write carrying string content");
+  }
+  const manifest: JsonValue = JSON.parse(body["content"]);
+  if (!isJsonObject(manifest)) {
+    throw new Error("expected the written manifest to be a JSON object");
+  }
+  return manifest;
+}
+
+/** The reason a settled read was rejected with, as text; a read that resolved fails the test. */
+function rejectionOf(outcome: PromiseSettledResult<string> | undefined): string {
+  if (outcome?.status !== "rejected") {
+    throw new Error("expected the read to reject");
+  }
+  return String(outcome.reason);
 }
 
 /**
@@ -56,9 +108,11 @@ interface Call {
  * The batch route matches only a needle that names it, and is otherwise a 404 — an older platform,
  * which is the backend every test written before the route existed was describing.
  */
-function mockFetch(routes: Record<string, { status?: number; body: unknown }> = {}): Call[] {
-  const calls: Call[] = [];
-  globalThis.fetch = ((url: string, init?: RequestInit) => {
+function mockFetch(
+  routes: Record<string, { status?: number; body: unknown }> = {},
+): RecordedFetch[] {
+  const calls: RecordedFetch[] = [];
+  stubFetch((url, init) => {
     calls.push({ url, init });
     const batch = url.includes("/files/read");
     for (const [needle, response] of Object.entries(routes)) {
@@ -70,7 +124,7 @@ function mockFetch(routes: Record<string, { status?: number; body: unknown }> = 
       return Promise.resolve(Response.json({ error: "Not found" }, { status: 404 }));
     }
     return Promise.resolve(Response.json({}));
-  }) as unknown as typeof fetch;
+  });
   return calls;
 }
 
@@ -182,14 +236,14 @@ describe("file operations", () => {
      stands up its own stub: the point of the test is that the body arrives undecoded. */
   test("readFileBytes returns the raw body from the session's bytes route", async () => {
     const calls: string[] = [];
-    globalThis.fetch = ((url: string) => {
+    stubFetch((url: string) => {
       calls.push(url);
       return Promise.resolve(new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47])));
-    }) as unknown as typeof fetch;
+    });
     const platform = createCloudPlatform(PROJECT);
     const bytes = new Uint8Array(await platform.readFileBytes!("public/logo.png"));
     expect([...bytes]).toEqual([0x89, 0x50, 0x4e, 0x47]);
-    expect(calls[0]).toBe(`${BASE}/file/bytes?path=public%2Flogo.png`);
+    expect(calls[0]).toBe(`${CLOUD_SESSION_BASE}/file/bytes?path=public%2Flogo.png`);
   });
 
   test("readFileBytes surfaces the server message on failure", async () => {
@@ -202,9 +256,9 @@ describe("file operations", () => {
     const calls = mockFetch({ "/file": { body: { ok: true } } });
     const platform = createCloudPlatform(PROJECT);
     await platform.writeFile("pages/a.md", "hello");
-    expect(calls[0]?.url).toBe(`${BASE}/file`);
+    expect(calls[0]?.url).toBe(`${CLOUD_SESSION_BASE}/file`);
     expect(calls[0]?.init?.method).toBe("PUT");
-    expect(JSON.parse(calls[0]?.init?.body as string)).toEqual({
+    expect(sentJson(calls[0]?.init)).toEqual({
       path: "pages/a.md",
       content: "hello",
     });
@@ -220,8 +274,11 @@ describe("file operations", () => {
 // ─── Read coalescing (specs/desktop.md §10.1) ─────────────────────────────────
 
 describe("read coalescing", () => {
-  const batchBody = (call: Call | undefined) =>
-    JSON.parse((call?.init?.body as string | undefined) ?? "null") as unknown;
+  /** The batch POST's parsed body, or null for a call that sent none (a single GET). */
+  const batchBody = (call: RecordedFetch | undefined): JsonValue => {
+    const body = call?.init?.body;
+    return isString(body) ? JSON.parse(body) : null;
+  };
 
   test("reads issued together go out as ONE batch POST naming every path", async () => {
     const calls = mockFetch({
@@ -241,7 +298,7 @@ describe("read coalescing", () => {
       ["A", "B", "C"],
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe(`${BASE}/files/read`);
+    expect(calls[0]?.url).toBe(`${CLOUD_SESSION_BASE}/files/read`);
     expect(calls[0]?.init?.method).toBe("POST");
     expect(batchBody(calls[0])).toEqual({ paths: ["a.md", "b.md", "c.md"] });
   });
@@ -264,7 +321,7 @@ describe("read coalescing", () => {
     const p = createCloudPlatform(PROJECT);
     const [a, logo] = await Promise.allSettled([p.readFile("a.md"), p.readFile("logo.png")]);
     expect(a).toEqual({ status: "fulfilled", value: "A" });
-    expect(String((logo as PromiseRejectedResult).reason)).toContain("Binary file: logo.png");
+    expect(rejectionOf(logo)).toContain("Binary file: logo.png");
   });
 
   test("a platform without the batch route (404) falls back to one GET per path, for good", async () => {
@@ -276,9 +333,9 @@ describe("read coalescing", () => {
     const p = createCloudPlatform(PROJECT);
     expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["A", "B"]);
     expect(calls.map((c) => c.url)).toEqual([
-      `${BASE}/files/read`,
-      `${BASE}/file?path=a.md`,
-      `${BASE}/file?path=b.md`,
+      `${CLOUD_SESSION_BASE}/files/read`,
+      `${CLOUD_SESSION_BASE}/file?path=a.md`,
+      `${CLOUD_SESSION_BASE}/file?path=b.md`,
     ]);
     // Asked once: the next window goes straight to single reads.
     expect(await Promise.all([p.readFile("c.md"), p.readFile("a.md")])).toEqual(["C", "A"]);
@@ -338,17 +395,17 @@ describe("read coalescing", () => {
   test("any other 403 is not that verdict: the batch is re-served singly and batching stays on", async () => {
     for (const body of [{ error: "Grant expired", code: "forbidden" }, "not json"]) {
       const calls: string[] = [];
-      globalThis.fetch = ((url: string) => {
+      stubFetch((url: string) => {
         calls.push(url);
         if (url.endsWith("/files/read")) {
           return Promise.resolve(
-            typeof body === "string"
+            isString(body)
               ? new Response(body, { status: 403 })
               : Response.json(body, { status: 403 }),
           );
         }
         return Promise.resolve(Response.json({ content: url.slice(-4) }));
-      }) as unknown as typeof fetch;
+      });
       const p = createCloudPlatform(PROJECT);
       expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["a.md", "b.md"]);
       await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
@@ -385,13 +442,13 @@ describe("read coalescing", () => {
 
   test("a 200 that is not JSON is not the route answering — treated as absent", async () => {
     const calls: string[] = [];
-    globalThis.fetch = ((url: string) => {
+    stubFetch((url: string) => {
       calls.push(url);
       if (url.endsWith("/files/read")) {
         return Promise.resolve(new Response("<!doctype html>", { status: 200 }));
       }
       return Promise.resolve(Response.json({ content: url.slice(-4) }));
-    }) as unknown as typeof fetch;
+    });
     const p = createCloudPlatform(PROJECT);
     expect(await Promise.all([p.readFile("a.md"), p.readFile("b.md")])).toEqual(["a.md", "b.md"]);
     await Promise.all([p.readFile("a.md"), p.readFile("b.md")]);
@@ -399,19 +456,19 @@ describe("read coalescing", () => {
   });
 
   test("omitted paths are asked for again until every read is answered", async () => {
-    const calls: Call[] = [];
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
+    const calls: RecordedFetch[] = [];
+    stubFetch((url: string, init?: RequestInit) => {
       calls.push({ init, url });
       if (!url.endsWith("/files/read")) {
         return Promise.resolve(Response.json({ content: `<${url.slice(-1)}>` }));
       }
-      const { paths } = JSON.parse(init?.body as string) as { paths: string[] };
+      const paths = requestedPaths(init);
       // A tight budget: one path per answer, the rest omitted.
       const [first, ...rest] = paths;
       return Promise.resolve(
         Response.json({ files: [[first, { content: `<${first}>` }]], omitted: rest }),
       );
-    }) as unknown as typeof fetch;
+    });
     const p = createCloudPlatform(PROJECT);
     expect(await Promise.all(["a", "b", "c"].map(async (path) => p.readFile(path)))).toEqual([
       "<a>",
@@ -424,15 +481,14 @@ describe("read coalescing", () => {
     ]);
     // ...and the last one, alone, as a plain read: a window of one is never a batch.
     expect(calls).toHaveLength(3);
-    expect(calls[2]?.url).toBe(`${BASE}/file?path=c`);
+    expect(calls[2]?.url).toBe(`${CLOUD_SESSION_BASE}/file?path=c`);
   });
 
   test("a network failure of the batch rejects the reads it carried", async () => {
-    globalThis.fetch = (() =>
-      Promise.reject(new TypeError("Failed to fetch"))) as unknown as typeof fetch;
+    stubFetch(() => Promise.reject(new TypeError("Failed to fetch")));
     const p = createCloudPlatform(PROJECT);
     const outcomes = await Promise.allSettled([p.readFile("a.md"), p.readFile("b.md")]);
-    expect(outcomes.map((o) => String((o as PromiseRejectedResult).reason))).toEqual([
+    expect(outcomes.map((o) => rejectionOf(o))).toEqual([
       "TypeError: Failed to fetch",
       "TypeError: Failed to fetch",
     ]);
@@ -459,12 +515,12 @@ describe("read coalescing", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const calls: Call[] = [];
-    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    const calls: RecordedFetch[] = [];
+    stubFetch(async (url: string, init?: RequestInit) => {
       calls.push({ init, url });
       await gate;
       return Response.json({ content: JSON.stringify({ dependencies: { a: "1" } }) });
-    }) as unknown as typeof fetch;
+    });
     const p = createCloudPlatform(PROJECT);
     const first = p.addPackage("x@1");
     await new Promise((resolve) => {
@@ -478,12 +534,9 @@ describe("read coalescing", () => {
     /* Each caller parsed its own copy. Two MUTATORS on one shared read is where a shared parsed
        object would do harm: the second write would carry the first one's edit as well, so a
        removal racing an add could resurrect or drop a dependency nobody asked about. */
-    const written = calls
-      .filter((c) => c.init?.method === "PUT")
-      .map((c) => {
-        const body = JSON.parse(c.init?.body as string) as { content: string };
-        return (JSON.parse(body.content) as { dependencies: Record<string, string> }).dependencies;
-      });
+    const written = calls.flatMap((c) =>
+      c.init?.method === "PUT" ? [writtenManifest(c.init)["dependencies"]] : [],
+    );
     expect(written).toEqual([
       { a: "1", x: "1" },
       { a: "1", y: "2" },
@@ -496,16 +549,16 @@ describe("read coalescing", () => {
   test("probe.idle() waits for every coalesced read to settle", async () => {
     const { getPlatform, platformInFlight, registerPlatform } = await import("../src/platform");
     const { probeIdle, defaultIdleSources } = await import("../src/services/idle");
-    const previous = (globalThis as { __jxPlatform?: unknown }).__jxPlatform;
+    const previous = globalThis.__jxPlatform;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    stubFetch(async (_url: string, init?: RequestInit) => {
       await gate;
-      const { paths } = JSON.parse(init?.body as string) as { paths: string[] };
+      const paths = requestedPaths(init);
       return Response.json({ files: paths.map((p) => [p, { content: p }]), omitted: [] });
-    }) as unknown as typeof fetch;
+    });
     try {
       registerPlatform(createCloudPlatform(PROJECT));
       const platform = getPlatform();
@@ -536,7 +589,7 @@ describe("read coalescing", () => {
       expect(order).toEqual(["read:a", "read:b", "read:c", "idle"]);
       expect(platformInFlight()).toEqual([]);
     } finally {
-      (globalThis as { __jxPlatform?: unknown }).__jxPlatform = previous;
+      globalThis.__jxPlatform = previous;
     }
   });
 });
@@ -562,9 +615,8 @@ describe("manifest-only package operations", () => {
     const platform = createCloudPlatform(PROJECT);
     await platform.addPackage("@jxsuite/compiler@0.34.0");
     const write = calls.find((call) => call.init?.method === "PUT");
-    const body = JSON.parse(write?.init?.body as string) as { content: string };
-    const written = JSON.parse(body.content) as { dependencies: Record<string, string> };
-    expect(written.dependencies["@jxsuite/compiler"]).toBe("0.34.0");
+    const written = writtenManifest(write?.init);
+    expect(written["dependencies"]).toEqual({ "@jxsuite/compiler": "0.34.0" });
   });
 
   test("addPackage defaults bare names to latest", async () => {
@@ -572,10 +624,7 @@ describe("manifest-only package operations", () => {
     const platform = createCloudPlatform(PROJECT);
     await platform.addPackage("hono");
     const write = calls.find((call) => call.init?.method === "PUT");
-    const body = JSON.parse(write?.init?.body as string) as { content: string };
-    expect(
-      (JSON.parse(body.content) as { dependencies: Record<string, string> }).dependencies,
-    ).toEqual({ hono: "latest" });
+    expect(writtenManifest(write?.init)["dependencies"]).toEqual({ hono: "latest" });
   });
 
   test("removePackage drops the entry from either section", async () => {
@@ -583,13 +632,9 @@ describe("manifest-only package operations", () => {
     const platform = createCloudPlatform(PROJECT);
     await platform.removePackage("wrangler");
     const write = calls.find((call) => call.init?.method === "PUT");
-    const body = JSON.parse(write?.init?.body as string) as { content: string };
-    const written = JSON.parse(body.content) as {
-      dependencies: Record<string, string>;
-      devDependencies: Record<string, string>;
-    };
-    expect(written.dependencies).toEqual({ hono: "^4" });
-    expect(written.devDependencies).toEqual({});
+    const written = writtenManifest(write?.init);
+    expect(written["dependencies"]).toEqual({ hono: "^4" });
+    expect(written["devDependencies"]).toEqual({});
   });
 });
 
@@ -722,7 +767,7 @@ describe("project folders", () => {
       value: { ...original, assign: (url: string) => assigned.push(url) },
     });
     try {
-      await createCloudPlatform(FOLDER).gitCheckout?.("next");
+      await createCloudPlatform(FOLDER).gitCheckout("next");
     } finally {
       Object.defineProperty(globalThis, "location", { configurable: true, value: original });
     }
@@ -921,8 +966,8 @@ describe("project-less mode (/studio)", () => {
     });
     const realAssign = location.assign;
     const assigned: string[] = [];
-    (location as { assign: unknown }).assign = (url: string) => {
-      assigned.push(url);
+    location.assign = (url: string | URL) => {
+      assigned.push(String(url));
     };
     try {
       const p = createCloudPlatform(null);
@@ -930,7 +975,7 @@ describe("project-less mode (/studio)", () => {
       expect(calls.some((c) => c.url.includes("/api/v1/projects"))).toBe(true);
       expect(assigned).toEqual([editUrl({ owner: "octocat", repo: "site", branch: "trunk" })]);
     } finally {
-      (location as { assign: unknown }).assign = realAssign;
+      location.assign = realAssign;
     }
   });
 
@@ -953,7 +998,7 @@ describe("assetSpace", () => {
   test("a bound session serves project paths under /raw", () => {
     const p = createCloudPlatform(PROJECT);
     expect(p.assetSpace).toBe("repo");
-    expect(p.documentBaseUrl).toBe(`${BASE}/raw/`);
+    expect(p.documentBaseUrl).toBe(`${CLOUD_SESSION_BASE}/raw/`);
   });
 
   /* Both or neither. Until a project is bound there is no /raw to address, and a declaration that
@@ -965,6 +1010,14 @@ describe("assetSpace", () => {
     expect(p.documentBaseUrl).toBeUndefined();
   });
 });
+
+/** The window cfConnect opens. Its flow reads `closed` and calls `close()`, and nothing else. */
+function popupStub(): Window {
+  const popup: Pick<Window, "close" | "closed"> = { close: mock(() => {}), closed: false };
+  /* SAFETY: cfConnect's flow touches its popup only through `popup.closed` (the poll's canceled
+     Check and cleanup's guard) and `popup.close()` (cleanup); both are supplied here. */
+  return popup as Window;
+}
 
 describe("identity & cloudflare surface", () => {
   test("getUser maps the platform identity and nulls on 401", async () => {
@@ -991,7 +1044,7 @@ describe("identity & cloudflare surface", () => {
     const p = createCloudPlatform(PROJECT);
     const pr = await p.createPullRequest?.({ title: "Propose changes" });
     expect(pr).toEqual({ url: "https://github.com/o/r/pull/7", number: 7 });
-    expect(calls[0]?.url).toBe(`${BASE}/git/pr`);
+    expect(calls[0]?.url).toBe(`${CLOUD_SESSION_BASE}/git/pr`);
   });
 
   test("listRepos maps the installation-repo browse list", async () => {
@@ -1175,17 +1228,22 @@ describe("identity & cloudflare surface", () => {
       },
     });
     const p = createCloudPlatform(null);
-    const failure = await p
-      .createProject({
+    const [outcome] = await Promise.allSettled([
+      p.createProject({
         directory: "site",
         name: "Site",
         destination: { kind: "repo", owner: "acme", repo: "site", private: false },
-      })
-      .then(() => null)
-      .catch((error: unknown) => error as Error & { code?: string; installUrl?: string });
-    expect(failure?.message).toContain("blocked repository creation");
-    expect(failure?.code).toBe("needs_installation_access");
-    expect(failure?.installUrl).toBe("https://github.com/apps/jx-suite/installations/new");
+      }),
+    ]);
+    if (outcome.status !== "rejected" || !(outcome.reason instanceof Error)) {
+      throw new Error("expected createProject to reject with an Error");
+    }
+    const failure = outcome.reason;
+    expect(failure.message).toContain("blocked repository creation");
+    expect(failure).toMatchObject({
+      code: "needs_installation_access",
+      installUrl: "https://github.com/apps/jx-suite/installations/new",
+    });
   });
 
   test("cfConnection maps the brokered connection and nulls when absent", async () => {
@@ -1323,18 +1381,18 @@ describe("identity & cloudflare surface", () => {
     const realOpen = window.open;
     const realAssign = location.assign;
     const assigned: string[] = [];
-    (location as { assign: unknown }).assign = (url: string) => {
-      assigned.push(url);
+    location.assign = (url: string | URL) => {
+      assigned.push(String(url));
     };
-    (window as { open: unknown }).open = mock(() => null);
+    window.open = mock(() => null);
     try {
       const p = createCloudPlatform(null);
       // Not null and not a failure: the page itself is navigating, so the caller renders nothing.
       expect(await p.cfConnect?.()).toEqual({ status: "redirect" });
       expect(assigned).toEqual(["/api/v1/cf/connect"]);
     } finally {
-      (window as { open: unknown }).open = realOpen;
-      (location as { assign: unknown }).assign = realAssign;
+      window.open = realOpen;
+      location.assign = realAssign;
     }
   });
 
@@ -1343,9 +1401,9 @@ describe("identity & cloudflare surface", () => {
       "/api/v1/cf/connection": { body: { connected: true, accountId: "acct" } },
     });
     const realOpen = window.open;
-    const popup = { close: mock(() => {}), closed: false };
+    const popup = popupStub();
     const open = mock(() => popup);
-    (window as { open: unknown }).open = open;
+    window.open = open;
     try {
       const p = createCloudPlatform(null);
       const pending = p.cfConnect?.();
@@ -1365,16 +1423,16 @@ describe("identity & cloudflare surface", () => {
         status: "connected",
       });
     } finally {
-      (window as { open: unknown }).open = realOpen;
+      window.open = realOpen;
     }
   });
 
   test("cfConnect rejects with the relayed OAuth error reason", async () => {
     mockFetch({});
     const realOpen = window.open;
-    const popup = { close: mock(() => {}), closed: false };
+    const popup = popupStub();
     const open = mock(() => popup);
-    (window as { open: unknown }).open = open;
+    window.open = open;
     try {
       const p = createCloudPlatform(null);
       const pending = p.cfConnect?.();
@@ -1391,7 +1449,7 @@ describe("identity & cloudflare surface", () => {
       );
       expect(pending).rejects.toThrow(/offline_access/);
     } finally {
-      (window as { open: unknown }).open = realOpen;
+      window.open = realOpen;
     }
   });
 });
@@ -1404,7 +1462,7 @@ describe("bound session surface", () => {
     });
     const p = createCloudPlatform(PROJECT);
     await p.activate();
-    expect(calls[0]?.url).toBe(`${BASE}/activate`);
+    expect(calls[0]?.url).toBe(`${CLOUD_SESSION_BASE}/activate`);
 
     await p.uploadFile("a.png", new Uint8Array([1, 2, 3]).buffer);
     expect(calls.some((c) => c.url.includes("/file/upload?path=a.png"))).toBe(true);
@@ -1448,13 +1506,12 @@ describe("bound session surface", () => {
   test("error bodies surface their message; non-JSON errors fall back", async () => {
     mockFetch({ "/file?path=x": { status: 500, body: { error: "disk full" } } });
     const p = createCloudPlatform(PROJECT);
-    expect(String(await p.readFile("x").catch((error: unknown) => error))).toMatch(/disk full/);
+    const [diskFull] = await Promise.allSettled([p.readFile("x")]);
+    expect(rejectionOf(diskFull)).toMatch(/disk full/);
 
-    globalThis.fetch = (() =>
-      Promise.resolve(new Response("plain text", { status: 500 }))) as unknown as typeof fetch;
-    expect(String(await p.readFile("x").catch((error: unknown) => error))).toMatch(
-      /Failed to read file/,
-    );
+    stubFetch(() => Promise.resolve(new Response("plain text", { status: 500 })));
+    const [plainText] = await Promise.allSettled([p.readFile("x")]);
+    expect(rejectionOf(plainText)).toMatch(/Failed to read file/);
   });
 
   test("locate, search, and resolveSiteContext map their wire shapes", async () => {
@@ -1493,26 +1550,28 @@ describe("bound session surface", () => {
 });
 
 describe("session events (WebSocket)", () => {
-  interface WsInstance {
-    url: string;
-    listeners: Record<string, ((ev: unknown) => void)[]>;
-    closed: boolean;
+  /** What the adapter reads off a socket event: a message's text `data`, and nothing for the rest. */
+  interface SocketEvent {
+    data?: string;
   }
-  const instances: WsInstance[] = [];
+  type SocketListener = (ev: SocketEvent) => void;
+  const instances: MockWebSocket[] = [];
 
   class MockWebSocket {
     url: string;
-    listeners: Record<string, ((ev: unknown) => void)[]> = {};
+    listeners = new Map<string, SocketListener[]>();
     closed = false;
     constructor(url: string) {
       this.url = url;
-      instances.push(this as unknown as WsInstance);
+      instances.push(this);
     }
-    addEventListener(type: string, handler: (ev: unknown) => void) {
-      (this.listeners[type] ??= []).push(handler);
+    addEventListener(type: string, handler: SocketListener) {
+      const listeners = this.listeners.get(type) ?? [];
+      listeners.push(handler);
+      this.listeners.set(type, listeners);
     }
-    emit(type: string, ev: unknown) {
-      for (const handler of this.listeners[type] ?? []) {
+    emit(type: string, ev: SocketEvent) {
+      for (const handler of this.listeners.get(type) ?? []) {
         handler(ev);
       }
     }
@@ -1521,16 +1580,25 @@ describe("session events (WebSocket)", () => {
     }
   }
 
+  /** The `index`th socket the adapter opened. */
+  function socketAt(index: number): MockWebSocket {
+    const socket = instances[index];
+    if (!socket) {
+      throw new Error(`the adapter opened no socket #${index}`);
+    }
+    return socket;
+  }
+
   test("dispatches fs batches, ignores git notices and junk, unsubscribes cleanly", () => {
-    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
-    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    const realWs = globalThis.WebSocket;
+    Object.assign(globalThis, { WebSocket: MockWebSocket });
     instances.length = 0;
     try {
       const p = createCloudPlatform(PROJECT);
       const batches: unknown[] = [];
       const unsubscribe = p.subscribeFileEvents?.((events) => batches.push(events));
-      const socket = instances[0] as unknown as MockWebSocket;
-      expect(socket.url).toContain(`${BASE}/events`);
+      const socket = socketAt(0);
+      expect(socket.url).toContain(`${CLOUD_SESSION_BASE}/events`);
 
       socket.emit("open", {});
       socket.emit("message", {
@@ -1543,7 +1611,7 @@ describe("session events (WebSocket)", () => {
       unsubscribe?.();
       expect(socket.closed).toBe(true);
     } finally {
-      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+      Object.assign(globalThis, { WebSocket: realWs });
     }
   });
 
@@ -1552,8 +1620,8 @@ describe("session events (WebSocket)", () => {
    * adapter must say when its stream has a gap, and when a change arrived without one.
    */
   test("the first open reports an open resync, every later one a reconnect", () => {
-    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
-    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    const realWs = globalThis.WebSocket;
+    Object.assign(globalThis, { WebSocket: MockWebSocket });
     instances.length = 0;
     try {
       const p = createCloudPlatform(PROJECT);
@@ -1561,7 +1629,7 @@ describe("session events (WebSocket)", () => {
       const unsubscribe = p.subscribeFileEvents?.(() => {}, {
         onResync: (reason) => reasons.push(reason),
       });
-      const first = instances[0] as unknown as MockWebSocket;
+      const first = socketAt(0);
       first.emit("open", {});
       /* The first open is the stream going live. Nothing it carried was missed, but listings made
          before it (versions included) may predate a change broadcast before this socket joined. */
@@ -1574,7 +1642,7 @@ describe("session events (WebSocket)", () => {
          without waiting out a real backoff. */
       window.dispatchEvent(new Event("online"));
       expect(instances).toHaveLength(2);
-      const second = instances[1] as unknown as MockWebSocket;
+      const second = socketAt(1);
       second.emit("open", {});
       expect(reasons).toEqual(["open", "reconnect"]);
 
@@ -1585,7 +1653,7 @@ describe("session events (WebSocket)", () => {
       window.dispatchEvent(new Event("online"));
       expect(instances).toHaveLength(2);
     } finally {
-      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+      Object.assign(globalThis, { WebSocket: realWs });
     }
   });
 
@@ -1595,8 +1663,8 @@ describe("session events (WebSocket)", () => {
    * exactly the one whose gap matters most, so it must still be reported.
    */
   test("an open after a failed first connect still reports the open resync", () => {
-    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
-    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    const realWs = globalThis.WebSocket;
+    Object.assign(globalThis, { WebSocket: MockWebSocket });
     instances.length = 0;
     try {
       const p = createCloudPlatform(PROJECT);
@@ -1604,21 +1672,21 @@ describe("session events (WebSocket)", () => {
       const unsubscribe = p.subscribeFileEvents?.(() => {}, {
         onResync: (reason) => reasons.push(reason),
       });
-      const failed = instances[0] as unknown as MockWebSocket;
+      const failed = socketAt(0);
       failed.emit("close", {});
       window.dispatchEvent(new Event("online"));
       expect(instances).toHaveLength(2);
-      (instances[1] as unknown as MockWebSocket).emit("open", {});
+      socketAt(1).emit("open", {});
       expect(reasons).toEqual(["open"]);
       unsubscribe?.();
     } finally {
-      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+      Object.assign(globalThis, { WebSocket: realWs });
     }
   });
 
   test("a committed notice reports a commit resync; other git notices do not", () => {
-    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
-    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    const realWs = globalThis.WebSocket;
+    Object.assign(globalThis, { WebSocket: MockWebSocket });
     instances.length = 0;
     try {
       const p = createCloudPlatform(PROJECT);
@@ -1627,7 +1695,7 @@ describe("session events (WebSocket)", () => {
       const unsubscribe = p.subscribeFileEvents?.((events) => batches.push(events), {
         onResync: (reason) => reasons.push(reason),
       });
-      const socket = instances[0] as unknown as MockWebSocket;
+      const socket = socketAt(0);
       socket.emit("open", {});
       socket.emit("message", {
         data: JSON.stringify({ event: "committed", kind: "git", sha: "abc123" }),
@@ -1638,13 +1706,13 @@ describe("session events (WebSocket)", () => {
       expect(batches).toHaveLength(0);
       unsubscribe?.();
     } finally {
-      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+      Object.assign(globalThis, { WebSocket: realWs });
     }
   });
 
   test("opens no socket without a project (hub: empty base would be a bare /events)", () => {
-    const realWs = (globalThis as Record<string, unknown>)["WebSocket"];
-    (globalThis as Record<string, unknown>)["WebSocket"] = MockWebSocket;
+    const realWs = globalThis.WebSocket;
+    Object.assign(globalThis, { WebSocket: MockWebSocket });
     instances.length = 0;
     try {
       const p = createCloudPlatform(null);
@@ -1652,7 +1720,7 @@ describe("session events (WebSocket)", () => {
       expect(instances).toHaveLength(0);
       unsubscribe?.();
     } finally {
-      (globalThis as Record<string, unknown>)["WebSocket"] = realWs;
+      Object.assign(globalThis, { WebSocket: realWs });
     }
   });
 });
@@ -1675,12 +1743,10 @@ describe("formats (session backend registry)", () => {
       },
     });
     const p = createCloudPlatform(PROJECT);
-    const formats = (await p.listFormats?.()) as { name: string; extensions: string[] }[];
-    expect(formats[0]?.name).toBe("Markdown");
-    expect(formats[0]?.extensions).toEqual([".md"]);
+    expect(await p.listFormats?.()).toEqual([{ name: "Markdown", extensions: [".md"] }]);
     const extensions = await p.listExtensions?.();
     expect(extensions?.[0]?.classes?.[0]?.name).toBe("Markdown");
-    expect(calls.every((c) => c.url === `${BASE}/formats`)).toBe(true);
+    expect(calls.every((c) => c.url === `${CLOUD_SESSION_BASE}/formats`)).toBe(true);
   });
 
   test("both registry reads degrade to empty lists on backends without the route", async () => {
@@ -1721,7 +1787,7 @@ describe("formats (session backend registry)", () => {
     // `installed` degrades to DECLARED, the only fact this adapter has.
     expect(catalog?.find((e) => e.name === "@jxsuite/parser")?.installed).toBe(true);
     expect(catalog?.find((e) => e.name === "@jxsuite/feed")?.installed).toBe(false);
-    expect(calls.some((c) => c.url === `${BASE}/catalog`)).toBe(true);
+    expect(calls.some((c) => c.url === `${CLOUD_SESSION_BASE}/catalog`)).toBe(true);
   });
 
   test("the catalogue degrades to nothing rather than to the shipped list", async () => {
@@ -1745,7 +1811,7 @@ describe("formats (session backend registry)", () => {
     const calls = mockFetch({ "/project-schemas": { body: { document, project } } });
     const p = createCloudPlatform(PROJECT);
     expect(await p.fetchProjectSchemas?.()).toEqual({ document, project });
-    expect(calls.every((c) => c.url === `${BASE}/project-schemas`)).toBe(true);
+    expect(calls.every((c) => c.url === `${CLOUD_SESSION_BASE}/project-schemas`)).toBe(true);
   });
 
   test("fetchProjectSchemas degrades to the core-schema fallback, never throwing", async () => {
@@ -1760,24 +1826,25 @@ describe("formats (session backend registry)", () => {
       "/format": { body: { result: { children: [{ tagName: "h1", textContent: "Hello" }] } } },
     });
     const p = createCloudPlatform(PROJECT);
-    const doc = (await p.formatAction?.({
+    const doc = await p.formatAction?.({
       action: "parse",
       format: "Markdown",
       source: "# Hello",
-    })) as { children?: unknown[] };
-    expect(JSON.stringify(doc)).toContain("Hello");
-    expect(calls[0]?.url).toBe(`${BASE}/format`);
+    });
+    expect(doc).toEqual({ children: [{ tagName: "h1", textContent: "Hello" }] });
+    expect(calls[0]?.url).toBe(`${CLOUD_SESSION_BASE}/format`);
     expect(calls[0]?.init?.method).toBe("POST");
   });
 
   test("formatAction surfaces backend errors and the missing-route fallback", async () => {
     mockFetch({ "/format": { status: 400, body: { error: 'Unsupported action "discover"' } } });
     const p = createCloudPlatform(PROJECT);
-    expect(p.formatAction?.({ action: "discover" })).rejects.toThrow(/Unsupported action/);
+    expect(p.formatAction?.({ action: "discover", format: "Markdown" })).rejects.toThrow(
+      /Unsupported action/,
+    );
 
-    globalThis.fetch = (() =>
-      Promise.resolve(new Response("not found", { status: 404 }))) as unknown as typeof fetch;
-    expect(p.formatAction?.({ action: "parse", source: "" })).rejects.toThrow(
+    stubFetch(() => Promise.resolve(new Response("not found", { status: 404 })));
+    expect(p.formatAction?.({ action: "parse", format: "Markdown", source: "" })).rejects.toThrow(
       /cannot run format actions yet/,
     );
   });
@@ -1849,7 +1916,7 @@ describe("navigation members under a DOM", () => {
     mockFetch({});
     const realOpen = window.open;
     const openMock = mock(() => null);
-    (window as { open: unknown }).open = openMock;
+    window.open = openMock;
     try {
       const p = createCloudPlatform(null);
       await p.openProjectInNewWindow?.("octocat/site@main");
@@ -1859,7 +1926,7 @@ describe("navigation members under a DOM", () => {
       expect(p.openProjectInNewWindow?.("malformed")).rejects.toThrow(/No project to open/);
       expect(openMock).toHaveBeenCalledTimes(1);
     } finally {
-      (window as { open: unknown }).open = realOpen;
+      window.open = realOpen;
     }
   });
 
@@ -1881,7 +1948,7 @@ describe("collab capability", () => {
     mockFetch();
     // Two opens share the connection.
     const seen = await recordCollabSockets(() => createCloudPlatform(PROJECT), 2);
-    expect(seen).toEqual([{ url: `ws://${location.host}${BASE}/collab` }]);
+    expect(seen).toEqual([{ url: `ws://${location.host}${CLOUD_SESSION_BASE}/collab` }]);
   });
 
   test("a gateway that does not answer the probe still gets a socket, offering nothing", async () => {
@@ -1893,14 +1960,14 @@ describe("collab capability", () => {
      */
     mockFetch({ "/collab": { body: { error: "Not Found" }, status: 404 } });
     const seen = await recordCollabSockets(() => createCloudPlatform(PROJECT));
-    expect(seen).toEqual([{ url: `ws://${location.host}${BASE}/collab` }]);
+    expect(seen).toEqual([{ url: `ws://${location.host}${CLOUD_SESSION_BASE}/collab` }]);
   });
 
   test("offers the subprotocol the gateway advertises", async () => {
     mockFetch({ "/collab": { body: { collab: true, protocols: ["jx.collab.v1"], version: 1 } } });
     const seen = await recordCollabSockets(() => createCloudPlatform(PROJECT));
     expect(seen).toEqual([
-      { protocols: ["jx.collab.v1"], url: `ws://${location.host}${BASE}/collab` },
+      { protocols: ["jx.collab.v1"], url: `ws://${location.host}${CLOUD_SESSION_BASE}/collab` },
     ]);
   });
 
@@ -1926,11 +1993,11 @@ describe("collab capability", () => {
  */
 describe("discoverComponents", () => {
   /** A session whose tree is `dirs` and whose files answer with `files`. */
-  function session(dirs: Record<string, unknown[]>, files: Record<string, unknown>) {
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
+  function session(dirs: Record<string, DirEntry[]>, files: JsonObject) {
+    stubFetch((url: string, init?: RequestInit) => {
       // The batch read the walk's reads coalesce into: per-path outcomes, a 404 for a missing one.
       if (url.endsWith("/files/read")) {
-        const { paths } = JSON.parse(init?.body as string) as { paths: string[] };
+        const paths = requestedPaths(init);
         return Promise.resolve(
           Response.json({
             files: paths.map((path) =>
@@ -1954,11 +2021,17 @@ describe("discoverComponents", () => {
           : Promise.resolve(Response.json({ error: "gone" }, { status: 404 }));
       }
       return Promise.resolve(Response.json({}));
-    }) as unknown as typeof fetch;
+    });
   }
 
-  const dir = (name: string, path: string) => ({ name, path, type: "directory" });
-  const file = (name: string, path: string) => ({ name, path, type: "file" });
+  /** One request the walk sent, with its body when it carried one. */
+  interface SentCall {
+    url: string;
+    body?: string;
+  }
+
+  const dir = (name: string, path: string): DirEntry => ({ name, path, type: "directory" });
+  const file = (name: string, path: string): DirEntry => ({ name, path, type: "file" });
 
   test("finds a component nested in the tree, and reports its props", async () => {
     session(
@@ -2003,18 +2076,23 @@ describe("discoverComponents", () => {
       { "a.json": { tagName: "a-a" }, "b.json": { tagName: "b-b" }, "c.json": { tagName: "c-c" } },
     );
     const inner = globalThis.fetch;
-    const calls: { url: string; body?: string }[] = [];
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
-      calls.push({ url, ...(typeof init?.body === "string" ? { body: init.body } : {}) });
-      return (inner as (u: string, i?: RequestInit) => Promise<Response>)(url, init);
-    }) as unknown as typeof fetch;
+    const calls: SentCall[] = [];
+    stubFetch((url: string, init?: RequestInit) => {
+      const call: SentCall = { url };
+      const body = init?.body;
+      if (isString(body)) {
+        call.body = body;
+      }
+      calls.push(call);
+      return inner(url, init);
+    });
     const found = await createCloudPlatform(PROJECT).discoverComponents();
     expect(found.map((c) => c.tagName)).toEqual(["a-a", "b-b", "c-c"]);
     const reads = calls.filter((c) => c.url.includes("/file?") || c.url.endsWith("/files/read"));
     expect(reads).toEqual([
       {
         body: JSON.stringify({ paths: ["a.json", "b.json", "c.json"] }),
-        url: `${BASE}/files/read`,
+        url: `${CLOUD_SESSION_BASE}/files/read`,
       },
     ]);
   });
@@ -2045,10 +2123,10 @@ describe("discoverComponents", () => {
       {},
     );
     const inner = globalThis.fetch;
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
+    stubFetch((url: string, init?: RequestInit) => {
       calls.push(url);
-      return (inner as (u: string, i?: RequestInit) => Promise<Response>)(url, init);
-    }) as unknown as typeof fetch;
+      return inner(url, init);
+    });
 
     await createCloudPlatform(PROJECT).discoverComponents();
     expect(calls.some((u) => u.includes("node_modules"))).toBe(false);
@@ -2059,10 +2137,10 @@ describe("discoverComponents", () => {
     const calls: string[] = [];
     session({ "": [dir(".git", ".git"), dir(".claude", ".claude")] }, {});
     const inner = globalThis.fetch;
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
+    stubFetch((url: string, init?: RequestInit) => {
       calls.push(url);
-      return (inner as (u: string, i?: RequestInit) => Promise<Response>)(url, init);
-    }) as unknown as typeof fetch;
+      return inner(url, init);
+    });
     await createCloudPlatform(PROJECT).discoverComponents();
     expect(calls.some((u) => u.includes(".git") || u.includes(".claude"))).toBe(false);
   });
@@ -2070,12 +2148,12 @@ describe("discoverComponents", () => {
   test("a directory that fails to list does not abort the walk", async () => {
     session({ "": [dir("components", "components")] }, {});
     const inner = globalThis.fetch;
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
+    stubFetch((url: string, init?: RequestInit) => {
       if (url.includes("dir=components")) {
         return Promise.resolve(Response.json({ error: "gone" }, { status: 500 }));
       }
-      return (inner as (u: string, i?: RequestInit) => Promise<Response>)(url, init);
-    }) as unknown as typeof fetch;
+      return inner(url, init);
+    });
     expect(await createCloudPlatform(PROJECT).discoverComponents()).toEqual([]);
   });
 });
@@ -2095,7 +2173,7 @@ describe("the cloud adapter's buildSite", () => {
     const result = await createCloudPlatform(PROJECT).buildSite!();
     expect(result).toEqual(reply);
     const call = calls.find((c) => c.url.includes("/build"))!;
-    expect(call.url).toBe(`${BASE}/build`);
+    expect(call.url).toBe(`${CLOUD_SESSION_BASE}/build`);
     expect(call.init?.method).toBe("POST");
     expect(call.init?.credentials).toBe("include");
   });
@@ -2114,31 +2192,19 @@ describe("the cloud adapter's buildSite", () => {
 
   test("a backend failure surfaces its own sentence", async () => {
     mockFetch({ "/build": { body: { detail: "This preview link has expired." }, status: 410 } });
-    let failure: unknown;
-    try {
-      await createCloudPlatform(PROJECT).buildSite!();
-    } catch (error) {
-      failure = error;
-    }
-    expect((failure as Error | undefined)?.message).toContain("expired");
+    expect(createCloudPlatform(PROJECT).buildSite!()).rejects.toThrow("expired");
   });
 
   test("with no project open there is nothing to preview", async () => {
-    let failure: unknown;
-    try {
-      await createCloudPlatform(null).buildSite!();
-    } catch (error) {
-      failure = error;
-    }
-    expect((failure as Error | undefined)?.message).toContain("No project is open");
+    expect(createCloudPlatform(null).buildSite!()).rejects.toThrow("No project is open");
   });
 });
 
 describe("importSite", () => {
   /** An NDJSON body, since `streamImport` reads a stream rather than a JSON document. */
-  function ndjson(lines: string[]): Call[] {
-    const calls: Call[] = [];
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
+  function ndjson(lines: string[]): RecordedFetch[] {
+    const calls: RecordedFetch[] = [];
+    stubFetch((url: string, init?: RequestInit) => {
       calls.push({ url, init });
       return Promise.resolve(
         new Response(lines.map((line) => `${line}\n`).join(""), {
@@ -2146,7 +2212,7 @@ describe("importSite", () => {
           status: 200,
         }),
       );
-    }) as unknown as typeof fetch;
+    });
     return calls;
   }
 
@@ -2205,8 +2271,8 @@ describe("importSite", () => {
       () => {},
     );
 
-    const headers = calls[0]!.init?.headers as Record<string, string>;
-    expect(headers["X-Api-Key"]).toBe("sk-test");
-    expect(headers["X-Api-Base-URL"]).toBe("https://llm.example/v1");
+    const headers = new Headers(calls[0]?.init?.headers);
+    expect(headers.get("X-Api-Key")).toBe("sk-test");
+    expect(headers.get("X-Api-Base-URL")).toBe("https://llm.example/v1");
   });
 });

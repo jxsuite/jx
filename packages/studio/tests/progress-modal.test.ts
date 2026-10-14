@@ -31,7 +31,11 @@ beforeAll(() => {
 });
 
 function modalLayer(): HTMLElement {
-  return document.querySelector("#layer-modal") as HTMLElement;
+  const layer = document.querySelector("#layer-modal");
+  if (!(layer instanceof HTMLElement)) {
+    throw new Error("beforeAll() appends #layer-modal; it is missing");
+  }
+  return layer;
 }
 
 function card(): HTMLElement | null {

@@ -34,6 +34,7 @@
  * this module learning it exists.
  */
 
+import type { CommandArgValues } from "../commands/command-args";
 import { reactive } from "../reactivity";
 import { announce } from "./announce";
 import { now } from "./clock";
@@ -87,7 +88,7 @@ export interface NotifyOptions {
    */
   action?: string;
   /** Args passed to {@link NotifyOptions.action} when it runs. */
-  actionArgs?: Record<string, unknown>;
+  actionArgs?: CommandArgValues;
   /** The long form — a stack, a captured log, a validator's output. Rendered in Problems only. */
   detail?: string;
   /** Who reported it: "Save", "Source Control", "Canvas", "Assistant". Groups the Problems list. */
@@ -114,7 +115,7 @@ export interface Notification {
   /** Epoch ms from {@link now}, so a pinned clock pins the "2m ago" a Problems row renders. */
   readonly at: number;
   readonly action?: string;
-  readonly actionArgs?: Record<string, unknown>;
+  readonly actionArgs?: CommandArgValues;
   readonly detail?: string;
   readonly source?: string;
   readonly path?: string;
@@ -158,6 +159,45 @@ function storeFor(tier: NotificationTier): Notification[] {
   return tier === "problem" ? problems : toasts;
 }
 
+/** A record's mutable draft: {@link Notification} is frozen to readers, not to its one builder. */
+type NotificationDraft = { -readonly [K in keyof Notification]: Notification[K] };
+
+/**
+ * Build the record for one outcome, copying only the options the caller actually set — so a host
+ * rendering `record.detail` never meets an explicit `undefined` — in the order every record has
+ * always carried its keys.
+ */
+function recordFor(
+  severity: Severity,
+  message: string,
+  tier: NotificationTier,
+  options: NotifyOptions,
+): Notification {
+  const record: NotificationDraft = { at: now(), id: nextId(), message, severity, tier };
+  if (options.action !== undefined) {
+    record.action = options.action;
+  }
+  if (options.actionArgs !== undefined) {
+    record.actionArgs = options.actionArgs;
+  }
+  if (options.detail !== undefined) {
+    record.detail = options.detail;
+  }
+  if (options.source !== undefined) {
+    record.source = options.source;
+  }
+  if (options.path !== undefined) {
+    record.path = options.path;
+  }
+  if (options.key !== undefined) {
+    record.key = options.key;
+  }
+  if (tier === "toast") {
+    record.timeoutMs = options.timeoutMs ?? TOAST_LIFETIME_MS[severity];
+  }
+  return record;
+}
+
 /**
  * Record an outcome and return it.
  *
@@ -170,20 +210,7 @@ export function notify(
   options: NotifyOptions = {},
 ): Notification {
   const tier = options.tier ?? DEFAULT_TIER[severity];
-  const record: Notification = {
-    at: now(),
-    id: nextId(),
-    message,
-    severity,
-    tier,
-    ...(options.action === undefined ? {} : { action: options.action }),
-    ...(options.actionArgs === undefined ? {} : { actionArgs: options.actionArgs }),
-    ...(options.detail === undefined ? {} : { detail: options.detail }),
-    ...(options.source === undefined ? {} : { source: options.source }),
-    ...(options.path === undefined ? {} : { path: options.path }),
-    ...(options.key === undefined ? {} : { key: options.key }),
-    ...(tier === "toast" ? { timeoutMs: options.timeoutMs ?? TOAST_LIFETIME_MS[severity] } : {}),
-  };
+  const record = recordFor(severity, message, tier, options);
 
   const store = storeFor(tier);
   if (record.key !== undefined) {
@@ -273,7 +300,7 @@ export interface ProblemFinding {
   path?: string;
   key?: string;
   action?: string;
-  actionArgs?: Record<string, unknown>;
+  actionArgs?: CommandArgValues;
 }
 
 /**

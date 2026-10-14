@@ -8,7 +8,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JxElement } from "@jxsuite/schema/types";
-import type { CapturedStyle } from "../src/style-capture.ts";
+import type { AiComponentizeOptions } from "../src/ai-componentize.ts";
+import type { LaunchOptions } from "../src/browser-local.ts";
+import type { CaptureOptions, ImportBrowser, ImportPage } from "../src/capture.ts";
+import type { ComponentizeResult } from "../src/componentize.ts";
+import type { CrawlOptions, CrawlResult } from "../src/crawl.ts";
+import type { DownloadResult } from "../src/asset-download.ts";
+import type { MultiEmitOptions } from "../src/emit.ts";
+import type { ExtractMediaOptions, MediaExtractionResult } from "../src/media-extract.ts";
+import type { CapturedStyle, StyleCaptureResult } from "../src/style-capture.ts";
+import type { VerifyOptions, VerifyResult } from "../src/verify.ts";
 
 const pageClose = mock(() => Promise.resolve());
 const pageSetViewport = mock((_v: { width: number; height: number }) => Promise.resolve());
@@ -17,11 +26,11 @@ const pageScreenshot = mock((_o?: { fullPage?: boolean; type?: string }) =>
 );
 const fakeBrowser = { fake: true };
 
-const launchBrowser = mock((_opts?: Record<string, unknown>) => Promise.resolve(fakeBrowser));
+const launchBrowser = mock((_opts?: LaunchOptions) => Promise.resolve(fakeBrowser));
 const closeBrowser = mock(() => Promise.resolve());
 void mock.module("../src/browser-local.ts", () => ({ launchBrowser, closeBrowser }));
 
-const capturePage = mock((_url: string, _browser?: unknown, _opts?: Record<string, unknown>) =>
+const capturePage = mock((_url: string, _browser?: ImportBrowser, _opts?: CaptureOptions) =>
   Promise.resolve({
     url: "https://site.example/",
     title: "Example Site",
@@ -32,27 +41,27 @@ const capturePage = mock((_url: string, _browser?: unknown, _opts?: Record<strin
 );
 void mock.module("../src/capture.ts", () => ({ capturePage }));
 
-const captureStyles = mock(() =>
+const captureStyles = mock((): Promise<StyleCaptureResult> =>
   Promise.resolve({
-    elements: [] as CapturedStyle[],
-    uaDefaults: {} as Record<string, Record<string, string>>,
-    mediaQueries: [] as string[],
-    customProperties: {} as Record<string, string>,
-    documentStyles: { "background-color": "rgb(1, 2, 3)" } as Record<string, string>,
+    elements: [],
+    uaDefaults: {},
+    mediaQueries: [],
+    customProperties: {},
+    documentStyles: { "background-color": "rgb(1, 2, 3)" },
   }),
 );
 void mock.module("../src/style-capture.ts", () => ({ captureStyles }));
 
 const extractMedia = mock(
   (
-    _page?: unknown,
-    _base?: unknown,
-    _uaDefaults?: unknown,
+    _page?: ImportPage,
+    _base?: CapturedStyle[],
+    _uaDefaults?: Record<string, Record<string, string>>,
     _queries?: readonly string[],
-    _options?: Record<string, unknown>,
-  ) =>
+    _options?: ExtractMediaOptions,
+  ): Promise<MediaExtractionResult> =>
     Promise.resolve({
-      breakpoints: { "--md": "(max-width: 768px)" } as Record<string, string>,
+      breakpoints: { "--md": "(max-width: 768px)" },
       deltas: {},
     }),
 );
@@ -67,20 +76,20 @@ const collectAssets = mock(() =>
 );
 void mock.module("../src/asset-collect.ts", () => ({ collectAssets }));
 
-const downloadAssets = mock(() =>
+const downloadAssets = mock((): Promise<DownloadResult> =>
   Promise.resolve({
     rewriteMap: new Map([
       ["https://site.example/hero.jpg", "/assets/images/hero.jpg"],
       ["https://site.example/font.woff2", "/assets/fonts/font.woff2"],
     ]),
     failed: ["https://site.example/broken.png"],
-    skipped: [] as string[],
+    skipped: [],
     totalBytes: 2048,
   }),
 );
 void mock.module("../src/asset-download.ts", () => ({ downloadAssets }));
 
-const emitMultiPageProject = mock((_opts: Record<string, unknown>) =>
+const emitMultiPageProject = mock((_opts: MultiEmitOptions) =>
   Promise.resolve({
     classesStripped: 0,
     files: ["project.json", "a", "b"],
@@ -96,7 +105,11 @@ const componentize = mock(() => ({
 void mock.module("../src/componentize.ts", () => ({ componentize }));
 
 const aiComponentize = mock(
-  (_heuristic: unknown, _opts: Record<string, unknown>, onProgress?: (msg: string) => void) => {
+  (
+    _heuristic: ComponentizeResult,
+    _opts: AiComponentizeOptions,
+    onProgress?: (msg: string) => void,
+  ) => {
     onProgress?.("Renamed component-div-0 → hero-banner");
     return Promise.resolve({
       components: new Map([["hero-banner", { tagName: "hero-banner" }]]),
@@ -106,33 +119,11 @@ const aiComponentize = mock(
 );
 void mock.module("../src/ai-componentize.ts", () => ({ aiComponentize }));
 
-/**
- * The shape `verifyProject` answers with, spelled out so a per-test override can populate the
- * arrays. Inference from the default implementation types them `never[]`, which then rejects the
- * very cases worth testing — a page that logged console errors, a build that reported one.
- */
-interface FakeVerifyResult {
-  pages: {
-    route: string;
-    sourceUrl: string;
-    fidelity: number;
-    mismatchedPixels: number;
-    totalPixels: number;
-    diffImagePath: string;
-    originalScreenshotPath: string;
-    renderedScreenshotPath: string;
-    consoleErrors: string[];
-    failedRequests: string[];
-    error?: string;
-  }[];
-  averageFidelity: number;
-  reportDir: string;
-  buildErrors: string[];
-  passed: boolean;
-}
-
-const verifyProject = mock((_opts: Record<string, unknown>): Promise<FakeVerifyResult> => {
-  (_opts.onProgress as ((msg: string) => void) | undefined)?.("Building site...");
+/* Annotated with the real VerifyResult so a per-test override can populate the arrays: inference
+   from the default implementation types them `never[]`, which then rejects the very cases worth
+   testing — a page that logged console errors, a build that reported one. */
+const verifyProject = mock((opts: VerifyOptions): Promise<VerifyResult> => {
+  opts.onProgress?.("Building site...");
   return Promise.resolve({
     pages: [
       {
@@ -165,8 +156,8 @@ const page = (title: string, extra?: JxElement[]): JxElement => ({
   ],
 });
 
-const crawlSite = mock((_opts: Record<string, unknown>) => {
-  (_opts.onProgress as ((msg: string) => void) | undefined)?.("  [1/10] Capturing...");
+const crawlSite = mock((opts: CrawlOptions): Promise<CrawlResult> => {
+  opts.onProgress?.("  [1/10] Capturing...");
   return Promise.resolve({
     pages: [
       {
@@ -187,10 +178,10 @@ const crawlSite = mock((_opts: Record<string, unknown>) => {
         screenshot: new Uint8Array([1, 2, 3]),
       },
     ],
-    breakpoints: { "--sm": "(max-width: 640px)" } as Record<string, string> | undefined,
+    breakpoints: { "--sm": "(max-width: 640px)" },
     skippedByRobots: ["https://site.example/admin"],
     skippedByNodeCap: ["https://site.example/huge"],
-    fontFaceRules: [] as string[],
+    fontFaceRules: [],
     fontRewriteMap: new Map<string, string>(),
     styleTokens: undefined,
   });
@@ -198,6 +189,15 @@ const crawlSite = mock((_opts: Record<string, unknown>) => {
 void mock.module("../src/crawl.ts", () => ({ crawlSite }));
 
 const { importSite } = await import("../src/run.ts");
+
+/** The arguments of one recorded call (default: the first), failing the test if it never happened. */
+function callArgs<Args extends unknown[]>(calls: Args[], index = 0): Args {
+  const args = calls.at(index);
+  if (args === undefined) {
+    throw new Error(`the mock has no call at index ${index}`);
+  }
+  return args;
+}
 
 interface ProgressEvent {
   phase: string;
@@ -370,9 +370,7 @@ describe("importSite — single-page mode", () => {
     });
     await importSite({ url: "https://site.example/", outDir: freshOutDir(), maxDepth: 0 });
     expect(extractMedia).toHaveBeenCalled();
-    const emitOpts = emitMultiPageProject.mock.calls[0]?.[0] as {
-      breakpoints?: Record<string, string>;
-    };
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
     expect(emitOpts.breakpoints).toEqual({ "--md": "(max-width: 768px)" });
   });
 
@@ -445,7 +443,7 @@ describe("importSite — single-page mode", () => {
       maxDepth: 0,
       breakpoints: { mode: "explicit", rounding: "nearest", widths: [768] },
     });
-    const options = extractMedia.mock.calls.at(-1)?.[4] as { policy?: unknown } | undefined;
+    const [_page, _base, _uaDefaults, _queries, options] = callArgs(extractMedia.mock.calls, -1);
     expect(options?.policy).toEqual({ mode: "explicit", rounding: "nearest", widths: [768] });
   });
 
@@ -505,9 +503,7 @@ describe("importSite — single-page mode", () => {
       events.push(e);
     });
     expect(events.some((e) => e.message.includes("design tokens"))).toBe(true);
-    const emitOpts = emitMultiPageProject.mock.calls[0]?.[0] as {
-      styleTokens?: Record<string, string>;
-    };
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
     expect(emitOpts.styleTokens).toEqual({ "--ink": "rgb(4, 5, 6)" });
   });
 
@@ -525,9 +521,7 @@ describe("importSite — single-page mode", () => {
       events.push(e);
     });
     expect(events.some((e) => e.message.includes("No responsive breakpoints"))).toBe(true);
-    const emitOpts = emitMultiPageProject.mock.calls[0]?.[0] as {
-      breakpoints?: Record<string, string>;
-    };
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
     expect(emitOpts.breakpoints).toBeUndefined();
   });
 
@@ -550,20 +544,13 @@ describe("importSite — single-page mode", () => {
     });
     expect(componentize).toHaveBeenCalled();
     expect(aiComponentize).toHaveBeenCalled();
-    const aiOpts = aiComponentize.mock.calls[0]?.[1] as {
-      apiKey: string;
-      baseUrl?: string;
-      model?: string;
-    };
+    const [, aiOpts] = callArgs(aiComponentize.mock.calls);
     expect(aiOpts).toEqual({
       apiKey: "sk-test",
       baseUrl: "http://llm.local/v1",
       model: "test-model",
     });
-    const emitOpts = emitMultiPageProject.mock.calls[0]?.[0] as {
-      componentizeOptions: unknown;
-      precomputedComponents?: { components: Map<string, unknown> };
-    };
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
     expect(emitOpts.componentizeOptions).toBe(false);
     expect(emitOpts.precomputedComponents?.components.has("hero-banner")).toBe(true);
   });
@@ -582,10 +569,7 @@ describe("importSite — single-page mode", () => {
     expect(componentize).toHaveBeenCalled();
     expect(aiComponentize).not.toHaveBeenCalled();
     // Emit falls back to its own heuristic pass: no precomputed components handed over.
-    const emitOpts = emitMultiPageProject.mock.calls[0]?.[0] as {
-      componentizeOptions: unknown;
-      precomputedComponents?: unknown;
-    };
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
     expect(emitOpts.precomputedComponents).toBeUndefined();
     expect(emitOpts.componentizeOptions).toEqual({});
   });
@@ -600,6 +584,10 @@ describe("importSite — single-page mode", () => {
     });
     expect(componentize).not.toHaveBeenCalled();
     expect(aiComponentize).not.toHaveBeenCalled();
+    // Emit is told not to componentize either, and is handed nothing precomputed.
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
+    expect(emitOpts.componentizeOptions).toBe(false);
+    expect(emitOpts.precomputedComponents).toBeUndefined();
   });
 
   test("verify captures a reference screenshot and reports fidelity", async () => {
@@ -612,14 +600,10 @@ describe("importSite — single-page mode", () => {
     /* The reference is shot through the page itself now — reaching into verify.ts for it would
        have put a compiler and Bun.serve in the portable pipeline's import graph. */
     expect(pageScreenshot).toHaveBeenCalledWith({ fullPage: true, type: "png" });
-    const verifyOpts = verifyProject.mock.calls[0]?.[0] as {
-      threshold: number;
-      minFidelity: number;
-      fullPage: boolean;
-      browser?: unknown;
-    };
+    const [verifyOpts] = callArgs(verifyProject.mock.calls);
     expect(verifyOpts.threshold).toBe(0.2);
-    expect(verifyOpts.browser).toBe(fakeBrowser);
+    // An identity check on an opaque handle: the mocked launchBrowser's stand-in is no Browser.
+    expect<unknown>(verifyOpts.browser).toBe(fakeBrowser);
     // The whole scrollable page by default — the old viewport-only diff looked at the first 900px.
     expect(verifyOpts.fullPage).toBe(true);
     /* Per page, not just the average: "average fidelity 97.5%" is a fact nobody can act on, and
@@ -784,7 +768,7 @@ describe("importSite — crawl mode", () => {
       (e) => events.push(e),
     );
 
-    const crawlOpts = crawlSite.mock.calls[0]?.[0] as Record<string, unknown>;
+    const [crawlOpts] = callArgs(crawlSite.mock.calls);
     expect(crawlOpts.maxDepth).toBe(2);
     expect(crawlOpts.maxPages).toBe(10);
     expect(crawlOpts.skipStyles).toBe(true);
@@ -794,7 +778,7 @@ describe("importSite — crawl mode", () => {
     expect(crawlOpts.captureScreenshots).toBe(false);
 
     // Two structurally-identical header/footer pages → a shared layout is detected and emitted.
-    const emitOpts = emitMultiPageProject.mock.calls[0]?.[0] as { layout?: JxElement };
+    const [emitOpts] = callArgs(emitMultiPageProject.mock.calls);
     expect(emitOpts.layout).toBeDefined();
     const phases = new Set(events.map((e) => e.phase));
     expect(phases.has("layout")).toBe(true);
@@ -814,10 +798,7 @@ describe("importSite — crawl mode", () => {
       outDir: freshOutDir(),
       verify: {},
     });
-    const verifyOpts = verifyProject.mock.calls[0]?.[0] as {
-      pages: Map<string, unknown>;
-      threshold: number;
-    };
+    const [verifyOpts] = callArgs(verifyProject.mock.calls);
     // Only the page that has a screenshot participates.
     expect([...verifyOpts.pages.keys()]).toEqual(["pages/about.json"]);
     expect(verifyOpts.threshold).toBe(0.15);
@@ -827,7 +808,7 @@ describe("importSite — crawl mode", () => {
      * comparison captured at the viewport and the other half full-page is not a comparison at all:
      * the diff pads the shorter image, so everything below the fold counts as a mismatch.
      */
-    const crawlOpts = crawlSite.mock.calls.at(-1)?.[0] as { fullPageScreenshots: boolean };
+    const [crawlOpts] = callArgs(crawlSite.mock.calls, -1);
     expect(crawlOpts.fullPageScreenshots).toBe(true);
   });
 

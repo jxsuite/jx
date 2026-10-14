@@ -6,35 +6,62 @@
  * queryContentType, findEntry) used by both the classes and the server endpoint.
  */
 
+import { isNonNullObject, isRef, isString } from "@jxsuite/schema/guards";
 import { localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  ContentFieldValue,
+  JsonObject,
+  JsonValue,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 import { parseComparable } from "./dates.ts";
 import type { ContentLoaderEntry } from "./types.ts";
 
+/** One filter rule, as `ContentCollection.class.json` declares an item of its `filter` parameter. */
+export interface FilterRule {
+  field: string;
+  op: string;
+  value?: ContentFieldValue;
+}
+
+/** One sort key, as `ContentCollection.class.json` declares an item of its `sort` parameter. */
+export interface SortRule {
+  field: string;
+  order?: string;
+}
+
+/** What {@link queryContentType} narrows a content type by. */
+export interface ContentQuery {
+  /** Explicit rules, or the `{ field: value }` shorthand that means `==` on every key. */
+  filter?: FilterRule[] | JsonObject;
+  sort?: SortRule | SortRule[];
+  limit?: number;
+}
+
+/**
+ * The loaded project the runtime hands a content class: the `content` section (the
+ * Content.projectData result) under its section key, and the project config.
+ */
+interface ContentProjectContext {
+  content?: Map<string, ContentLoaderEntry[]>;
+  /** The project config, for the i18n routing rules a locale prefix comes from. */
+  config?: ProjectConfig | null;
+}
+
 interface CollectionConfig {
   contentType?: string;
-  filter?: unknown;
-  sort?: unknown;
-  limit?: number;
-  _project?: {
-    /** The loaded `content` section (Content.projectData result) under its section key. */
-    content?: Map<string, ContentLoaderEntry[]>;
-    [k: string]: unknown;
-  };
-  [k: string]: unknown;
+  filter?: FilterRule[] | JsonObject | null;
+  sort?: SortRule | SortRule[] | null;
+  limit?: number | null;
+  _project?: ContentProjectContext;
 }
 
 interface EntryConfig {
   contentType?: string;
-  id?: unknown;
+  /** An entry id, or a `{ $ref: "#/$params/<name>" }` binding to one of the route's path params. */
+  id?: JsonValue;
   field?: string;
-  _project?: {
-    /** The loaded `content` section (Content.projectData result) under its section key. */
-    content?: Map<string, ContentLoaderEntry[]>;
-    /** The project config, for the i18n routing rules a locale prefix comes from. */
-    config?: ProjectConfig | null;
-    [k: string]: unknown;
-  };
+  _project?: ContentProjectContext;
   _document?: {
     route?: {
       _pathParams?: Record<string, string>;
@@ -43,24 +70,27 @@ interface EntryConfig {
       /** The language this route serves, when the project declares any (§13.4). */
       locale?: string | null;
     };
-    [k: string]: unknown;
   };
-  [k: string]: unknown;
 }
 
 // ─── Query Functions ────────────────────────────────────────────────────────
 
+/** `Array.prototype.includes`, with a rule that names no value looking for `undefined`. */
+function includesValue(
+  items: readonly (ContentFieldValue | undefined)[],
+  value: ContentFieldValue | undefined,
+): boolean {
+  return items.includes(value);
+}
+
 /**
  * Evaluate a single filter rule against an entry.
  *
- * @param {{ field: string; op: string; value?: unknown }} rule
+ * @param {FilterRule} rule
  * @param {ContentLoaderEntry} entry
  * @returns {boolean}
  */
-export function evaluateFilterRule(
-  rule: { field: string; op: string; value?: unknown },
-  entry: ContentLoaderEntry,
-) {
+export function evaluateFilterRule(rule: FilterRule, entry: ContentLoaderEntry) {
   const actual = rule.field === "id" ? entry.id : entry.data[rule.field];
   switch (rule.op) {
     case "==": {
@@ -77,15 +107,15 @@ export function evaluateFilterRule(
     }
     case "contains": {
       if (Array.isArray(actual)) {
-        return actual.includes(rule.value);
+        return includesValue(actual, rule.value);
       }
-      return typeof actual === "string" && actual.includes(String(rule.value ?? ""));
+      return isString(actual) && actual.includes(String(rule.value ?? ""));
     }
     case "not contains": {
       if (Array.isArray(actual)) {
-        return !actual.includes(rule.value);
+        return !includesValue(actual, rule.value);
       }
-      return typeof actual === "string" && !actual.includes(String(rule.value ?? ""));
+      return isString(actual) && !actual.includes(String(rule.value ?? ""));
     }
     /*
      * `Number()` on both sides made every date comparison false, since NaN compares false against
@@ -118,29 +148,18 @@ export function evaluateFilterRule(
  * Query a loaded content type with filter, sort, and limit.
  *
  * @param {ContentLoaderEntry[]} entries - Full content type entries
- * @param {{
- *   filter?: Record<string, unknown> | Array<{ field: string; op: string; value?: unknown }>;
- *   sort?: { field: string; order?: string } | Array<{ field: string; order?: string }>;
- *   limit?: number;
- * }} [query]
+ * @param {ContentQuery} [query]
  * @returns {ContentLoaderEntry[]} Filtered, sorted, limited entries
  */
-export function queryContentType(
-  entries: ContentLoaderEntry[],
-  query: {
-    filter?: Record<string, unknown> | { field: string; op: string; value?: unknown }[];
-    sort?: { field: string; order?: string } | { field: string; order?: string }[];
-    limit?: number;
-  } = {},
-) {
+export function queryContentType(entries: ContentLoaderEntry[], query: ContentQuery = {}) {
   let result = [...entries];
 
   // Filter
   if (query.filter) {
-    let rules: { field: string; op: string; value?: unknown }[];
+    let rules: FilterRule[];
     if (Array.isArray(query.filter)) {
       rules = query.filter;
-    } else if (typeof query.filter === "object") {
+    } else if (isNonNullObject(query.filter)) {
       rules = Object.entries(query.filter).map(([field, value]) => ({
         field,
         op: "==",
@@ -157,8 +176,8 @@ export function queryContentType(
     const sortRules = Array.isArray(query.sort) ? query.sort : [query.sort];
     result.sort((a, b) => {
       for (const { field, order = "asc" } of sortRules) {
-        const aVal = field === "id" ? a.id : ((a.data[field] ?? "") as string | number);
-        const bVal = field === "id" ? b.id : ((b.data[field] ?? "") as string | number);
+        const aVal = field === "id" ? a.id : (a.data[field] ?? "");
+        const bVal = field === "id" ? b.id : (b.data[field] ?? "");
         if (aVal < bVal) {
           return order === "asc" ? -1 : 1;
         }
@@ -204,17 +223,17 @@ export class ContentCollection {
     if (!entries) {
       return [];
     }
-    return queryContentType(entries, {
-      ...(filter != null && {
-        filter: filter as
-          | Record<string, unknown>
-          | { field: string; op: string; value?: unknown }[],
-      }),
-      ...(sort != null && {
-        sort: sort as { field: string; order?: string } | { field: string; order?: string }[],
-      }),
-      ...(limit != null && { limit }),
-    });
+    const query: ContentQuery = {};
+    if (filter != null) {
+      query.filter = filter;
+    }
+    if (sort != null) {
+      query.sort = sort;
+    }
+    if (limit != null) {
+      query.limit = limit;
+    }
+    return queryContentType(entries, query);
   }
 }
 
@@ -232,7 +251,7 @@ export class ContentEntry {
   #pageRoute(): string | undefined {
     const { _project, _document } = this.config;
     let path = _document?.route?.urlPattern;
-    if (typeof path !== "string") {
+    if (!isString(path)) {
       return undefined;
     }
     const { i18n } = resolveI18n(_project?.config ?? {});
@@ -263,7 +282,7 @@ export class ContentEntry {
     const wanted = _document?.route?.locale;
     const localized = entries.some((e: ContentLoaderEntry) => e._meta?.locale !== undefined);
     const scoped =
-      localized && typeof wanted === "string"
+      localized && isString(wanted)
         ? entries.filter((e: ContentLoaderEntry) => e._meta?.locale === wanted)
         : entries;
 
@@ -280,12 +299,8 @@ export class ContentEntry {
     }
 
     let resolvedId = id;
-    if (
-      resolvedId &&
-      typeof resolvedId === "object" &&
-      (resolvedId as { $ref?: string }).$ref?.startsWith("#/$params/")
-    ) {
-      const paramName = (resolvedId as { $ref: string }).$ref.replace("#/$params/", "");
+    if (isRef(resolvedId) && resolvedId.$ref.startsWith("#/$params/")) {
+      const paramName = resolvedId.$ref.replace("#/$params/", "");
       resolvedId = _document?.route?._pathParams?.[paramName];
     }
     if (!resolvedId) {
@@ -295,6 +310,7 @@ export class ContentEntry {
     if (field && field !== "id") {
       return scoped.find((e: ContentLoaderEntry) => e.data[field] === resolvedId) ?? null;
     }
-    return findEntry(scoped, resolvedId as string);
+    // Entry ids are strings, so an id of any other type matches no entry.
+    return isString(resolvedId) ? findEntry(scoped, resolvedId) : null;
   }
 }

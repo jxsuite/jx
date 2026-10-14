@@ -12,16 +12,16 @@
 
 import { evaluatePermission } from "./authorize.ts";
 import { createJxAuth, getAuthMigrations, getSessionContext } from "./server.ts";
+import type { HostEnv } from "@jxsuite/connector/provider-utils";
 import type {
   AuthorizeDecision,
   AuthorizeInput,
+  ConnectionDef,
   JxServerContext,
   SessionInfo,
 } from "@jxsuite/connector/types";
 import type { AuthConnectorProvider, JxAuthInstance } from "./server.ts";
 import type { AuthProjectConfig, AuthSection } from "./config.ts";
-
-type Env = Record<string, unknown>;
 
 export interface AuthMountOptions {
   /** Route subtree this mount owns. Defaults to "/_jx/auth". */
@@ -29,8 +29,7 @@ export interface AuthMountOptions {
   /** Extension-contributed project sections (needs `auth` and `connections`). */
   sections: {
     auth?: AuthSection;
-    connections?: Record<string, { provider: string; [key: string]: unknown }>;
-    [key: string]: unknown;
+    connections?: Record<string, ConnectionDef>;
   };
   /** Provider implementations keyed by `connector.provider` id (dev stand-ins applied by hosts). */
   connectors?: Record<string, AuthConnectorProvider>;
@@ -40,7 +39,7 @@ export interface AuthMountOptions {
 
 /** Per-isolate mount state: Better Auth instances memoized per env identity. */
 export interface AuthMountState {
-  auths: WeakMap<object, Promise<JxAuthInstance>>;
+  auths: WeakMap<HostEnv, Promise<JxAuthInstance>>;
 }
 
 /** Create fresh mount state (exported for hosts that dispatch without `Auth.mount`). */
@@ -48,11 +47,14 @@ export function createAuthMountState(): AuthMountState {
   return { auths: new WeakMap() };
 }
 
-/** The project-config slice the auth modules need, rebuilt from the mount's section manifest. */
-function configFromSections(options: AuthMountOptions): {
+/** The auth section plus the project-config slice the auth modules resolve it against. */
+interface AuthMountConfig {
   section: AuthSection;
   projectConfig: AuthProjectConfig;
-} {
+}
+
+/** The project-config slice the auth modules need, rebuilt from the mount's section manifest. */
+function configFromSections(options: AuthMountOptions): AuthMountConfig {
   const section = options.sections.auth ?? {};
   return {
     projectConfig: { auth: section, connections: options.sections.connections ?? {} },
@@ -64,7 +66,7 @@ function configFromSections(options: AuthMountOptions): {
 export function getAuthForEnv(
   state: AuthMountState,
   options: AuthMountOptions,
-  env: Env,
+  env: HostEnv,
 ): Promise<JxAuthInstance> {
   const memo = state.auths.get(env);
   if (memo) {
@@ -84,14 +86,14 @@ export function getAuthForEnv(
  * Handle one /_jx/auth request by delegating to Better Auth's fetch handler.
  *
  * @param {Request} request
- * @param {Env} env - Worker env (bindings + vars; the signing secret lives here)
+ * @param {HostEnv} env - Worker env (bindings + vars; the signing secret lives here)
  * @param {AuthMountOptions} options
  * @param {AuthMountState} [state] - Memoized instances; omit for a throwaway state
  * @returns {Promise<Response>}
  */
 export async function handleAuthRequest(
   request: Request,
-  env: Env,
+  env: HostEnv,
   options: AuthMountOptions,
   state: AuthMountState = createAuthMountState(),
 ): Promise<Response> {
@@ -115,7 +117,7 @@ export const Auth = {
     ctx.auth = {
       authorize: (input: AuthorizeInput): Promise<AuthorizeDecision> =>
         Promise.resolve(evaluatePermission(input)),
-      getSession: async (request: Request, env: Env): Promise<SessionInfo | null> => {
+      getSession: async (request: Request, env: HostEnv): Promise<SessionInfo | null> => {
         try {
           const auth = await getAuthForEnv(state, options, env);
           return await getSessionContext(auth, request);
@@ -128,37 +130,37 @@ export const Auth = {
         }
       },
     };
-    return (request: Request, env: Env): Promise<Response> =>
+    return (request: Request, env: HostEnv): Promise<Response> =>
       handleAuthRequest(request, env, options, state);
   },
 
   /** Static `projectData` capability: expose the auth section as `_project.auth`. */
-  projectData(sectionValue: unknown): AuthSection {
-    const section = (sectionValue ?? {}) as AuthSection;
-    return { ...section };
+  projectData(sectionValue: AuthSection | null | undefined): AuthSection {
+    return { ...sectionValue };
   },
 
   /**
    * Static `deploySchema` capability (section-owner variant): compile Better Auth's additive
    * system-table migration into push steps the host composes after the connector plan.
    *
-   * @param {unknown} sectionValue - The project.json `auth` section value
-   * @param {unknown} projectConfig - The full project config (connection lookup)
+   * @param {AuthSection | null | undefined} sectionValue - The project.json `auth` section value
+   * @param {AuthProjectConfig | null | undefined} projectConfig - The full project config
+   *   (connection lookup)
    * @param {object} options - { env, dryRun?, connection?, connectors? }
    * @returns {Promise<object>} { steps, applied, warnings, connection }
    */
   async deploySchema(
-    sectionValue: unknown,
-    projectConfig: unknown,
+    sectionValue: AuthSection | null | undefined,
+    projectConfig: AuthProjectConfig | null | undefined,
     options: {
-      env: Env;
+      env: HostEnv;
       dryRun?: boolean;
       connection?: string;
       connectors?: Record<string, AuthConnectorProvider>;
     },
   ) {
-    const section = (sectionValue ?? {}) as AuthSection;
-    const config = (projectConfig ?? {}) as AuthProjectConfig;
+    const section = sectionValue ?? {};
+    const config = projectConfig ?? {};
     const dryRun = options.dryRun === true;
     const migrations = await getAuthMigrations(section, config, options.env, {
       connectors: options.connectors,

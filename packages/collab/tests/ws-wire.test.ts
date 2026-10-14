@@ -209,7 +209,7 @@ describe("two clients", () => {
     );
     await settle();
     expect(yDocToJson(a!.doc)).toEqual(yDocToJson(b!.doc));
-    expect((yDocToJson(a!.doc) as { children: unknown[] }).children).toHaveLength(2);
+    expect(yDocToJson(a!.doc).children).toHaveLength(2);
   });
 
   test("awareness states relay to the other connection and drop on close", async () => {
@@ -224,9 +224,7 @@ describe("two clients", () => {
     a!.awareness.setLocalState({ focusedPath: "pages/index.json", user: { login: "octocat" } });
     await settle();
     const seenByB = [...b!.awareness.getStates().values()];
-    expect(
-      seenByB.some((s) => (s as { user?: { login?: string } }).user?.login === "octocat"),
-    ).toBe(true);
+    expect(seenByB.some((s) => s["user"]?.login === "octocat")).toBe(true);
 
     connA.destroy();
     await settle();
@@ -256,7 +254,7 @@ describe("two clients", () => {
       structureMap(reader!.doc).set("tagName", "hax");
     }, LOCAL_ORIGIN);
     await settle();
-    expect((yDocToJson(writer!.doc) as { tagName?: string }).tagName).toBe("main");
+    expect(yDocToJson(writer!.doc).tagName).toBe("main");
   });
 });
 
@@ -351,9 +349,15 @@ describe("lifecycle", () => {
   test("openDoc gives up after openTimeoutMs when the server never answers", async () => {
     // A "server" that accepts the socket but swallows every frame: the "open" control goes
     // Nowhere, so no "opened" reply can resolve the open — only the client-side timeout can.
-    const silentHost = {
+    const silentHost: CollabHost = {
       connect: () => ({ close: () => {}, handleMessage: () => {} }),
-    } as unknown as CollabHost;
+      destroy: () => {},
+      destroyRoomIfEmpty: () => {},
+      markPersisted: () => {},
+      resetDoc: () => {},
+      sourceOf: () => null,
+      subscriberCount: () => 0,
+    };
     const connection = createWsCollabConnection({
       openTimeoutMs: 1,
       url: "ws://silent",
@@ -573,11 +577,9 @@ describe("lifecycle", () => {
     const b = await fx.connect().openDoc("pages/index.json");
     await b!.whenSynced;
     await settle();
-    expect((yDocToJson(b!.doc) as { tagName?: string }).tagName).toBe("edited-offline");
+    expect(yDocToJson(b!.doc).tagName).toBe("edited-offline");
     const seenByB = [...b!.awareness.getStates().values()];
-    expect(
-      seenByB.some((s) => (s as { user?: { login?: string } }).user?.login === "octocat"),
-    ).toBe(true);
+    expect(seenByB.some((s) => s["user"]?.login === "octocat")).toBe(true);
   });
 
   test("a socket error is a no-op — the close handler owns retry", async () => {

@@ -36,8 +36,8 @@ import {
 import { canvasPerf, resetCanvasPerf } from "../src/canvas/canvas-perf";
 import { toRaw } from "../src/reactivity";
 
-import type { CanvasSurface } from "../src/canvas/canvas-surface";
 import type { CanvasPanel } from "../src/types";
+import { isNodeObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 
@@ -63,11 +63,43 @@ const ctxCalls = {
 };
 
 function doc(): JxMutableNode {
-  return toRaw(tab.doc.document) as JxMutableNode;
+  return toRaw(tab.doc.document);
+}
+
+/** A node's children array; throws for a whole-slot repeater, which no fixture here roots. */
+function childrenOf(node: JxMutableNode): (JxMutableNode | string)[] {
+  const { children } = node;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected a children array, not a whole-slot repeater");
+  }
+  return children;
+}
+
+/** The element node at `children[i]` of `node`; throws when that entry is text or missing. */
+function childOf(node: JxMutableNode, i: number): JxMutableNode {
+  const entry = childrenOf(node)[i];
+  if (!isNodeObject(entry)) {
+    throw new TypeError(`expected an element node at children[${i}]`);
+  }
+  return entry;
 }
 
 function child(i: number): JxMutableNode {
-  return (doc().children as JxMutableNode[])[i]!;
+  return childOf(doc(), i);
+}
+
+/** A complete artboard over `canvas`; classifyOps reads only `ready`, the apply path `canvas`. */
+function panelOn(canvas: HTMLElement, ready = true): CanvasPanel {
+  return {
+    _width: null,
+    canvas,
+    element: document.createElement("div"),
+    mediaName: "",
+    ready,
+    renderScope: null,
+    scrollContainer: document.createElement("div"),
+    viewport: document.createElement("div"),
+  };
 }
 
 beforeEach(() => {
@@ -87,7 +119,7 @@ beforeEach(() => {
       tagName: "div",
     },
     id: `patcher-test-${tabCount}`,
-  }) as Tab;
+  });
 
   const canvas = document.createElement("div");
   rootEl = document.createElement("div");
@@ -105,11 +137,7 @@ beforeEach(() => {
   canvas.append(rootEl);
   document.body.append(canvas);
 
-  panel = {
-    canvas,
-    mediaName: "",
-    ready: true,
-  } as unknown as CanvasPanel;
+  panel = panelOn(canvas);
   canvasPanels.push(panel);
 
   tab.session.ui.canvasMode = canvasMode;
@@ -168,12 +196,12 @@ describe("classifyOps", () => {
       "style-on-cases-path",
     );
     // Give the doc a $map container: children[3] = ul with a mapped-array template
-    (doc().children as JxMutableNode[]).push({
+    childrenOf(doc()).push({
       children: {
         $prototype: "Array",
         items: ["a", "b"],
         map: { tagName: "li", textContent: "item" },
-      } as unknown as JxMutableNode[],
+      },
       tagName: "ul",
     });
     expect(
@@ -183,11 +211,11 @@ describe("classifyOps", () => {
 
   test("array member node: structural ops on it patch; structural ops inside its template escalate", () => {
     // Array pseudo-element as a member at children[3].
-    (doc().children as JxMutableNode[]).push({
+    childrenOf(doc()).push({
       $prototype: "Array",
       items: ["a", "b"],
       map: { children: [{ tagName: "span" }], tagName: "li" },
-    } as unknown as JxMutableNode);
+    });
 
     // Removing/moving the array node itself is a normal sibling splice → patchable.
     expect(classifyOps(tab, [{ op: "remove", path: ["children", 3] }]).patchable).toBe(true);
@@ -240,7 +268,7 @@ describe("classifyOps", () => {
     // Component INSTANCE nested inside the document.
     doc().tagName = "my-app";
     expect(classifyOps(tab, [{ index: 0, op: "insert", parentPath: [] }]).patchable).toBe(true);
-    (doc().children as JxMutableNode[]).push({ children: [{ tagName: "p" }], tagName: "x-card" });
+    childrenOf(doc()).push({ children: [{ tagName: "p" }], tagName: "x-card" });
     expect(classifyOps(tab, [{ index: 0, op: "insert", parentPath: ["children", 3] }]).reason).toBe(
       "structure-in-custom-element",
     );
@@ -250,7 +278,7 @@ describe("classifyOps", () => {
 describe("consumed-document handshake", () => {
   test("consumePatchedDocument is one-shot per marked reference, per pane", () => {
     const consumer = getPatchConsumer()!;
-    consumer.markConsumed(toRaw(tab.doc.document) as object, tab);
+    consumer.markConsumed(toRaw(tab.doc.document), tab);
     expect(consumePatchedDocument(tab.doc.document, PRIMARY_PANE)).toBe(true);
     expect(canvasPerf.skippedFullRenders).toBe(1);
     expect(consumePatchedDocument(tab.doc.document, PRIMARY_PANE)).toBe(false);
@@ -268,7 +296,7 @@ describe("consumed-document handshake", () => {
     workspace.panes.find((pane) => pane.id === SECONDARY_PANE)!.activeTabId = tab.id;
 
     const consumer = getPatchConsumer()!;
-    consumer.markConsumed(toRaw(tab.doc.document) as object, tab);
+    consumer.markConsumed(toRaw(tab.doc.document), tab);
     expect(consumePatchedDocument(tab.doc.document, PRIMARY_PANE)).toBe(true);
     expect(consumePatchedDocument(tab.doc.document, SECONDARY_PANE)).toBe(true);
     expect(canvasPerf.skippedFullRenders).toBe(2);
@@ -310,7 +338,7 @@ describe("consumed-document handshake", () => {
     // Both stages DISPLAY the tab — that is what a lens is.
     expect(surfacesShowingTab(tab).map((s) => s.paneId)).toEqual([PRIMARY_PANE, SECONDARY_PANE]);
 
-    getPatchConsumer()!.markConsumed(toRaw(tab.doc.document) as object, tab);
+    getPatchConsumer()!.markConsumed(toRaw(tab.doc.document), tab);
 
     /* THE LENS IS ASKED FIRST, and the order is the assertion. A mark is a `Set` of pane ids; ask
        the pane that OWNS the mark first and the set empties, so the lens's answer is "no mark for
@@ -362,12 +390,12 @@ describe("the gate is per pane, not per app", () => {
    * focused. This is the shape the whole section is about: the edit under test belongs to a stage
    * nobody is looking at.
    */
-  function splitWithSecondPaneFocused(): { otherTab: Tab; otherSurface: CanvasSurface } {
+  function splitWithSecondPaneFocused() {
     const otherTab = openTab({
       document: { children: [], tagName: "div" },
       documentPath: "/p/other.js",
       id: `patcher-other-${tabCount}`,
-    }) as Tab;
+    });
     otherTab.session.ui.canvasMode = "source";
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
     expect(workspace.activePaneId).toBe(SECONDARY_PANE);
@@ -382,7 +410,7 @@ describe("the gate is per pane, not per app", () => {
 
   test("the other pane's mid-mount canvas cannot refuse this pane's edit", () => {
     const { otherSurface } = splitWithSecondPaneFocused();
-    otherSurface.panels.push({ canvas: document.createElement("div"), ready: false } as never);
+    otherSurface.panels.push(panelOn(document.createElement("div"), false));
     // The readiness test used to run over one global panel list, so an artboard still mounting in
     // The OTHER pane escalated an edit typed into this one.
     expect(classifyOps(tab, [{ op: "set-style", path: ["children", 0] }]).patchable).toBe(true);
@@ -524,7 +552,7 @@ describe("rich-commit batch subsumption", () => {
   test("set-text + set-prop(children) on the SAME node classifies patchable", () => {
     // Simulate the post-mutation state a rich inline commit leaves behind: the node now HAS
     // Children (classification runs after the mutation), which a lone set-text would reject.
-    const node = (tab.doc.document.children as Record<string, unknown>[])[0]!;
+    const node = childOf(tab.doc.document, 0);
     node.children = ["a ", { tagName: "strong", textContent: "b" }];
     delete node.textContent;
 
@@ -550,7 +578,7 @@ describe("rich-commit batch subsumption", () => {
 describe("custom-element ancestor classification", () => {
   /** Add an eer-intro-style component child wrapping a rich paragraph (markdown class-directive). */
   function addComponentSubtree() {
-    (doc().children as JxMutableNode[]).push({
+    childrenOf(doc()).push({
       children: [{ children: ["call ", { tagName: "strong", textContent: "now" }], tagName: "p" }],
       tagName: "eer-intro",
     });
@@ -637,7 +665,7 @@ describe("custom-element ancestor classification", () => {
   });
 
   test("a replace under an innerHTML parent or inside a repeater template still escalates", () => {
-    (doc().children as JxMutableNode[]).push({
+    childrenOf(doc()).push({
       children: [{ tagName: "b", textContent: "x" }],
       innerHTML: "<b>x</b>",
       tagName: "div",
@@ -646,11 +674,11 @@ describe("custom-element ancestor classification", () => {
       classifyOps(tab, [{ key: "children", op: "set-prop", path: ["children", 3, "children", 0] }])
         .reason,
     ).toBe("structure-with-innerhtml");
-    (doc().children as JxMutableNode[]).push({
+    childrenOf(doc()).push({
       $prototype: "Array",
       map: { children: [{ tagName: "span" }], tagName: "li" },
       tagName: "ul",
-    } as never);
+    });
     expect(
       classifyOps(tab, [
         { key: "children", op: "set-prop", path: ["children", 4, "map", "children", 0] },

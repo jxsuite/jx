@@ -14,19 +14,21 @@ import { reactive } from "@vue/reactivity";
 import { nextMessageId } from "./message-id.ts";
 import { toChatMessages } from "./messages/convert.ts";
 import { toOpenAIMessages } from "./messages/openai.ts";
-import type { LiveMessage, LiveToolCall, OpenAIMessage, Role } from "./messages/types.ts";
+import type { LiveMessage, LiveToolCall, OpenAIMessage } from "./messages/types.ts";
 import type { StreamUsageEvent } from "./streaming-client.ts";
 import type { ToolResult } from "./tools.ts";
 
 export type ChatState = "idle" | "streaming" | "error";
 
-export type MessageRole = Role;
-
-/** A transcript message: the v1 shape `@jxsuite/ai/messages` reads (specs/ai.md §2.3). */
-export type Message = LiveMessage;
-
-/** A tool call on a transcript message, carrying the outcome its chip renders. */
-export type ToolCallRecord = LiveToolCall;
+/**
+ * The published `@jxsuite/ai/chat-state` names for the transcript types, kept for existing
+ * importers.
+ */
+export type {
+  LiveMessage as Message,
+  LiveToolCall as ToolCallRecord,
+  Role as MessageRole,
+} from "./messages/types.ts";
 
 /**
  * The provider's own count for the last request, and where in the transcript it was taken.
@@ -57,10 +59,10 @@ export interface ChatUsage {
 }
 
 export interface ChatStore {
-  messages: Message[];
+  messages: LiveMessage[];
   status: ChatState;
   streamingContent: string;
-  pendingToolCalls: ToolCallRecord[];
+  pendingToolCalls: LiveToolCall[];
   error: string | null;
   model: string;
   tokenCount: number;
@@ -126,7 +128,7 @@ export function createChatState(opts: { model?: string } = {}) {
     usage: null,
   });
 
-  let _streamingMessage: Message | null = null;
+  let _streamingMessage: LiveMessage | null = null;
 
   /**
    * Add a user message and prepare for streaming response.
@@ -138,12 +140,12 @@ export function createChatState(opts: { model?: string } = {}) {
       return;
     }
 
-    const userMsg = {
+    const userMsg: LiveMessage = {
       id: uid(),
       role: "user",
       content: text,
       timestamp: Date.now(),
-    } as Message;
+    };
     store.messages.push(userMsg);
 
     beginAssistantTurn();
@@ -172,7 +174,7 @@ export function createChatState(opts: { model?: string } = {}) {
       role: "assistant",
       content: "",
       timestamp: Date.now(),
-    } as Message;
+    };
     store.messages.push(_streamingMessage);
     /*
      * Re-read through the reactive proxy so appendDelta / appendToolCallStart mutations notify
@@ -196,7 +198,7 @@ export function createChatState(opts: { model?: string } = {}) {
       toolCallId,
       content,
       timestamp: Date.now(),
-    } as Message);
+    });
   }
 
   /**
@@ -237,12 +239,12 @@ export function createChatState(opts: { model?: string } = {}) {
     if (store.status !== "streaming") {
       return;
     }
-    const tc = {
+    const tc: LiveToolCall = {
       id,
       name,
       arguments: "",
       result: null,
-    } as ToolCallRecord;
+    };
     store.pendingToolCalls.push(tc);
 
     if (_streamingMessage) {
@@ -423,13 +425,16 @@ export function createChatState(opts: { model?: string } = {}) {
     const replayed = sent?.role === "assistant" && Boolean(sent.reasoning_content);
     const unreplayed = replayed || !isCount(usage.reasoningTokens) ? 0 : usage.reasoningTokens;
     const contextTokens = Math.max(0, usage.inputTokens + usage.outputTokens - unreplayed);
-    store.usage = {
+    const recorded: ChatUsage = {
       ...counts,
       contextTokens,
       lastMessageId: store.messages.at(-1)?.id ?? "",
       messageCount: store.messages.length,
-      ...(extra.systemTokens === undefined ? {} : { systemTokens: extra.systemTokens }),
     };
+    if (extra.systemTokens !== undefined) {
+      recorded.systemTokens = extra.systemTokens;
+    }
+    store.usage = recorded;
     store.tokenCount = contextTokens;
   }
 

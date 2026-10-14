@@ -53,7 +53,7 @@ describe("validateDocOrNull", () => {
  */
 describe("applyProjectSchemas guards its payload", () => {
   test("a non-object half is not applied, and the answer says so", async () => {
-    expect(applyProjectSchemas({ document: "boom" as never })).toBe(false);
+    expect(applyProjectSchemas({ document: "boom" })).toBe(false);
     // Core is still in force: the malformed style is still caught.
     const errs = await validateDoc({ style: "color: red", tagName: "div" });
     expect(errs.length).toBeGreaterThan(0);

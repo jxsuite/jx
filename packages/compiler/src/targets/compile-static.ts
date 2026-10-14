@@ -19,14 +19,30 @@ import {
   resolveStaticValue,
   SELF_CLOSING,
 } from "../shared.ts";
+import type { CompileContext } from "../shared.ts";
 import { emitElementModule } from "./compile-element.ts";
-import type { JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonPrimitive, JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+
+/**
+ * A member of a node's `children` as a parsed document holds it: an element, a text string, or —
+ * since the document is JSON — a number, boolean or `null` the walk renders as text or skips.
+ */
+type StaticChild = JxMutableNode | JsonPrimitive;
+
+/** A dynamic subtree lifted out of the static page, emitted as its own element module. */
+interface Island {
+  def: JxDocument;
+  tagName: string;
+  className: string;
+}
 
 /**
  * Compile a static document to HTML, with dynamic subtrees as islands.
  *
  * @param {JxDocument} raw - Raw JSON document (with $ref pointers preserved)
- * @param {Record<string, unknown>} opts
+ * @param opts - Page title, CDN sources, project style, pre-paint switch and island `$src`
+ *   rewriting
  * @returns {{ html: string; files: { path: string; content: string; tagName: string }[] }}
  */
 export function compileStaticPage(
@@ -37,19 +53,16 @@ export function compileStaticPage(
     litHtmlSrc?: string;
     projectStyle?: JxStyle | null;
     prePaintScheme?: boolean;
-    [key: string]: unknown;
+    /** Rewrite an island's Function-def `$src` specifier to its served URL. */
+    rewriteSrc?: (specifier: string) => string;
   },
 ) {
   const { title = "Jx App", reactivitySrc, litHtmlSrc } = opts;
 
   const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
-  const styleBlock = compileStyles(
-    raw,
-    raw.$media ?? {},
-    (opts.projectStyle ?? null) as JxStyle | null,
-  );
-  const islands: { def: JxMutableNode; tagName: string; className: string }[] = [];
-  const bodyContent = compileNode(raw, false, raw, rootContext, islands);
+  const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
+  const islands: Island[] = [];
+  const bodyContent = compileNode(raw, false, rootContext, islands);
 
   /** @type {{ path: string; content: string; tagName: string }[]} */
   const files = [];
@@ -57,12 +70,7 @@ export function compileStaticPage(
   let moduleScripts = "";
   if (islands.length > 0) {
     for (const island of islands) {
-      const moduleContent = emitElementModule(
-        island.def as JxDocument,
-        island.className,
-        [],
-        opts.rewriteSrc as ((specifier: string) => string) | undefined,
-      );
+      const moduleContent = emitElementModule(island.def, island.className, [], opts.rewriteSrc);
       files.push({
         content: moduleContent,
         path: `_islands/${island.tagName}.js`,
@@ -115,48 +123,47 @@ export function compileStaticPage(
  * Compile a single Jx node to an HTML string. Dynamic nodes become hydration islands; static nodes
  * become plain HTML.
  *
- * @param {JxMutableNode} def
+ * The node is read as authored — `$ref` pointers preserved — because an island's element module
+ * resolves them itself at runtime.
+ *
+ * @param {StaticChild} def
  * @param {boolean} dynamic
- * @param {JxMutableNode} raw
- * @param {any} context
- * @param {{ def: JxMutableNode; tagName: string; className: string }[]} islands
+ * @param {CompileContext} context
+ * @param {Island[]} islands
  * @returns {string}
  */
 function compileNode(
-  def: JxMutableNode,
+  def: StaticChild,
   dynamic: boolean,
-  raw: JxMutableNode,
-  context: {
-    scope: Record<string, unknown> | null;
-    scopeDefs: Record<string, unknown>;
-    media: Record<string, string>;
-    preformatted?: boolean;
-  },
-  islands: { def: JxMutableNode; tagName: string; className: string }[],
+  context: CompileContext,
+  islands: Island[],
 ): string {
   // String children are text nodes
-  if (typeof def === "string") {
+  if (isString(def)) {
     return escapeHtml(def);
   }
-  if (typeof def === "number" || typeof def === "boolean") {
+  if (isNumber(def) || isBoolean(def)) {
     return escapeHtml(String(def));
   }
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return "";
   }
 
   const nextContext = createCompileContext(
-    raw,
+    def,
     context.scope,
-    raw?.state ?? context.scopeDefs,
-    raw?.$media ?? context.media,
+    def.state ?? context.scopeDefs,
+    def.$media ?? context.media,
   );
 
   if (dynamic) {
     const n = islands.length;
     const tagName = `jx-island-${n}`;
     const className = `JxIsland${n}`;
-    const elementDef = { ...(raw ?? def), tagName };
+    /* SAFETY: JxDocument is the element-node shape with `tagName` narrowed to a literal string,
+       and the island's `tagName` is the literal `jx-island-N` assigned here; every other member is
+       the authored node's own, carried over unchanged. */
+    const elementDef = { ...def, tagName } as JxDocument;
     islands.push({ className, def: elementDef, tagName });
     return `<${tagName}></${tagName}>`;
   }
@@ -174,7 +181,7 @@ function compileNode(
 
   // `white-space` inherits, so once inside a <pre> the whole subtree stays whitespace-significant.
   const preformatted = context.preformatted === true || PREFORMATTED_TAGS.has(tag);
-  const inner = buildInnerWithIslands(def, raw, { ...nextContext, preformatted }, islands);
+  const inner = buildInnerWithIslands(def, { ...nextContext, preformatted }, islands);
 
   return `<${tag}${attrs}>${inner}</${tag}>`;
 }
@@ -184,40 +191,27 @@ function compileNode(
  * those that are actually dynamic.
  *
  * @param {JxMutableNode} def
- * @param {JxMutableNode} raw
- * @param {any} context
- * @param {{ def: JxMutableNode; tagName: string; className: string }[]} islands
+ * @param {CompileContext} context
+ * @param {Island[]} islands
  * @returns {string}
  */
 function buildInnerWithIslands(
   def: JxMutableNode,
-  raw: JxMutableNode,
-  context: {
-    scope: Record<string, unknown> | null;
-    scopeDefs: Record<string, unknown>;
-    media: Record<string, string>;
-    preformatted?: boolean;
-  },
-  islands: { def: JxMutableNode; tagName: string; className: string }[],
+  context: CompileContext,
+  islands: Island[],
 ): string {
-  const source = raw ?? def;
-
-  if (source.textContent !== undefined) {
-    const value = resolveStaticValue(source.textContent, context.scope);
+  if (def.textContent !== undefined) {
+    const value = resolveStaticValue(def.textContent, context.scope);
     return value == null ? "" : escapeHtml(String(value));
   }
-  if (source.innerHTML) {
-    return (resolveStaticValue(source.innerHTML, context.scope) as string) ?? source.innerHTML;
+  if (def.innerHTML) {
+    // Raw HTML may itself be a template; one that resolves to nothing keeps its authored text.
+    const resolved = resolveStaticValue(def.innerHTML, context.scope);
+    return resolved == null ? def.innerHTML : String(resolved);
   }
-  if (Array.isArray(source.children)) {
-    const rawChildren = Array.isArray(raw?.children) ? raw.children : undefined;
-    return source.children
-      .map((c, i: number) => {
-        const child = c as JxMutableNode;
-        const childDynamic = isNodeDynamic(child);
-        const childRaw = (rawChildren?.[i] ?? c) as JxMutableNode;
-        return compileNode(child, childDynamic, childRaw, context, islands);
-      })
+  if (Array.isArray(def.children)) {
+    return def.children
+      .map((child) => compileNode(child, isNodeDynamic(child), context, islands))
       .join(childSeparator(context.preformatted));
   }
   return "";

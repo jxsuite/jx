@@ -1,27 +1,37 @@
 import { describe, expect, test } from "bun:test";
 import { applyDocOpToDoc, childArray, cloneValue } from "../src/tabs/doc-op-apply";
 import type { JxDocOp } from "../src/tabs/patch-ops";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { isNodeObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
-const doc = (): JxMutableNode =>
-  ({
-    children: [
-      { tagName: "p", textContent: "a" },
-      { tagName: "p", textContent: "b" },
-    ],
-    tagName: "div",
-  }) as unknown as JxMutableNode;
+const doc = (): JxMutableNode => ({
+  children: [
+    { tagName: "p", textContent: "a" },
+    { tagName: "p", textContent: "b" },
+  ],
+  tagName: "div",
+});
+
+/** The element children of `node`; the fixtures here hold no text or repeater children. */
+function elementChildren(node: JxMutableNode | undefined): JxMutableNode[] {
+  const children = node?.children;
+  if (!Array.isArray(children) || !children.every((child) => isNodeObject(child))) {
+    throw new Error("expected an array of element children");
+  }
+  return children;
+}
 
 describe("applyDocOpToDoc", () => {
   test("set-key sets a value (cloned, not aliased)", () => {
     const d = doc();
     const value = { color: "red" };
     applyDocOpToDoc(d, { key: "style", op: "set-key", path: ["children", 0], value });
-    const node = (d.children as JxMutableNode[])[0]!;
+    const node = elementChildren(d)[0]!;
     expect(node.style).toEqual({ color: "red" });
     // Stored value is a clone — mutating the source must not leak in.
     value.color = "blue";
-    expect((node.style as { color: string }).color).toBe("red");
+    expect(node.style).toEqual({ color: "red" });
   });
 
   test("set-key with undefined value deletes the key", () => {
@@ -32,7 +42,7 @@ describe("applyDocOpToDoc", () => {
       path: ["children", 0],
       value: undefined,
     });
-    expect((d.children as JxMutableNode[])[0]!.textContent).toBeUndefined();
+    expect(elementChildren(d)[0]!.textContent).toBeUndefined();
   });
 
   test("set-key throws on a missing node", () => {
@@ -49,23 +59,23 @@ describe("applyDocOpToDoc", () => {
       op: "insert-child",
       parentPath: [],
     });
-    expect((d.children as JxMutableNode[]).map((c) => c.tagName)).toEqual(["p", "span", "p"]);
+    expect(elementChildren(d).map((c) => c.tagName)).toEqual(["p", "span", "p"]);
 
     applyDocOpToDoc(d, { index: 0, op: "remove-child", parentPath: [] });
-    expect((d.children as JxMutableNode[]).map((c) => c.tagName)).toEqual(["span", "p"]);
+    expect(elementChildren(d).map((c) => c.tagName)).toEqual(["span", "p"]);
 
     applyDocOpToDoc(d, { index: 0, node: { tagName: "h1" }, op: "set-child", parentPath: [] });
-    expect((d.children as JxMutableNode[]).map((c) => c.tagName)).toEqual(["h1", "p"]);
+    expect(elementChildren(d).map((c) => c.tagName)).toEqual(["h1", "p"]);
   });
 
   test("move-child relocates a node between children arrays", () => {
-    const d = {
+    const d: JxMutableNode = {
       children: [
         { children: [{ tagName: "a" }], tagName: "div" },
         { children: [], tagName: "div" },
       ],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     applyDocOpToDoc(d, {
       fromIndex: 0,
       fromParentPath: ["children", 0],
@@ -73,15 +83,18 @@ describe("applyDocOpToDoc", () => {
       toIndex: 0,
       toParentPath: ["children", 1],
     });
-    const kids = d.children as JxMutableNode[];
-    expect((kids[0]!.children as JxMutableNode[]).length).toBe(0);
-    expect((kids[1]!.children as JxMutableNode[])[0]!.tagName).toBe("a");
+    const kids = elementChildren(d);
+    expect(elementChildren(kids[0])).toHaveLength(0);
+    expect(elementChildren(kids[1])[0]!.tagName).toBe("a");
   });
 
   test("throws on an unknown op", () => {
-    expect(() => applyDocOpToDoc(doc(), { op: "bogus" } as unknown as JxDocOp)).toThrow(
-      /unknown-doc-op/,
-    );
+    const foreign = { op: "bogus" };
+    /* SAFETY: deliberately not a JxDocOp. Ops replayed from a collab peer or a stored history cross
+       a wire, so a kind outside the union can reach applyDocOpToDoc; this is that input, and the
+       only member the applier reads before throwing is `op`. */
+    const op = foreign as JxDocOp;
+    expect(() => applyDocOpToDoc(doc(), op)).toThrow(/unknown-doc-op/);
   });
 });
 
@@ -99,18 +112,22 @@ describe("cloneValue", () => {
 
 describe("childArray", () => {
   test("lazily creates the children array", () => {
-    const node = { tagName: "div" } as unknown as JxMutableNode;
+    const node: JxMutableNode = { tagName: "div" };
     const arr = childArray(node);
     expect(arr).toEqual([]);
     expect(node.children).toBe(arr);
   });
 
   test("throws when the target is a children array, not a node", () => {
-    expect(() => childArray([] as unknown as JxMutableNode)).toThrow(/must point at a node/);
+    // A path that stops on "children" resolves to the children array itself, which is the mistake
+    // The guard exists for.
+    const list = getNodeAtPath(doc(), ["children"]);
+    expect(Array.isArray(list)).toBe(true);
+    expect(() => childArray(list ?? {})).toThrow(/must point at a node/);
   });
 
   test("throws on mapped-array (non-array) children", () => {
-    const mapped = { children: { $map: [] } } as unknown as JxMutableNode;
+    const mapped: JxMutableNode = { children: { $prototype: "Array", items: [] } };
     expect(() => childArray(mapped)).toThrow(/mapped-array/);
   });
 });

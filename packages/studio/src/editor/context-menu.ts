@@ -21,10 +21,11 @@
  * is left here is the projection: the menu itself is the `menu` surface (`surfaces/menu.json`), a
  * `jx-menu` the kit gives its keyboard contract, its popover and its dismissal.
  */
-import { displayTagName } from "@jxsuite/schema/guards";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { displayTagName, isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { jsonClone } from "../utils/studio-utils";
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
-import { childIndex, getNodeAtPath, parentElementPath } from "../store";
+import { childIndex, parentElementPath } from "../store";
 import { activeTab, workspace } from "../workspace/workspace";
 import { isSelected, isSpliceablePath, primarySelection } from "../tabs/selection";
 import {
@@ -58,17 +59,15 @@ import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandContext } from "../commands/context";
 import type { Placement } from "../commands/levels";
 import type { JxPath } from "../state";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
-
-type JxNode = JxMutableNode;
+import type { JxAttributeValue, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
 // ─── Clipboard helpers ───────────────────────────────────────────────────────
 
-const JX_MIME = "web application/jx+json";
+export const JX_MIME = "web application/jx+json";
 
-/** @param {JxNode | string} node */
-function nodeToHtml(node: JxNode | string): string {
-  if (typeof node === "string") {
+/** @param {JxMutableNode | string} node */
+function nodeToHtml(node: JxMutableNode | string): string {
+  if (isString(node)) {
     return node;
   }
   /* A chosen tag cannot be serialised to one HTML string, so the copy takes the branch the
@@ -77,9 +76,10 @@ function nodeToHtml(node: JxNode | string): string {
   const tag = displayTagName(node.tagName).split("|")[0] || "div";
   let attrs = "";
   if (node.attributes) {
-    for (const [k, v] of Object.entries(node.attributes)) {
+    // A document's attribute value is read as possibly JSON `null`, which is skipped with the refs.
+    for (const [k, v] of Object.entries<JxAttributeValue | null>(node.attributes)) {
       // Bound ($ref) attribute values have no static HTML representation — skip.
-      if (typeof v === "object") {
+      if (v === null || isNonNullObject(v)) {
         continue;
       }
       attrs += v === "" ? ` ${k}` : ` ${k}="${String(v).replaceAll('"', "&quot;")}"`;
@@ -94,7 +94,7 @@ function nodeToHtml(node: JxNode | string): string {
     }
   }
   let inner = "";
-  if (typeof node.textContent === "string") {
+  if (isString(node.textContent)) {
     inner = node.textContent;
   } else if (Array.isArray(node.children)) {
     inner = node.children.map((c) => nodeToHtml(c)).join("");
@@ -105,9 +105,9 @@ function nodeToHtml(node: JxNode | string): string {
 /**
  * Write a Jx node to the system clipboard with both jx+json and text/html types.
  *
- * @param {object} json
+ * @param {JxMutableNode} json
  */
-async function writeToClipboard(json: Record<string, unknown>) {
+async function writeToClipboard(json: JxMutableNode) {
   workspace.clipboard = json;
   try {
     const jxBlob = new Blob([JSON.stringify(json)], { type: JX_MIME });
@@ -131,7 +131,7 @@ async function writeToClipboard(json: Record<string, unknown>) {
 /**
  * Read from the system clipboard. Returns Jx node(s) or null.
  *
- * @returns {Promise<JxNode[] | null>}
+ * @returns {Promise<JxMutableNode[] | null>}
  */
 async function readFromClipboard() {
   try {
@@ -139,16 +139,18 @@ async function readFromClipboard() {
     for (const item of items) {
       if (item.types.includes(JX_MIME)) {
         const blob = await item.getType(JX_MIME);
-        const json = JSON.parse(await blob.text()) as JxNode;
+        /* SAFETY: `web application/jx+json` is Jx's own clipboard type, and `writeToClipboard` puts a
+           node there serialized with JSON.stringify; malformed text throws into the fallback below. */
+        const json = JSON.parse(await blob.text()) as JxMutableNode;
         return [json];
       }
       if (item.types.includes("text/html")) {
         const blob = await item.getType("text/html");
         const htmlStr = await blob.text();
         const nodes = htmlToJx(htmlStr);
-        const jxNodes = nodes.map((n) =>
-          typeof n === "string" ? { tagName: "p", textContent: n } : n,
-        ) as JxNode[];
+        const jxNodes: JxMutableNode[] = nodes.map((n) =>
+          isString(n) ? { tagName: "p", textContent: n } : n,
+        );
         if (jxNodes.length > 0) {
           return jxNodes;
         }
@@ -158,8 +160,8 @@ async function readFromClipboard() {
         const text = await blob.text();
         // Try parsing as Jx JSON
         try {
-          const parsed = JSON.parse(text) as JxNode;
-          if (parsed && parsed.tagName) {
+          const parsed: unknown = JSON.parse(text);
+          if (isNodeObject(parsed) && parsed.tagName) {
             return [parsed];
           }
         } catch {
@@ -241,7 +243,12 @@ export async function pasteNode() {
   }
 
   if (selected && selected.length >= 2) {
+    // SAFETY: parentElementPath returns a path for any path of two or more segments, checked above.
     const pp = parentElementPath(selected) as JxPath;
+    /* SAFETY: a selection with a sibling position ends in `"children", <index>`, so this is the
+       numeric child index. A selected repeater template (`…, "map"`) or `$switch` case also has two
+       or more segments; callers do not exclude that case yet, so it reaches here with a string
+       segment exactly as before this cast. */
     const idx = childIndex(selected) as number;
     transactDoc(tab, (t) => {
       for (let i = 0; i < nodes.length; i++) {
@@ -408,7 +415,10 @@ export function elementCommands(deps: ElementCommandDeps): AnyCommand[] {
         if (!target || !nodes || nodes.length === 0) {
           return;
         }
+        /* SAFETY: this record runs only when enabled, and `spliceable` admits a target whose path
+           ends in `"children", <index>` — so it has a parent element path. */
         const parent = parentElementPath(target.path) as JxPath;
+        // SAFETY: the same `spliceable` check proved the last segment is a numeric child index.
         const idx = childIndex(target.path) as number;
         transactDoc(activeTab.value, (t) => {
           for (const [offset, node] of nodes.entries()) {
@@ -576,7 +586,10 @@ function insertSiblingParagraph(target: ElementMenuTarget | null, offset: number
   if (!target) {
     return;
   }
+  /* SAFETY: both callers are records enabled only by `spliceable`, which admits a target whose path
+     ends in `"children", <index>` — so it has a parent element path. */
   const parent = parentElementPath(target.path) as JxPath;
+  // SAFETY: the same `spliceable` check proved the last segment is a numeric child index.
   const idx = childIndex(target.path) as number;
   transactDoc(activeTab.value, (t) =>
     mutateInsertNode(t, parent, idx + offset, { children: [], tagName: "p" }),
@@ -681,7 +694,7 @@ function commandTarget(): ElementMenuTarget | null {
   if (!tab || !path) {
     return null;
   }
-  const node = getNodeAtPath(tab.doc.document, path) as JxMutableNode | undefined;
+  const node = getNodeAtPath(tab.doc.document, path);
   return node ? { node, path } : null;
 }
 

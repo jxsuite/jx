@@ -345,8 +345,7 @@ describe("createDevServer", () => {
         method: "POST",
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { code: string };
-      expect(typeof body.code).toBe("string");
+      expect(await res.json()).toEqual(expect.objectContaining({ code: expect.any(String) }));
     });
 
     test("routes other /__studio/* paths to handleStudioApi", async () => {
@@ -429,7 +428,7 @@ describe("createDevServer", () => {
         body: JSON.stringify({ root: OUTSIDE }),
         method: "POST",
       });
-      expect(((await activated.json()) as { root: string }).root).toBe(OUTSIDE);
+      expect(await activated.json()).toMatchObject({ root: OUTSIDE });
 
       const pageDoc = join(OUTSIDE, "pages", "page.json");
       const res = await fetch(`${base}/__jx_server__`, {
@@ -479,7 +478,10 @@ describe("createDevServer", () => {
         const res = await resPromise;
         expect(res.status).toBe(200);
         expect(res.headers.get("Content-Type")).toBe("text/event-stream");
-        const reader = (res.body as ReadableStream).getReader();
+        if (res.body === null) {
+          throw new Error("/__reload answered without a stream body");
+        }
+        const reader = res.body.getReader();
         // The stream opens with its reconnection time; the reload is a later frame.
         const decoder = new TextDecoder();
         const opening = await reader.read();

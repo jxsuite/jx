@@ -25,8 +25,11 @@ installMockPlatform();
 
 let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
   Response.json({ models: [] }, { status: 200 });
-(globalThis as Record<string, unknown>).fetch = (url: string, init?: RequestInit) =>
-  fetchImpl(url, init);
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  (resource: RequestInfo | URL, init?: RequestInit) => fetchImpl(String(resource), init),
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 /**
  * Hold the next listing open until the test says otherwise.
@@ -84,22 +87,30 @@ async function mountPicker(extra: Partial<ModelPickerOptions> = {}) {
 
 /** The document's root — what carries the width the host asked for. */
 function root(container: HTMLElement) {
-  return container.querySelector('[part="model-picker"]') as HTMLElement;
+  return container.querySelector<HTMLElement>('[part="model-picker"]');
 }
 
 /** The kit control's host. */
 function selectHost(container: HTMLElement) {
-  return container.querySelector('[part="select"]') as HTMLElement;
+  const host = container.querySelector<HTMLElement>('[part="select"]');
+  if (!host) {
+    throw new Error("the picker renders no select");
+  }
+  return host;
 }
 
 /** The native control inside it: what a reader picks from, and what a change comes from. */
 function control(container: HTMLElement) {
-  return container.querySelector('[part="select"] [part="control"]') as HTMLSelectElement;
+  const select = container.querySelector('[part="select"] [part="control"]');
+  if (!(select instanceof HTMLSelectElement)) {
+    throw new Error("the picker's select has no native control");
+  }
+  return select;
 }
 
 /** Every row the control offers, listed and stand-in alike, in the order they are drawn. */
 function rows(container: HTMLElement) {
-  return [...container.querySelectorAll('[part="select"] option')] as HTMLOptionElement[];
+  return [...container.querySelectorAll('[part="select"] option')];
 }
 
 /** Row values, in order. */
@@ -109,7 +120,7 @@ function values(container: HTMLElement) {
 
 /** Row labels, by value. */
 function labels(container: HTMLElement) {
-  return new Map(rows(container).map((row) => [row.getAttribute("value"), row.textContent ?? ""]));
+  return new Map(rows(container).map((row) => [row.getAttribute("value"), row.textContent]));
 }
 
 /** Choose a row the way the native control reports one. */
@@ -253,7 +264,7 @@ describe("ai-model-picker — failure", () => {
     const c = await mountPicker();
     await flush();
     await c.repaint();
-    const retry = c.container.querySelector('[part="retry"]') as HTMLElement;
+    const retry = c.container.querySelector('[part="retry"]');
     expect(retry).not.toBeNull();
     // The refusal is never a row, so it can never be mistaken for a model.
     expect(values(c.container)).not.toContain("__retry_models__");
@@ -261,7 +272,7 @@ describe("ai-model-picker — failure", () => {
     expect(c.picker.error()).toContain("HTTP 500");
 
     fetchImpl = async () => Response.json({ models: [{ id: "recovered" }] }, { status: 200 });
-    (retry.querySelector('[part="control"]') ?? retry).dispatchEvent(
+    (retry?.querySelector('[part="control"]') ?? retry)?.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     await flush();
@@ -289,7 +300,7 @@ describe("ai-model-picker — failure", () => {
   test("a fetch rejection with no message still reports something", async () => {
     // A rejection value that carries no `message` — the fallback exists because `fetch` and the
     // Platform layer are free to reject with anything.
-    const messageless = { name: "TypeError" } as unknown as Error;
+    const messageless = { name: "TypeError" };
     fetchImpl = async () => {
       throw messageless;
     };
@@ -329,13 +340,13 @@ describe("ai-model-picker — the second host's seams", () => {
     const compact = await mountPicker();
     await flush();
     await compact.repaint();
-    expect(root(compact.container).dataset.width).toBe("compact");
+    expect(root(compact.container)?.dataset.width).toBe("compact");
     expect(selectHost(compact.container).dataset.size).toBe("sm");
 
     const filled = await mountPicker({ size: "md", width: "fill" });
     await flush();
     await filled.repaint();
-    expect(root(filled.container).dataset.width).toBe("fill");
+    expect(root(filled.container)?.dataset.width).toBe("fill");
     expect(selectHost(filled.container).dataset.size).toBe("md");
   });
 
@@ -386,7 +397,10 @@ describe("ai-model-picker — the second host's seams", () => {
     const c = await mountPicker();
     await flush();
     await c.repaint();
-    const host = root(c.container).parentElement!;
+    const host = root(c.container)?.parentElement;
+    if (!host) {
+      throw new Error("the picker is not mounted in a host");
+    }
     host.textContent = "";
     expect(root(c.container)).toBeNull();
 

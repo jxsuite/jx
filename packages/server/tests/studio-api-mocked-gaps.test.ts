@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 void mock.module("@jxsuite/starters", () => ({
   listStarters: () => {
@@ -44,7 +45,7 @@ function getReq(pathAndQuery: string) {
   return { req: new Request(url, { method: "GET" }), url };
 }
 
-function jsonReq(path: string, method: string, body: unknown) {
+function jsonReq(path: string, method: string, body: JsonValue) {
   const url = new URL(`http://localhost${path}`);
   return { req: new Request(url, { body: JSON.stringify(body), method }), url };
 }
@@ -64,8 +65,9 @@ describe("starters — listing failure", () => {
     const { req, url } = getReq("/__studio/starters");
     const res = await callApi(req, url);
     expect(res.status).toBe(500);
-    const payload = (await res.json()) as { error: string };
-    expect(payload.error).toContain("starter registry exploded");
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("starter registry exploded"),
+    });
   });
 });
 
@@ -75,16 +77,14 @@ describe("package operations — helper failures", () => {
     const url = new URL("http://localhost/__studio/packages/install");
     const res = await callApi(new Request(url, { method: "POST" }), url);
     expect(res.status).toBe(500);
-    const payload = (await res.json()) as { error: string };
-    expect(payload.error).toContain("install exploded");
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("install exploded") });
   });
 
   test("versions returns 500 when packageVersions rejects", async () => {
     const { req, url } = getReq("/__studio/packages/versions");
     const res = await callApi(req, url);
     expect(res.status).toBe(500);
-    const payload = (await res.json()) as { error: string };
-    expect(payload.error).toContain("versions exploded");
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("versions exploded") });
   });
 
   test("set-versions returns 500 when setPackageVersions rejects", async () => {
@@ -93,8 +93,9 @@ describe("package operations — helper failures", () => {
     });
     const res = await callApi(req, url);
     expect(res.status).toBe(500);
-    const payload = (await res.json()) as { error: string };
-    expect(payload.error).toContain("set-versions exploded");
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("set-versions exploded"),
+    });
   });
 });
 
@@ -106,10 +107,11 @@ describe("rename — refactor pass failure", () => {
     });
     const res = await callApi(req, url);
     expect(res.status).toBe(200);
-    const payload = (await res.json()) as { error: string; from: string; ok: boolean; to: string };
-    expect(payload.ok).toBe(true);
-    expect(payload.error).toContain("refactor exploded");
-    expect(payload.from).toBe("widget.json");
-    expect(payload.to).toBe("gadget.json");
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("refactor exploded"),
+      from: "widget.json",
+      ok: true,
+      to: "gadget.json",
+    });
   });
 });

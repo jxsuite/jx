@@ -22,7 +22,7 @@ import {
 import { SETTINGS } from "../src/services/settings/definitions";
 import { adoptRemoteSettings } from "../src/services/settings/kernel";
 import { preferredModel } from "../src/services/ai-models";
-import type { SettingsPatch } from "../src/types";
+import type { KeyValuePatch } from "../src/types";
 
 const realLocalStorage = globalThis.localStorage;
 
@@ -174,11 +174,11 @@ describe("ai-settings — storedEquals", () => {
 
 describe("ai-settings — platform write-through", () => {
   afterEach(() => {
-    delete (globalThis as { __jxPlatform?: unknown }).__jxPlatform;
+    Reflect.deleteProperty(globalThis, "__jxPlatform");
   });
 
   test("setOpenAiKey writes the key through to the platform settings store", async () => {
-    const patches: SettingsPatch[] = [];
+    const patches: KeyValuePatch[] = [];
     installMockPlatform({
       getSettings: async () => ({}),
       patchSettings: async (patch) => {
@@ -198,7 +198,7 @@ describe("ai-settings — platform write-through", () => {
    * snapshots, landing last — is what a real install was left holding.
    */
   test("saving a provider produces ONE write, taken after the burst has settled", async () => {
-    const patches: SettingsPatch[] = [];
+    const patches: KeyValuePatch[] = [];
     installMockPlatform({
       getSettings: async () => ({}),
       patchSettings: async (patch) => {

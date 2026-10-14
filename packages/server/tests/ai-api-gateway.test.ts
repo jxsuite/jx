@@ -17,16 +17,29 @@ import { normalizeOpenAIStream } from "@jxsuite/ai/gateway";
 import { problemDetails } from "@jxsuite/protocol";
 import { problemTypeForStatus } from "../src/problem.ts";
 
-/** The problem `type` the gateway's normalizer attaches to an upstream answering `status`. */
-async function gatewayTypeFor(status: number): Promise<unknown> {
+/**
+ * An upstream that refused with `status`.
+ *
+ * A stand-in rather than a real `Response` because the constructor rejects every status outside
+ * 200-599, and the 1xx range is part of what this suite drives.
+ */
+function refusingUpstream(status: number): Response {
   const upstream = {
     ok: false,
     status,
     statusText: "",
     text: () => Promise.resolve("upstream refused"),
-  } as unknown as Response;
-  for await (const frame of normalizeOpenAIStream(upstream)) {
-    return (frame as { problem?: { type?: unknown } }).problem?.type;
+  };
+  /* SAFETY: with `ok` false, normalizeOpenAIStream reads only `ok`, `status`, `statusText` and
+     `text()`, yields one error frame and returns before it would touch `body` or any other
+     member, so these four are every member the call under test reaches. */
+  return upstream as Response;
+}
+
+/** The problem `type` the gateway's normalizer attaches to an upstream answering `status`. */
+async function gatewayTypeFor(status: number): Promise<string | undefined> {
+  for await (const frame of normalizeOpenAIStream(refusingUpstream(status))) {
+    return frame.type === "error" ? frame.problem?.type : undefined;
   }
   return undefined;
 }

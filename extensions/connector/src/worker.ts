@@ -18,38 +18,42 @@
  * Bun, and node: no framework, no node imports, no `new Function`.
  */
 
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { Kysely } from "kysely";
 import { fromStorage, newRowId, planTable, toStorage } from "./columns.ts";
 import { syncTables } from "./ddl.ts";
 import { applyFilter, applySort, columnForField, normalizeFilter, normalizeSort } from "./query.ts";
 import { tablesForConnection } from "./provider-utils.ts";
 import { validateRow } from "./validate.ts";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { Dialect } from "kysely";
 import type { ColumnSpec, SqlDialectKind, TablePlan } from "./columns.ts";
-import type { DynamicDatabase } from "./query.ts";
+import type { HostEnv } from "./provider-utils.ts";
+import type { DynamicDatabase, DynamicRow, SqlValue } from "./query.ts";
 import type {
   AuthorizeDecision,
+  AuthorizeInput,
   ConnectionDef,
   JxServerContext,
   PermissionAction,
   TableDef,
 } from "./types.ts";
+import type { ValidationIssue } from "./validate.ts";
 import { DEFAULT_PERMISSIONS } from "./types.ts";
 
 /** The provider surface the data mount needs (a slice of ConnectorProvider). */
 export interface DataMountProvider {
   kind: SqlDialectKind;
-  dialect: (connection: ConnectionDef, env: Record<string, unknown>) => Dialect | Promise<Dialect>;
+  dialect: (connection: ConnectionDef, env: HostEnv) => Dialect | Promise<Dialect>;
 }
 
 export interface DataMountOptions {
   /** Route subtree this mount owns. Defaults to "/_jx/data". */
   basePath?: string;
-  /** Extension-contributed project sections (needs `data` and `connections`). */
+  /** Extension-contributed project sections (reads `data` and `connections`). */
   sections: {
     data?: Record<string, TableDef>;
     connections?: Record<string, ConnectionDef>;
-    [key: string]: unknown;
   };
   /** Provider implementations keyed by `connector.provider` id. */
   connectors: Record<string, DataMountProvider>;
@@ -67,18 +71,40 @@ export function createDataMountState(): DataMountState {
   return { dbs: new Map() };
 }
 
-type Env = Record<string, unknown>;
+/** The JSON body of every error response; `issues` lists per-field validation failures. */
+interface DataErrorBody {
+  error: string;
+  issues?: ValidationIssue[];
+}
+
+/**
+ * A row as the read path returns it: the stored columns `fromStorage` decodes, plus one member per
+ * `?include=` field holding the referenced row (to-one) or rows (to-many).
+ */
+interface PayloadRow {
+  [field: string]: SqlValue | PayloadRow | PayloadRow[];
+}
+
+/** A validated payload split into storage columns and to-many junction values. */
+interface SplitRow {
+  row: JsonObject;
+  junctionValues: JsonObject;
+}
 
 /** JSON error response helper. */
-function fail(status: number, error: string, issues?: unknown): Response {
-  return Response.json({ error, ...(issues === undefined ? {} : { issues }) }, { status });
+function fail(status: number, error: string, issues?: ValidationIssue[]): Response {
+  const body: DataErrorBody = { error };
+  if (issues !== undefined) {
+    body.issues = issues;
+  }
+  return Response.json(body, { status });
 }
 
 /**
  * Handle one /_jx/data request.
  *
  * @param {Request} request
- * @param {Env} env - Worker env (bindings + vars)
+ * @param {HostEnv} env - Worker env (bindings + vars)
  * @param {DataMountOptions} options
  * @param {JxServerContext} ctx - Shared mount context (auth hooks live here)
  * @param {DataMountState} [state] - Memoized connections; omit for a throwaway state
@@ -86,7 +112,7 @@ function fail(status: number, error: string, issues?: unknown): Response {
  */
 export async function handleDataRequest(
   request: Request,
-  env: Env,
+  env: HostEnv,
   options: DataMountOptions,
   ctx: JxServerContext,
   state: DataMountState = createDataMountState(),
@@ -96,11 +122,14 @@ export async function handleDataRequest(
   if (url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) {
     return fail(404, "Not found");
   }
-  const segments = url.pathname.slice(basePath.length).split("/").filter(Boolean);
-  if (segments.length === 0 || segments.length > 2) {
+  // At most two segments: the table name and an optional row id.
+  const [tableName, rawId, ...extra] = url.pathname
+    .slice(basePath.length)
+    .split("/")
+    .filter(Boolean);
+  if (tableName === undefined || extra.length > 0) {
     return fail(404, "Not found");
   }
-  const [tableName, rawId] = segments as [string, string?];
 
   const tables = options.sections.data ?? {};
   const tableDef = tables[tableName];
@@ -171,14 +200,13 @@ export const Data = {
   /** Static `mount` capability (specs/extensions.md §11): one shared handler per isolate. */
   mount(options: DataMountOptions, ctx: JxServerContext) {
     const state = createDataMountState();
-    return (request: Request, env: Env): Promise<Response> =>
+    return (request: Request, env: HostEnv): Promise<Response> =>
       handleDataRequest(request, env, options, ctx, state);
   },
 
   /** Static `projectData` capability: expose the table definitions as `_project.data`. */
-  projectData(sectionValue: unknown): Record<string, TableDef> {
-    const section = (sectionValue ?? {}) as Record<string, TableDef>;
-    return { ...section };
+  projectData(sectionValue: Record<string, TableDef> | null | undefined) {
+    return { ...sectionValue };
   },
 };
 
@@ -191,7 +219,7 @@ export const Data = {
  */
 async function authorize(
   request: Request,
-  env: Env,
+  env: HostEnv,
   ctx: JxServerContext,
   table: string,
   tableDef: TableDef,
@@ -210,16 +238,11 @@ async function authorize(
     return fail(401, `${action} on "${table}" requires authentication (no auth mount configured)`);
   }
   const session = await auth.getSession(request, env);
-  const decision = await auth.authorize(
-    {
-      action,
-      rule,
-      session,
-      table,
-      ...(tableDef.ownerField === undefined ? {} : { ownerField: tableDef.ownerField }),
-    },
-    env,
-  );
+  const input: AuthorizeInput = { action, rule, session, table };
+  if (tableDef.ownerField !== undefined) {
+    input.ownerField = tableDef.ownerField;
+  }
+  const decision = await auth.authorize(input, env);
   if (!decision.allow) {
     const status = decision.status ?? (session ? 403 : 401);
     return fail(status, decision.error ?? "Forbidden");
@@ -233,7 +256,7 @@ async function authorize(
 function getDb(
   state: DataMountState,
   options: DataMountOptions,
-  env: Env,
+  env: HostEnv,
   connectionName: string,
 ): Promise<{ db: Kysely<DynamicDatabase>; kind: SqlDialectKind }> {
   const memo = state.dbs.get(connectionName);
@@ -274,8 +297,8 @@ function parseId(plan: TablePlan, rawId: string): string | number | undefined {
   return rawId;
 }
 
-/** Apply whereOwner to any builder with a `where(col, "=", value)` method. */
-function applyOwner<T extends { where: (col: never, op: never, value: never) => T }>(
+/** Apply whereOwner to any builder with a `where(column, "=", value)` method. */
+function applyOwner<T extends { where: (column: string, op: "=", value: JsonValue) => T }>(
   qb: T,
   decision: AuthorizeDecision,
   specs: ColumnSpec[],
@@ -284,8 +307,7 @@ function applyOwner<T extends { where: (col: never, op: never, value: never) => 
   if (!owner) {
     return qb;
   }
-  const column = columnForField(owner.field, specs);
-  return qb.where(column as never, "=" as never, owner.value as never);
+  return qb.where(columnForField(owner.field, specs), "=", owner.value);
 }
 
 async function listRows(
@@ -297,8 +319,8 @@ async function listRows(
   decision: AuthorizeDecision,
 ): Promise<Response> {
   const params = url.searchParams;
-  let filter: unknown = null;
-  let sort: unknown = null;
+  let filter: JsonValue;
+  let sort: JsonValue;
   try {
     filter = parseJsonParam(params.get("filter"));
     sort = parseJsonParam(params.get("sort"));
@@ -324,8 +346,14 @@ async function listRows(
   }
 
   const raw = await qb.execute();
-  let rows = raw.map((row) => fromStorage(plan.columns, row));
-  rows = await expandIncludes(db, plan, tables, kind, includeFields(params), rows);
+  const rows = await expandIncludes(
+    db,
+    plan,
+    tables,
+    kind,
+    includeFields(params),
+    raw.map((row) => fromStorage(plan.columns, row)),
+  );
   return Response.json(rows);
 }
 
@@ -358,7 +386,7 @@ async function insertRow(
   request: Request,
   decision: AuthorizeDecision,
 ): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as unknown;
+  const body = await readJsonBody(request);
   if (body === null) {
     return fail(400, "Body must be JSON");
   }
@@ -374,8 +402,9 @@ async function insertRow(
   Object.assign(value, decision.setColumns ?? {});
 
   const { row, junctionValues } = splitRow(plan, kind, value);
-  if (plan.idType === "uuid") {
-    row.id = newRowId("uuid");
+  const uuid = plan.idType === "uuid" ? newRowId("uuid") : undefined;
+  if (uuid !== undefined) {
+    row.id = uuid;
   }
   if (plan.timestamps) {
     const now = new Date().toISOString();
@@ -385,6 +414,8 @@ async function insertRow(
 
   const inserted = await db.insertInto(plan.table).values(row).returningAll().executeTakeFirst();
   const stored = inserted ?? row;
+  /* SAFETY: `id` is the primary key (idDataType: uuid text or an integer). Every supported dialect
+     returns the inserted row via RETURNING, and the uuid fallback row carries the id set above. */
   const rowId = stored.id as string | number;
   await writeJunctions(db, plan, rowId, junctionValues);
 
@@ -401,11 +432,11 @@ async function updateRow(
   decision: AuthorizeDecision,
   id: string | number,
 ): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as unknown;
+  const body = await readJsonBody(request);
   if (body === null) {
     return fail(400, "Body must be JSON");
   }
-  if (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0) {
+  if (isJsonObject(body) && Object.keys(body).length === 0) {
     return fail(400, "Empty patch");
   }
   const { valid, errors, value } = validateRow(tableDef, body, { partial: true });
@@ -419,7 +450,7 @@ async function updateRow(
     row.updated_at = new Date().toISOString();
   }
 
-  let stored: Record<string, unknown> | undefined;
+  let stored: DynamicRow | undefined;
   if (Object.keys(row).length > 0) {
     let uq = db.updateTable(plan.table).set(row).where("id", "=", id);
     uq = applyOwner(uq, decision, plan.columns);
@@ -447,7 +478,7 @@ async function deleteRow(
   let dq = db.deleteFrom(plan.table).where("id", "=", id);
   dq = applyOwner(dq, decision, plan.columns);
   const result = await dq.executeTakeFirst();
-  if ((result.numDeletedRows ?? 0n) === 0n) {
+  if (result.numDeletedRows === 0n) {
     return fail(404, "Not found");
   }
   // Junction rows referencing the deleted row are cleaned per junction table.
@@ -460,13 +491,9 @@ async function deleteRow(
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Split a validated payload into storage columns and junction (to-many table ref) values. */
-function splitRow(
-  plan: TablePlan,
-  kind: SqlDialectKind,
-  value: Record<string, unknown>,
-): { row: Record<string, unknown>; junctionValues: Record<string, unknown> } {
-  const row: Record<string, unknown> = {};
-  const junctionValues: Record<string, unknown> = {};
+function splitRow(plan: TablePlan, kind: SqlDialectKind, value: JsonObject): SplitRow {
+  const row: JsonObject = {};
+  const junctionValues: JsonObject = {};
   const junctionFields = new Set(plan.junctions.map((j) => j.field));
   for (const [field, raw] of Object.entries(value)) {
     if (junctionFields.has(field)) {
@@ -489,7 +516,7 @@ async function writeJunctions(
   db: Kysely<DynamicDatabase>,
   plan: TablePlan,
   rowId: string | number,
-  junctionValues: Record<string, unknown>,
+  junctionValues: JsonObject,
 ): Promise<void> {
   for (const junction of plan.junctions) {
     const value = junctionValues[junction.field];
@@ -497,7 +524,7 @@ async function writeJunctions(
       continue;
     }
     await db.deleteFrom(junction.table).where(junction.sourceColumn, "=", rowId).execute();
-    const ids: unknown[] = Array.isArray(value) ? (value as unknown[]) : [];
+    const ids = Array.isArray(value) ? value : [];
     for (const targetId of ids) {
       await db
         .insertInto(junction.table)
@@ -514,17 +541,29 @@ async function expandIncludes(
   tables: Record<string, TableDef>,
   kind: SqlDialectKind,
   fields: string[],
-  rows: Record<string, unknown>[],
-): Promise<Record<string, unknown>[]> {
+  rows: DynamicRow[],
+): Promise<PayloadRow[]> {
   if (fields.length === 0 || rows.length === 0) {
     return rows;
   }
+  // Expansions land on copies, so every lookup below reads the stored columns of `rows`.
+  const expanded = rows.map((stored) => {
+    const payload: PayloadRow = { ...stored };
+    return { payload, stored };
+  });
   for (const field of fields) {
     const spec = plan.columns.find((c) => c.field === field && c.ref !== null && !c.manyRef);
     if (spec && spec.ref!.section === "data" && tables[spec.ref!.name]) {
       const targetDef = tables[spec.ref!.name]!;
       const targetPlan = planTable(spec.ref!.name, targetDef, tables, kind);
-      const ids = [...new Set(rows.map((r) => r[spec.column]).filter((v) => v != null))];
+      const ids = [
+        ...new Set(
+          rows.flatMap((r) => {
+            const fk = r[spec.column];
+            return fk == null ? [] : [fk];
+          }),
+        ),
+      ];
       if (ids.length === 0) {
         continue;
       }
@@ -533,12 +572,10 @@ async function expandIncludes(
         .selectAll()
         .where("id", "in", ids)
         .execute();
-      const byId = new Map(
-        targets.map((t) => [t.id as string | number, fromStorage(targetPlan.columns, t)]),
-      );
-      for (const row of rows) {
-        const key = row[spec.column];
-        row[field] = key == null ? null : (byId.get(key as string | number) ?? null);
+      const byId = new Map(targets.map((t) => [t.id, fromStorage(targetPlan.columns, t)]));
+      for (const { payload, stored } of expanded) {
+        const key = stored[spec.column];
+        payload[field] = key == null ? null : (byId.get(key) ?? null);
       }
       continue;
     }
@@ -551,40 +588,55 @@ async function expandIncludes(
         tables,
         kind,
       );
-      // Every row here came off this table's own SELECT, so its `id` (the primary key) is never
-      // Null — unlike `rows.map(r => r[spec.column])` above, which reads an optional FK column.
-      const rowIds = rows.map((r) => r.id);
+      /* Every row here came off this table's own SELECT, so its `id` (the primary key) is always
+         present and never null, unlike the optional FK column read above. */
+      const rowIds = rows.flatMap((r) => (r.id === undefined ? [] : [r.id]));
       const links = await db
         .selectFrom(junction.table)
         .selectAll()
         .where(junction.sourceColumn, "in", rowIds)
         .execute();
-      const targetIds = [...new Set(links.map((l) => l[junction.targetColumn]))];
+      // SELECT * returns every junction column, so a link's target column is always present.
+      const targetIds = [
+        ...new Set(
+          links.flatMap((l) => {
+            const targetId = l[junction.targetColumn];
+            return targetId === undefined ? [] : [targetId];
+          }),
+        ),
+      ];
       const targets =
         targetIds.length > 0
           ? await db.selectFrom(targetPlan.table).selectAll().where("id", "in", targetIds).execute()
           : [];
-      const byId = new Map(
-        targets.map((t) => [t.id as string | number, fromStorage(targetPlan.columns, t)]),
-      );
-      for (const row of rows) {
-        const mine = links.filter((l) => l[junction.sourceColumn] === row.id);
-        row[field] = mine
-          .map((l) => byId.get(l[junction.targetColumn] as string | number))
-          .filter((t) => t !== undefined);
+      const byId = new Map(targets.map((t) => [t.id, fromStorage(targetPlan.columns, t)]));
+      for (const { payload, stored } of expanded) {
+        const mine = links.filter((l) => l[junction.sourceColumn] === stored.id);
+        payload[field] = mine.flatMap((l) => {
+          const target = byId.get(l[junction.targetColumn]);
+          return target === undefined ? [] : [target];
+        });
       }
     }
   }
-  return rows;
+  return expanded.map(({ payload }) => payload);
+}
+
+/**
+ * Read a request body as JSON. `Body.json()` is `JSON.parse` of the body text, so the result is a
+ * JSON value; an absent or malformed body reads as null, the same as a literal `null` body.
+ */
+function readJsonBody(request: Request): Promise<JsonValue> {
+  return request.json().catch(() => null);
 }
 
 /** Parse a JSON query param, throwing a wire-friendly error on malformed input. */
-function parseJsonParam(raw: string | null): unknown {
+function parseJsonParam(raw: string | null): JsonValue {
   if (raw === null || raw === "") {
     return null;
   }
   try {
-    return JSON.parse(raw) as unknown;
+    return JSON.parse(raw);
   } catch (error) {
     throw new Error(`Malformed JSON query parameter: ${raw}`, { cause: error });
   }

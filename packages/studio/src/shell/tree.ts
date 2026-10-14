@@ -13,7 +13,7 @@
  * the real shell instead of describing one.
  */
 
-import { html, render as litRender } from "lit-html";
+import { html, render } from "lit-html";
 import type { TemplateResult } from "lit-html";
 import { mountShellSurface } from "../surfaces/shell";
 import { mountBootFailureSurface } from "../surfaces/boot-failure";
@@ -82,7 +82,7 @@ export async function mountShellTree(host: ParentNode = document.body): Promise<
   await mountShellSurface(root);
   /* After the frame, so the layers are its siblings in the order they always were. lit's `render`
      manages only the range between its own markers, so appending here leaves `#app` alone. */
-  litRender(overlayLayers(), root);
+  render(overlayLayers(), root);
 }
 
 /**
@@ -128,12 +128,13 @@ export async function mountBootFailureTree(
  * containing block here would move all four of them, silently.
  */
 function shellRoot(host: ParentNode): HTMLElement {
-  const existing = host.querySelector?.("#shell-root");
+  // The only `#shell-root` is the div made below, so the element found is an HTMLElement.
+  const existing = host.querySelector<HTMLElement>("#shell-root");
   if (existing) {
-    return existing as HTMLElement;
+    return existing;
   }
   const root = document.createElement("div");
   root.id = "shell-root";
-  (host as HTMLElement).append(root);
+  host.append(root);
   return root;
 }

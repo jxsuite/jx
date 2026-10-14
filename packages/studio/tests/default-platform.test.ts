@@ -17,19 +17,17 @@ import {
   resolveDefaultPlatform,
 } from "../src/platforms/default-platform";
 import type { BootEnvironment } from "../src/platforms/default-platform";
-import type { CloudProject } from "../src/platforms/cloud";
 import type { LauncherSignal } from "../src/platform";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (url: string) => void } };
+/* SAFETY: `./with-dom.js` registers happy-dom's GlobalRegistrator, which copies the window's members
+   onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
 /* The URL the repo dev server really serves Studio from. happy-dom's default is `about:blank`,
    which the scheme rule deliberately leaves alone, but stating the dev-server origin is what makes
    the fallback tests below say what they mean. */
 happyDOM.setURL("http://localhost:3000/");
-
-const g = globalThis as unknown as {
-  __jxCloud?: { project: CloudProject | null };
-  __jxLauncher?: LauncherSignal;
-};
 
 function addBootMeta(): void {
   const meta = document.createElement("meta");
@@ -38,9 +36,22 @@ function addBootMeta(): void {
   document.head.append(meta);
 }
 
+/** The refusal `resolveDefaultPlatform` throws; any other outcome fails the calling test. */
+function refusalError(): PlatformUnavailableError {
+  try {
+    resolveDefaultPlatform();
+  } catch (error) {
+    if (error instanceof PlatformUnavailableError) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error("resolveDefaultPlatform returned an adapter instead of refusing");
+}
+
 afterEach(() => {
-  delete g.__jxCloud;
-  delete g.__jxLauncher;
+  globalThis.__jxCloud = undefined;
+  globalThis.__jxLauncher = undefined;
   for (const meta of document.querySelectorAll('meta[name="jx-boot"]')) {
     meta.remove();
   }
@@ -49,12 +60,12 @@ afterEach(() => {
 
 describe("resolveDefaultPlatform", () => {
   test("returns the dev-server adapter when no cloud signal is present", () => {
-    delete g.__jxCloud;
+    globalThis.__jxCloud = undefined;
     expect(resolveDefaultPlatform().id).toBe("devserver");
   });
 
   test("returns the cloud adapter bound to the signalled project", () => {
-    g.__jxCloud = { project: { owner: "acme", repo: "site", branch: "main" } };
+    globalThis.__jxCloud = { project: { owner: "acme", repo: "site", branch: "main" } };
     const platform = resolveDefaultPlatform();
     expect(platform.id).toBe("cloud");
     // The root key, branch included — the identity Recent and the catalogue both address a project by.
@@ -62,7 +73,7 @@ describe("resolveDefaultPlatform", () => {
   });
 
   test("returns the cloud adapter for the project-less hub (null project)", () => {
-    g.__jxCloud = { project: null };
+    globalThis.__jxCloud = { project: null };
     const platform = resolveDefaultPlatform();
     expect(platform.id).toBe("cloud");
     expect(platform.projectRoot).toBe("");
@@ -70,27 +81,21 @@ describe("resolveDefaultPlatform", () => {
 
   test("the cloud shell's own boot meta does not refuse the cloud adapter", () => {
     addBootMeta();
-    g.__jxCloud = { project: null };
+    globalThis.__jxCloud = { project: null };
     expect(resolveDefaultPlatform().id).toBe("cloud");
   });
 
   test("throws PlatformUnavailableError, carrying the refusal, when a launcher announced and failed", () => {
-    g.__jxLauncher = { launcher: "electrobun", error: { message: "boom" } };
-    let caught: unknown;
-    try {
-      resolveDefaultPlatform();
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(PlatformUnavailableError);
-    const error = caught as PlatformUnavailableError;
+    globalThis.__jxLauncher = { launcher: "electrobun", error: { message: "boom" } };
+    const error = refusalError();
+    expect(error).toBeInstanceOf(PlatformUnavailableError);
     expect(error.name).toBe("PlatformUnavailableError");
     expect(error.refusal).toEqual({ kind: "launcher", launcher: "electrobun" });
     expect(error.message).toContain("(electrobun)");
   });
 
   test("names an unnamed launcher as such", () => {
-    g.__jxLauncher = {};
+    globalThis.__jxLauncher = {};
     expect(() => resolveDefaultPlatform()).toThrow(/launcher \(unnamed\) announced itself/);
   });
 
@@ -101,17 +106,12 @@ describe("resolveDefaultPlatform", () => {
 
   test("throws for a views:// page with no signal and no meta", () => {
     happyDOM.setURL("views://studio/index.html");
-    let caught: unknown;
-    try {
-      resolveDefaultPlatform();
-    } catch (error) {
-      caught = error;
-    }
-    expect((caught as PlatformUnavailableError).refusal).toEqual({
+    const error = refusalError();
+    expect(error.refusal).toEqual({
       kind: "scheme",
       protocol: "views:",
     });
-    expect((caught as Error).message).toContain("views: URL");
+    expect(error.message).toContain("views: URL");
   });
 });
 
@@ -187,8 +187,8 @@ describe("bootEnvironment", () => {
 
   test("reads the launcher signal, the cloud signal, the meta and the protocol", () => {
     const signal: LauncherSignal = { launcher: "electrobun" };
-    g.__jxLauncher = signal;
-    g.__jxCloud = { project: null };
+    globalThis.__jxLauncher = signal;
+    globalThis.__jxCloud = { project: null };
     addBootMeta();
     happyDOM.setURL("file:///Applications/JxStudio.app/index.html");
     const read = bootEnvironment();

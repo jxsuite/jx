@@ -14,12 +14,22 @@ import {
 } from "../src/site/image-optimizer";
 import { loadCache, saveCache, getCached, setCached } from "../src/site/image-cache";
 import { transformImageNodes } from "../src/site/image-transform";
+import type { CacheManifest } from "../src/site/image-cache";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // Mock sharp module before any imports that use it
 const mockToFile = mock(() => Promise.resolve());
 const mockToFormat = mock(() => ({ toFile: mockToFile }));
 const mockResize = mock(() => ({ toFormat: mockToFormat }));
-const mockMetadata = mock(() => Promise.resolve({ format: "jpeg", height: 600, width: 800 }));
+/** What sharp's `metadata()` reports: older sharp releases leave any of these out. */
+interface SharpMetadata {
+  format?: string | undefined;
+  height?: number | undefined;
+  width?: number | undefined;
+}
+const mockMetadata = mock((): Promise<SharpMetadata> =>
+  Promise.resolve({ format: "jpeg", height: 600, width: 800 }),
+);
 const mockSharpInstance = { metadata: mockMetadata, resize: mockResize };
 const mockSharp = mock(() => mockSharpInstance);
 void mock.module("sharp", () => ({ default: mockSharp }));
@@ -233,7 +243,7 @@ describe("image-cache", () => {
   });
 
   test("setCached stores entry", () => {
-    const cache = { entries: {} as Record<string, any>, version: 1 };
+    const cache: CacheManifest = { entries: {}, version: 1 };
     const manifest = {
       contentHash: "abc",
       original: { format: "jpeg", height: 600, width: 800 },
@@ -241,7 +251,7 @@ describe("image-cache", () => {
     };
     setCached(cache, "key1", "test.jpg", manifest);
     expect(cache.entries["key1"]).toBeDefined();
-    expect(cache.entries["key1"].source).toBe("test.jpg");
+    expect(cache.entries["key1"]?.source).toBe("test.jpg");
   });
 });
 
@@ -258,17 +268,8 @@ describe("image-transform", () => {
   };
 
   test("skips when optimize is false", async () => {
-    const doc = {
-      children: [
-        {
-          attributes: /** @type {Record<string, any>} */ {
-            src: "/images/hero.jpg",
-          },
-          tagName: "img",
-        },
-      ],
-      tagName: "div",
-    };
+    const img: JxMutableNode = { attributes: { src: "/images/hero.jpg" }, tagName: "img" };
+    const doc = { children: [img], tagName: "div" };
     const cache = { entries: {}, version: 1 };
     const result = await transformImageNodes(
       doc,
@@ -277,7 +278,7 @@ describe("image-transform", () => {
       cache,
     );
     expect(result.imageRefs.size).toBe(0);
-    expect((doc.children[0]!.attributes as Record<string, unknown>)?.srcset).toBeUndefined();
+    expect(img.attributes?.srcset).toBeUndefined();
   });
 
   test("skips template string src", async () => {
@@ -410,7 +411,7 @@ describe("image-transform", () => {
       writeFileSync(v.absolutePath, "");
     }
 
-    const cache = { entries: {} as Record<string, any>, version: 1 };
+    const cache = { entries: {}, version: 1 };
     setCached(
       cache,
       `${contentHash(join(root, "public/images/photo.jpg"))}:${configHash(defaultConfig)}`,
@@ -504,7 +505,7 @@ describe("image-transform", () => {
       writeFileSync(v.absolutePath, "");
     }
 
-    const cache = { entries: {} as Record<string, any>, version: 1 };
+    const cache = { entries: {}, version: 1 };
     setCached(
       cache,
       `${contentHash(join(root, "public/images/hero.jpg"))}:${configHash(defaultConfig)}`,
@@ -551,7 +552,7 @@ describe("image-transform", () => {
       return m;
     };
 
-    const cache = { entries: {} as Record<string, any>, version: 1 };
+    const cache = { entries: {}, version: 1 };
     setCached(
       cache,
       `${contentHash(join(root, "public/images/a.jpg"))}:${configHash(defaultConfig)}`,
@@ -606,10 +607,6 @@ describe("getImageMetadata", () => {
         format: undefined,
         height: undefined,
         width: undefined,
-      } as unknown as {
-        width: number;
-        height: number;
-        format: string;
       }),
     );
     const root = setup();
@@ -619,7 +616,7 @@ describe("getImageMetadata", () => {
     const meta = await getImageMetadata(imgPath);
     expect(meta.width).toBe(0);
     expect(meta.height).toBe(0);
-    expect(meta.format).toBe("unknown" as unknown as string);
+    expect(meta.format).toBe("unknown");
 
     teardown();
   });
@@ -695,7 +692,7 @@ describe("processImage", () => {
       quality: { webp: 80 },
       sizes: "100vw",
       widths: [320, 640, 1920],
-    } as never);
+    });
 
     // Below the 1920 ceiling, so the ladder cannot otherwise offer the image at full resolution.
     expect(manifest.variants.map((v) => v.width)).toEqual([320, 640, 1000]);

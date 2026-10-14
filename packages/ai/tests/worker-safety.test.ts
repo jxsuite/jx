@@ -27,6 +27,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { BuildMetafile } from "bun";
+import type { JsonObject } from "../src/core-types.ts";
 
 const PKG_DIR = resolve(import.meta.dir, "..");
 const REPO_ROOT = resolve(PKG_DIR, "../..");
@@ -38,20 +39,27 @@ const REPO_ROOT = resolve(PKG_DIR, "../..");
  * them. Adding a subpath here is a claim that its whole bundle graph passes FORBIDDEN; the tests
  * below hold it to that, and `tsconfig.worker.json`'s `include` must name the same files.
  */
-const WORKER_SAFE_ENTRIES: Readonly<Record<string, string>> = {
+const WORKER_SAFE_ENTRIES = {
   "./gateway": "./src/gateway/index.ts",
   "./harness": "./src/harness/index.ts",
   "./messages": "./src/messages/index.ts",
   "./streaming-client": "./src/streaming-client.ts",
   "./tools": "./src/tools.ts",
-};
+} satisfies Readonly<Record<string, string>>;
+
+/** An export that is not Worker-safe: its file, the FORBIDDEN rule it trips, and why. */
+interface NotWorkerSafeEntry {
+  file: string;
+  trips: string;
+  why: string;
+}
 
 /**
  * Every other export, with the rule it trips today. Listing them keeps WORKER_SAFE_ENTRIES honest
  * in both directions: a new subpath must be classified before this file passes, and an entry here
  * that starts bundling clean fails too, so it gets promoted rather than left looking unsafe.
  */
-const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; why: string }>> = {
+const NOT_WORKER_SAFE = {
   ".": {
     file: "./src/index.ts",
     trips: "@vue/reactivity",
@@ -62,7 +70,7 @@ const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; wh
     trips: "@vue/reactivity",
     why: "createChatState is built on reactive()",
   },
-};
+} satisfies Readonly<Record<string, NotWorkerSafeEntry>>;
 
 /**
  * The module graph each Worker-safe entry bundles today, repository-relative and sorted. This is
@@ -81,40 +89,49 @@ const NOT_WORKER_SAFE: Readonly<Record<string, { file: string; trips: string; wh
  * erased the same way. When a change adds a module on purpose, confirm it passes FORBIDDEN
  * ("reaches no forbidden module" checks) and add it here.
  */
-const FROZEN_GRAPHS: Readonly<Record<string, readonly string[]>> = {
-  "./gateway": [
-    "packages/ai/src/cache-hints.ts",
-    "packages/ai/src/gateway/chat.ts",
-    "packages/ai/src/gateway/index.ts",
-    "packages/ai/src/gateway/models.ts",
-    "packages/ai/src/gateway/normalize.ts",
-    "packages/ai/src/gateway/problem.ts",
-    "packages/ai/src/gateway/sse.ts",
-    "packages/ai/src/gateway/upstream-error.ts",
-    "packages/protocol/src/problem.ts",
-    "packages/protocol/src/problems.ts",
+const FROZEN_GRAPHS = new Map<string, readonly string[]>([
+  [
+    "./gateway",
+    [
+      "packages/ai/src/cache-hints.ts",
+      "packages/ai/src/gateway/chat.ts",
+      "packages/ai/src/gateway/index.ts",
+      "packages/ai/src/gateway/models.ts",
+      "packages/ai/src/gateway/normalize.ts",
+      "packages/ai/src/gateway/problem.ts",
+      "packages/ai/src/gateway/sse.ts",
+      "packages/ai/src/gateway/upstream-error.ts",
+      "packages/protocol/src/problem.ts",
+      "packages/protocol/src/problems.ts",
+    ],
   ],
-  "./harness": [
-    "packages/ai/src/harness/index.ts",
-    "packages/ai/src/harness/lock.ts",
-    "packages/ai/src/harness/model.ts",
-    "packages/ai/src/harness/policy.ts",
-    "packages/ai/src/harness/run.ts",
-    "packages/ai/src/message-id.ts",
-    "packages/ai/src/messages/convert.ts",
-    "packages/ai/src/messages/openai.ts",
-    "packages/ai/src/messages/repair.ts",
-    "packages/ai/src/tools.ts",
+  [
+    "./harness",
+    [
+      "packages/ai/src/harness/index.ts",
+      "packages/ai/src/harness/lock.ts",
+      "packages/ai/src/harness/model.ts",
+      "packages/ai/src/harness/policy.ts",
+      "packages/ai/src/harness/run.ts",
+      "packages/ai/src/message-id.ts",
+      "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/messages/repair.ts",
+      "packages/ai/src/tools.ts",
+    ],
   ],
-  "./messages": [
-    "packages/ai/src/messages/convert.ts",
-    "packages/ai/src/messages/index.ts",
-    "packages/ai/src/messages/openai.ts",
-    "packages/ai/src/messages/repair.ts",
+  [
+    "./messages",
+    [
+      "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/index.ts",
+      "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/messages/repair.ts",
+    ],
   ],
-  "./streaming-client": ["packages/ai/src/cache-hints.ts", "packages/ai/src/streaming-client.ts"],
-  "./tools": ["packages/ai/src/tools.ts"],
-};
+  ["./streaming-client", ["packages/ai/src/cache-hints.ts", "packages/ai/src/streaming-client.ts"]],
+  ["./tools", ["packages/ai/src/tools.ts"]],
+]);
 
 /** A forbidden module, matched by how it was imported, where it resolved, or both. */
 interface ForbiddenRule {
@@ -308,7 +325,11 @@ function scanMetafile(meta: BuildMetafile, entry: string, base: string): Violati
       return [...chainTo(importer), module];
     }
     const chain: string[] = [];
-    for (let at: string | null | undefined = module; typeof at === "string"; at = parent.get(at)) {
+    for (
+      let at: string | null | undefined = module;
+      at !== null && at !== undefined;
+      at = parent.get(at)
+    ) {
       chain.unshift(at);
     }
     return chain;
@@ -318,9 +339,9 @@ function scanMetafile(meta: BuildMetafile, entry: string, base: string): Violati
   const candidates = new Set([...edges.keys(), ...externals.keys()]);
   for (const module of candidates) {
     const written = [...(specifiers.get(module) ?? [])];
-    const rules = FORBIDDEN.filter(
-      (rule) => rule.path.test(module) || written.some((s) => rule.specifier.test(s)),
-    ).map((rule) => rule.id);
+    const rules = FORBIDDEN.flatMap((rule) =>
+      rule.path.test(module) || written.some((s) => rule.specifier.test(s)) ? [rule.id] : [],
+    );
     if (externals.has(module) && !ALLOWED_EXTERNALS.has(module)) {
       rules.push(EXTERNAL_RULE);
     }
@@ -337,14 +358,17 @@ function scanMetafile(meta: BuildMetafile, entry: string, base: string): Violati
  * path still decides how its imports resolve.
  */
 async function bundleForWorker(entry: string, source?: string): Promise<WorkerGraph> {
-  const result = await Bun.build({
+  const config: Bun.BuildConfig = {
     entrypoints: [entry],
-    ...(source === undefined ? {} : { files: { [entry]: source } }),
     target: "browser",
     conditions: ["workerd", "worker"],
     metafile: true,
     throw: false,
-  });
+  };
+  if (source !== undefined) {
+    config.files = { [entry]: source };
+  }
+  const result = await Bun.build(config);
   const logs = result.logs.map((log) => log.message);
   const meta = result.metafile;
   if (!result.success || meta === undefined) {
@@ -371,7 +395,7 @@ async function bundleForWorker(entry: string, source?: string): Promise<WorkerGr
 
 /** The HOST_GLOBALS names `code` references, in list order. */
 function hostGlobalsIn(code: string): string[] {
-  return HOST_GLOBALS.filter(([, pattern]) => pattern.test(code)).map(([name]) => name);
+  return HOST_GLOBALS.flatMap(([name, pattern]) => (pattern.test(code) ? [name] : []));
 }
 
 /** One line per violation, so a failure reads as a list of reasons rather than an object dump. */
@@ -411,12 +435,14 @@ describe("Worker-safe entries", () => {
       it("bundles exactly the frozen graph", async () => {
         const graph = await bundleForWorker(pkgFile(file));
         expect(graph.modules).toContain(normalize(pkgFile(file), REPO_ROOT));
-        expect(graph.modules).toEqual([...(FROZEN_GRAPHS[subpath] ?? [])]);
+        expect(graph.modules).toEqual([...(FROZEN_GRAPHS.get(subpath) ?? [])]);
       });
 
       it("bundles every runtime export of the module", async () => {
         const graph = await bundleForWorker(pkgFile(file));
-        const runtime = Object.keys((await import(pkgFile(file))) as object).toSorted(compare);
+        // SAFETY: a dynamic import() resolves to the module's namespace object, never a primitive.
+        const namespace = (await import(pkgFile(file))) as object;
+        const runtime = Object.keys(namespace).toSorted(compare);
         expect(runtime.length).toBeGreaterThan(0);
         expect(graph.exports).toEqual(runtime);
       });
@@ -428,18 +454,21 @@ describe("Worker-safe entries", () => {
 
 describe("the Worker-safe list stays honest", () => {
   it("classifies every package.json export, and nothing else", () => {
+    /* SAFETY: this is the package's own committed manifest, whose `exports` maps every subpath
+       straight to a source file path (no condition objects); the toEqual below checks the whole
+       map either way. */
     const pkg = JSON.parse(readFileSync(pkgFile("package.json"), "utf8")) as {
-      exports: Record<string, unknown>;
+      exports: Record<string, string>;
     };
-    const classified: Record<string, string> = { ...WORKER_SAFE_ENTRIES };
-    for (const [subpath, entry] of Object.entries(NOT_WORKER_SAFE)) {
-      classified[subpath] = entry.file;
-    }
+    const classified = Object.fromEntries([
+      ...Object.entries(WORKER_SAFE_ENTRIES),
+      ...Object.entries(NOT_WORKER_SAFE).map(([subpath, entry]) => [subpath, entry.file]),
+    ]);
     expect(
       Object.keys(WORKER_SAFE_ENTRIES).filter((subpath) => subpath in NOT_WORKER_SAFE),
     ).toEqual([]);
     expect(pkg.exports).toEqual(classified);
-    expect(Object.keys(FROZEN_GRAPHS).toSorted(compare)).toEqual(
+    expect([...FROZEN_GRAPHS.keys()].toSorted(compare)).toEqual(
       Object.keys(WORKER_SAFE_ENTRIES).toSorted(compare),
     );
   });
@@ -691,8 +720,11 @@ describe("canary builds trip the gate", () => {
 // ─── The typecheck half ──────────────────────────────────────────────────────
 
 describe("tsconfig.worker.json", () => {
+  /* SAFETY: tsconfig.worker.json is committed as plain JSON (JSON.parse would throw on a comment)
+     with a `compilerOptions` object and an `include` list of file paths, and the tests below check
+     both. */
   const config = JSON.parse(readFileSync(pkgFile("tsconfig.worker.json"), "utf8")) as {
-    compilerOptions: Record<string, unknown>;
+    compilerOptions: JsonObject;
     include: string[];
   };
 

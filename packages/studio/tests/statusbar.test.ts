@@ -8,7 +8,7 @@
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { initShellRefs, setProjectState, statusbarEl } from "../src/store";
+import { initShellRefs, requireShellRef, setProjectState, statusbarEl } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import {
   aheadBehindLabel,
@@ -27,6 +27,11 @@ import { collabState } from "../src/collab/collab-state";
 import type { CommandContext } from "../src/commands/context";
 import type { AnyCommand } from "../src/commands/registry";
 
+/** The shell's status bar cell, which `initShellRefs()` found before these tests run. */
+function barHost(): HTMLElement {
+  return requireShellRef(statusbarEl, "statusbar");
+}
+
 beforeAll(() => {
   const bar = document.createElement("div");
   bar.id = "statusbar";
@@ -39,7 +44,7 @@ const ran: { id: string; args: unknown }[] = [];
 
 /** One command record, as bare as the registry allows: the bar must not care what it does. */
 function stub(id: string, title: string, level: AnyCommand["level"]): AnyCommand {
-  return {
+  const command: AnyCommand = {
     category: "View",
     id,
     level,
@@ -47,7 +52,8 @@ function stub(id: string, title: string, level: AnyCommand["level"]): AnyCommand
       ran.push({ args, id });
     },
     title,
-  } as AnyCommand;
+  };
+  return command;
 }
 
 function buildRegistry(ids?: readonly string[]) {
@@ -72,7 +78,7 @@ beforeEach(() => {
   closeAllTabs();
   // `projectState` is a module-level binding, not a per-test one: the bar's "No project" state has
   // To be stated rather than inherited from whichever test ran last.
-  setProjectState(null as never);
+  setProjectState(null);
   resetProjectShell();
   resetNotifications();
   ran.length = 0;
@@ -99,13 +105,20 @@ async function render(): Promise<void> {
 
 /** Every item the bar shows — buttons and readouts — in order. */
 const items = () =>
-  [...statusbarEl.querySelectorAll('[part="item"], [part="state"]')].map((e) =>
-    e.textContent?.trim(),
-  );
-const field = (name: string) => statusbarEl.querySelector(`[data-jx-region="statusbar/${name}"]`);
-const slot = () => statusbarEl.querySelector<HTMLElement>('[part="trail"]');
+  [...barHost().querySelectorAll('[part="item"], [part="state"]')].map((e) => e.textContent.trim());
+const field = (name: string) => barHost().querySelector(`[data-jx-region="statusbar/${name}"]`);
+const slot = () => barHost().querySelector<HTMLElement>('[part="trail"]');
 const crumbs = () =>
-  [...statusbarEl.querySelectorAll('[part="crumb"]')].map((e) => e.textContent?.trim());
+  [...barHost().querySelectorAll('[part="crumb"]')].map((e) => e.textContent.trim());
+
+/** The first button a field draws, failing the test by name when it draws none. */
+function buttonIn(name: string): HTMLButtonElement {
+  const button = field(name)?.querySelector("button");
+  if (!button) {
+    throw new Error(`the ${name} field drew no button`);
+  }
+  return button;
+}
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -124,14 +137,14 @@ describe("aheadBehindLabel", () => {
 describe("the PROJECT field", () => {
   test("with no project it offers the one command that fixes that", async () => {
     await render();
-    expect(field("project")?.textContent?.trim()).toBe("No project");
+    expect(field("project")?.textContent.trim()).toBe("No project");
   });
 
   test("names the project, and the name is Open Recent…", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     await render();
-    const button = field("project")?.querySelector("button") as HTMLButtonElement;
-    expect(button.textContent?.trim()).toBe("My Site");
+    const button = buttonIn("project");
+    expect(button.textContent.trim()).toBe("My Site");
     expect(button.title).toContain("Open Recent…");
     button.click();
     expect(ran).toEqual([{ args: {}, id: "project.openRecent" }]);
@@ -141,7 +154,14 @@ describe("the PROJECT field", () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     await render();
     expect(items()).not.toContain("⑂ main");
-    shell.git.status = { ahead: 1, behind: 2, branch: "main", files: [], isRepo: true } as never;
+    shell.git.status = {
+      ahead: 1,
+      behind: 2,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: [],
+    };
     await render();
     expect(items()).toContain("⑂ main ↑1 ↓2");
   });
@@ -160,10 +180,11 @@ describe("the PROJECT field", () => {
    */
   test("an untracked project is stated ONCE, by the item whose command initializes the repo", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
-    shell.git.status = { ahead: 0, behind: 0, files: [], isRepo: false, remotes: [] } as never;
+    // Not a repo, so there is no branch: the empty name is what a host reports for one.
+    shell.git.status = { ahead: 0, behind: 0, branch: "", files: [], isRepo: false, remotes: [] };
     await render();
     // No branch to name, so the branch item is absent — and the state is said anyway.
-    expect(items().some((t) => t?.startsWith("⑂"))).toBe(false);
+    expect(items().some((t) => t.startsWith("⑂"))).toBe(false);
     expect(items()).toContain("Track this project with git");
 
     const buttons = [...field("project")!.querySelectorAll("button")];
@@ -182,16 +203,17 @@ describe("the PROJECT field", () => {
       files: [],
       isRepo: true,
       remotes: [],
-    } as never;
+    };
     await render();
-    expect(items()).toContain("⑂ main");
-    expect(items()).not.toContain("Track this project with git");
+    const shown = items();
+    expect(shown).toContain("⑂ main");
+    expect(shown).not.toContain("Track this project with git");
   });
 
   test("the problems item counts `notify`'s Problems store, and appears only when non-zero", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     await render();
-    expect(items().some((t) => t?.startsWith("⚠"))).toBe(false);
+    expect(items().some((t) => t.startsWith("⚠"))).toBe(false);
     notify.error("Could not save.");
     notify.warn("Slots", { tier: "problem" });
     await render();
@@ -200,7 +222,7 @@ describe("the PROJECT field", () => {
     // Count, and a positional lookup here would silently start clicking whichever item grew in
     // Front of it (it did — the deploy item's `git.init` link took slot 1).
     const problems = [...field("project")!.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "⚠ 2",
+      (b) => b.textContent.trim() === "⚠ 2",
     )!;
     problems.click();
     // The one door the other three Bottom-dock tabs use, carrying which tab it means.
@@ -211,11 +233,20 @@ describe("the PROJECT field", () => {
   test("the peers item counts them, and opens what is happening in this document", async () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     const tab = resetWorkspaceWithTab();
-    collabState(tab).peers = [{ color: "#f00", name: "Ada" }] as never;
+    collabState(tab).peers = [
+      {
+        clientId: 2,
+        state: { focusedPath: null, user: { color: "#f00", login: "ada", name: "Ada" } },
+      },
+    ];
     await render();
     expect(items()).toContain("1 peer");
     const buttons = [...field("project")!.querySelectorAll("button")];
-    (buttons.at(-1) as HTMLElement).click();
+    const peersButton = buttons.at(-1);
+    if (!peersButton) {
+      throw new Error("the project field drew no buttons");
+    }
+    peersButton.click();
     expect(ran.at(-1)!.id).toBe("collab.showStatus");
   });
 
@@ -223,7 +254,7 @@ describe("the PROJECT field", () => {
     resetStudioState({ name: "My Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
     await render();
-    expect(items().some((t) => t?.includes("peer"))).toBe(false);
+    expect(items().some((t) => t.includes("peer"))).toBe(false);
   });
 
   /*
@@ -240,6 +271,7 @@ describe("the PROJECT field", () => {
     const { appCommandSet } = await import("../src/commands/app-commands");
     const declared = new Set(appCommandSet().map((c) => c.id));
     const source = readFileSync(new URL("../src/surfaces/statusbar.ts", import.meta.url), "utf8");
+    // SAFETY: group 1 is not optional in this pattern, so every match the iterator yields carries it.
     const named = [...source.matchAll(/command:\s*"([\w.]+)"/g)].map((m) => m[1] as string);
     expect(named.length).toBeGreaterThan(3);
     expect(named.filter((id) => !declared.has(id))).toEqual([]);
@@ -261,8 +293,8 @@ describe("the DOCUMENT field", () => {
     await render();
     expect(slot()!.hasAttribute("hidden")).toBe(false);
     expect(field("document")?.tagName).toBe("NAV");
-    const button = field("document")?.querySelector("button") as HTMLButtonElement;
-    expect(button.textContent?.trim()).toBe("pages/index.json");
+    const button = buttonIn("document");
+    expect(button.textContent.trim()).toBe("pages/index.json");
     button.click();
     expect(ran.at(-1)!.id).toBe("palette.openFiles");
   });
@@ -275,7 +307,7 @@ describe("the DOCUMENT field", () => {
     tab.session.selection = [["children", 0, "children", 0]];
     await render();
     expect(crumbs()).toEqual(["/project/index.json", "ul", "li"]);
-    const ul = [...statusbarEl.querySelectorAll<HTMLElement>('button[part="crumb"]')][1]!;
+    const ul = [...barHost().querySelectorAll<HTMLElement>('button[part="crumb"]')][1]!;
     ul.click();
     expect(ran.at(-1)).toEqual({ args: { path: ["children", 0] }, id: "selection.set" });
   });
@@ -286,7 +318,7 @@ describe("the DOCUMENT field", () => {
     ctx = makeContext({ canvas: { view: "preview" }, editor: { kind: "canvas" } });
     await render();
     for (const word of ["Preview", "Unsaved changes", "Saved", "Read-only"]) {
-      expect(statusbarEl.textContent).not.toContain(word);
+      expect(barHost().textContent).not.toContain(word);
     }
   });
 
@@ -320,9 +352,10 @@ describe("the SELECTION field", () => {
     // A single selection leaves the field empty: the trail's leaf states it, with its ancestors,
     // One field to the left.
     expect(field("selection")).toBeNull();
-    expect(statusbarEl.querySelectorAll(".sb-sep")).toHaveLength(0);
-    expect(items()).not.toContain("ul");
-    expect(items()).not.toContain("li");
+    expect(barHost().querySelectorAll(".sb-sep")).toHaveLength(0);
+    const shown = items();
+    expect(shown).not.toContain("ul");
+    expect(shown).not.toContain("li");
   });
 
   test("a batch says its SIZE, which is the one selection fact an address cannot state", async () => {
@@ -335,7 +368,7 @@ describe("the SELECTION field", () => {
       ["children", 2],
     ];
     await render();
-    expect(field("selection")?.textContent?.trim()).toBe("2 selected");
+    expect(field("selection")?.textContent.trim()).toBe("2 selected");
     // A count is a readout, not a control: there is no command that "selects two things".
     expect(field("selection")?.querySelectorAll("button")).toHaveLength(0);
   });
@@ -344,7 +377,7 @@ describe("the SELECTION field", () => {
     resetWorkspaceWithTab();
     shell.stylebook.selection = "ul li";
     await render();
-    expect(field("selection")?.textContent?.trim()).toBe("ul › li");
+    expect(field("selection")?.textContent.trim()).toBe("ul › li");
   });
 
   test("a node selection wins over the stylebook selector, even printing nothing", async () => {
@@ -366,13 +399,20 @@ describe("items are a rendering of the registry", () => {
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
     await render();
-    expect(statusbarEl.querySelectorAll("button")).toHaveLength(0);
+    expect(barHost().querySelectorAll("button")).toHaveLength(0);
   });
 
   test("an item whose command is unregistered disappears; the field survives", async () => {
     setActiveRegistry(buildRegistry(["project.openRecent"]));
     resetStudioState({ name: "Site", projectRoot: "/p" });
-    shell.git.status = { ahead: 0, behind: 0, branch: "main", files: [], isRepo: true } as never;
+    shell.git.status = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: [],
+    };
     await render();
     expect(items()).toEqual(["Site"]);
   });
@@ -399,7 +439,7 @@ describe("items are a rendering of the registry", () => {
     setActiveRegistry(registry);
     resetStudioState({ name: "Site", projectRoot: "/p" });
     await render();
-    const recent = field("project")?.querySelector("button") as HTMLButtonElement;
+    const recent = buttonIn("project");
     expect(recent.disabled).toBe(true);
     expect(recent.title).toContain("a recent project");
   });
@@ -456,7 +496,7 @@ describe("mountStatusbar", () => {
       ["children", 1],
     ];
     await flush();
-    expect(statusbarEl.querySelectorAll('[data-jx-region="statusbar/selection"]')).toHaveLength(1);
+    expect(barHost().querySelectorAll('[data-jx-region="statusbar/selection"]')).toHaveLength(1);
   });
 
   test("unmount stops the repaint", async () => {

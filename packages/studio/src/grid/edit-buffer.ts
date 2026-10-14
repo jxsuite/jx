@@ -92,15 +92,16 @@ export function createEditBuffer(opts: EditBufferOptions): EditBuffer {
   const coalesceMs = opts.coalesceMs ?? 800;
   const now = opts.now ?? (() => Date.now());
 
-  const state: EditBufferState = reactive({
-    deletes: new Set<string>(),
-    errors: new Map<string, Map<string, string>>(),
-    inserts: new Map<string, Record<string, GridCellValue>>(),
-    pending: new Map<string, Map<string, { value: GridCellValue }>>(),
-    redoStack: [] as BufferOp[],
-    stale: new Set<string>(),
-    undoStack: [] as BufferOp[],
-  }) as EditBufferState;
+  const initial: EditBufferState = {
+    deletes: new Set(),
+    errors: new Map(),
+    inserts: new Map(),
+    pending: new Map(),
+    redoStack: [],
+    stale: new Set(),
+    undoStack: [],
+  };
+  const state: EditBufferState = reactive(initial);
 
   let groupOps: BufferOp[] | null = null;
 

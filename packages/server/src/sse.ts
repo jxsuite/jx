@@ -21,6 +21,9 @@
  * open, dropped on cancel — so a broadcast after a tab closes reaches nobody rather than throwing.
  */
 
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { FsEventPayload } from "./refactor/fs-events.ts";
+
 /**
  * Reconnection time advertised on the stream, in milliseconds (HTML Standard, `retry:`).
  *
@@ -31,6 +34,17 @@ export const RECONNECT_MS = 500;
 
 /** How often a comment frame is sent to keep an idle connection from being reaped. */
 const HEARTBEAT_MS = 15_000;
+
+/** The `fs` event's data: one debounced batch of filesystem changes for the studio sidebar. */
+export interface FsEventBatch {
+  events: FsEventPayload[];
+}
+
+/**
+ * What a named event carries on its `data:` line, serialized as JSON. The `fs` batch is named
+ * because its changes are typed as an interface, which TypeScript never treats as a `JsonValue`.
+ */
+export type SseEventData = JsonValue | FsEventBatch;
 
 /** A broadcast hub for one stream. */
 export interface SseHub {
@@ -43,7 +57,7 @@ export interface SseHub {
    * listener that asked for it without triggering everyone else's reload. That is what lets the
    * studio shell subscribe to `fs` on the same connection the preview reloads on.
    */
-  broadcastEvent: (event: string, payload: unknown) => void;
+  broadcastEvent: (event: string, payload: SseEventData) => void;
   /** Open the stream. Pass the request so `Last-Event-ID` can be read. */
   handleSSE: (request?: Request) => Response;
   /** How many clients are connected right now. */
@@ -75,7 +89,7 @@ export function createSseHub(): SseHub {
     }
   }
 
-  function broadcastEvent(event: string, payload: unknown) {
+  function broadcastEvent(event: string, payload: SseEventData) {
     const frame = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const send of clients) {
       send(frame);

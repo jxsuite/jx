@@ -42,6 +42,7 @@ import { disposeActivitySurface, mountActivitySurface } from "../surfaces/panel-
 import { reactive } from "../reactivity";
 import { now } from "../services/clock";
 import { notify } from "../services/notify";
+import type { NotifyOptions } from "../services/notify";
 import { registerPanel } from "./panel-registry";
 import type { PanelBody } from "./panel-registry";
 import type {
@@ -189,7 +190,7 @@ export interface ActivityHandle {
  * @returns {ActivityHandle}
  */
 export function beginActivity(options: ActivityOptions): ActivityHandle {
-  const entry: ActivityEntry = {
+  const fields = {
     cancellable: options.cancel !== undefined,
     endedAt: null,
     expanded: false,
@@ -200,8 +201,9 @@ export function beginActivity(options: ActivityOptions): ActivityHandle {
     status: options.status ?? "",
     steps: (options.steps ?? []).map((label) => ({ label, state: "pending" as const })),
     title: options.title,
-    ...(options.source === undefined ? {} : { source: options.source }),
-  };
+  } satisfies ActivityEntry;
+  const entry: ActivityEntry =
+    options.source === undefined ? fields : { ...fields, source: options.source };
   if (options.cancel) {
     _cancels.set(entry.id, options.cancel);
   }
@@ -209,6 +211,7 @@ export function beginActivity(options: ActivityOptions): ActivityHandle {
   // The PROXY, not the literal: writing through the raw object a `reactive()` array was handed
   // Skips every effect depending on it, which is the one bug that would make a running operation
   // Look frozen. Read back before anything is retired, so the reference is unambiguous.
+  // SAFETY: `activities.push(entry)` just above guarantees the array has a last element.
   const live = activities.at(-1) as ActivityEntry;
   retireOldest();
 
@@ -243,12 +246,17 @@ export function beginActivity(options: ActivityOptions): ActivityHandle {
       }
       const detail = live.log.join("\n");
       finish("failed", message);
-      notify.error(message, {
-        source: live.source ?? live.title,
-        ...(detail === "" ? {} : { detail }),
-        ...(opts.action === undefined ? {} : { action: opts.action }),
-        ...(opts.path === undefined ? {} : { path: opts.path }),
-      });
+      const notice: NotifyOptions = { source: live.source ?? live.title };
+      if (detail !== "") {
+        notice.detail = detail;
+      }
+      if (opts.action !== undefined) {
+        notice.action = opts.action;
+      }
+      if (opts.path !== undefined) {
+        notice.path = opts.path;
+      }
+      notify.error(message, notice);
     },
     id: live.id,
     log(chunk: string) {

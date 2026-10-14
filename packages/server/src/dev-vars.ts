@@ -12,13 +12,23 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
+ * The `env` project code receives on a development host: the process environment with the project's
+ * `.dev.vars` merged over it, and `JX_PROJECT_ROOT` always present.
+ */
+export interface ProjectDevEnv {
+  [name: string]: string | undefined;
+  JX_PROJECT_ROOT: string;
+}
+
+/**
  * Parse .dev.vars text into a name → value record.
  *
  * @param {string} text
  * @returns {Record<string, string>}
  */
 export function parseDevVars(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
+  // A later line for the same name replaces the earlier value, as dotenv loaders do.
+  const vars = new Map<string, string>();
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) {
@@ -37,10 +47,10 @@ export function parseDevVars(text: string): Record<string, string> {
       value = value.slice(1, -1);
     }
     if (key !== "") {
-      out[key] = value;
+      vars.set(key, value);
     }
   }
-  return out;
+  return Object.fromEntries(vars);
 }
 
 /**
@@ -68,8 +78,8 @@ export function loadDevVars(projectRoot: string): Record<string, string> {
  * same secrets a mount does.
  *
  * @param {string} root - Absolute project root
- * @returns {Record<string, string | undefined>}
+ * @returns {ProjectDevEnv}
  */
-export function projectDevEnv(root: string): Record<string, string | undefined> {
+export function projectDevEnv(root: string): ProjectDevEnv {
   return { ...process.env, ...loadDevVars(root), JX_PROJECT_ROOT: root };
 }

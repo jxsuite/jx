@@ -144,8 +144,8 @@ describe("M6 live expression-preview messages", () => {
     expect(msg.gen).toBe(4);
     // Every value is a [pathKey, displayString] pair — plain strings cross the boundary.
     for (const [path, display] of result.values) {
-      expect(typeof path).toBe("string");
-      expect(typeof display).toBe("string");
+      expect(path).toBeTypeOf("string");
+      expect(display).toBeTypeOf("string");
     }
     expect(failed.error).toBe("unknown operator");
     // An empty results set is the stale-gen refusal shape.

@@ -25,8 +25,16 @@
  * @docs framework/concepts/overlays
  */
 
-import { getNestedStyle, isJsonObject, isNestedStyle } from "./guards";
-import type { JxElement, JxStyle } from "../types";
+import {
+  getNestedStyle,
+  isBoolean,
+  isJsonObject,
+  isNestedStyle,
+  isNodeObject,
+  isNonNullObject,
+  isString,
+} from "./guards";
+import type { JsonObject, JxElement, JxStyle } from "../types";
 
 /**
  * The three keywords the `popover` attribute accepts.
@@ -95,24 +103,24 @@ export interface PopoverDefect {
 // ─── Reading a node ─────────────────────────────────────────────────────────────
 
 /** The attribute bag, whatever shape the author wrote it in. */
-export function attrs(node: JxElement): Record<string, unknown> {
-  return isJsonObject(node.attributes) ? (node.attributes as Record<string, unknown>) : {};
+export function attrs(node: JxElement): JsonObject {
+  return isJsonObject(node.attributes) ? node.attributes : {};
 }
 
 /** An attribute's literal string value, or null when absent or bound. */
 export function literalAttr(node: JxElement, name: string): string | null {
   const value = attrs(node)[name];
-  return typeof value === "string" ? value : null;
+  return isString(value) ? value : null;
 }
 
 /** The element's tag, lowercased, or "" when it is a tag expression or absent. */
 export function tagOf(node: JxElement): string {
-  return typeof node.tagName === "string" ? node.tagName.toLowerCase() : "";
+  return isString(node.tagName) ? node.tagName.toLowerCase() : "";
 }
 
 /** How the author addresses this node in a message: its id if it has one, else its tag. */
 export function labelOf(node: JxElement, fallback = "the popover"): string {
-  const id = typeof node.id === "string" ? node.id : literalAttr(node, "id");
+  const id = isString(node.id) ? node.id : literalAttr(node, "id");
   if (id) {
     return `#${id}`;
   }
@@ -130,7 +138,7 @@ export function labelOf(node: JxElement, fallback = "the popover"): string {
  */
 export function popoverModeOf(node: JxElement): string | null {
   const raw = attrs(node).popover;
-  return typeof raw === "string" ? raw : null;
+  return isString(raw) ? raw : null;
 }
 
 /**
@@ -172,18 +180,19 @@ const INVOKER_ATTRS = ["popovertarget", "popovertargetaction", "command", "comma
  * @param definitions The element documents in scope.
  * @returns {OverlayScope} The two tag sets, ready to pass to any rule here.
  */
-export function overlayScopeFor(definitions: Iterable<JxElement>): OverlayScope {
+export function overlayScopeFor(definitions: Iterable<JxElement | null>): OverlayScope {
   const popoverTags = new Set<string>();
   const invokerTags = new Set<string>();
   for (const def of definitions) {
-    const tag = typeof def?.tagName === "string" ? def.tagName : "";
-    if (!tag.includes("-")) {
+    // A definition file whose JSON is a bare `null` still parses, so the compiler can pass one.
+    const tag = def !== null && isString(def.tagName) ? def.tagName : "";
+    if (def === null || !tag.includes("-")) {
       continue;
     }
     if (declaresPopover(def)) {
       popoverTags.add(tag);
     }
-    const observed = (def as { observedAttributes?: unknown }).observedAttributes;
+    const observed = def.observedAttributes;
     if (Array.isArray(observed) && INVOKER_ATTRS.every((attr) => observed.includes(attr))) {
       invokerTags.add(tag);
     }
@@ -206,7 +215,7 @@ export function declaresPopover(node: JxElement): boolean {
      to every rule here: no `base-display` finding, no `no-open-rule` finding, and its tag missing
      from the scope, so consumers of that definition went unrecognised too. `idOf` below already
      reads a key either way, for the same reason. */
-  return "popover" in attrs(node) || "popover" in (node as Record<string, unknown>);
+  return "popover" in attrs(node) || "popover" in node;
 }
 
 /**
@@ -221,7 +230,7 @@ export function isPopover(node: JxElement, scope?: OverlayScope): boolean {
 
 /** The node's own `id`, from either the top-level key or the attribute bag. */
 export function idOf(node: JxElement): string | null {
-  if (typeof node.id === "string" && node.id !== "") {
+  if (isString(node.id) && node.id !== "") {
     return node.id;
   }
   const attr = literalAttr(node, "id");
@@ -258,25 +267,20 @@ export function* walk(
   const { children } = root;
   if (Array.isArray(children)) {
     for (const [index, child] of children.entries()) {
-      if (child && typeof child === "object") {
-        yield* walk(child as JxElement, [...path, "children", index], inside, scope);
+      if (isNonNullObject(child)) {
+        yield* walk(child, [...path, "children", index], inside, scope);
       }
     }
-  } else if (isJsonObject(children) && isJsonObject((children as JxElement).map)) {
-    yield* walk(
-      (children as JxElement).map as JxElement,
-      [...path, "children", "map"],
-      inside,
-      scope,
-    );
+  } else if (isJsonObject(children) && isNodeObject(children.map)) {
+    yield* walk(children.map, [...path, "children", "map"], inside, scope);
   }
-  const template = isJsonObject(root.map) ? (root.map as JxElement) : null;
+  const template = isNodeObject(root.map) ? root.map : null;
   if (template) {
     yield* walk(template, [...path, "map"], inside, scope);
   }
-  const cases = isJsonObject(root.cases) ? (root.cases as Record<string, JxElement>) : {};
+  const cases = isJsonObject(root.cases) ? root.cases : {};
   for (const [key, branch] of Object.entries(cases)) {
-    if (branch && typeof branch === "object") {
+    if (isNonNullObject(branch)) {
       yield* walk(branch, [...path, "cases", key], inside, scope);
     }
   }
@@ -493,7 +497,8 @@ function hasAnchorFallback(style: JxStyle | undefined): boolean {
 
 // ─── The rules ──────────────────────────────────────────────────────────────────
 
-const DOCS = "See docs/framework/concepts/overlays.";
+/** The sentence every overlay and dialog defect ends with, pointing at the concept page. */
+export const OVERLAY_DOCS = "See docs/framework/concepts/overlays.";
 
 /**
  * Every popover defect in a document, in document order.
@@ -551,7 +556,7 @@ function invokerDefects(
         "mixin, which HTML includes into `HTMLButtonElement` and `HTMLInputElement` and into " +
         "nothing else. Elsewhere they parse and do nothing. A link inside an open popover " +
         "dismisses it by navigating away, which is why this looks like it works — but it does " +
-        `not for a new tab or a same-page fragment. Remove both attributes. ${DOCS}`,
+        `not for a new tab or a same-page fragment. Remove both attributes. ${OVERLAY_DOCS}`,
       fix: "invoker",
       message: `<${tag || "element"}> carries popovertarget, which only <button> and <input> support.`,
       path,
@@ -568,7 +573,7 @@ function invokerDefects(
       out.push({
         detail:
           `No element in this document declares \`popover\` with the id "${target}". ${known}` +
-          `A target that names nothing does nothing, silently. ${DOCS}`,
+          `A target that names nothing does nothing, silently. ${OVERLAY_DOCS}`,
         message: `popovertarget="${target}" names no popover in this document.`,
         path,
         rule: "target-missing",
@@ -579,7 +584,7 @@ function invokerDefects(
         detail:
           `This control is inside ${labelOf(enclosing)} but targets "${target}". Dismissing a ` +
           "different popover leaves the one the reader is looking at open. This is usually a " +
-          `copy-paste between two panels in the same file. ${DOCS}`,
+          `copy-paste between two panels in the same file. ${OVERLAY_DOCS}`,
         message: `A control inside ${labelOf(enclosing)} targets "${target}" instead.`,
         path,
         rule: "target-mismatch",
@@ -589,7 +594,7 @@ function invokerDefects(
   }
 
   if (tag === "a" && enclosing !== null && target === null) {
-    const href = literalAttr(node, "href") ?? (typeof node.href === "string" ? node.href : null);
+    const href = literalAttr(node, "href") ?? (isString(node.href) ? node.href : null);
     const blank = literalAttr(node, "target") === "_blank";
     const fragment = href !== null && href.includes("#");
     if (blank || fragment) {
@@ -600,7 +605,7 @@ function invokerDefects(
         detail:
           `A link inside a panel normally dismisses it by navigating away. This one does not: ${why}` +
           "There is no declarative fix — a link cannot carry `popovertarget`. Move it out of the " +
-          `panel, make it a <button>, or accept it deliberately. ${DOCS}`,
+          `panel, make it a <button>, or accept it deliberately. ${OVERLAY_DOCS}`,
         message: `A link inside ${labelOf(enclosing)} does not dismiss it.`,
         path,
         rule: "link-does-not-dismiss",
@@ -622,25 +627,25 @@ function panelDefects(
   const label = labelOf(node);
   const mode = popoverModeOf(node);
 
-  if (mode !== null && mode !== "" && !(POPOVER_MODES as readonly string[]).includes(mode)) {
+  if (mode !== null && mode !== "" && !POPOVER_MODES.some((known) => known === mode)) {
     out.push({
       detail:
         "`popover` is an enumerated attribute taking `auto`, `manual` or `hint`. Anything else " +
         "falls back to the invalid-value default `manual`, which gives up light dismiss and gives " +
-        `up Escape — so the panel opens and there is no way to close it. Write "auto". ${DOCS}`,
+        `up Escape — so the panel opens and there is no way to close it. Write "auto". ${OVERLAY_DOCS}`,
       fix: "mode",
       message: `${label} declares popover="${mode}", which is not one of auto, manual or hint.`,
       path,
       rule: "invalid-mode",
       severity: "error",
     });
-  } else if (typeof attrs(node).popover === "boolean") {
+  } else if (isBoolean(attrs(node).popover)) {
     out.push({
       detail:
         "`popover` carries its value in its text, so a boolean is not the right shape. Written " +
         'as `true` it reaches two of the compiler\'s emitters as `popover="true"`, which is not ' +
         "one of the three keywords, so HTML falls back to `manual`: no light dismiss, no Escape, " +
-        `and the trigger stops toggling. Write "auto". ${DOCS}`,
+        `and the trigger stops toggling. Write "auto". ${OVERLAY_DOCS}`,
       fix: "mode",
       message: `${label} writes popover as a boolean.`,
       path,
@@ -662,7 +667,7 @@ function panelDefects(
         "none }`. That rule is UA-origin, so any author `display` beats it at any specificity, and " +
         "the panel is laid out on every page whether it is open or not — usually parked off the " +
         "side of the viewport by the transform meant to animate it, so nothing looks wrong until " +
-        `you scroll sideways. \`display\` belongs in \`:popover-open\` and nowhere else. ${DOCS}`,
+        `you scroll sideways. \`display\` belongs in \`:popover-open\` and nowhere else. ${OVERLAY_DOCS}`,
       fix: "display",
       message: `${label} sets display in its base rule.`,
       path,
@@ -676,7 +681,7 @@ function panelDefects(
       detail:
         `The same defect as a base \`display\`, arriving through \`${key}\` and therefore only at ` +
         "one width — which is what makes it hard to see. Gate the TRIGGER on a breakpoint, never " +
-        `the panel: the popover mechanism is what hides the panel. ${DOCS}`,
+        `the panel: the popover mechanism is what hides the panel. ${OVERLAY_DOCS}`,
       fix: "display",
       message: `${label} sets display inside ${key}.`,
       path,
@@ -690,7 +695,7 @@ function panelDefects(
       detail:
         "A second hiding mechanism the browser already provides. Once `display` leaves the base " +
         "rule this one only adds a frame of flicker on open, and it hides the element from " +
-        `assistive technology in a way \`display: none\` already did. ${DOCS}`,
+        `assistive technology in a way \`display: none\` already did. ${OVERLAY_DOCS}`,
       fix: "display",
       message: `${label} also hides itself with visibility.`,
       path,
@@ -704,7 +709,7 @@ function panelDefects(
       detail:
         "Nothing changes when it opens, so no transition on it can run and — if `display` is not " +
         "in the base rule — the panel has no `display` at all while open. This is usually a panel " +
-        `that was styled before it was made a popover. ${DOCS}`,
+        `that was styled before it was made a popover. ${OVERLAY_DOCS}`,
       message: `${label} has no :popover-open rule.`,
       path,
       rule: "no-open-rule",
@@ -720,7 +725,7 @@ function panelDefects(
         `${label} declares flex or grid properties, but neither its base rule nor its ` +
         "`:popover-open` rule sets a `display` for them to apply to — and the base rule must not " +
         "(that is what keeps the closed panel hidden). So it opens with the UA's `display: block` " +
-        `and the layout silently does nothing. Put \`display: flex\` in \`:popover-open\`. ${DOCS}`,
+        `and the layout silently does nothing. Put \`display: flex\` in \`:popover-open\`. ${OVERLAY_DOCS}`,
       fix: "open-display",
       message: `${label} is laid out with flex or grid but never sets display.`,
       path,
@@ -736,7 +741,7 @@ function panelDefects(
           "`display …allow-discrete` keeps the box alive while it animates out; `overlay " +
           "…allow-discrete` is what keeps it in the TOP LAYER for those same milliseconds. " +
           "Without it the panel drops behind the page content and the backdrop disappears a frame " +
-          `early, so the exit reads as a flicker rather than an animation. ${DOCS}`,
+          `early, so the exit reads as a flicker rather than an animation. ${OVERLAY_DOCS}`,
         message: `${label} transitions display but not overlay.`,
         path,
         rule: "cut-exit",
@@ -753,7 +758,7 @@ function panelDefects(
         "`position: fixed` box with four `auto` insets falls back to its STATIC position, which " +
         "for a panel declared inside a header is in the middle of the header. Use `position-area` " +
         "with `position-try-fallbacks`, or add a `@supports` block that positions it without " +
-        `anchors. ${DOCS}`,
+        `anchors. ${OVERLAY_DOCS}`,
       message: `${label} is anchor-positioned with no fallback.`,
       path,
       rule: "unsafe-anchor",
@@ -767,7 +772,7 @@ function panelDefects(
       detail:
         "No `<button>` or `<input>` in this document names it with `popovertarget`. If it is " +
         "opened from another file or from a function that calls `showPopover()`, this is fine; " +
-        `otherwise there is no way for a reader to open it. ${DOCS}`,
+        `otherwise there is no way for a reader to open it. ${OVERLAY_DOCS}`,
       message: `${label} has no invoker in this document.`,
       path,
       rule: "no-invoker",

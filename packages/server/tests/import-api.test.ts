@@ -7,17 +7,20 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { ImportProgressEvent, ImportSiteOptions, ImportSiteResult } from "@jxsuite/import/run";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 interface CapturedImportCall {
-  options: Record<string, unknown>;
-  onProgress: ((e: Record<string, unknown>) => void) | undefined;
+  options: ImportSiteOptions;
+  onProgress: ((e: ImportProgressEvent) => void) | undefined;
 }
 
 let importCalls: CapturedImportCall[] = [];
-let importBehavior: (call: CapturedImportCall) => Promise<Record<string, unknown>>;
+let importBehavior: (call: CapturedImportCall) => Promise<ImportSiteResult>;
 
 const importSite = mock(
-  (options: Record<string, unknown>, onProgress?: (e: Record<string, unknown>) => void) => {
+  (options: ImportSiteOptions, onProgress?: (e: ImportProgressEvent) => void) => {
     const call: CapturedImportCall = { options, onProgress };
     importCalls.push(call);
     return importBehavior(call);
@@ -29,7 +32,7 @@ const { handleImportApi } = await import("../src/import-api.ts");
 
 const ROOT = resolve(tmpdir(), `jx-import-api-test-${Date.now()}`);
 
-function makeRequest(body: unknown, headers: Record<string, string> = {}) {
+function makeRequest(body: JsonObject, headers: Record<string, string> = {}) {
   const url = new URL("http://localhost/__studio/import-site");
   const req = new Request(url, {
     body: JSON.stringify(body),
@@ -61,12 +64,19 @@ async function waitUntil(cond: () => boolean): Promise<void> {
   }
 }
 
-async function readLines(res: Response): Promise<Record<string, unknown>[]> {
+/** Decodes the NDJSON stream, failing the test on any line that is not a JSON object. */
+async function readLines(res: Response): Promise<JsonObject[]> {
   const text = await res.text();
   return text
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => {
+      const value: unknown = JSON.parse(line);
+      if (!isJsonObject(value)) {
+        throw new Error(`Expected an NDJSON object line, got ${line}`);
+      }
+      return value;
+    });
 }
 
 beforeEach(() => {
@@ -77,7 +87,7 @@ beforeEach(() => {
   rmSync(ROOT, { force: true, recursive: true });
   // Default behavior: two progress events, then a successful result with a real project.json.
   importBehavior = (call) => {
-    const outDir = call.options.outDir as string;
+    const { outDir } = call.options;
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Imported Site" }));
     call.onProgress?.({ phase: "capture", message: "Capturing page..." });
@@ -123,8 +133,8 @@ describe("routing and validation", () => {
     const { req, url } = makeRequest({ directory: "../escape", url: "https://x.example" });
     const res = await handleImportApi(req, url, apiOptions);
     expect(res?.status).toBe(400);
-    const body = (await res?.json()) as { error: string };
-    expect(body.error).toContain("outside");
+    const body: unknown = await res?.json();
+    expect(body).toMatchObject({ error: expect.stringContaining("outside") });
     expect(importSite).not.toHaveBeenCalled();
   });
 });
@@ -165,7 +175,7 @@ describe("streaming", () => {
 
   test("re-emits the seed as its own `ready` line, with the root in the host's own form", async () => {
     importBehavior = (call) => {
-      const outDir = call.options.outDir as string;
+      const { outDir } = call.options;
       mkdirSync(outDir, { recursive: true });
       writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Imported Site" }));
       call.onProgress?.({ phase: "seed", message: `Created ${outDir}`, root: outDir });
@@ -191,7 +201,7 @@ describe("streaming", () => {
 
   test("a seed event with no root is a progress line and nothing more", async () => {
     importBehavior = (call) => {
-      const outDir = call.options.outDir as string;
+      const { outDir } = call.options;
       mkdirSync(outDir, { recursive: true });
       writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Imported Site" }));
       call.onProgress?.({ phase: "seed", message: "Created it" });
@@ -204,7 +214,7 @@ describe("streaming", () => {
   });
 
   describe("the breakpoint policy", () => {
-    async function policyFor(breakpoints: unknown): Promise<unknown> {
+    async function policyFor(breakpoints: JsonValue): Promise<ImportSiteOptions["breakpoints"]> {
       const { req, url } = makeRequest({
         directory: `bp-${importCalls.length}`,
         url: "https://x.example",
@@ -308,8 +318,7 @@ describe("streaming", () => {
     );
     const res = await handleImportApi(req, url, apiOptions);
     await res?.text();
-    const ai = importCalls[0]!.options.ai as { apiKey: string };
-    expect(ai.apiKey).toBe("sk-bearer");
+    expect(importCalls[0]!.options.ai).toMatchObject({ apiKey: "sk-bearer" });
   });
 
   test("falls back to the OPENAI_API_KEY env var", async () => {
@@ -321,8 +330,7 @@ describe("streaming", () => {
     });
     const res = await handleImportApi(req, url, apiOptions);
     await res?.text();
-    const ai = importCalls[0]!.options.ai as { apiKey: string };
-    expect(ai.apiKey).toBe("sk-env");
+    expect(importCalls[0]!.options.ai).toMatchObject({ apiKey: "sk-env" });
   });
 
   test("warns and skips the AI pass when no key resolves", async () => {
@@ -354,15 +362,15 @@ describe("streaming", () => {
     });
     let finished = false;
     importBehavior = async (call) => {
-      const outDir = call.options.outDir as string;
+      const { outDir } = call.options;
       mkdirSync(outDir, { recursive: true });
       writeFileSync(join(outDir, "project.json"), "{}");
       call.onProgress?.({ phase: "capture", message: "first" });
       await gate;
       // The first post-cancel write trips the enqueue failure and marks the stream closed;
       // The second returns early on the closed flag. Neither may throw into the pipeline.
-      call.onProgress?.({ phase: "late", message: "after-cancel" });
-      call.onProgress?.({ phase: "late", message: "after-close" });
+      call.onProgress?.({ phase: "emit", message: "after-cancel" });
+      call.onProgress?.({ phase: "emit", message: "after-close" });
       finished = true;
       return { fileCount: 0, outDir, pages: [], verify: null, warnings: [] };
     };
@@ -382,20 +390,24 @@ describe("streaming", () => {
   test("emits heartbeat lines while a phase is silent", async () => {
     const realSetInterval = globalThis.setInterval;
     let heartbeat: (() => void) | undefined;
-    globalThis.setInterval = ((cb: () => void, ms?: number) => {
+    const captureHeartbeat = (cb: () => void, ms?: number) => {
       const timer = realSetInterval(() => {}, ms);
       if (ms === 15_000) {
         heartbeat = cb;
       }
       return timer;
-    }) as unknown as typeof setInterval;
+    };
+    /* SAFETY: import-api.ts calls setInterval exactly once, as setInterval(callback, ms) with a
+       zero-argument callback, and hands the result only to clearInterval; this stand-in returns a
+       real timer handle, so it serves every overload that call can resolve to. */
+    globalThis.setInterval = captureHeartbeat as typeof setInterval;
     try {
       let release: (() => void) | undefined;
       const gate = new Promise<void>((r) => {
         release = r;
       });
       importBehavior = async (call) => {
-        const outDir = call.options.outDir as string;
+        const { outDir } = call.options;
         mkdirSync(outDir, { recursive: true });
         writeFileSync(join(outDir, "project.json"), "{}");
         await gate;
@@ -418,9 +430,9 @@ describe("streaming", () => {
   test("forwards the request abort signal into the pipeline", async () => {
     let seenSignal: AbortSignal | undefined;
     importBehavior = (call) => {
-      seenSignal = call.options.signal as AbortSignal;
+      seenSignal = call.options.signal;
       return Promise.resolve({
-        outDir: call.options.outDir as string,
+        outDir: call.options.outDir,
         pages: [],
         fileCount: 0,
         verify: null,
@@ -463,12 +475,11 @@ describe("the verify pass and the run summary", () => {
       [undefined, 0.15],
     ] as const) {
       importCalls = [];
-      const next = makeRequest({
-        directory: "site",
-        url: "https://x.example",
-        verify: true,
-        ...(sent === undefined ? {} : { verifyThreshold: sent }),
-      });
+      const body: JsonObject = { directory: "site", url: "https://x.example", verify: true };
+      if (sent !== undefined) {
+        body.verifyThreshold = sent;
+      }
+      const next = makeRequest(body);
       await readLines((await handleImportApi(next.req, next.url, apiOptions))!);
       expect(importCalls[0]!.options.verify).toEqual({ minFidelity: 0, threshold: expected });
     }
@@ -489,12 +500,11 @@ describe("the verify pass and the run summary", () => {
       [undefined, 0],
     ] as const) {
       importCalls = [];
-      const next = makeRequest({
-        directory: "site",
-        url: "https://x.example",
-        verify: true,
-        ...(sent === undefined ? {} : { verifyMinFidelity: sent }),
-      });
+      const body: JsonObject = { directory: "site", url: "https://x.example", verify: true };
+      if (sent !== undefined) {
+        body.verifyMinFidelity = sent;
+      }
+      const next = makeRequest(body);
       await readLines((await handleImportApi(next.req, next.url, apiOptions))!);
       expect(importCalls[0]!.options.verify).toMatchObject({ minFidelity: expected });
     }
@@ -515,7 +525,7 @@ describe("the verify pass and the run summary", () => {
        and this endpoint used to discard every one of them: the caller learned that an import had
        happened and nothing about what it found. */
     importBehavior = (call) => {
-      const outDir = call.options.outDir as string;
+      const { outDir } = call.options;
       mkdirSync(outDir, { recursive: true });
       writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Imported Site" }));
       return Promise.resolve({
@@ -524,7 +534,12 @@ describe("the verify pass and the run summary", () => {
         pages: [{ nodeCount: 120, route: "pages/index.json", title: "Home" }],
         verify: {
           averageFidelity: 84,
-          pages: [{ fidelity: 61, route: "pages/pricing.json" }],
+          buildErrors: [],
+          minFidelity: 0,
+          pages: [
+            { consoleErrors: 0, failedRequests: 0, fidelity: 61, route: "pages/pricing.json" },
+          ],
+          passed: true,
           reportDir: `${outDir}/verify`,
         },
         warnings: ["3 assets failed to download"],
@@ -543,17 +558,15 @@ describe("the verify pass and the run summary", () => {
     expect(done.result).toMatchObject({
       fileCount: 14,
       pages: [{ nodeCount: 120, route: "pages/index.json", title: "Home" }],
+      verify: { averageFidelity: 84 },
       warnings: ["3 assets failed to download"],
     });
-    expect((done.result as { verify: { averageFidelity: number } }).verify.averageFidelity).toBe(
-      84,
-    );
   });
 
   test("a run with no verify pass omits the key rather than sending null", async () => {
     const { req, url } = makeRequest({ directory: "site", url: "https://x.example" });
     const lines = await readLines((await handleImportApi(req, url, apiOptions))!);
-    const result = lines.at(-1)!.result as Record<string, unknown>;
+    const result = lines.at(-1)?.result;
     expect(result).toMatchObject({ fileCount: 3, pages: [], warnings: [] });
     expect(result).not.toHaveProperty("verify");
   });

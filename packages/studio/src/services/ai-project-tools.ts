@@ -15,9 +15,10 @@
  */
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
-import type { CreateProjectDestination } from "../types";
+import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
+import type { CreateProjectDestination, StudioPlatform } from "../types";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
-import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { workspace } from "../workspace/workspace";
 import { projectState } from "../store";
@@ -26,6 +27,7 @@ import { adoptCreatedProject } from "./project-adoption";
 import { translateValidationError } from "./ai-tools";
 import { validateDoc, validateProjectConfig } from "./jx-validate";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
+import type { CandidateDocument } from "./ai-write-report";
 import { invalidPathResult, normalizeRelPath } from "./project-path";
 
 /** Directories the file tools never descend into or report. */
@@ -50,21 +52,26 @@ function isJxDocPath(path: string): boolean {
 }
 
 /** Structural sniff for Jx-document-shaped JSON values. */
-function looksLikeJxDoc(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    ("tagName" in value || "$id" in value || "$elements" in value)
-  );
+function looksLikeJxDoc(value: JsonValue): boolean {
+  return isJsonObject(value) && ("tagName" in value || "$id" in value || "$elements" in value);
+}
+
+/** One row of `list_files`'s answer. `size` is omitted when the platform reports none. */
+interface ListedEntry {
+  path: string;
+  type: string;
+  size?: number;
 }
 
 export interface ProjectToolsCtx {
   getTab: () => Tab | null;
-  validate?: (doc: unknown) => Promise<string[]>;
-  /** Gate for `project.json` writes — the per-project entry document, not the document schema. */
-  validateProject?: (config: unknown) => Promise<string[]>;
-  renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
+  validate?: (doc: CandidateDocument) => Promise<string[]>;
+  /**
+   * Gate for `project.json` writes — the per-project entry document, not the document schema. It
+   * judges the live configuration and a candidate parsed from the model's text alike.
+   */
+  validateProject?: (config: ProjectConfig | JsonValue) => Promise<string[]>;
+  renderCheck?: (doc: CandidateDocument) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Live getter — the project style appears only after a project is open/bootstrapped. */
   getProjectStyle?: () => Record<string, string> | undefined;
   /** The open tab whose `documentPath` equals the given project-relative path, if any. */
@@ -139,13 +146,15 @@ export function registerProjectTools(
         required: [],
       },
       async execute(args) {
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, which refuses
+           a `dir` that is present but not a string. */
         const { dir } = args as { dir?: string };
         const start = dir === undefined || dir === "" ? "." : normalizeRelPath(dir);
         if (start === null) {
           return invalidPathResult(dir);
         }
         const platform = getPlatform();
-        const entries: { path: string; type: string; size?: number }[] = [];
+        const entries: ListedEntry[] = [];
         const queue = [start];
         let truncated = false;
         while (queue.length > 0 && !truncated) {
@@ -166,11 +175,11 @@ export function registerProjectTools(
               truncated = true;
               break;
             }
-            entries.push({
-              path,
-              type: e.type,
-              ...(typeof e.size === "number" ? { size: e.size } : {}),
-            });
+            const entry: ListedEntry = { path, type: e.type };
+            if (isNumber(e.size)) {
+              entry.size = e.size;
+            }
+            entries.push(entry);
             if (e.type === "directory") {
               queue.push(path);
             }
@@ -204,9 +213,12 @@ export function registerProjectTools(
         required: ["path"],
       },
       async execute(args) {
-        const relPath = normalizeRelPath((args as { path: string }).path);
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, so the
+           required `path` is present and a string. */
+        const { path } = args as { path: string };
+        const relPath = normalizeRelPath(path);
         if (relPath === null) {
-          return invalidPathResult((args as { path: string }).path);
+          return invalidPathResult(path);
         }
         try {
           const content = await getPlatform().readFile(relPath);
@@ -255,6 +267,8 @@ export function registerProjectTools(
         required: ["path", "content"],
       },
       async execute(args, ctx) {
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, so the required
+           `path` and `content` are both present and strings. */
         const { path, content } = args as { path: string; content: string };
         const relPath = normalizeRelPath(path);
         if (relPath === null) {
@@ -279,11 +293,12 @@ export function registerProjectTools(
         }
 
         // Pre-validate Jx documents — disk writes have no undo to lean on.
-        let parsed: unknown;
+        let parsed: JsonValue | undefined;
         const isJson = relPath.endsWith(".json") && relPath !== "project.json";
         if (isJson) {
           try {
-            parsed = JSON.parse(content);
+            // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
+            parsed = JSON.parse(content) as JsonValue;
           } catch (error) {
             return {
               success: false,
@@ -292,7 +307,8 @@ export function registerProjectTools(
           }
         }
         let tokenHints = "";
-        if (isJson && (isJxDocPath(relPath) || looksLikeJxDoc(parsed))) {
+        // The parse above sets `parsed` exactly when `isJson` holds: it never yields `undefined`.
+        if (parsed !== undefined && (isJxDocPath(relPath) || looksLikeJxDoc(parsed))) {
           const errors = await validate(parsed);
           if (errors.length > 0) {
             const formatted = errors.map((e) => `- ${translateValidationError(e)}`).join("\n");
@@ -313,6 +329,9 @@ export function registerProjectTools(
           const projectStyle = getProjectStyle?.();
           if (projectStyle) {
             tokenHints = formatTokenHints(
+              /* SAFETY: `flagHardcodedTokens` re-checks every member it reads — object-ness, each
+                 `style` value as a string, `children` as an array — so a JSON value that is not
+                 quite a node is read defensively; its parameter type names the intended input. */
               flagHardcodedTokens(parsed as JxMutableNode, projectStyle),
             );
           }
@@ -322,9 +341,10 @@ export function registerProjectTools(
            model-authored text, and the gate below is the whole reason we do not trust its shape. */
         let projectConfig: ProjectConfig | undefined;
         if (relPath === "project.json") {
-          let parsedConfig: unknown;
+          let parsedConfig: JsonValue;
           try {
-            parsedConfig = JSON.parse(content);
+            // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
+            parsedConfig = JSON.parse(content) as JsonValue;
           } catch (error) {
             return {
               success: false,
@@ -353,7 +373,9 @@ export function registerProjectTools(
               error: `project.json has schema errors — nothing was written. Fix these and retry:\n${formatted}`,
             };
           }
-          // Narrowed only now: the assertion is earned by the schema gate, not by JSON.parse.
+          /* SAFETY: narrowed only now, because the assertion is earned by the schema gate rather
+             than by `JSON.parse`: the per-project entry schema found no violation this text did not
+             already have on disk. */
           projectConfig = parsedConfig as ProjectConfig;
         }
 
@@ -416,6 +438,9 @@ export function registerProjectTools(
         required: ["query"],
       },
       async execute(args) {
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `query` is a
+           present string and `extensions`, when present, an array. Its items are not checked here;
+           the platform's search receives them as given. */
         const { query, extensions } = args as { query: string; extensions?: string[] };
         try {
           const results = await getPlatform().searchFiles(query, extensions);
@@ -490,6 +515,10 @@ export function registerProjectTools(
         required: ["name"],
       },
       async execute(args, ctx) {
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `name` is a
+           present string, the optional strings and `private` have their declared types when
+           present, and `design` is an object. Its colour and font members are not checked here;
+           the platform's scaffold receives them as given. */
         const {
           name,
           description,
@@ -562,14 +591,21 @@ export function registerProjectTools(
 
         let result: { root: string; config: object };
         try {
-          result = await platform.createProject({
+          const request: Parameters<StudioPlatform["createProject"]>[0] = {
             name,
             destination,
             directory: slug,
-            ...(description ? { description } : {}),
-            ...(template ? { template } : {}),
-            ...(design ? { design } : {}),
-          });
+          };
+          if (description) {
+            request.description = description;
+          }
+          if (template) {
+            request.template = template;
+          }
+          if (design) {
+            request.design = design;
+          }
+          result = await platform.createProject(request);
         } catch (error) {
           return {
             success: false,

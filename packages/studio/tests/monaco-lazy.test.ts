@@ -8,6 +8,7 @@
  */
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ProjectSchemasResponse } from "../src/types";
 
 void mock.module("monaco-editor/editor", () => ({
   MarkerSeverity: { Error: 8, Warning: 4 },
@@ -16,7 +17,7 @@ void mock.module("monaco-editor/editor", () => ({
   languages: { registerCompletionItemProvider: () => {} },
 }));
 
-const applyProjectSchemas = mock((_schemas: unknown) => {});
+const applyProjectSchemas = mock((_schemas: ProjectSchemasResponse | null | undefined) => {});
 
 void mock.module("../src/services/monaco-setup", () => ({
   applyProjectSchemas,
@@ -126,6 +127,6 @@ describe("setProjectSchemasForMonaco", () => {
 
   test("a load with nothing pending applies nothing", async () => {
     await loadMonaco();
-    expect(applyProjectSchemas).not.toHaveBeenCalled();
+    expect(applyProjectSchemas.mock.calls).toEqual([]);
   });
 });

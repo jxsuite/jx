@@ -2,10 +2,29 @@ import { describe, expect, test } from "bun:test";
 
 import { highlightCodeBlocks, highlightFence } from "../src/highlight";
 import { processMarkdown } from "../src/md";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
-/** Read an element's children as a concrete array (these tests never build a JxMappedArray). */
-const kids = (el: JxElement) => el.children as (JxElement | string)[];
+/** The element at `index`, failing the test when a string or nothing sits there instead. */
+function elementAt(nodes: (JxElement | string)[], index: number): JxElement {
+  const node = nodes[index];
+  if (node === undefined || isString(node)) {
+    throw new Error(`node ${index} is not an element`);
+  }
+  return node;
+}
+
+/** Child `index` of `el`, failing the test when its children are not a concrete array. */
+function childAt(el: JxElement, index: number): JxElement {
+  if (!Array.isArray(el.children)) {
+    throw new TypeError("element has no children array");
+  }
+  return elementAt(el.children, index);
+}
+
+/** The source text a run of token spans spells back. */
+const spell = (spans: (JxElement | string)[]) =>
+  spans.map((s) => (isString(s) ? s : (s.textContent ?? ""))).join("");
 
 // ─── highlightFence ───────────────────────────────────────────────────────────
 
@@ -13,25 +32,19 @@ describe("highlightFence", () => {
   test("tokenizes a known language into spans with dual-theme variables", () => {
     const spans = highlightFence('{ "a": 1 }', "json")!;
     expect(spans.length).toBeGreaterThan(1);
-    const first = spans[0] as JxElement;
+    const first = elementAt(spans, 0);
     expect(first.tagName).toBe("span");
-    expect(typeof first.textContent).toBe("string");
+    expect(first.textContent).toBeTypeOf("string");
     expect(first.style).toHaveProperty("--shiki-light");
     expect(first.style).toHaveProperty("--shiki-dark");
-    const joined = spans
-      .map((s) => (typeof s === "string" ? s : ((s as JxElement).textContent ?? "")))
-      .join("");
-    expect(joined).toBe('{ "a": 1 }');
+    expect(spell(spans)).toBe('{ "a": 1 }');
   });
 
   test("joins lines with newline strings, preserving the source text", () => {
     const code = '{\n  "a": 1\n}';
     const spans = highlightFence(code, "json")!;
     expect(spans.filter((s) => s === "\n")).toHaveLength(2);
-    const joined = spans
-      .map((s) => (typeof s === "string" ? s : ((s as JxElement).textContent ?? "")))
-      .join("");
-    expect(joined).toBe(code);
+    expect(spell(spans)).toBe(code);
   });
 
   test("resolves registered grammar aliases (bash → shellscript, ts → typescript)", () => {
@@ -44,8 +57,8 @@ describe("highlightFence", () => {
     for (const info of ["SQL", "Python", "BASH", "Ts"]) {
       expect(highlightFence("x", info)).not.toBeNull();
     }
-    const [pre] = processMarkdown("```SQL\nSELECT 1;\n```\n", "/x/a.md").$children as JxElement[];
-    expect(((pre!.children as JxElement[])[0] as JxElement).className).toContain("shiki");
+    const { $children } = processMarkdown("```SQL\nSELECT 1;\n```\n", "/x/a.md");
+    expect(childAt(elementAt($children, 0), 0).className).toContain("shiki");
   });
 
   test("returns null for unknown languages", () => {
@@ -55,7 +68,7 @@ describe("highlightFence", () => {
 });
 
 describe("the knowledge-base language set", () => {
-  const samples: Record<string, string> = {
+  const samples = {
     caddyfile: 'example.com {\n    reverse_proxy {host} # note\n    header "X-A" "b"\n}',
     diff: "- old\n+ new",
     dockerfile: "FROM node:22\nRUN npm ci",
@@ -75,14 +88,9 @@ describe("the knowledge-base language set", () => {
     test(`highlights ${lang} into dual-theme spans that spell the source back`, () => {
       const spans = highlightFence(code, lang)!;
       expect(spans).not.toBeNull();
-      const text = spans
-        .map((s) => (typeof s === "string" ? s : ((s as JxElement).textContent ?? "")))
-        .join("");
-      expect(text).toBe(code);
+      expect(spell(spans)).toBe(code);
       expect(
-        spans.some(
-          (s) => typeof s === "object" && Object.keys(s.style ?? {}).includes("--shiki-light"),
-        ),
+        spans.some((s) => !isString(s) && Object.keys(s.style ?? {}).includes("--shiki-light")),
       ).toBe(true);
     });
   }
@@ -112,10 +120,11 @@ describe("the knowledge-base language set", () => {
         "}",
       ].join("\n"),
       "caddyfile",
-    )! as (JxElement | string)[];
+    )!;
     const colorOf = (text: string) =>
-      (spans.find((s) => typeof s === "object" && s.textContent === text) as JxElement | undefined)
-        ?.style?.["--shiki-light"];
+      spans.find((s): s is JxElement => !isString(s) && s.textContent === text)?.style?.[
+        "--shiki-light"
+      ];
     const plain = colorOf(" ");
     for (const token of [
       "reverse_proxy",
@@ -128,8 +137,9 @@ describe("the knowledge-base language set", () => {
       "`raw`",
       "example.com, :8080",
     ]) {
-      expect(colorOf(token)).toBeDefined();
-      expect(colorOf(token)).not.toBe(plain);
+      const color = colorOf(token);
+      expect(color).toBeDefined();
+      expect(color).not.toBe(plain);
     }
   });
 
@@ -152,33 +162,30 @@ describe("the knowledge-base language set", () => {
 // ─── highlightCodeBlocks ──────────────────────────────────────────────────────
 
 describe("highlightCodeBlocks", () => {
-  const fence = (lang: string | null, text: string): JxElement => ({
-    children: [
-      {
-        tagName: "code",
-        textContent: text,
-        ...(lang ? { className: `language-${lang}` } : {}),
-      },
-    ],
-    tagName: "pre",
-  });
+  const fence = (lang: string | null, text: string): JxElement => {
+    const code: JxElement = { tagName: "code", textContent: text };
+    if (lang) {
+      code.className = `language-${lang}`;
+    }
+    return { children: [code], tagName: "pre" };
+  };
 
   test("replaces fence text with token spans and marks the code element", () => {
     const tree: (JxElement | string)[] = [fence("json", '{ "a": 1 }')];
     highlightCodeBlocks(tree);
-    const code = kids(tree[0] as JxElement)[0] as JxElement;
+    const code = childAt(elementAt(tree, 0), 0);
     expect(code.className).toBe("language-json shiki");
     expect(code.textContent).toBeUndefined();
     expect(Array.isArray(code.children)).toBe(true);
-    expect((kids(code)[0] as JxElement).tagName).toBe("span");
+    expect(childAt(code, 0).tagName).toBe("span");
   });
 
   test("leaves unknown languages and bare fences untouched", () => {
     const unknown = fence("cobol", "PRINT 1");
     const bare = fence(null, "plain text");
     highlightCodeBlocks([unknown, bare]);
-    expect((kids(unknown)[0] as JxElement).textContent).toBe("PRINT 1");
-    expect((kids(bare)[0] as JxElement).textContent).toBe("plain text");
+    expect(childAt(unknown, 0).textContent).toBe("PRINT 1");
+    expect(childAt(bare, 0).textContent).toBe("plain text");
   });
 
   test("recurses into nested containers", () => {
@@ -186,15 +193,14 @@ describe("highlightCodeBlocks", () => {
       { children: ["intro", fence("json", "{}")], tagName: "div" },
     ];
     highlightCodeBlocks(tree);
-    const pre = kids(tree[0] as JxElement)[1] as JxElement;
-    const code = kids(pre)[0] as JxElement;
+    const code = childAt(childAt(elementAt(tree, 0), 1), 0);
     expect(code.className).toContain("shiki");
   });
 
   test("ignores strings and empty code elements", () => {
     const empty = fence("json", "");
     highlightCodeBlocks(["hello", empty]);
-    expect((kids(empty)[0] as JxElement).textContent).toBe("");
+    expect(childAt(empty, 0).textContent).toBe("");
   });
 });
 
@@ -205,17 +211,17 @@ describe("processMarkdown highlighting", () => {
     const source = ["Some prose.", "", "```json", '{ "a": 1 }', "```", ""].join("\n");
     const result = processMarkdown(source, "/x.md");
     expect(result.$children[0]).toEqual({ tagName: "p", textContent: "Some prose." });
-    const pre = result.$children[1] as JxElement;
+    const pre = elementAt(result.$children, 1);
     expect(pre.tagName).toBe("pre");
-    const code = kids(pre)[0] as JxElement;
+    const code = childAt(pre, 0);
     expect(code.className).toBe("language-json shiki");
-    expect((kids(code)[0] as JxElement).style).toHaveProperty("--shiki-light");
+    expect(childAt(code, 0).style).toHaveProperty("--shiki-light");
   });
 
   test("unknown fence languages keep plain text output", () => {
     const source = ["```cobol", "PRINT 1", "```", ""].join("\n");
     const result = processMarkdown(source, "/x.md");
-    const code = kids(result.$children[0] as JxElement)[0] as JxElement;
+    const code = childAt(elementAt(result.$children, 0), 0);
     expect(code.className).toBe("language-cobol");
     expect(code.textContent).toBe("PRINT 1");
   });

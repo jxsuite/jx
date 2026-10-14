@@ -21,19 +21,16 @@ import { useNativeFetch } from "./native-fetch.js";
 import { loadFixture } from "./load-fixture.js";
 import { buildRealHarness, runPrompt } from "./real-llm.js";
 import { scoreRun, unscorableError } from "./score.js";
+import type { EvalCtx } from "./score.js";
 import { textOf, anyStyle, anyNode } from "./doc-query.js";
 import { validateDoc } from "../../src/services/jx-validate";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 
 // The provider is reached as a server reaches it: happy-dom's fetch would apply CORS to it.
 useNativeFetch();
 
-/** Context handed to a test's `check`: the model's file writes plus a reader for them. */
-interface EvalCtx {
-  writes?: { relPath: string; content: string }[];
-  readWritten?: (relPath: string) => string;
-}
-/** A predicate over a parsed (loose JSON) document. */
-type DocPredicate = (doc: any) => unknown;
+/** A predicate over a parsed (loose JSON) document: truthy when the document satisfies it. */
+type DocPredicate = (doc: any) => boolean | string;
 
 /** A node with this tag (case-insensitive). */
 const hasTag = (doc: any, tag: string) =>
@@ -77,7 +74,9 @@ function candidateDocs(liveDoc: any, ctx: EvalCtx): any[] {
 const inAnyDoc = (liveDoc: any, ctx: EvalCtx, pred: DocPredicate) =>
   candidateDocs(liveDoc, ctx).some((d) => pred(d));
 /** True if a doc declares a non-empty `state` object. */
-const hasState = (d: any) => d && typeof d.state === "object" && Object.keys(d.state).length > 0;
+function hasState(d: any): boolean {
+  return Boolean(d) && isNonNullObject(d.state) && Object.keys(d.state).length > 0;
+}
 /** True if a doc's JSON contains a marker string (e.g. "$map", "$switch"). */
 const hasMarker = (d: any, s: string) => JSON.stringify(d).includes(s);
 
@@ -288,14 +287,16 @@ interface Axis {
   ceiling?: string;
 }
 
-/** A single run's outcome: either an error record or a scored result. Indexed for loose access. */
+/**
+ * A single run's outcome: either an error record or a scored result. A scored result carries more
+ * (`toolCalls`, `evidence`); the JSON dump prints those, and nothing here reads them.
+ */
 interface RunResult {
   error?: unknown;
   rounds: number;
   model?: string;
   readFirst?: { ok: boolean; why: string };
   axes?: Record<string, Axis>;
-  [key: string]: unknown;
 }
 
 /** A wrapped streaming client that also reports how many rounds it has streamed. */

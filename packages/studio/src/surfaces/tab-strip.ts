@@ -28,20 +28,21 @@
  * @docs studio/interface
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import tabStripDoc from "./tab-strip.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("tab-strip", tabStripDoc as unknown as JxDocument);
+registerSurface("tab-strip", tabStripDoc);
 
 /**
  * One chip, as the document draws it. Every field is a value: the document asks no question about a
  * tab, and there is no branch in it that a projection has not already decided.
  */
-export interface TabChipView extends Record<string, unknown> {
+export interface TabChipView {
   /** The tab id: the repeater's key, the tab's `value`, and what every action is addressed with. */
   key: string;
   /** The shortest suffix that tells this document apart, or a page's route. */
@@ -107,7 +108,7 @@ export interface TabStripActions {
   /** The chevron, or a derived pane's ✕. The anchor is the button that was pressed. */
   openTrailing: (anchor: HTMLElement | null) => void;
   /** A wheel over the strip. A host function in handler position, so it takes the event. */
-  wheel: (scope: unknown, event: WheelEvent) => void;
+  wheel: (scope: JxScope, event: WheelEvent) => void;
   /** A chip element exists. `panels/tab-strip.ts` makes it a pragmatic drag source and drop target. */
   chipHost: (element: HTMLElement, id: string) => void;
   /**
@@ -146,20 +147,20 @@ export interface TabStripSurface {
 }
 
 /** The scope `tab-strip.json` reads. */
-interface TabStripScope
-  extends Record<string, unknown>, TabStripValues, TabStripActions, TabStripDragState {}
+interface TabStripScope extends TabStripValues, TabStripActions, TabStripDragState {}
 
 /** The `part` a node's definition carries, or `""` for a text node or an unmarked element. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The tab id a mapped `jx-tab` node was rendered for, read from the row scope, or `""`. */
 function mappedChipKey(state: JxScope | undefined): string {
-  const map = state?.["$map"] as { item?: { key?: unknown } } | undefined;
-  const key = map?.item?.key;
-  return typeof key === "string" ? key : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const key = isJsonObject(item) ? item["key"] : undefined;
+  return isString(key) ? key : "";
 }
 
 /**
@@ -178,13 +179,13 @@ export function mountTabStripSurface(
   values: TabStripValues,
   actions: TabStripActions,
 ): TabStripSurface {
-  const scope = reactive<TabStripScope>({
+  const scope: TabStripScope = reactive<TabStripScope>({
     ...values,
     ...actions,
     dragKey: "",
     dropIndex: -1,
     dropTail: false,
-  }) as TabStripScope;
+  });
 
   host.replaceChildren();
   let mounted: SurfaceHandle | null = null;

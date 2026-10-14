@@ -19,7 +19,8 @@ import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import type { ComponentEntry } from "../files/components";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { GitDiffState } from "../types";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { JxMutableNode, JxStyle, ProjectConfig } from "@jxsuite/schema/types";
+import type { FormatFrontmatter } from "../format/format-host";
 import type { ComputedRef } from "@vue/reactivity";
 
 interface FileEntry {
@@ -169,7 +170,7 @@ export const MAX_PANES = 2;
 
 export interface Workspace {
   projectRoot: string | null;
-  projectConfig: object | null;
+  projectConfig: ProjectConfig | null;
   componentRegistry: ComponentEntry[];
   clipboard: JxMutableNode | null;
   styleClipboard: JxStyle | null;
@@ -205,31 +206,36 @@ export interface Workspace {
   readonly activeTabId: string | null;
 }
 
-// Annotated as Workspace: Vue's UnwrapNestedRefs cannot terminate on the
-// Recursive document types, and reactive() does not unwrap refs we never use.
-export const workspace: Workspace = reactive({
+/*
+ * SAFETY: `reactive()` returns a deep proxy carrying its target's own members (the two getters
+ * included, read through the proxy as receiver), and the literal is checked against Workspace by
+ * `satisfies` and holds no refs for `UnwrapNestedRefs` to unwrap, so the proxy IS a Workspace. The
+ * type argument is pinned to `object` because `UnwrapNestedRefs<Workspace>` recurses through the
+ * document types deeply enough for tsc to give up (TS2589); the proxy is deep either way.
+ */
+export const workspace = reactive<object>({
   activePaneId: PRIMARY_PANE,
-  clipboard: null as JxMutableNode | null,
-  closedTabs: [] as ClosedTabRecord[],
-  componentRegistry: [] as ComponentEntry[],
-  mruOrder: [] as string[],
+  clipboard: null,
+  closedTabs: [],
+  componentRegistry: [],
+  mruOrder: [],
   fileTree: {
     dirs: new Map<string, FileEntry[]>(),
     expanded: new Set<string>(),
     searchQuery: "",
-    selectedPath: null as string | null,
+    selectedPath: null,
   },
   panes: [
     {
-      activeTabId: null as string | null,
-      derived: null as PaneDerivation | null,
+      activeTabId: null,
+      derived: null,
       id: PRIMARY_PANE,
-      tabOrder: [] as string[],
+      tabOrder: [],
     },
   ],
-  projectConfig: null as object | null,
-  projectRoot: null as string | null,
-  styleClipboard: null as JxStyle | null,
+  projectConfig: null,
+  projectRoot: null,
+  styleClipboard: null,
   tabs: new Map<string, Tab>(),
   ui: {
     activityBar: "files",
@@ -255,11 +261,11 @@ export const workspace: Workspace = reactive({
   get tabOrder(): readonly string[] {
     return activePane().tabOrder;
   },
-}) as unknown as Workspace;
+} satisfies Workspace) as Workspace;
 
-export const activeTab = computed(() =>
+export const activeTab: ComputedRef<Tab | null> = computed(() =>
   workspace.activeTabId ? (workspace.tabs.get(workspace.activeTabId) ?? null) : null,
-) as unknown as ComputedRef<Tab | null>;
+);
 
 // ─── Panes ────────────────────────────────────────────────────────────────────
 
@@ -514,10 +520,10 @@ function addPane(paneId: string): Pane {
   workspace.panes = [
     ...workspace.panes,
     {
-      activeTabId: null as string | null,
-      derived: null as PaneDerivation | null,
+      activeTabId: null,
+      derived: null,
       id: paneId,
-      tabOrder: [] as string[],
+      tabOrder: [],
     },
   ];
   return paneById(paneId)!;
@@ -695,9 +701,9 @@ function defaultSlot(pane: Pane, tabId: string): number {
  * project context, and the chat panel's pending-prompt effect.
  *
  * @param {string | null} root
- * @param {object | null} [config]
+ * @param {ProjectConfig | null} [config]
  */
-export function setWorkspaceProject(root: string | null, config: object | null = null) {
+export function setWorkspaceProject(root: string | null, config: ProjectConfig | null = null) {
   /* Leaving a project drops the assistant's record of what each turn changed (ai.md §3.2). It
      names project-relative paths, and its Restore undoes the active tab, so carried into another
      project it would list files that are not there and undo a document the turn never touched.
@@ -717,9 +723,7 @@ export function setWorkspaceProject(root: string | null, config: object | null =
  */
 export function isTabActive(tab: Tab | null): boolean {
   const active = activeTab.value;
-  return (
-    tab !== null && active !== null && toRaw(active as object) === toRaw(tab as unknown as object)
-  );
+  return tab !== null && active !== null && toRaw(active) === toRaw(tab);
 }
 
 /**
@@ -741,7 +745,7 @@ export function tabIsLive(tab: Tab | null | undefined): boolean {
     return false;
   }
   const held = workspace.tabs.get(tab.id);
-  return held !== undefined && toRaw(held as object) === toRaw(tab as unknown as object);
+  return held !== undefined && toRaw(held) === toRaw(tab);
 }
 
 /**
@@ -849,8 +853,8 @@ function setActiveTab(tabId: string, opts: { cycling?: boolean; focus?: boolean 
  *   id: string;
  *   documentPath?: string | null;
  *   fileHandle?: FileSystemFileHandle | null;
- *   document: Record<string, unknown>;
- *   frontmatter?: Record<string, unknown>;
+ *   document: JxMutableNode;
+ *   frontmatter?: FormatFrontmatter;
  *   sourceFormat?: string | null;
  *   capabilities?: { modes?: string[] };
  *   openedFrom?: TabOrigin | null;
@@ -865,8 +869,8 @@ export function openTab(opts: {
   id: string;
   documentPath?: string | null;
   fileHandle?: FileSystemFileHandle | null;
-  document: Record<string, unknown>;
-  frontmatter?: Record<string, unknown>;
+  document: JxMutableNode;
+  frontmatter?: FormatFrontmatter;
   sourceFormat?: string | null;
   capabilities?: { modes?: string[] };
   openedFrom?: TabOrigin | null;
@@ -1169,8 +1173,8 @@ export function endTabCycle() {
  * @param {{
  *   id: string;
  *   documentPath?: string | null;
- *   document: Record<string, unknown>;
- *   frontmatter?: Record<string, unknown>;
+ *   document: JxMutableNode;
+ *   frontmatter?: FormatFrontmatter;
  *   sourceFormat?: string | null;
  * }} newTabOpts
  * @returns {import("../tabs/tab.js").Tab}
@@ -1178,8 +1182,8 @@ export function endTabCycle() {
 export function replaceAllTabs(newTabOpts: {
   id: string;
   documentPath?: string | null;
-  document: Record<string, unknown>;
-  frontmatter?: Record<string, unknown>;
+  document: JxMutableNode;
+  frontmatter?: FormatFrontmatter;
   sourceFormat?: string | null;
 }) {
   const oldIds = [...workspace.tabs.keys()];

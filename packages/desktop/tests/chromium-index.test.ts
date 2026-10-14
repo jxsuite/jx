@@ -1,7 +1,12 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve as resolvePath } from "node:path";
+import { join, resolve } from "node:path";
+import type { ImportSiteOptions } from "@jxsuite/import/run";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type * as GithubSignin from "../src/github-signin";
+import type * as Handlers from "../src/handlers";
 import { CHROMIUM_RPC_EXEMPT, rpcParity } from "./_rpc-parity";
 
 // In-process import of src/chromium/index.ts, a launcher with import-time side effects.
@@ -9,6 +14,20 @@ import { CHROMIUM_RPC_EXEMPT, rpcParity } from "./_rpc-parity";
 // The chromium process lifecycle is exercised deterministically via a fake child process.
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
+
+/** Parse a JSON text the launcher produced, failing the test unless it is an object. */
+function parseObject(text: string): JsonObject {
+  const value: JsonValue = JSON.parse(text);
+  if (!isJsonObject(value)) {
+    throw new TypeError(`Expected a JSON object: ${text}`);
+  }
+  return value;
+}
+
+/** Read a JSON file the launcher wrote (a registry row, a Preferences file) as an object. */
+function readJsonObject(file: string): JsonObject {
+  return parseObject(readFileSync(file, "utf8"));
+}
 
 const FIXTURES = join(import.meta.dir, "_fixtures_chromium_index");
 const STUDIO_ASSETS = join(FIXTURES, "_studio_assets");
@@ -75,7 +94,9 @@ const handlerMocks = {
     }),
   ),
   setPreviewOverlay: mock(() => {}),
-  codeService: mock((params: unknown) => Promise.resolve({ echoed: params })),
+  codeService: mock((params: Parameters<typeof Handlers.codeService>[0]) =>
+    Promise.resolve({ echoed: params }),
+  ),
   // Data surface + secrets (desktop twins of /__studio/data/* + /__studio/secrets)
   dataConnections: mock(() => Promise.resolve({ connections: [] })),
   dataConnectionTest: mock(() => Promise.resolve({ ok: true })),
@@ -220,7 +241,9 @@ const githubSignInMock = mock(async (params: { force?: boolean }) => ({
 }));
 const githubSignOutMock = mock(async () => ({ ok: true }));
 const githubTokenMock = mock(async () => ({ stored: true }));
-const setAuthorizationHostMock = mock((_host: unknown) => {});
+const setAuthorizationHostMock = mock(
+  (_host: Parameters<typeof GithubSignin.setAuthorizationHost>[0]) => {},
+);
 void mock.module("../src/github-signin", () => ({
   githubSignIn: githubSignInMock,
   githubSignOut: githubSignOutMock,
@@ -229,8 +252,8 @@ void mock.module("../src/github-signin", () => ({
 }));
 
 // The import pipeline itself is exercised in @jxsuite/import; here only the route wiring matters.
-const importSiteMock = mock((options: Record<string, unknown>) => {
-  const outDir = options.outDir as string;
+const importSiteMock = mock((options: ImportSiteOptions) => {
+  const { outDir } = options;
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Imported" }));
   return Promise.resolve({ outDir, pages: [], fileCount: 1, verify: null, warnings: [] });
@@ -288,25 +311,31 @@ rmSync(WINDOWS_DIR, { force: true, recursive: true });
 
 const exitCalls: number[] = [];
 const realExit = process.exit;
-process.exit = ((code?: number) => {
+const recordExit = (code?: number): void => {
   exitCalls.push(code ?? 0);
-}) as unknown as typeof process.exit;
+};
+/* SAFETY: the stub returns where process.exit never does. Every exit this file lets the launcher
+   reach ends a handler (browser close, SIGINT, SIGTERM), so nothing runs after it; the two boot-time
+   exits (a window already open, no chromium found) are kept unreachable by the fixture window
+   registry above and the Bun.which stub below. */
+process.exit = recordExit as typeof process.exit;
 
 const sigintBefore = new Set(process.listeners("SIGINT"));
 const sigtermBefore = new Set(process.listeners("SIGTERM"));
 
 const realServe = Bun.serve.bind(Bun);
 let server: ReturnType<typeof Bun.serve> | undefined;
-(Bun as unknown as { serve: (opts: unknown) => unknown }).serve = (opts: unknown) => {
-  server = realServe(opts as Parameters<typeof Bun.serve>[0]);
-  return server;
-};
+const serveSpy = spyOn(Bun, "serve").mockImplementation((options) => {
+  const started = realServe(options);
+  server = started;
+  return started;
+});
 
 // Resolve CHROMIUM_BIN deterministically: the real Bun.which returns null in a stock Windows shell
 // (no `sh` on PATH), which would send the launcher down its "no chromium found" exit path instead.
-const realWhich = Bun.which.bind(Bun);
-(Bun as unknown as { which: (cmd: string) => string | null }).which = (cmd: string) =>
-  cmd === "sh" ? "/usr/bin/sh" : null;
+const whichSpy = spyOn(Bun, "which").mockImplementation((cmd) =>
+  cmd === "sh" ? "/usr/bin/sh" : null,
+);
 
 const logs: string[] = [];
 const realLog = console.log;
@@ -318,13 +347,11 @@ const chromiumIndex = await import("../src/chromium/index");
 
 /* Snapshot the registry row the launcher published at boot. Read HERE, before any test re-roots
    the window, because the row is live state — `setWindowProject` rewrites it by design. */
-const bootEntry = JSON.parse(
-  readFileSync(join(WINDOWS_DIR, `${process.pid}.json`), "utf8"),
-) as Record<string, unknown>;
+const bootEntry = readJsonObject(join(WINDOWS_DIR, `${process.pid}.json`));
 
 console.log = realLog;
-(Bun as unknown as { serve: typeof Bun.serve }).serve = realServe;
-(Bun as unknown as { which: typeof Bun.which }).which = realWhich;
+serveSpy.mockRestore();
+whichSpy.mockRestore();
 
 const sigintHandlers = process
   .listeners("SIGINT")
@@ -355,32 +382,71 @@ afterAll(() => {
 
 // ─── WebSocket RPC helper ───────────────────────────────────────────────────
 
-let ws: WebSocket;
+// Unset until beforeAll connects it, which is why teardown still checks for it.
+let ws: WebSocket | undefined;
 
-function rpc(method: string, params?: Record<string, unknown>): Promise<unknown> {
-  return new Promise((resolve, reject) => {
+/** The connected RPC socket, failing the test when beforeAll never opened it. */
+function openSocket(): WebSocket {
+  if (!ws) {
+    throw new Error("The RPC socket is not open");
+  }
+  return ws;
+}
+
+/**
+ * Send one request and settle with its reply: the `result` it carries (absent when the method
+ * answers nothing), or a rejection with its `error`.
+ */
+function rpc(method: string, params?: JsonObject): Promise<JsonValue | undefined> {
+  const socket = openSocket();
+  return new Promise((settle, reject) => {
     const id = Math.floor(Math.random() * 1_000_000);
-    const handler = (event: MessageEvent) => {
-      const msg = JSON.parse(event.data as string);
-      if (msg.id !== id) {
+    const handler = (event: MessageEvent<string>) => {
+      const msg: JsonValue = JSON.parse(event.data);
+      if (!isJsonObject(msg) || msg.id !== id) {
         return;
       }
-      ws.removeEventListener("message", handler);
+      socket.removeEventListener("message", handler);
       if (msg.error) {
-        reject(new Error(msg.error));
+        reject(new Error(String(msg.error)));
       } else {
-        resolve(msg.result);
+        settle(msg.result);
       }
     };
-    ws.addEventListener("message", handler);
-    ws.send(JSON.stringify({ id, method, params }));
+    socket.addEventListener("message", handler);
+    socket.send(JSON.stringify({ id, method, params }));
+  });
+}
+
+/** Resolve with the next frame the server sends that `matches` accepts, or reject on timeout. */
+function nextFrame(
+  matches: (frame: JsonObject) => boolean,
+  description: string,
+  timeoutMs = 3000,
+): Promise<JsonObject> {
+  const socket = openSocket();
+  return new Promise((settle, reject) => {
+    const timer = setTimeout(() => {
+      socket.removeEventListener("message", handler);
+      reject(new Error(`no ${description} within ${timeoutMs}ms`));
+    }, timeoutMs);
+    const handler = (event: MessageEvent<string>) => {
+      const msg: JsonValue = JSON.parse(event.data);
+      if (!isJsonObject(msg) || !matches(msg)) {
+        return;
+      }
+      clearTimeout(timer);
+      socket.removeEventListener("message", handler);
+      settle(msg);
+    };
+    socket.addEventListener("message", handler);
   });
 }
 
 beforeAll(async () => {
-  ws = await new Promise<WebSocket>((resolve, reject) => {
+  ws = await new Promise<WebSocket>((settle, reject) => {
     const socket = new WebSocket(`ws://127.0.0.1:${server!.port}/?token=${rpcToken}`);
-    socket.addEventListener("open", () => resolve(socket));
+    socket.addEventListener("open", () => settle(socket));
     socket.addEventListener("error", reject);
   });
 });
@@ -424,13 +490,10 @@ describe("chromium launcher startup", () => {
     // The credentials form's API-key field is a password input; without these profile prefs
     // Chromium offers to save it to the OS password manager on every save.
     const prefsFile = join(FIXTURES, ".jx", "chromium-profile", "Default", "Preferences");
-    const prefs = JSON.parse(readFileSync(prefsFile, "utf8")) as {
-      credentials_enable_service: boolean;
-      profile: { password_manager_enabled: boolean; password_manager_leak_detection: boolean };
-    };
-    expect(prefs.credentials_enable_service).toBe(false);
-    expect(prefs.profile.password_manager_enabled).toBe(false);
-    expect(prefs.profile.password_manager_leak_detection).toBe(false);
+    expect(readJsonObject(prefsFile)).toMatchObject({
+      credentials_enable_service: false,
+      profile: { password_manager_enabled: false, password_manager_leak_detection: false },
+    });
   });
 });
 
@@ -473,10 +536,7 @@ describe("seedChromiumPreferences", () => {
       }),
     );
     chromiumIndex.seedChromiumPreferences(dir);
-    const prefs = JSON.parse(readFileSync(join(dir, "Default", "Preferences"), "utf8")) as Record<
-      string,
-      unknown
-    >;
+    const prefs = readJsonObject(join(dir, "Default", "Preferences"));
     expect(prefs.credentials_enable_service).toBe(false);
     expect(prefs.browser).toEqual({ theme: "dark" });
     expect(prefs.profile).toEqual({
@@ -503,9 +563,7 @@ describe("seedChromiumPreferences", () => {
     mkdirSync(join(dir, "Default"), { recursive: true });
     writeFileSync(join(dir, "Default", "Preferences"), JSON.stringify({ profile: "bogus" }));
     chromiumIndex.seedChromiumPreferences(dir);
-    const prefs = JSON.parse(readFileSync(join(dir, "Default", "Preferences"), "utf8")) as {
-      profile: Record<string, unknown>;
-    };
+    const prefs = readJsonObject(join(dir, "Default", "Preferences"));
     expect(prefs.profile).toEqual({
       password_manager_enabled: false,
       password_manager_leak_detection: false,
@@ -513,9 +571,7 @@ describe("seedChromiumPreferences", () => {
 
     const bare = join(FIXTURES, "_prefs_bare");
     chromiumIndex.seedChromiumPreferences(bare);
-    const seeded = JSON.parse(readFileSync(join(bare, "Default", "Preferences"), "utf8")) as {
-      credentials_enable_service: boolean;
-    };
+    const seeded = readJsonObject(join(bare, "Default", "Preferences"));
     expect(seeded.credentials_enable_service).toBe(false);
   });
 });
@@ -625,9 +681,11 @@ describe("chromium launcher RPC dispatch", () => {
   });
 
   test("listStarters dispatches to the real starter registry", async () => {
-    const result = (await rpc("listStarters")) as { id: string }[];
-    expect(Array.isArray(result)).toBe(true);
-    expect(result.some((s) => s.id === "restaurant")).toBe(true);
+    const result = await rpc("listStarters");
+    if (!Array.isArray(result)) {
+      throw new TypeError(`listStarters did not answer a list: ${JSON.stringify(result)}`);
+    }
+    expect(result.some((s) => isJsonObject(s) && s.id === "restaurant")).toBe(true);
   });
 
   test("jxResolve / jxServerFunction WS methods dispatch to the handlers", async () => {
@@ -679,8 +737,8 @@ describe("chromium launcher RPC dispatch", () => {
   test("the loopback server is installed as the OAuth redirect host", () => {
     // Sign-in cannot be wired before the server exists, so this is what proves it was.
     expect(setAuthorizationHostMock).toHaveBeenCalled();
-    const host = setAuthorizationHostMock.mock.calls.at(-1)![0] as { port: number };
-    expect(typeof host.port).toBe("number");
+    const [host] = setAuthorizationHostMock.mock.calls.at(-1)!;
+    expect(host?.port).toBeNumber();
   });
 
   test("git query methods return results", async () => {
@@ -777,19 +835,10 @@ describe("chromium launcher RPC dispatch", () => {
   });
 
   test("invalid JSON gets an error response with id 0", async () => {
-    const response = await new Promise<{ id: number; error?: string }>((resolve) => {
-      const handler = (event: MessageEvent) => {
-        const msg = JSON.parse(event.data as string);
-        if (msg.id !== 0) {
-          return;
-        }
-        ws.removeEventListener("message", handler);
-        resolve(msg);
-      };
-      ws.addEventListener("message", handler);
-      ws.send("{{{not json");
-    });
-    expect(response.error).toBe("Invalid JSON");
+    const response = nextFrame((frame) => frame.id === 0, "reply with id 0");
+    openSocket().send("{{{not json");
+    const reply = await response;
+    expect(reply.error).toBe("Invalid JSON");
   });
 });
 
@@ -809,7 +858,7 @@ describe("chromium launcher import route", () => {
       method: "POST",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
+    const body = parseObject(await res.text());
     expect(body.error).toContain("absolute");
   });
 
@@ -825,12 +874,12 @@ describe("chromium launcher import route", () => {
     const lines = text
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as Record<string, unknown>);
+      .map((l) => parseObject(l));
     expect(lines.at(-1)?.type).toBe("done");
     expect(lines.at(-1)?.root).toBe(dest);
     // The chromium binary the launcher discovered doubles as puppeteer's browser.
-    const opts = importSiteMock.mock.calls.at(-1)?.[0] as { chromePath?: string };
-    expect(opts.chromePath).toBe("/usr/bin/sh");
+    const opts = importSiteMock.mock.calls.at(-1)?.[0];
+    expect(opts?.chromePath).toBe("/usr/bin/sh");
   });
 });
 
@@ -939,7 +988,7 @@ describe("chromium launcher lifecycle", () => {
   test("SIGINT kills chromium and exits", () => {
     expect(sigintHandlers).toHaveLength(1);
     const before = fakeChrome.kill.mock.calls.length;
-    (sigintHandlers[0] as () => void)();
+    sigintHandlers[0]!("SIGINT");
     expect(fakeChrome.kill.mock.calls.length).toBe(before + 1);
     expect(exitCalls).toContain(0);
   });
@@ -947,7 +996,7 @@ describe("chromium launcher lifecycle", () => {
   test("SIGTERM kills chromium and exits", () => {
     expect(sigtermHandlers).toHaveLength(1);
     const before = fakeChrome.kill.mock.calls.length;
-    (sigtermHandlers[0] as () => void)();
+    sigtermHandlers[0]!("SIGTERM");
     expect(fakeChrome.kill.mock.calls.length).toBe(before + 1);
   });
 
@@ -1011,23 +1060,8 @@ function clearOtherWindow() {
 }
 
 /** Resolve with the next server-initiated frame carrying `method`, or reject on timeout. */
-function nextPush(method: string, timeoutMs = 3000): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      ws.removeEventListener("message", handler);
-      reject(new Error(`no ${method} push within ${timeoutMs}ms`));
-    }, timeoutMs);
-    const handler = (event: MessageEvent) => {
-      const msg = JSON.parse(event.data as string) as { method?: string };
-      if (msg.method !== method) {
-        return;
-      }
-      clearTimeout(timer);
-      ws.removeEventListener("message", handler);
-      resolve(msg as Record<string, unknown>);
-    };
-    ws.addEventListener("message", handler);
-  });
+function nextPush(method: string, timeoutMs = 3000): Promise<JsonObject> {
+  return nextFrame((frame) => frame.method === method, `${method} push`, timeoutMs);
 }
 
 describe("window registry", () => {
@@ -1043,8 +1077,11 @@ describe("window registry", () => {
   test("listOpenWindows enumerates every live window, this one included", async () => {
     publishOtherWindow("/proj/sibling");
     try {
-      const windows = (await rpc("listOpenWindows")) as { id: number; projectRoot: string }[];
-      expect(windows.map((w) => w.id)).toContain(process.pid);
+      const windows = await rpc("listOpenWindows");
+      if (!Array.isArray(windows)) {
+        throw new TypeError(`listOpenWindows did not answer a list: ${JSON.stringify(windows)}`);
+      }
+      expect(windows.map((w) => (isJsonObject(w) ? w.id : undefined))).toContain(process.pid);
       expect(windows).toContainEqual({ id: otherWindow.pid, projectRoot: "/proj/sibling" });
     } finally {
       clearOtherWindow();
@@ -1082,7 +1119,7 @@ describe("opening projects elsewhere", () => {
     // A restart — and, because the singleton is keyed on it, so that it gets a browser of its own.
     // Matches projectProfile(), which resolves: on Windows join() leaves the path drive-less.
     expect(spawned.opts.env?.JX_STUDIO_PROFILE_DIR).toBe(
-      resolvePath("/proj/fresh", ".jx", "chromium-profile"),
+      resolve("/proj/fresh", ".jx", "chromium-profile"),
     );
     expect(spawned.opts.env?.JX_STUDIO_NO_PROJECT).toBeUndefined();
     expect(spawned.opts.detached).toBe(true);
@@ -1125,10 +1162,7 @@ describe("setWindowProject", () => {
       deduped: false,
     });
     expect(handlerMocks.setProjectRoot).toHaveBeenLastCalledWith(target);
-    const own = JSON.parse(readFileSync(registryFile(`${process.pid}.json`), "utf8")) as {
-      root: string;
-      name: string;
-    };
+    const own = readJsonObject(registryFile(`${process.pid}.json`));
     expect(own.root).toBe(target);
     expect(own.name).toBe("_rerooted");
   });
@@ -1189,7 +1223,10 @@ describe("pushed messages", () => {
 
 describe("appInfo", () => {
   test("reports the channel and no update status — the packager owns updates here", async () => {
-    const info = (await rpc("appInfo")) as { channel: string; updateStatus?: string };
+    const info = await rpc("appInfo");
+    if (!isJsonObject(info)) {
+      throw new TypeError(`appInfo did not answer an object: ${JSON.stringify(info)}`);
+    }
     expect(info.channel).toBe("system");
     expect(info.updateStatus).toBeUndefined();
   });

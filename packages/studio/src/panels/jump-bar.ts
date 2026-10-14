@@ -63,8 +63,9 @@
  * @docs studio/interface
  */
 
-import { displayTagName } from "@jxsuite/schema/guards";
-import { childList, getNodeAtPath, nodeLabel, pathsEqual, projectState } from "../store";
+import { displayTagName, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { childList, nodeLabel, pathsEqual, projectState } from "../store";
 import { effect, effectScope } from "../reactivity";
 import { activePane, workspace } from "../workspace/workspace";
 import { derivationOfPane, tabOfPane } from "../canvas/canvas-surface";
@@ -74,14 +75,21 @@ import { runReported } from "../commands/run-reported";
 import { openMenu } from "../surfaces/menu";
 import { rectOf } from "../utils/geometry";
 import { mountJumpBarSurface } from "../surfaces/jump-bar";
-import type { CommandArgs, CommandRegistry } from "../commands/registry";
+import type { CommandRegistry } from "../commands/registry";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { JxPath } from "../state";
-import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
+import type {
+  MenuHandle,
+  MenuRowProjection,
+  OpenMenuOptions,
+  ViewportPoint,
+} from "../surfaces/menu";
 import type { JumpBarSurface, ProjectedStep } from "../surfaces/jump-bar";
 import type { Tab } from "../tabs/tab";
 import type { PaneDerivation } from "../workspace/workspace";
 import type { EffectScope } from "@vue/reactivity";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { CommandArgValues } from "../commands/command-args";
 
 /**
  * The region the trail stamps on itself. It is the status bar's DOCUMENT field: the document, and
@@ -108,7 +116,7 @@ export type JumpSegmentKind = "file" | "editor" | "node";
 export interface JumpChoice {
   label: string;
   command: string;
-  args?: CommandArgs;
+  args?: CommandArgValues;
   /** The choice you are already on. Marked, never hidden — a menu that omits it loses its place. */
   current?: boolean;
 }
@@ -121,7 +129,7 @@ export interface JumpSegment {
   title?: string;
   /** The command that MOVES you here, or `null` when you are already here. */
   command: string | null;
-  args?: CommandArgs;
+  args?: CommandArgValues;
   /** Where else this step could go. Fewer than two is not a choice, and renders no control. */
   choices: readonly JumpChoice[];
 }
@@ -160,19 +168,19 @@ export interface SelectionCrumb {
  * array pseudo-element ("Repeater") and its template both visible instead of collapsing the array
  * into a bare `[index]`.
  */
-export function selectionCrumbs(document: unknown, selection: JxPath): SelectionCrumb[] {
+export function selectionCrumbs(document: JxMutableNode, selection: JxPath): SelectionCrumb[] {
   const crumbs: SelectionCrumb[] = [];
   for (let i = 0; i < selection.length;) {
     const seg = selection[i];
     const step = seg === "map" ? 1 : 2;
-    const path = selection.slice(0, i + step) as JxPath;
-    const node = getNodeAtPath(document as never, path);
+    const path = selection.slice(0, i + step);
+    const node = getNodeAtPath(document, path);
     const fallbackTag = node?.tag;
     const label =
       node?.$prototype === "Array"
         ? "Repeater"
         : displayTagName(node?.tagName) ||
-          (typeof fallbackTag === "string" ? fallbackTag : "") ||
+          (isString(fallbackTag) ? fallbackTag : "") ||
           (seg === "cases" ? String(selection[i + 1]) : `[${selection[i + 1]}]`);
     crumbs.push({ label, path });
     i += step;
@@ -191,7 +199,7 @@ export function selectionCrumbs(document: unknown, selection: JxPath): Selection
  * addressable, so both drop out and the segment renders no control at all.
  */
 export function crumbSiblings(
-  document: unknown,
+  document: JxMutableNode,
   crumbs: readonly SelectionCrumb[],
   index: number,
 ): JumpChoice[] {
@@ -199,17 +207,17 @@ export function crumbSiblings(
   if (!crumb) {
     return [];
   }
-  const parentPath = (index === 0 ? [] : crumbs[index - 1]!.path) as JxPath;
-  const parent = getNodeAtPath(document as never, parentPath);
+  const parentPath: JxPath = index === 0 ? [] : crumbs[index - 1]!.path;
+  const parent = getNodeAtPath(document, parentPath);
   const key = crumb.path.at(-2);
   const own = crumb.path;
   if (key === "cases") {
     const cases = parent?.cases;
-    if (!cases || typeof cases !== "object") {
+    if (!isNonNullObject(cases)) {
       return [];
     }
     return Object.keys(cases).map((name) => {
-      const path = [...parentPath, "cases", name] as JxPath;
+      const path: JxPath = [...parentPath, "cases", name];
       return choiceFor(document, path, name, own);
     });
   }
@@ -218,17 +226,22 @@ export function crumbSiblings(
   }
   const choices: JumpChoice[] = [];
   for (const [i, child] of childList(parent).entries()) {
-    if (typeof child === "string") {
+    if (isString(child)) {
       continue;
     }
-    const path = [...parentPath, "children", i] as JxPath;
+    const path: JxPath = [...parentPath, "children", i];
     choices.push(choiceFor(document, path, nodeLabel(child), own));
   }
   return choices;
 }
 
-function choiceFor(document: unknown, path: JxPath, fallback: string, own: JxPath): JumpChoice {
-  const node = getNodeAtPath(document as never, path);
+function choiceFor(
+  document: JxMutableNode,
+  path: JxPath,
+  fallback: string,
+  own: JxPath,
+): JumpChoice {
+  const node = getNodeAtPath(document, path);
   const label = node ? nodeLabel(node) : fallback;
   const choice: JumpChoice = { args: { path }, command: "selection.set", label };
   // `pathsEqual`, not a joined key: a separator is a guess about what a segment cannot contain,
@@ -278,8 +291,7 @@ export function jumpSegments(
 
   // A logic editor is the leaf of the address, and it has no selection under it: the Monaco buffer
   // And the formula workspace are editing a definition, not a node of the document tree.
-  const editingFunction = tab.session.ui.editingFunction as FunctionEditDef | null;
-  const editingFormula = tab.session.ui.editingFormula as FormulaEditDef | null;
+  const { editingFormula, editingFunction } = tab.session.ui;
   if (editingFunction) {
     segments.push(editorSegment("ƒ", editingFunction));
     return segments;
@@ -333,9 +345,7 @@ function editorSegment(sigil: string, def: FunctionEditDef | FormulaEditDef): Ju
  */
 function stepKey(segment: JumpSegment): string {
   const path = segment.args?.path;
-  return segment.kind === "node" && Array.isArray(path)
-    ? `node:${(path as JxPath).join("/")}`
-    : segment.kind;
+  return segment.kind === "node" && Array.isArray(path) ? `node:${path.join("/")}` : segment.kind;
 }
 
 /** Whether the registry can actually run this id right now. */
@@ -446,7 +456,7 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
     },
     title: choice.label,
   }));
-  const handle = openMenu({
+  const options: OpenMenuOptions = {
     label: `Go to a sibling of ${segment.label}`,
     onClosed: (closed) => {
       if (_menu === closed) {
@@ -455,10 +465,13 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
     },
     opener: anchor,
     placement: ABOVE_OPENER,
-    ...(anchor ? { place: (box: DOMRect) => aboveOpener(anchor, box) } : {}),
     region: "jump-bar",
     rows,
-  });
+  };
+  if (anchor) {
+    options.place = (box: DOMRect) => aboveOpener(anchor, box);
+  }
+  const handle = openMenu(options);
   _menu = handle;
 }
 
@@ -466,13 +479,19 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
  * The menu's corner when it hangs above `anchor`: its bottom on the anchor's top, leading edges
  * aligned.
  */
-export function aboveOpener(anchor: HTMLElement, box: DOMRect): { x: number; y: number } {
+export function aboveOpener(anchor: HTMLElement, box: DOMRect): ViewportPoint {
   const rect = rectOf(anchor);
   return { x: Math.round(rect.left), y: Math.max(0, Math.round(rect.top - box.height)) };
 }
 
 /** The address of the focused pane, and the segments behind it. */
-function projectFocused(): { steps: ProjectedStep[]; segments: JumpSegment[] } {
+interface FocusedAddress {
+  steps: ProjectedStep[];
+  segments: JumpSegment[];
+}
+
+/** Projects {@link FocusedAddress} for the focused pane. */
+function projectFocused(): FocusedAddress {
   const paneId = activePane().id;
   const segments = jumpSegments(tabOfPane(paneId), derivationOfPane(paneId));
   const registry = activeRegistry();

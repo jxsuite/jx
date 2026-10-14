@@ -17,6 +17,7 @@ interface Budget {
   budgets: Record<string, number>;
 }
 
+// SAFETY: bundle-budget.json is the committed, hand-maintained budget file, written to `Budget`.
 const { tolerance = 0, budgets } = JSON.parse(await Bun.file(BUDGET_PATH).text()) as Budget;
 
 if (!existsSync(DIST)) {

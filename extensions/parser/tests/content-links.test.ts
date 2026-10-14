@@ -7,9 +7,11 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 import { rewriteLinks } from "../src/content-links.ts";
 import type { FileOutcome, LinkIndex, LinkProblem } from "../src/content-links.ts";
+import type { ContentNodes } from "../src/inert.ts";
 
 function makeIndex(files: Record<string, FileOutcome>, extra: Partial<LinkIndex> = {}): LinkIndex {
   return {
@@ -46,12 +48,13 @@ function run(href: string, from = "Frappe/Bench Operations.md", index: LinkIndex
   const nodes: (JxElement | string)[] = [link];
   const problems: LinkProblem[] = [];
   rewriteLinks(nodes, from, index, (p) => problems.push(p));
-  const kept = nodes.length === 1 && typeof nodes[0] === "object" && nodes[0].tagName === "a";
+  const [only] = nodes;
+  const kept = nodes.length === 1 && isNonNullObject(only) && only.tagName === "a" ? only : null;
   return {
-    href: kept ? (nodes[0] as JxElement).attributes?.href : undefined,
+    href: kept?.attributes?.href,
     nodes,
     problems,
-    unlinked: !kept,
+    unlinked: kept === null,
   };
 }
 
@@ -118,7 +121,7 @@ describe("links that are rewritten", () => {
   });
 
   it("rewrites links inside nested elements and keeps the rest of the tree", () => {
-    const tree: (JxElement | string)[] = [
+    const tree: (JxElement | string | null)[] = [
       {
         children: [
           "see ",
@@ -131,12 +134,29 @@ describe("links that are rewritten", () => {
         tagName: "p",
       },
       "loose text",
-      null as never,
+      null,
       { tagName: "hr" },
     ];
-    rewriteLinks(tree, "Frappe/X.md", INDEX, () => {});
-    const link = ((tree[0] as JxElement).children as JxElement[])[1]!;
-    expect(link.attributes?.href).toBe("/kb/linux/swap-configuration/");
+    /* SAFETY: a content tree has no null member, but one read from hand-edited JSON can carry one.
+       The walk passes over anything that is not an object, and this fixture pins that a stray null
+       neither throws nor is touched. */
+    rewriteLinks(tree as ContentNodes, "Frappe/X.md", INDEX, () => {});
+    expect(tree).toEqual([
+      {
+        children: [
+          "see ",
+          {
+            attributes: { href: "/kb/linux/swap-configuration/" },
+            tagName: "a",
+            textContent: "swap",
+          },
+        ],
+        tagName: "p",
+      },
+      "loose text",
+      null,
+      { tagName: "hr" },
+    ]);
   });
 });
 
@@ -311,16 +331,16 @@ describe("a link whose text was made inert", () => {
 
 describe("a raw HTML block", () => {
   it("is a nested list, and the links in it are rewritten", () => {
-    const nested = [
+    const nested: JxElement[] = [
       {
         attributes: { href: "../Linux/Swap%20Configuration.md" },
         tagName: "a",
         textContent: "swap",
       },
     ];
-    const tree = [nested] as never;
+    const tree: ContentNodes = [nested];
     rewriteLinks(tree, "Frappe/X.md", INDEX, () => {});
-    expect((nested[0] as JxElement).attributes?.href).toBe("/kb/linux/swap-configuration/");
+    expect(nested[0]?.attributes?.href).toBe("/kb/linux/swap-configuration/");
   });
 });
 

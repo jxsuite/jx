@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { DummyDriver, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler } from "kysely";
 import {
   AUTH_BASE_PATH,
   buildAuthOptions,
@@ -20,6 +21,18 @@ import {
   SESSION_UPDATE_SECONDS,
   toSessionInfo,
 } from "../src/config";
+import type { AuthDatabaseConfig } from "../src/config";
+
+/** A cold SQLite database config: a real Kysely dialect whose driver never connects. */
+const COLD_DATABASE: AuthDatabaseConfig = {
+  dialect: {
+    createAdapter: () => new SqliteAdapter(),
+    createDriver: () => new DummyDriver(),
+    createIntrospector: (db) => new SqliteIntrospector(db),
+    createQueryCompiler: () => new SqliteQueryCompiler(),
+  },
+  type: "sqlite",
+};
 
 describe("resolveAuthConnectionName", () => {
   test("prefers the declared connection, else the first-declared one", () => {
@@ -84,8 +97,7 @@ describe("buildAuthOptions", () => {
       trustedOrigins: ["https://example.com"],
     };
     const env = { GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "sec" };
-    const database = { dialect: {}, type: "sqlite" };
-    const options = buildAuthOptions(section, env, { database, secret: "shh" });
+    const options = buildAuthOptions(section, env, { database: COLD_DATABASE, secret: "shh" });
 
     expect(options.basePath).toBe(AUTH_BASE_PATH);
     expect(options.emailAndPassword).toEqual({ enabled: true });
@@ -94,7 +106,7 @@ describe("buildAuthOptions", () => {
       additionalFields: { role: { input: false, required: false, type: "string" } },
     });
     expect(options.trustedOrigins).toEqual(["https://example.com"]);
-    expect(options.database).toBe(database);
+    expect(options.database).toBe(COLD_DATABASE);
     expect(options.secret).toBe("shh");
   });
 
@@ -132,14 +144,10 @@ describe("cookies, sessions and rate limiting", () => {
   });
 
   test("a secure deployment names its cookies __Host-", () => {
-    const advanced = buildAuthOptions({}, {}).advanced as {
-      cookies: Record<string, { name: string }>;
-      defaultCookieAttributes: Record<string, unknown>;
-      useSecureCookies: boolean;
-    };
-    expect(advanced.cookies.session_token!.name).toBe("__Host-better-auth.session_token");
+    const { advanced } = buildAuthOptions({}, {});
+    expect(advanced.cookies?.session_token?.name).toBe("__Host-better-auth.session_token");
     for (const id of ["session_data", "dont_remember", "account_data"]) {
-      expect(advanced.cookies[id]!.name).toStartWith("__Host-");
+      expect(advanced.cookies?.[id]?.name).toStartWith("__Host-");
     }
     /*
      * `useSecureCookies: false` is not a weakening — the library prepends `__Secure-` to whatever
@@ -151,8 +159,7 @@ describe("cookies, sessions and rate limiting", () => {
   });
 
   test("a plain-http dev origin gets no prefix, because a prefixed cookie needs Secure", () => {
-    const advanced = buildAuthOptions({}, { BETTER_AUTH_URL: "http://localhost:3000" })
-      .advanced as Record<string, unknown>;
+    const { advanced } = buildAuthOptions({}, { BETTER_AUTH_URL: "http://localhost:3000" });
     expect(advanced).not.toHaveProperty("cookies");
     expect(advanced).not.toHaveProperty("defaultCookieAttributes");
     expect(advanced.useSecureCookies).toBe(false);
@@ -194,7 +201,8 @@ describe("toSessionInfo", () => {
 
   test("null/malformed payloads and role-less users normalize cleanly", () => {
     expect(toSessionInfo(null)).toBeNull();
-    expect(toSessionInfo("nope")).toBeNull();
+    // A parsed response body that is not a session object at all (the client hands over JSON).
+    expect(toSessionInfo(JSON.parse('"nope"'))).toBeNull();
     expect(toSessionInfo({})).toBeNull();
     expect(toSessionInfo({ user: { name: "no id" } })).toBeNull();
 

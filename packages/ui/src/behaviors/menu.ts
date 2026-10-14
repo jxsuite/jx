@@ -24,6 +24,8 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+
 import { anchorOf, clampIntoViewport, openAt, supportsAnchorPositioning } from "./popover.ts";
 
 export { clampIntoViewport } from "./popover.ts";
@@ -43,7 +45,6 @@ export interface MenuState {
   area?: string;
   /** Whether the platform is placing this panel against the element it was shown from. */
   anchored?: boolean;
-  [key: string]: unknown;
 }
 
 /** Where a submenu sits when its document says nothing: beside its row, extending downward. */
@@ -57,9 +58,7 @@ type MenuElement = HTMLElement & { open?: boolean; x?: number; y?: number; floor
 /** The menu an event's `currentTarget` is. */
 function menuOf(event: Event): MenuElement | null {
   const target = event.currentTarget;
-  return target instanceof HTMLElement && target.localName === MENU
-    ? (target as MenuElement)
-    : null;
+  return target instanceof HTMLElement && target.localName === MENU ? target : null;
 }
 
 /**
@@ -99,11 +98,11 @@ export function submenuOf(row: HTMLElement): MenuElement | null {
 
 /** The row a submenu is slotted into, if it is a submenu. */
 export function parentRowOf(menu: HTMLElement): RowElement | null {
-  return (menu.parentElement?.closest(ROW) as RowElement | null) ?? null;
+  return menu.parentElement?.closest<RowElement>(ROW) ?? null;
 }
 
 /** The outermost menu of a stack. */
-export function rootMenuOf(menu: HTMLElement): HTMLElement {
+export function rootMenuOf(menu: HTMLElement): MenuElement {
   let root = menu;
   for (;;) {
     const row = parentRowOf(root);
@@ -140,7 +139,7 @@ export function showMenu(menu: MenuElement, source?: Element | null): void {
 
 /** Hide a menu panel through the platform, if it is showing. */
 export function hideMenu(menu: MenuElement): void {
-  if (isShowing(menu) && typeof menu.hidePopover === "function") {
+  if (isShowing(menu) && isFunction(menu.hidePopover)) {
     menu.hidePopover();
   }
 }
@@ -201,7 +200,7 @@ function closeSubmenus(menu: HTMLElement, except: RowElement | null = null): voi
 
 /** A row's label text: its label part, else all of its text. */
 function rowLabel(row: HTMLElement): string {
-  return row.querySelector('[part="label"]')?.textContent ?? row.textContent ?? "";
+  return row.querySelector('[part="label"]')?.textContent ?? row.textContent;
 }
 
 /** The next row after `active` whose label starts with `char`, wrapping; -1 when none does. */
@@ -285,7 +284,7 @@ export function onMenuKeydown(_state: MenuState, event: KeyboardEvent): void {
       break;
     }
     case "Tab": {
-      hideMenu(rootMenuOf(menu) as MenuElement);
+      hideMenu(rootMenuOf(menu));
       break;
     }
     default: {
@@ -321,10 +320,10 @@ export function onMenuBeforeToggle(state: MenuState, event: Event): void {
   if (!menu) {
     return;
   }
-  const opening = (event as { newState?: string }).newState === "open";
+  const opening = "newState" in event && event.newState === "open";
   const area = String(state.placement ?? "") || (parentRowOf(menu) ? SUBMENU_PLACEMENT : "");
   state.area = area;
-  const { source } = event as Event & { source?: unknown };
+  const source = "source" in event ? event.source : null;
   const from = source instanceof Element ? source : anchorOf(menu);
   state.anchored = opening && area !== "" && from !== null && !hasFloor(menu);
 }
@@ -342,7 +341,7 @@ export function onMenuToggle(state: MenuState, event: Event): void {
   if (!menu) {
     return;
   }
-  const opening = (event as { newState?: string }).newState === "open";
+  const opening = "newState" in event && event.newState === "open";
   state.open = opening;
   const parent = parentRowOf(menu);
   if (!opening) {
@@ -365,12 +364,12 @@ export function onMenuToggle(state: MenuState, event: Event): void {
 
 /** Whether the stack's root declares a floor at all. */
 function hasFloor(menu: HTMLElement): boolean {
-  return Number((rootMenuOf(menu) as MenuElement).floor ?? 0) > 0;
+  return Number(rootMenuOf(menu).floor ?? 0) > 0;
 }
 
 /** The lowest edge a stack may reach: the root menu's `floor`, else the viewport's bottom. */
 function floorOf(menu: HTMLElement): number {
-  const floor = Number((rootMenuOf(menu) as MenuElement).floor ?? 0);
+  const floor = Number(rootMenuOf(menu).floor ?? 0);
   return floor > 0 ? floor : window.innerHeight;
 }
 
@@ -385,7 +384,7 @@ export function ensureCaret(menu: HTMLElement): void {
   if (menu.contains(document.activeElement)) {
     return;
   }
-  let deepest = menu as MenuElement;
+  let deepest: MenuElement = menu;
   for (;;) {
     const open = rowsOf(deepest, { includeDisabled: true })
       .map((row) => submenuOf(row))

@@ -15,7 +15,7 @@ import {
 const KEY = "jx.ai.pendingAgentPrompt:/proj";
 const realLocalStorage = globalThis.localStorage;
 
-function swapStorage(value: unknown) {
+function swapStorage(value: Pick<Storage, "getItem" | "removeItem" | "setItem">) {
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     value,
@@ -34,9 +34,7 @@ describe("agent-seed", () => {
     expect(hasPendingAgentPrompt("/proj")).toBe(true);
     const raw = globalThis.localStorage.getItem(KEY);
     expect(raw).not.toBeNull();
-    const stored = JSON.parse(raw!) as { prompt: string; ts: number };
-    expect(stored.prompt).toBe("build a pricing page");
-    expect(typeof stored.ts).toBe("number");
+    expect(JSON.parse(raw!)).toEqual({ prompt: "build a pricing page", ts: expect.any(Number) });
     expect(consumePendingAgentPrompt("/proj")).toBe("build a pricing page");
     // Consume-on-read: the entry is gone.
     expect(globalThis.localStorage.getItem(KEY)).toBeNull();

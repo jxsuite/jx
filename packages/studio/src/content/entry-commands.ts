@@ -33,7 +33,8 @@ import { invalidateReferenceEntries } from "../ui/form-controls";
 import { reloadDraftAwareGrids } from "../grid/sources/content-source";
 import { setIncludeDrafts } from "./draft-state";
 import { collectionOfPath, entryCollection, entryCollections, seedEntry } from "./entry-model";
-import { LOCALE_PLACEHOLDER, collectionForDirectory } from "./collection-match";
+import { collectionForDirectory } from "./collection-match";
+import { LOCALE_PLACEHOLDER } from "../canvas/asset-resolve";
 import { openEntryEditor, setEntryDraft } from "./entry-editor";
 import { errorMessage } from "@jxsuite/schema/parse";
 import type { EntryCollection } from "./entry-model";
@@ -167,7 +168,7 @@ export async function createEntry(
 
 /** The active tab, when it is a content entry — the subject of the document-level verbs. */
 function activeEntryTab(): Tab | null {
-  const tab = activeTab.value as Tab | null;
+  const tab = activeTab.value;
   return tab && collectionOfPath(tab.documentPath) ? tab : null;
 }
 

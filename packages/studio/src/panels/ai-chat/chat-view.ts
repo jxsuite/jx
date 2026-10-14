@@ -4,15 +4,15 @@
  *
  * Message-row anatomy: user messages render as right-aligned bubbles (attached-context blocks
  * become chips), assistant messages render sanitized markdown plus tool-call chips, tool messages
- * surface failures only, the streaming tail renders as plain text with a cursor
- * (markdown parses once on finalize), and chat errors get a danger row with recovery advice and a
- * Retry. **None of that is markup here any more** — `surfaces/ai-chat.json` draws it and this
- * module decides what it says, which is the same split the file always had with a document on the
- * other side of it instead of a lit template.
+ * surface failures only, the streaming tail renders as plain text with a cursor (markdown parses
+ * once on finalize), and chat errors get a danger row with recovery advice and a Retry. **None of
+ * that is markup here any more** — `surfaces/ai-chat.json` draws it and this module decides what it
+ * says, which is the same split the file always had with a document on the other side of it instead
+ * of a lit template.
  *
- * ai.md §3.2 (the accountable turn) is why three things here are not what they were:
+ * The accountable turn (ai.md §3.2) is why three things here are not what they were:
  *
- * - **A chip renders its OUTCOME.** It reads `ToolCallRecord.result`, so a chip that said
+ * - **A chip renders its OUTCOME.** It reads `LiveToolCall.result`, so a chip that said
  *   `update_style: ["children",0]` no longer says exactly as much when the edit was refused as when
  *   it landed. The live loop attaches each result as its call finishes (`appendToolResult`), and a
  *   restored chat backfills it from the tool message that answered the call
@@ -24,48 +24,57 @@
  * - **An error offers Retry.** `chatState.retryLast()` has been implemented, exported and called by
  *   nobody; the error row is where it belongs.
  *
- * ai.md §3.0 is why the three buttons here are not callbacks any more. History, New Chat and Retry
- * were closures this module received and invoked, so the capabilities existed ONLY as buttons: the
- * `Assistant` category held zero records, and nothing could reach them from the palette, a chord,
- * the automation runner or the generated commands sheet. They are {@link projectCommand} now, in
- * the idiom `surfaces/statusbar.ts` established — the record is the definition site, and this file
- * only decides where it is drawn and with which glyph.
+ * The assistant being addressable by name (ai.md §3.0) is why the three buttons here are not
+ * callbacks any more. History, New Chat and Retry were closures this module received and invoked,
+ * so the capabilities existed ONLY as buttons: the `Assistant` category held zero records, and
+ * nothing could reach them from the palette, a chord, the automation runner or the generated
+ * commands sheet. They are {@link projectCommand} now, in the idiom `surfaces/statusbar.ts`
+ * established — the record is the definition site, and this file only decides where it is drawn and
+ * with which glyph.
  *
  * @license MIT
  */
 
-import type { Message, ToolCallRecord } from "@jxsuite/ai/chat-state";
+import type { LiveMessage, LiveToolCall } from "@jxsuite/ai/messages";
+import { isBoolean, isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { splitAttachedContext } from "./attached-context";
 import { renderMarkdown } from "./chat-markdown";
 import { summarizeWrites, writesForTurn } from "../../services/ai-writes";
+import { ASK_TOOL } from "../../services/tool-outcomes";
 import { activeRegistry } from "../../commands/active-registry";
 
+import type { AskAnswer } from "../../services/ai-ask";
 import type { CommandRegistry } from "../../commands/registry";
 import type { ImportRunRecord } from "../../services/import-run";
-import type {
-  ChatChangeView,
-  ChatChipView,
-  ChatCommandView,
-  ChatContextChip,
-  ChatRowView,
-} from "../../surfaces/ai-chat";
+import type { ChatChipView, ChatCommandView, ChatRowView } from "../../surfaces/ai-chat";
+import type { KeyedLabel } from "../../ui/surface";
 
 // ─── Helpers (moved from ai-panel.ts) ────────────────────────────────────────
+
+/** The parts of a tool result message the transcript reads. */
+export interface ParsedToolResult {
+  success: boolean;
+  error?: string;
+  summary?: string;
+}
 
 /**
  * Parse a tool result message content (JSON string) into its success/error shape. Returns null if
  * the content isn't a valid tool result.
  *
  * @param {string} content
- * @returns {{ success: boolean; error?: string; summary?: string } | null}
+ * @returns {ParsedToolResult | null}
  */
-export function tryParseToolResult(
-  content: string,
-): { success: boolean; error?: string; summary?: string } | null {
+export function tryParseToolResult(content: string): ParsedToolResult | null {
   try {
-    const parsed = JSON.parse(content) as { success?: unknown; error?: string; summary?: string };
-    if (parsed && typeof parsed.success === "boolean") {
-      return parsed as { success: boolean; error?: string; summary?: string };
+    // SAFETY: JSON.parse only ever produces JSON values.
+    const parsed = JSON.parse(content) as JsonValue;
+    if (isJsonObject(parsed) && isBoolean(parsed.success)) {
+      /* SAFETY: a tool message's content is the agent loop's JSON.stringify of a ToolResult, whose
+         `error` and `summary` are strings when present; a boolean `success` is what tells that
+         envelope apart from any other JSON a message might carry. */
+      return parsed as JsonObject & ParsedToolResult;
     }
   } catch {
     /* Not JSON — not a tool result */
@@ -82,13 +91,11 @@ export function tryParseToolResult(
 export function formatToolLabel(tc: { name: string; arguments: string }): string {
   let detail = "";
   try {
-    const args = (tc.arguments ? JSON.parse(tc.arguments) : {}) as {
-      path?: unknown;
-      parentPath?: unknown;
-    };
-    if (Array.isArray(args.path)) {
+    // SAFETY: JSON.parse only ever produces JSON values.
+    const args = (tc.arguments ? JSON.parse(tc.arguments) : {}) as JsonValue;
+    if (isJsonObject(args) && Array.isArray(args.path)) {
       detail = `: ${JSON.stringify(args.path)}`;
-    } else if (Array.isArray(args.parentPath)) {
+    } else if (isJsonObject(args) && Array.isArray(args.parentPath)) {
       detail = `: ${JSON.stringify(args.parentPath)}`;
     }
   } catch {
@@ -213,9 +220,6 @@ export function tokenHint(tokens: number, overBudget: boolean): string {
 
 // ─── Tool calls ─────────────────────────────────────────────────────────────
 
-/** The tool whose chip is a question card rather than a chip. */
-const ASK_TOOL = "ask_user";
-
 /** The tool whose chip grows a live progress line while it runs. */
 const IMPORT_TOOL = "import_site";
 
@@ -233,25 +237,30 @@ interface AskArgs {
  * to render a call whose JSON is still half-written. A card with an empty question renders as an
  * ordinary chip rather than as an empty box.
  *
- * @param {ToolCallRecord} tc
+ * @param {LiveToolCall} tc
  * @returns {AskArgs | null}
  */
-export function parseAsk(tc: ToolCallRecord): AskArgs | null {
-  let parsed: { question?: unknown; options?: unknown; context?: unknown };
+export function parseAsk(tc: LiveToolCall): AskArgs | null {
+  let parsed: JsonValue;
   try {
-    parsed = tc.arguments ? (JSON.parse(tc.arguments) as typeof parsed) : {};
+    // SAFETY: JSON.parse only ever produces JSON values.
+    parsed = tc.arguments ? (JSON.parse(tc.arguments) as JsonValue) : {};
   } catch {
     return null; // Still streaming, or malformed — the generic chip is the honest fallback.
   }
-  if (typeof parsed.question !== "string" || !parsed.question.trim()) {
+  if (!isJsonObject(parsed)) {
+    return null;
+  }
+  const { context, options, question } = parsed;
+  if (!isString(question) || !question.trim()) {
     return null;
   }
   return {
-    context: typeof parsed.context === "string" ? parsed.context : "",
-    options: Array.isArray(parsed.options)
-      ? parsed.options.filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+    context: isString(context) ? context : "",
+    options: Array.isArray(options)
+      ? options.filter((o): o is string => isString(o) && o.trim().length > 0)
       : [],
-    question: parsed.question,
+    question,
   };
 }
 
@@ -263,13 +272,13 @@ export function parseAsk(tc: ToolCallRecord): AskArgs | null {
  * indistinguishable from a live one and spins forever waiting for a loop that is gone. It is a
  * property of the RUN, not of the record, so the caller supplies whether this call is still live.
  *
- * @param {ToolCallRecord} tc
+ * @param {LiveToolCall} tc
  * @param {boolean} [live] - Whether the loop is still waiting on this call. Only consulted for a
  *   result-less interactive call; every other pending call belongs to a turn still in flight.
  * @returns {"pending" | "unanswered" | "ok" | "failed"}
  */
 export function toolOutcome(
-  tc: ToolCallRecord,
+  tc: LiveToolCall,
   live = true,
 ): "pending" | "unanswered" | "ok" | "failed" {
   if (!tc.result) {
@@ -285,10 +294,10 @@ export function toolOutcome(
  * is no reason the human could not have been reading it all along. A tool that failed writes
  * `error`, which was surfaced only through the separate tool-message row and only after the fact.
  *
- * @param {ToolCallRecord} tc
+ * @param {LiveToolCall} tc
  * @returns {string}
  */
-export function toolOutcomeText(tc: ToolCallRecord): string {
+export function toolOutcomeText(tc: LiveToolCall): string {
   const { result } = tc;
   if (!result) {
     return "";
@@ -313,8 +322,8 @@ export interface AskHandlers {
   importRun?: (id: string) => ImportRunRecord | null;
 }
 
-/** The empty import fields every chip carries, so a `$switch` never reads an absent path. */
-function noImport(): Pick<
+/** The import fields of a chip: empty, or projected from a running import's record. */
+type ChipImportView = Pick<
   ChatChipView,
   | "hasPhase"
   | "importCount"
@@ -325,7 +334,10 @@ function noImport(): Pick<
   | "importProgress"
   | "importSpinner"
   | "importState"
-> {
+>;
+
+/** The empty import fields every chip carries, so a `$switch` never reads an absent path. */
+function noImport(): ChipImportView {
   return {
     hasPhase: false,
     importCount: "",
@@ -354,7 +366,7 @@ function noImport(): Pick<
  * @param {ImportRunRecord} record
  * @returns {Partial<ChatChipView>}
  */
-function projectImport(record: ImportRunRecord): Partial<ChatChipView> {
+function projectImport(record: ImportRunRecord): ChipImportView {
   const running = record.status === "running";
   const determinate = record.total !== null && record.current !== null;
   const outcome =
@@ -391,17 +403,21 @@ function projectImport(record: ImportRunRecord): Partial<ChatChipView> {
  * answer are all facts about one tool call, and putting them anywhere else would give the
  * transcript two accounts of the same event that can disagree after a reload.
  *
- * @param {ToolCallRecord} tc
+ * @param {LiveToolCall} tc
  * @param {AskHandlers} handlers
  * @returns {ChatChipView}
  */
-export function projectChip(tc: ToolCallRecord, handlers: AskHandlers = {}): ChatChipView {
+export function projectChip(tc: LiveToolCall, handlers: AskHandlers = {}): ChatChipView {
   const outcome = toolOutcome(tc, tc.id === handlers.pendingId || Boolean(tc.result));
   const text = toolOutcomeText(tc);
   const run = tc.name === IMPORT_TOOL ? (handlers.importRun?.(tc.id) ?? null) : null;
   const ask = tc.name === ASK_TOOL ? parseAsk(tc) : null;
+  /* SAFETY: a successful ask_user result carries an AskAnswer (services/ai-ask.ts). Any other
+     tool's data only feeds `answer`, which the surface draws inside the ask card alone, and
+     `askState`, which is set only when `ask` is non-null, so a mistyped read never reaches the
+     screen. */
   const answered = tc.result?.success
-    ? ((tc.result.data as { answer?: string | null; skipped?: boolean } | undefined) ?? null)
+    ? ((tc.result.data as Partial<AskAnswer> | undefined) ?? null)
     : null;
   const base: ChatChipView = {
     answer: answered ? (answered.skipped ? "You decide" : (answered.answer ?? "")) : "",
@@ -419,8 +435,7 @@ export function projectChip(tc: ToolCallRecord, handlers: AskHandlers = {}): Cha
     outcomeText: text,
     question: ask?.question ?? "",
     tool: tc.name,
-    ...noImport(),
-    ...(run ? projectImport(run) : {}),
+    ...(run ? projectImport(run) : noImport()),
   };
   if (ask) {
     /* The options are a shortcut, never the whole answer — the composer is always live beneath, and
@@ -451,19 +466,11 @@ export function projectChip(tc: ToolCallRecord, handlers: AskHandlers = {}): Cha
  * one would be the same lie the model-facing caveat used to be.
  *
  * @param {string} messageId
- * @returns {{
- *   changesState: string;
- *   changesSummary: string;
- *   canRestore: boolean;
- *   changes: ChatChangeView[];
- * }}
+ * @returns {Pick<ChatRowView, "canRestore" | "changes" | "changesState" | "changesSummary">}
  */
-export function projectChanges(messageId: string): {
-  changesState: string;
-  changesSummary: string;
-  canRestore: boolean;
-  changes: ChatChangeView[];
-} {
+export function projectChanges(
+  messageId: string,
+): Pick<ChatRowView, "canRestore" | "changes" | "changesState" | "changesSummary"> {
   const writes = writesForTurn(messageId);
   const summary = writes.length > 0 ? summarizeWrites(writes) : "";
   if (!summary) {
@@ -504,12 +511,12 @@ function emptyRow(key: string, kind: string): ChatRowView {
 }
 
 /** The attached-context block on a user turn, back apart into chips. */
-function contextChips(lines: readonly string[]): ChatContextChip[] {
+function contextChips(lines: readonly string[]): KeyedLabel[] {
   return lines.map((line, index) => ({ key: `${index}:${line}`, label: line }));
 }
 
 export interface MessageListOptions {
-  messages: readonly Message[];
+  messages: readonly LiveMessage[];
   /** ChatState status — "streaming" projects the tail live. */
   status: string;
   /** The outstanding question and the import records, passed down rather than read here. */

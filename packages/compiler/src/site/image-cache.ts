@@ -12,12 +12,21 @@ import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { configHash, contentHash } from "./image-optimizer.ts";
 
-import type { ImageConfig, ImageManifest } from "./image-optimizer.ts";
+import type { ImageConfig, ImageManifest, ImageVariant } from "./image-optimizer.ts";
 
 interface CacheEntry {
   source: string; // Relative path to source image
   manifest: ImageManifest; // Processed image manifest
   timestamp: number; // When the entry was cached
+}
+
+/**
+ * A cache entry as `manifest.json` may still hold it. A persisted cache outlives the build that
+ * wrote it, and an entry from before manifests carried `variants` has none, so pruning, which reads
+ * every entry rather than only the ones this build looked up, does not assume the list is there.
+ */
+interface PersistedEntry {
+  manifest: { variants?: readonly ImageVariant[] };
 }
 
 export interface CacheManifest {
@@ -101,6 +110,9 @@ export function loadCache(projectRoot: string): CacheManifest {
     return { entries: {}, touched: new Set(), version: 1 };
   }
   try {
+    /* SAFETY: manifest.json is written only by saveCache, from a CacheManifest minus its
+       runtime-only `touched`, which is restored below; bytes that do not parse throw into the
+       empty-cache fallback. */
     const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as CacheManifest;
     parsed.touched = new Set();
     return parsed;
@@ -147,14 +159,15 @@ export function saveCache(
  */
 function pruneStale(cache: CacheManifest, touched: Set<string>) {
   const keep = new Set<string>();
-  for (const [key, entry] of Object.entries(cache.entries)) {
+  const entries = Object.entries<PersistedEntry>(cache.entries);
+  for (const [key, entry] of entries) {
     if (touched.has(key)) {
       for (const variant of entry.manifest.variants ?? []) {
         keep.add(variant.absolutePath);
       }
     }
   }
-  for (const [key, entry] of Object.entries(cache.entries)) {
+  for (const [key, entry] of entries) {
     if (touched.has(key)) {
       continue;
     }

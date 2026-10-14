@@ -3,6 +3,7 @@ import { handleStudioApi } from "../src/studio-api";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const GIT_FIXTURE = resolve(import.meta.dir, "_git_new_endpoints_fixture");
 const NON_GIT_FIXTURE = resolve("/tmp", `_jx_non_git_fixture_${process.pid}`);
@@ -10,14 +11,14 @@ const NON_GIT_FIXTURE = resolve("/tmp", `_jx_non_git_fixture_${process.pid}`);
 /**
  * @param {string} path
  * @param {string} [method]
- * @param {Record<string, unknown>} [body]
+ * @param {JsonObject} [body]
  * @param {string} [cwd]
  * @returns {Promise<Response>}
  */
 async function studioGitReq(
   path: string,
   method = "GET",
-  body?: Record<string, unknown>,
+  body?: JsonObject,
   cwd: string = GIT_FIXTURE,
 ) {
   const urlStr = `http://localhost${path}`;
@@ -296,7 +297,6 @@ describe("git/push — setUpstream option", () => {
     const urlStr = "http://localhost/__studio/git/push";
     const req = new Request(urlStr, { method: "POST" });
     const res = await handleStudioApi(req, new URL(urlStr), PUSH_FIXTURE);
-    expect(res).not.toBeNull();
-    expect((res as Response).status).toBe(200);
+    expect(res?.status).toBe(200);
   });
 });

@@ -8,7 +8,7 @@
 import type { TurnPolicy } from "./types.ts";
 
 /** Average characters per token: the estimate every budget used before providers reported counts. */
-const CHARS_PER_TOKEN = 4;
+export const CHARS_PER_TOKEN = 4;
 
 /**
  * The defaults: five rounds of work, twenty-five rounds in all, and the texts the agent loop has

@@ -21,16 +21,18 @@
 import "./with-dom.js";
 import { expect, mock, test } from "bun:test";
 import { hasPlatform } from "../src/platform";
-import type { LauncherSignal } from "../src/platform";
 import { PlatformUnavailableError } from "../src/platforms/default-platform";
 import { flush } from "./harness";
 
 const HUTCH =
   "Electrobun 2.x APIs come from the Hutch devkit, not node_modules. Run `hutch dev` or `hutch build`.";
 
-(globalThis as unknown as { happyDOM: { setURL: (u: string) => void } }).happyDOM.setURL(
-  "views://studio/index.html",
-);
+/* SAFETY: @happy-dom/global-registrator (loaded by ./with-dom.js) copies the window's members onto
+   globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
+happyDOM.setURL("views://studio/index.html");
 
 // The document `stageStudioAssets` writes for a launcher: it declared a boot module.
 const meta = document.createElement("meta");
@@ -41,28 +43,36 @@ document.head.append(meta);
 /* What the boot module had recorded by the time `studio.js` evaluated. `launcher` is absent on
    purpose: the import that threw came BEFORE the shim's body, so the body that names the launcher
    never ran — only the signal's first import and its page-error watch did. */
-(globalThis as unknown as { __jxLauncher?: LauncherSignal }).__jxLauncher = {
+globalThis.__jxLauncher = {
   error: { message: HUTCH, stack: `Error: ${HUTCH}\n    at views://studio/dist/init.js:36:11` },
 };
 
 // Every way the dev-server adapter talks to its origin, counted.
 let fetches = 0;
-globalThis.fetch = mock(async () => {
-  fetches += 1;
-  return new Response("{}", { status: 404 });
-}) as unknown as typeof fetch;
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  mock(async () => {
+    fetches += 1;
+    return new Response("{}", { status: 404 });
+  }),
+  { preconnect: globalThis.fetch.preconnect },
+);
 let eventSources = 0;
-(globalThis as Record<string, unknown>).EventSource = class {
-  constructor() {
+/* SAFETY: these two classes only count constructions, and the test's pin is that neither is ever
+   constructed, so no EventSource or WebSocket member they lack is read. The global registrator
+   points `window` at globalThis, so the assignments land on the globals the adapters construct. */
+window.EventSource = class {
+  constructor(_url: string | URL) {
     eventSources += 1;
   }
-};
+} as typeof EventSource;
 let sockets = 0;
-(globalThis as Record<string, unknown>).WebSocket = class {
-  constructor() {
+// SAFETY: as for EventSource above — a construction counter the test pins at zero constructions.
+window.WebSocket = class {
+  constructor(_url: string | URL) {
     sockets += 1;
   }
-};
+} as typeof WebSocket;
 
 void mock.module("../src/services/monaco-setup.js", () => ({}));
 
@@ -74,7 +84,8 @@ test("a launcher that registered no adapter gets the boot-failure screen, not th
     caught = error;
   }
   expect(caught).toBeInstanceOf(PlatformUnavailableError);
-  expect((caught as PlatformUnavailableError).refusal).toEqual({
+  const refusal = caught instanceof PlatformUnavailableError ? caught.refusal : undefined;
+  expect(refusal).toEqual({
     kind: "launcher",
     launcher: undefined,
   });

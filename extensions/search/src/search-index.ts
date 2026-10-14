@@ -11,10 +11,12 @@
  * @docs extending/extensions/search
  */
 
+import { isBoolean, isString } from "@jxsuite/schema/guards";
 import { canonicalizeLocale, localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
 import { entryUrl, jxTreeToText, normalizeSearchConfig, splitEntry } from "./shared.ts";
 import type { NormalizedSearchConfig } from "./shared.ts";
-import type { ContentLoaderEntry, JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import type { EmitHostContext } from "@jxsuite/schema/format-registry";
+import type { ContentFieldValue, ContentLoaderEntry, JsonValue } from "@jxsuite/schema/types";
 
 /** One searchable document in the emitted index. */
 export interface SearchDocument {
@@ -50,13 +52,11 @@ export interface SearchIndexEnvelope {
   documents: SearchDocument[];
 }
 
-/** Host context passed to `emit` (extensions.md §8.4). */
-export interface EmitContext {
-  projectConfig?: { build?: { trailingSlash?: string } } & Record<string, unknown>;
-  root?: string;
-  sections?: Record<string, unknown>;
-  routes?: unknown[];
-}
+/**
+ * The host's `emit` context (extensions.md §8.4) as `SearchIndex.emit` accepts it: any part of
+ * {@link EmitHostContext}. The published name, kept for existing importers.
+ */
+export type EmitContext = Partial<EmitHostContext>;
 
 /**
  * Whether an entry's frontmatter keeps it out of the index (`search: false`).
@@ -73,8 +73,12 @@ export interface EmitContext {
  * INDEXED — the safe failure, because a page that is present can be found and a page that is absent
  * cannot say why — and reported once per entry, not once per document it yields.
  */
-function isOptedOut(collection: string, entryId: string, value: unknown): boolean {
-  if (value === undefined || typeof value === "boolean") {
+function isOptedOut(
+  collection: string,
+  entryId: string,
+  value: ContentFieldValue | undefined,
+): boolean {
+  if (value === undefined || isBoolean(value)) {
     return value === false;
   }
   console.warn(
@@ -91,22 +95,30 @@ function isOptedOut(collection: string, entryId: string, value: unknown): boolea
  */
 export const SearchIndex = {
   /** Normalize the `search` section into `_project.search` (defaults applied). */
-  projectData(sectionValue: unknown): NormalizedSearchConfig {
+  projectData(sectionValue: JsonValue | undefined): NormalizedSearchConfig {
     return normalizeSearchConfig(sectionValue);
   },
 
   /** Build the search index from the loaded content collections. */
-  emit(sectionValue: unknown, ctx: EmitContext): { path: string; content: string }[] {
+  emit(sectionValue: JsonValue | undefined, ctx: EmitContext): { path: string; content: string }[] {
     const config = normalizeSearchConfig(sectionValue);
+    /* SAFETY: the `content` section's owner (the parser's `Content.projectData`) answers a
+       Map of collection name to loaded entries (specs/extensions.md §8.4), and the host forwards
+       each section's answer unchanged. */
     const content = ctx.sections?.content as Map<string, ContentLoaderEntry[]> | undefined;
-    const trailingSlash = ctx.projectConfig?.build?.trailingSlash ?? "always";
+    /*
+     * `entryUrl` drops the trailing slash only for the exact string "never", so a setting that is
+     * absent or not a string means "always", which is the default.
+     */
+    const trailingSlashSetting = ctx.projectConfig?.build?.trailingSlash;
+    const trailingSlash = isString(trailingSlashSetting) ? trailingSlashSetting : "always";
     /*
      * A localized entry lives at a locale-prefixed URL, and the index is the only place that knew
      * the entry without knowing the prefix: every French post was indexed at the English post's
      * URL, so a reader who searched in French was sent to the English page. The prefix is the
      * routing rule, read from the same resolver the build reads.
      */
-    const { i18n } = resolveI18n((ctx.projectConfig ?? {}) as ProjectConfig);
+    const { i18n } = resolveI18n(ctx.projectConfig ?? {});
 
     const documents: SearchDocument[] = [];
     const fields = new Set<string>();
@@ -126,7 +138,7 @@ export const SearchIndex = {
       Object.assign(boost, collection.boost);
 
       for (const entry of entries) {
-        const data = (entry.data ?? {}) as Record<string, unknown>;
+        const { data } = entry;
         if (isOptedOut(name, entry.id, data.search)) {
           continue;
         }
@@ -145,16 +157,16 @@ export const SearchIndex = {
          */
         const stamped = entry._meta?.url;
         const url =
-          typeof stamped === "string" && stamped.startsWith("/")
+          stamped !== undefined && stamped.startsWith("/")
             ? stamped
             : entryUrl(
                 `${localeUrlPrefix(locale, i18n)}${collection.basePath}`,
                 entry.id,
                 trailingSlash,
               );
-        const title = typeof data.title === "string" ? data.title : entry.id;
-        const description = typeof data.description === "string" ? data.description : "";
-        const children = entry.$children as (JxElement | string)[] | undefined;
+        const title = isString(data.title) ? data.title : entry.id;
+        const description = isString(data.description) ? data.description : "";
+        const children = entry.$children;
         /*
          * Two translations of one post share an id (§13.3), so the document id has to carry the
          * locale as well — without it the French entry and the English one are one document and
@@ -177,7 +189,8 @@ export const SearchIndex = {
           : undefined;
         const sections = split?.sections ?? [];
 
-        documents.push({
+        // `locale` is the last key of every document, and present only for a localized entry.
+        const page: SearchDocument = {
           id: documentId,
           collection: name,
           slug: entry.id,
@@ -186,11 +199,14 @@ export const SearchIndex = {
           description,
           heading: "",
           text: sections.length > 0 && split ? split.preamble : jxTreeToText(children),
-          ...(locale === undefined ? {} : { locale }),
-        });
+        };
+        if (locale !== undefined) {
+          page.locale = locale;
+        }
+        documents.push(page);
 
         for (const section of sections) {
-          documents.push({
+          const sectionDocument: SearchDocument = {
             id: `${documentId}#${section.anchor}`,
             collection: name,
             slug: entry.id,
@@ -199,8 +215,11 @@ export const SearchIndex = {
             description,
             heading: section.heading,
             text: section.text,
-            ...(locale === undefined ? {} : { locale }),
-          });
+          };
+          if (locale !== undefined) {
+            sectionDocument.locale = locale;
+          }
+          documents.push(sectionDocument);
         }
       }
     }

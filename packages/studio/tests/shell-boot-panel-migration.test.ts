@@ -25,7 +25,8 @@ describe("shell boot — the persisted panel id", () => {
   });
 
   test("what it woke up on is a declared panel", () => {
-    expect([...NAVIGATOR_PANEL_IDS] as string[]).toContain(shell.leftTab);
+    const declared: readonly string[] = NAVIGATOR_PANEL_IDS;
+    expect(declared).toContain(shell.leftTab);
   });
 
   test("the old id is not silently kept alive as an alias", () => {

@@ -89,10 +89,14 @@ describe("launchBrowser — Chrome discovery", () => {
   });
 
   test("closeBrowser disconnects and allows a fresh launch", async () => {
-    const first = await launchBrowser({ executablePath: "/a" });
+    await launchBrowser({ executablePath: "/a" });
+    const first = currentBrowser;
     await closeBrowser();
-    expect((first as unknown as FakeBrowser).close).toHaveBeenCalled();
+    expect(first.close).toHaveBeenCalled();
+    expect(first.connected).toBe(false);
     await launchBrowser({ executablePath: "/b" });
     expect(launch).toHaveBeenCalledTimes(2);
+    expect(launchedWith?.executablePath).toBe("/b");
+    expect(currentBrowser).not.toBe(first);
   });
 });

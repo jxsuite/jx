@@ -45,16 +45,16 @@ describe("field-input draft store", () => {
 
 describe("draft commit semantics", () => {
   test("debounced commit fires the latest draft after the delay, draft persists for live edit", async () => {
-    let committed: string | null = null;
+    const committed: string[] = [];
     setDraft("d1", "ab");
-    scheduleDraftCommit("d1", 20, (v) => (committed = v));
+    scheduleDraftCommit("d1", 20, (v) => committed.push(v));
     setDraft("d1", "abc"); // Keep typing before the debounce fires
-    scheduleDraftCommit("d1", 20, (v) => (committed = v));
-    expect(committed).toBe(null); // Nothing committed synchronously
+    scheduleDraftCommit("d1", 20, (v) => committed.push(v));
+    expect(committed).toEqual([]); // Nothing committed synchronously
     await new Promise((r) => {
       setTimeout(r, 45);
     });
-    expect(committed as string | null).toBe("abc"); // Latest value, not the earlier "ab"
+    expect(committed).toEqual(["abc"]); // Latest value only, never the earlier "ab"
     // Draft is kept after a debounced commit so the field stays controlled while focused.
     expect(getFieldValue("d1", "doc")).toBe("abc");
     clearDraft("d1");
@@ -74,15 +74,15 @@ describe("draft commit semantics", () => {
   });
 
   test("commitField (blur/Enter) cancels a pending debounce and commits once", async () => {
-    let committed: string | null = null;
+    const committed: string[] = [];
     let calls = 0;
     setDraft("d3", "typed");
     scheduleDraftCommit("d3", 50, () => (calls += 1));
     commitField("d3", (v) => {
-      committed = v;
+      committed.push(v);
       calls += 1;
     });
-    expect(committed as string | null).toBe("typed");
+    expect(committed).toEqual(["typed"]);
     expect(hasDraft("d3")).toBe(false);
     await new Promise((r) => {
       setTimeout(r, 80);

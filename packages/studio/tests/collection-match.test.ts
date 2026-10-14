@@ -11,12 +11,16 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { setFormats } from "../src/format/format-host";
 import { collectionForDirectory, collectionForFile } from "../src/content/collection-match";
 import { MARKDOWN_FORMAT } from "./format-fixture";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 
 const MD = { format: "Markdown", schema: { properties: {} }, source: "./content/posts/" };
 
-function config(content: Record<string, unknown>, i18n?: unknown): ProjectConfig {
-  return { content, ...(i18n === undefined ? {} : { i18n }) } as unknown as ProjectConfig;
+function config(content: JsonObject, i18n?: ProjectConfig["i18n"]): ProjectConfig {
+  const cfg: ProjectConfig = { content };
+  if (i18n !== undefined) {
+    cfg.i18n = i18n;
+  }
+  return cfg;
 }
 
 beforeEach(() => {

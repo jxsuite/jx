@@ -19,16 +19,16 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
+import { isString } from "@jxsuite/schema/guards";
 import { projectDevEnv } from "./dev-vars.ts";
+import type { ProjectDevEnv } from "./dev-vars.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { FormatEntry } from "@jxsuite/schema/format-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
-
-type MountHandler = (request: Request, env: Record<string, unknown>) => Promise<Response>;
+import type { ImplementationExport, MountHandler } from "@jxsuite/schema/format-registry";
+import type { JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
 
 interface MountRuntime {
   handlers: { basePath: string; handler: MountHandler }[];
-  env: Record<string, unknown>;
+  env: ProjectDevEnv;
 }
 
 /** Per-project runtime cache, invalidated when project.json's mtime moves. */
@@ -106,6 +106,9 @@ async function buildRuntime(
   projectRoot: string,
   projectJsonPath: string,
 ): Promise<MountRuntime | null> {
+  /* SAFETY: trust boundary. project.json is the project's own config, held to its per-project
+     schema by the editor and `jx validate`; the sections are only relayed to the mounts that own
+     them, and any throw lands in getRuntime's catch, which disables the mounts with a warning. */
   const config = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
   const registry = await buildProjectExtensionRegistry(projectRoot, config);
   const mounts = registry.serverMounts();
@@ -113,7 +116,7 @@ async function buildRuntime(
     return null;
   }
 
-  const sections: Record<string, unknown> = {};
+  const sections: Record<string, JxDocumentValue | undefined> = {};
   for (const contribution of registry.projectContributions()) {
     const { key } = contribution.project!;
     if (key in config) {
@@ -122,18 +125,19 @@ async function buildRuntime(
   }
 
   const connectors = await resolveConnectorStandins(registry);
-  const env: Record<string, unknown> = projectDevEnv(projectRoot);
+  const env = projectDevEnv(projectRoot);
 
-  // One shared mutable context, passed to every mount in order (specs/extensions.md §11).
-  const ctx: Record<string, unknown> = {};
+  /* One shared mutable context, passed to every mount in order (specs/extensions.md §11). Its
+     members belong to the mounts; this host never reads them. */
+  const ctx = {};
   const handlers: MountRuntime["handlers"] = [];
   for (const entry of mounts) {
     const { basePath } = entry.server!;
-    const handler = (await entry.call(
+    const handler = await entry.call(
       "mount",
       { autoSync: true, basePath, connectors, sections },
       ctx,
-    )) as MountHandler;
+    );
     handlers.push({ basePath, handler });
   }
   return { env, handlers };
@@ -145,30 +149,26 @@ async function buildRuntime(
  * that provider instead of its own (specs/extensions.md §12). Shared with the data-api push seam so
  * section-owner deploySchema contributions (e.g. auth) see the same stand-ins as the mounts.
  *
+ * Each provider is its implementation module's export (specs/extensions.md §6.1): this host only
+ * routes it, and the mounts and deploy steps that receive it are the ones that call it. A module
+ * exporting no such export yields a nullish entry, which the receiving mount reports as an
+ * unavailable provider.
+ *
  * @param {ExtensionRegistry} registry
- * @returns {Promise<Record<string, unknown>>}
+ * @returns {Promise<Record<string, ImplementationExport | null | undefined>>}
  */
 export async function resolveConnectorStandins(
   registry: ExtensionRegistry,
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, ImplementationExport | null | undefined>> {
   const entries = registry.connectors();
-  const out: Record<string, unknown> = {};
+  const out: Record<string, ImplementationExport | null | undefined> = {};
   for (const entry of entries) {
     const provider = String(entry.connector!.provider);
     const { local } = entry.connector!;
-    const target =
-      typeof local === "string"
-        ? (entries.find((e) => e.connector!.provider === local) ?? entry)
-        : entry;
-    out[provider] = await implementationClass(target);
+    const target = isString(local)
+      ? (entries.find((e) => e.connector!.provider === local) ?? entry)
+      : entry;
+    out[provider] = await target.implementationExport();
   }
   return out;
-}
-
-/** Import a connector entry's implementation module and pick the export named by its title. */
-async function implementationClass(entry: FormatEntry): Promise<unknown> {
-  const mod = await entry.implementation();
-  const title = (entry.classDef.title as string | undefined) ?? entry.name;
-  const fromDefault = (mod.default as Record<string, unknown> | undefined)?.[title];
-  return mod[title] ?? fromDefault ?? mod.default;
 }

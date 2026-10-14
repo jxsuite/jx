@@ -17,9 +17,10 @@
  * rooted `/images/x.jpg` naming a file that actually lives under `public/`.
  *
  * The registry is built with `buildProjectExtensionRegistry`, which is what the dev-server route
- * uses. `refactor-find-refs.test.ts` uses `buildProjectFormatRegistry`, which reports zero document
- * extensions for a project with no installed extensions — so its `documentGlob` was JSON-only and
- * no `.md` page was ever swept. That is the other half of why this class of bug survived.
+ * uses. `refactor-find-refs.test.ts` once called the since-removed `buildProjectFormatRegistry`
+ * wrapper, which reported zero document extensions for a project with no installed extensions — so
+ * its `documentGlob` was JSON-only and no `.md` page was ever swept. That is the other half of why
+ * this class of bug survived.
  *
  * Counterpart: `packages/studio/tests/destructive-confirmations.test.ts` asserts the PROMISE the
  * dialog makes, against a mocked index. This asserts the fulfilment. Neither is sufficient alone.
@@ -101,6 +102,8 @@ function restoreDocs(root: string, snap: Map<string, string>): void {
 }
 
 async function registryFor(root: string): Promise<FormatRegistry> {
+  /* SAFETY: `root` is a staged copy of a committed starter, whose project.json `schema:validate-all`
+     holds to the project schema; buildProjectExtensionRegistry reads only its `extensions`. */
   const config = JSON.parse(readFileSync(join(root, "project.json"), "utf8")) as ProjectConfig;
   const extensions = await buildProjectExtensionRegistry(root, config);
   return extensions.formats;

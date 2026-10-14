@@ -1,5 +1,6 @@
 import "./with-dom.ts";
 
+import { getNestedStyle } from "@jxsuite/schema/guards";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import project from "../project.json";
 
@@ -93,8 +94,8 @@ function declarationsIn(css: string): [string, string][] {
 }
 
 /** The raw `style` block, to prove the layer is a key in the document rather than a string here. */
-function themeStyleBlock(): Record<string, unknown> {
-  return project.style as Record<string, unknown>;
+function themeStyleBlock(): typeof project.style {
+  return project.style;
 }
 
 describe("theme", () => {
@@ -221,7 +222,7 @@ describe("theme", () => {
        and `--jx-leading-md` to the small step's leading, so a 24px row carries an 11px/16px line
        instead of a 12px/18px one. Comfortable keeps its taller control. The floor itself is held
        by `conformance.test.ts`; this pins what each density says. */
-    const compact = themeTokens['&[data-density="compact"]'] as Record<string, string>;
+    const compact = getNestedStyle(themeTokens, '&[data-density="compact"]');
     expect(compact).toEqual({
       "--jx-control-h": "24px",
       "--jx-text-md": "11px",
@@ -230,8 +231,8 @@ describe("theme", () => {
     expect(themeTokens["--jx-control-h"]).toBe("24px");
     expect(themeTokens['&[data-density="comfortable"]']).toEqual({ "--jx-control-h": "28px" });
     // The compact pair is the kit's own small step, not a fifth size.
-    expect(compact["--jx-text-md"]).toBe(String(themeTokens["--jx-text-sm"]));
-    expect(compact["--jx-leading-md"]).toBe(String(themeTokens["--jx-leading-sm"]));
+    expect(compact?.["--jx-text-md"]).toBe(String(themeTokens["--jx-text-sm"]));
+    expect(compact?.["--jx-leading-md"]).toBe(String(themeTokens["--jx-leading-sm"]));
     expect(themeCSS()).toContain(
       ':root[data-density="compact"] { --jx-control-h: 24px; --jx-text-md: 11px; --jx-leading-md: 16px }',
     );
@@ -266,7 +267,7 @@ describe("theme", () => {
       globalThis.CSSStyleSheet = original;
     }
     const style = doc.querySelector("style[data-jx-theme]");
-    expect(style?.textContent?.startsWith(`@layer ${THEME_LAYER}`)).toBe(true);
+    expect(style?.textContent.startsWith(`@layer ${THEME_LAYER}`)).toBe(true);
     expect(themeInstalled(doc)).toBe(true);
   });
 });

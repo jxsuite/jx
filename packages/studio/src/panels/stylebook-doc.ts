@@ -21,6 +21,7 @@ import { isKeyframesAtRule } from "@jxsuite/runtime/css";
 import type { StylebookEntry } from "./stylebook-panel";
 import type { ComponentEntry } from "../files/components";
 import type { JxPath } from "../state";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
 export interface StylebookDocResult {
@@ -44,8 +45,9 @@ function isTagPath(key: string): boolean {
   );
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
+/** A nested style block (a rule or an at-rule body), as opposed to a scalar or a block list. */
+function isStyleBlock(value: JxStyle[string]): value is JxStyle {
+  return isNonNullObject(value) && !Array.isArray(value);
 }
 
 /** The specimen-scoping selector prefix (see the module doc). */
@@ -58,12 +60,11 @@ const SPECIMEN_SCOPE = "& .element-card-preview";
  * `styleUpdate` fast path so an edit round-trips through the exact same transform.
  */
 export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
-  const style = effectiveStyle as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
+  const out: JxStyle = {};
 
   /** Drop the base-width marker, which is not a query and would resolve to `@media --`. */
-  const withoutBaseWidth = (rule: Record<string, unknown>): Record<string, unknown> => {
-    const cleaned: Record<string, unknown> = {};
+  const withoutBaseWidth = (rule: JxStyle): JxStyle => {
+    const cleaned: JxStyle = {};
     for (const [k, v] of Object.entries(rule)) {
       if (k !== "@--") {
         cleaned[k] = v;
@@ -72,8 +73,8 @@ export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
     return cleaned;
   };
 
-  for (const [k, v] of Object.entries(style)) {
-    if (!isPlainObject(v)) {
+  for (const [k, v] of Object.entries(effectiveStyle)) {
+    if (!isStyleBlock(v)) {
       out[k] = v; // Flat scalars + -- custom props.
       continue;
     }
@@ -89,9 +90,9 @@ export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
     }
     if (k.startsWith("@")) {
       // Media block: re-key tag rules inside; non-tag keys (scalars/pseudo) apply to the root.
-      const bucket: Record<string, unknown> = {};
+      const bucket: JxStyle = {};
       for (const [mk, mv] of Object.entries(v)) {
-        if (isPlainObject(mv) && isTagPath(mk)) {
+        if (isStyleBlock(mv) && isTagPath(mk)) {
           bucket[`${SPECIMEN_SCOPE} ${mk}`] = withoutBaseWidth(mv);
         } else {
           bucket[mk] = mv;
@@ -107,34 +108,30 @@ export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
     out[k] = v;
   }
 
-  return out as JxStyle;
+  return out;
 }
 
 /** Resolve a nested tag path ("table th") in a style object; null when absent. */
-function resolveNestedStyle(
-  style: Record<string, unknown>,
-  tagPath: string,
-): Record<string, unknown> | null {
+function resolveNestedStyle(style: JxStyle, tagPath: string): JxStyle | null {
   const parts = tagPath.split(" ");
-  let obj: unknown = style;
+  let obj: JxStyle[string] = style;
   for (const part of parts) {
-    if (!isPlainObject(obj)) {
+    if (!isStyleBlock(obj)) {
       return null;
     }
     obj = obj[part];
   }
-  return isPlainObject(obj) ? obj : null;
+  return isStyleBlock(obj) ? obj : null;
 }
 
 /** Whether the effective style customizes `tagPath` (directly or under any `@media` block). */
 export function hasTagStyle(rootStyle: JxStyle, tagPath: string): boolean {
-  const style = rootStyle as Record<string, unknown>;
-  const direct = resolveNestedStyle(style, tagPath);
+  const direct = resolveNestedStyle(rootStyle, tagPath);
   if (direct && Object.keys(direct).length > 0) {
     return true;
   }
-  for (const [key, val] of Object.entries(style)) {
-    if (!key.startsWith("@") || !isPlainObject(val)) {
+  for (const [key, val] of Object.entries(rootStyle)) {
+    if (!key.startsWith("@") || !isStyleBlock(val)) {
       continue;
     }
     const nested = resolveNestedStyle(val, tagPath);
@@ -179,16 +176,21 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
   };
 
   const specimenNode = (entry: StylebookEntry): JxMutableNode => {
-    const attributes: Record<string, string> = { ...entry.attributes };
+    const attributes = { ...entry.attributes };
     if (entry.style) {
       attributes.style = entry.style; // Inline CSS text — legacy `el.style.cssText` parity.
     }
-    return {
-      tagName: entry.tag,
-      ...(entry.text ? { textContent: entry.text } : {}),
-      ...(Object.keys(attributes).length > 0 ? { attributes } : {}),
-      ...(entry.children ? { children: entry.children.map(specimenNode) } : {}),
-    } as JxMutableNode;
+    const node: JxMutableNode = { tagName: entry.tag };
+    if (entry.text) {
+      node.textContent = entry.text;
+    }
+    if (Object.keys(attributes).length > 0) {
+      node.attributes = attributes;
+    }
+    if (entry.children) {
+      node.children = entry.children.map(specimenNode);
+    }
+    return node;
   };
 
   /** A card wrapping one specimen; registers card/preview/specimen paths under `tag`. */
@@ -217,19 +219,18 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
         { attributes: { class: "element-card-label" }, tagName: "div", textContent: label },
       ],
       tagName: "div",
-    } as JxMutableNode;
+    };
   };
 
   const sections: JxMutableNode[] = [];
-  const sectionNode = (label: string, cards: JxMutableNode[]): JxMutableNode =>
-    ({
-      attributes: { class: "sb-section" },
-      children: [
-        { attributes: { class: "sb-label" }, tagName: "div", textContent: label },
-        { attributes: { class: "sb-body" }, children: cards, tagName: "div" },
-      ],
-      tagName: "div",
-    }) as JxMutableNode;
+  const sectionNode = (label: string, cards: JxMutableNode[]): JxMutableNode => ({
+    attributes: { class: "sb-section" },
+    children: [
+      { attributes: { class: "sb-label" }, tagName: "div", textContent: label },
+      { attributes: { class: "sb-body" }, children: cards, tagName: "div" },
+    ],
+    tagName: "div",
+  });
 
   // Paths below mirror the assembled tree: root.children[si] = section; section.children[1] =
   // Sb-body; body.children[ci] = card. Sections are appended only when non-empty, so indices are
@@ -293,18 +294,18 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
               attributes[p.name] = String(p.default).replaceAll(/^'|'$/g, "");
             }
           }
-          const specimen = {
-            tagName: comp.tagName,
-            ...(Object.keys(attributes).length > 0 ? { attributes } : {}),
-          } as JxMutableNode;
+          const specimen: JxMutableNode = { tagName: comp.tagName };
+          if (Object.keys(attributes).length > 0) {
+            specimen.attributes = attributes;
+          }
           return cardNode(comp.tagName, `<${comp.tagName}>`, specimen, cardPath, null);
         }
         // Npm/format-class components can't be $ref-registered — placeholder box (legacy parity).
-        const fallback = {
+        const fallback: JxMutableNode = {
           attributes: { class: "sb-fallback" },
           tagName: "div",
           textContent: `<${comp.tagName}>`,
-        } as JxMutableNode;
+        };
         return cardNode(comp.tagName, `<${comp.tagName}>`, fallback, cardPath, null);
       });
       sections.push(sectionNode("Components", cards));
@@ -316,17 +317,19 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
       attributes: { class: "sb-empty" },
       tagName: "div",
       textContent: opts.customizedOnly ? "No customized elements" : "No matching elements",
-    } as JxMutableNode);
+    });
   }
 
-  const doc = {
-    ...($elements.length > 0 ? { $elements } : {}),
-    $media: opts.effectiveMedia,
-    attributes: { class: "sb-root" },
-    children: sections,
-    style: transposeStylebookStyle(opts.effectiveStyle),
-    tagName: "div",
-  } as JxMutableNode;
+  // Assigned in this order so the posted document keeps its key order: `$elements` leads when present.
+  const doc: JxMutableNode = {};
+  if ($elements.length > 0) {
+    doc.$elements = $elements;
+  }
+  doc.$media = opts.effectiveMedia;
+  doc.attributes = { class: "sb-root" };
+  doc.children = sections;
+  doc.style = transposeStylebookStyle(opts.effectiveStyle);
+  doc.tagName = "div";
 
   return { doc, pathToTag, tagToCardPath };
 }

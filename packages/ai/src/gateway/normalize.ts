@@ -11,40 +11,9 @@
  */
 
 import { problemDetails } from "@jxsuite/protocol/problems";
-import type { StreamEvent, StreamUsageEvent } from "../streaming-client.ts";
+import type { OpenAIStreamChunk, StreamEvent, StreamUsageEvent } from "../streaming-client.ts";
 import { problemTypeForStatus } from "./problem.ts";
 import { extractUpstreamErrorMessage } from "./upstream-error.ts";
-
-/** A tool-call fragment inside an OpenAI streaming `delta`. */
-interface ToolCallDelta {
-  index: number;
-  id?: string;
-  type?: string;
-  function?: { name?: string; arguments?: string };
-}
-
-/** A single OpenAI chat-completions streaming chunk (the JSON after `data: `). */
-interface OpenAIStreamChunk {
-  choices?: {
-    index?: number;
-    delta?: {
-      content?: string;
-      /** Thinking models' chain-of-thought: DeepSeek and Volcengine spell it this way... */
-      reasoning_content?: string;
-      /** ...and OpenRouter this way. Both carry the same thing. */
-      reasoning?: string;
-      tool_calls?: ToolCallDelta[];
-    };
-    finish_reason?: string | null;
-  }[];
-  /** The count `stream_options.include_usage` asks for, normally a final chunk with no choices. */
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    prompt_tokens_details?: { cached_tokens?: number } | null;
-    completion_tokens_details?: { reasoning_tokens?: number } | null;
-  } | null;
-}
 
 /**
  * Normalize an upstream usage object into a `usage` frame, or null when it carries no count. The
@@ -54,7 +23,7 @@ interface OpenAIStreamChunk {
  * @returns {StreamUsageEvent | null}
  */
 function usageFrame(usage: OpenAIStreamChunk["usage"]): StreamUsageEvent | null {
-  if (!usage || typeof usage.prompt_tokens !== "number") {
+  if (!usage || !isCount(usage.prompt_tokens)) {
     return null;
   }
   const frame: StreamUsageEvent = {
@@ -63,14 +32,35 @@ function usageFrame(usage: OpenAIStreamChunk["usage"]): StreamUsageEvent | null 
     outputTokens: usage.completion_tokens ?? 0,
   };
   const cached = usage.prompt_tokens_details?.cached_tokens;
-  if (typeof cached === "number") {
+  if (isCount(cached)) {
     frame.cachedInputTokens = cached;
   }
   const reasoning = usage.completion_tokens_details?.reasoning_tokens;
-  if (typeof reasoning === "number") {
+  if (isCount(reasoning)) {
     frame.reasoningTokens = reasoning;
   }
   return frame;
+}
+
+/**
+ * True when a usage figure the provider sent is a number. The chunk is upstream JSON, so a figure
+ * its interface calls a number is checked before it is reported.
+ *
+ * @param {unknown} value - A `usage` member, as the provider sent it
+ * @returns {boolean}
+ */
+function isCount(value: unknown): value is number {
+  return typeof value === "number";
+}
+
+/**
+ * True when a chain-of-thought member the provider sent is a string.
+ *
+ * @param {unknown} value - `reasoning_content` or `reasoning`, as the provider sent it
+ * @returns {boolean}
+ */
+function isText(value: unknown): value is string {
+  return typeof value === "string";
 }
 
 /**
@@ -94,14 +84,31 @@ function stopReasonOf(reason: string | null | undefined): string | null {
  * failed, so nothing can change the status now. `message` stays for the readers that already show
  * it (server.md §4.3).
  *
- * @param {unknown} error - What `fetch` rejected with
+ * @param {unknown} cause - What `fetch` rejected with
  * @returns {StreamEvent}
  */
-export function fetchFailureFrame(error: unknown): StreamEvent {
-  if ((error as Error).name === "AbortError") {
+export function fetchFailureFrame(cause: unknown): StreamEvent {
+  return failureFrame("Network error", cause);
+}
+
+/**
+ * The frame for an exchange that failed: `done: cancelled` for an abort, otherwise an `error` frame
+ * whose `message` is `prefix` and the failure's own message.
+ *
+ * @param {"Network error" | "Stream error"} prefix - Which half of the exchange failed
+ * @param {unknown} cause - What the request or the read rejected with
+ * @returns {StreamEvent}
+ */
+function failureFrame(prefix: "Network error" | "Stream error", cause: unknown): StreamEvent {
+  /* SAFETY: `fetch` and a body reader reject with an Error (a TypeError, or the abort's
+     AbortError DOMException), and the reads below throw only TypeErrors. Only `name` and `message`
+     are read, so a custom non-null abort reason that is not an Error reads both as undefined, as
+     it always has. */
+  const failure = cause as Error;
+  if (failure.name === "AbortError") {
     return { type: "done", stopReason: "cancelled" };
   }
-  const message = `Network error: ${(error as Error).message}`;
+  const message = `${prefix}: ${failure.message}`;
   return { message, problem: problemDetails("upstreamFailure", message), type: "error" };
 }
 
@@ -191,13 +198,8 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
      `finally` keeps that: the upstream must not outlive the reader it streams to. */
   let settled = false;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+      buffer += decoder.decode(chunk.value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
 
@@ -216,6 +218,10 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
 
         let parsed: OpenAIStreamChunk;
         try {
+          /* SAFETY: the interface is the provider's wire shape, and this loop only reads it: each
+             member passes optional chaining, a truthiness test or a predicate before it shapes a
+             frame, and a chunk too malformed to read (JSON `null`, a non-iterable `tool_calls`)
+             throws into the catch below, which reports it as a stream error. */
           parsed = JSON.parse(dataStr) as OpenAIStreamChunk;
         } catch {
           continue;
@@ -241,7 +247,7 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
            request carrying `tools`, so a proxy that swallows these frames makes the NEXT round a
            400 the client cannot repair. */
         const reasoning = delta?.reasoning_content ?? delta?.reasoning;
-        if (typeof reasoning === "string" && reasoning) {
+        if (isText(reasoning) && reasoning) {
           yield { type: "reasoning", content: reasoning };
         }
 
@@ -288,12 +294,7 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
   } catch (error) {
     settled = true;
     void reader.cancel();
-    if ((error as Error).name === "AbortError") {
-      yield { type: "done", stopReason: "cancelled" };
-      return;
-    }
-    const message = `Stream error: ${(error as Error).message}`;
-    yield { message, problem: problemDetails("upstreamFailure", message), type: "error" };
+    yield failureFrame("Stream error", error);
   } finally {
     if (!settled) {
       void reader.cancel();

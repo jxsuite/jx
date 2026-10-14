@@ -28,7 +28,7 @@ describe("ToolRegistry", () => {
           properties: { name: { type: "string" } },
           required: ["name"],
         },
-        execute: (args) => toolSuccess(`Hello, ${(args as { name: string }).name}!`),
+        execute: ({ name }) => toolSuccess(`Hello, ${String(name)}!`),
       }),
     );
 
@@ -54,8 +54,7 @@ describe("ToolRegistry", () => {
 
     const llmTools = registry.listForLLM();
     expect(llmTools.length).toBe(1);
-    expect((llmTools[0] as { type: string }).type).toBe("function");
-    expect((llmTools[0] as { function: { name: string } }).function.name).toBe("greet");
+    expect(llmTools[0]).toMatchObject({ type: "function", function: { name: "greet" } });
   });
 
   it("validates required arguments", () => {
@@ -129,9 +128,10 @@ describe("ToolRegistry", () => {
           properties: { a: { type: "number" }, b: { type: "number" } },
           required: ["a", "b"],
         },
-        execute: (args) => {
-          const { a, b } = args as { a: number; b: number };
-          return toolSuccess(a + b, `Sum: ${a + b}`);
+        execute: ({ a, b }) => {
+          // Validation ran first, so both are numbers, or numeric strings `Number` reads the same.
+          const sum = Number(a) + Number(b);
+          return toolSuccess(sum, `Sum: ${sum}`);
         },
       }),
     );
@@ -172,7 +172,7 @@ describe("ToolRegistry", () => {
           required: ["x"],
         },
         strict: false,
-        execute: (args) => toolSuccess((args as { x?: string }).x || "default"),
+        execute: ({ x }) => toolSuccess(x || "default"),
       }),
     );
 
@@ -368,7 +368,7 @@ describe("StreamingClient", () => {
       apiKey: "test-key",
     });
 
-    expect(typeof client.streamChat).toBe("function");
+    expect(client.streamChat).toBeInstanceOf(Function);
   });
 
   it("Anthropic client stub returns error event", async () => {
@@ -382,8 +382,12 @@ describe("StreamingClient", () => {
       events.push(event);
     }
 
-    expect(events.length).toBe(1);
-    expect(events[0]!.type).toBe("error");
-    expect((events[0] as { message: string }).message).toContain("not yet implemented");
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Anthropic provider is not yet implemented (planned for v2). Use OpenAI.",
+        code: "NOT_IMPLEMENTED",
+      },
+    ]);
   });
 });

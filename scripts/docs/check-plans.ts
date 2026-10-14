@@ -38,6 +38,7 @@ import {
 import type { SpecStatus } from "./lib/spec-status.ts";
 import { openItems, parseSpecStatuses } from "./lib/spec-status.ts";
 import { parseSpecStandards } from "./lib/standards.ts";
+import type { GateViolation } from "./lib/violation.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
@@ -101,12 +102,7 @@ export const VIOLATION_CODES = [
 
 export type ViolationCode = (typeof VIOLATION_CODES)[number];
 
-export interface Violation {
-  code: ViolationCode;
-  file: string;
-  line?: number;
-  message: string;
-}
+export type Violation = GateViolation<ViolationCode>;
 
 /**
  * Draft specs whose audit has not happened yet: no `plans/<stem>/README.md`, so their open items
@@ -189,7 +185,7 @@ export function mentionPrefilter(plans: readonly PlanDoc[]): RegExp {
 
 const claimKey = (file: string, anchor?: string) => (anchor ? `${file}#${anchor}` : file);
 
-function checkPlanShape(plan: PlanDoc, input: PlansInput, out: Violation[]): void {
+function checkPlanStructure(plan: PlanDoc, input: PlansInput, out: Violation[]): void {
   const at = plan.path;
   if (plan.frontmatter !== "parsed") {
     out.push(
@@ -212,7 +208,7 @@ function checkPlanShape(plan: PlanDoc, input: PlansInput, out: Violation[]): voi
   for (const problem of plan.fieldProblems) {
     out.push(v("field-type", at, problem.message));
   }
-  if (plan.status !== undefined && !(PLAN_STATUSES as readonly string[]).includes(plan.status)) {
+  if (plan.status !== undefined && !PLAN_STATUSES.some((status) => status === plan.status)) {
     out.push(
       v(
         "status-unknown",
@@ -223,7 +219,7 @@ function checkPlanShape(plan: PlanDoc, input: PlansInput, out: Violation[]): voi
   }
   if (
     plan.disposition !== undefined &&
-    !(DISPOSITIONS as readonly string[]).includes(plan.disposition)
+    !DISPOSITIONS.some((disposition) => disposition === plan.disposition)
   ) {
     out.push(
       v(
@@ -233,7 +229,7 @@ function checkPlanShape(plan: PlanDoc, input: PlansInput, out: Violation[]): voi
       ),
     );
   }
-  if (plan.size !== undefined && !(SIZES as readonly string[]).includes(plan.size)) {
+  if (plan.size !== undefined && !SIZES.some((size) => size === plan.size)) {
     out.push(v("size-unknown", at, `size "${plan.size}" is not S | M | L: split anything larger`));
   }
   if (plan.titles.length !== 1) {
@@ -459,11 +455,7 @@ function checkGraph(plans: readonly PlanDoc[], out: Violation[]): void {
         continue;
       }
       const settled = plan.status === "ready" || plan.status === "active";
-      if (
-        settled &&
-        (prerequisite.status === "stub" || prerequisite.status === "drafted") &&
-        prerequisite.status !== undefined
-      ) {
+      if (settled && (prerequisite.status === "stub" || prerequisite.status === "drafted")) {
         out.push(
           v(
             "requires-not-ready",
@@ -764,7 +756,7 @@ export function checkPlans(input: PlansInput): Violation[] {
     for (const target of plan.requires) {
       dependents.set(target, [...(dependents.get(target) ?? []), plan.id]);
     }
-    checkPlanShape(plan, input, out);
+    checkPlanStructure(plan, input, out);
   }
 
   const owner = checkClaims(registry.plans, specs, dependents, out);
@@ -879,14 +871,17 @@ export function loadPlansInput(root = ROOT): PlansInput {
   };
 }
 
+/** What `--audit` judges and which of the resulting violations it reports. */
+export interface AuditPreview {
+  input: PlansInput;
+  keep: (x: Violation) => boolean;
+}
+
 /**
  * `--audit <stem>` (repeatable) previews a census: the named specs are judged as audited, and only
  * violations in those specs and their plans/ directories are reported. It changes nothing on disk.
  */
-export function auditPreview(
-  input: PlansInput,
-  stems: readonly string[],
-): { input: PlansInput; keep: (x: Violation) => boolean } {
+export function auditPreview(input: PlansInput, stems: readonly string[]): AuditPreview {
   const files = new Set(stems.map((s) => `${s}.md`));
   const unaudited = (input.unaudited ?? UNAUDITED).filter((f) => !files.has(f));
   const keep = (x: Violation) =>

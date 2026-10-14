@@ -45,8 +45,10 @@ export interface ToastState {
   timeout: number;
   /** `info`, `positive`, `negative` or `warning`. */
   variant: string;
-  [key: string]: unknown;
 }
+
+/** A `jx-toast` element, with the `open` accessor its document installs. */
+type ToastElement = HTMLElement & { open?: boolean };
 
 /** One toast's clock: what is left of it, when this run started, and what is holding it. */
 interface Clock {
@@ -60,25 +62,25 @@ interface Clock {
 }
 
 /** Which hold an event asks for. Three channels, because they overlap and must not cancel. */
-const HOLD_REASON: Readonly<Record<string, string>> = {
-  focusin: "focus",
-  focusout: "focus",
-  [TOAST_PAUSE]: "stack",
-  [TOAST_RESUME]: "stack",
-  pointerenter: "pointer",
-  pointerleave: "pointer",
-  pointerout: "pointer",
-  pointerover: "pointer",
-};
+const HOLD_REASON: ReadonlyMap<string, "focus" | "pointer" | "stack"> = new Map([
+  ["focusin", "focus"],
+  ["focusout", "focus"],
+  [TOAST_PAUSE, "stack"],
+  [TOAST_RESUME, "stack"],
+  ["pointerenter", "pointer"],
+  ["pointerleave", "pointer"],
+  ["pointerout", "pointer"],
+  ["pointerover", "pointer"],
+]);
 
 /** Each scope's clock. */
-const clocks = new WeakMap<object, Clock>();
+const clocks = new WeakMap<ToastState, Clock>();
 
 /** The element each scope belongs to, learned at mount. */
-const hosts = new WeakMap<object, HTMLElement>();
+const hosts = new WeakMap<ToastState, HTMLElement>();
 
 /** This scope's clock, minted on first sight. */
-function clockOf(state: object): Clock {
+function clockOf(state: ToastState): Clock {
   const found = clocks.get(state);
   if (found) {
     return found;
@@ -106,7 +108,7 @@ function ownerOf(event: Event): HTMLElement | null {
  * @returns True when the destination is still inside the element the listener is bound to.
  */
 export function staysInside(event: Event): boolean {
-  const to = (event as { relatedTarget?: unknown }).relatedTarget;
+  const to = "relatedTarget" in event ? event.relatedTarget : null;
   const from = event.currentTarget;
   return to instanceof Node && from instanceof Node && from.contains(to);
 }
@@ -147,12 +149,11 @@ function schedule(state: ToastState): void {
  * @param host The `jx-toast` element.
  * @param reason Why it closed.
  */
-export function closeToast(host: HTMLElement, reason: ToastCloseReason): void {
-  const el = host as HTMLElement & { open?: boolean };
-  if (el.open !== true) {
+export function closeToast(host: ToastElement, reason: ToastCloseReason): void {
+  if (host.open !== true) {
     return;
   }
-  el.open = false;
+  host.open = false;
   host.dispatchEvent(new CustomEvent("close", { bubbles: true, detail: { reason } }));
 }
 
@@ -207,7 +208,7 @@ export function onToastUnmount(state: ToastState): void {
  */
 export function onToastHold(state: ToastState, event: Event): void {
   const clock = clockOf(state);
-  const reason = HOLD_REASON[event.type] ?? event.type;
+  const reason = HOLD_REASON.get(event.type) ?? event.type;
   if (clock.timer !== null) {
     clock.remaining = Math.max(1, clock.remaining - (Date.now() - clock.startedAt));
   }
@@ -225,7 +226,7 @@ export function onToastRelease(state: ToastState, event: Event): void {
   if (staysInside(event)) {
     return;
   }
-  clockOf(state).holds.delete(HOLD_REASON[event.type] ?? event.type);
+  clockOf(state).holds.delete(HOLD_REASON.get(event.type) ?? event.type);
   schedule(state);
 }
 

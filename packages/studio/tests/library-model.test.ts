@@ -40,7 +40,7 @@ function dir(name: string, path: string): DirEntry {
   return { name, path, type: "directory" };
 }
 
-const TREE: Record<string, DirEntry[]> = {
+const TREE = {
   components: [file("button.json", "components/button.json")],
   content: [dir("posts", "content/posts")],
   "content/posts": [
@@ -52,7 +52,7 @@ const TREE: Record<string, DirEntry[]> = {
     dir("node_modules", "pages/node_modules"),
   ],
   public: [file("logo.png", "public/logo.png")],
-};
+} satisfies Record<string, DirEntry[]>;
 
 function listDirectory(tree: Record<string, DirEntry[]> = TREE) {
   return (path: string) => {
@@ -147,9 +147,9 @@ describe("scanLibrary", () => {
      the thumbnails it draws next are the first URLs that can use them. */
   test("notes the content versions its listings carry", async () => {
     resetAssetVersions();
-    const tree: Record<string, DirEntry[]> = {
+    const tree = {
       public: [file("hero.png", "public/hero.png", { version: "abc" })],
-    };
+    } satisfies Record<string, DirEntry[]>;
     await scanLibrary(["public"], { listDirectory: listDirectory(tree) });
     expect(versionOf("public/hero.png")).toBe("abc");
     resetAssetVersions();
@@ -162,9 +162,9 @@ describe("scanLibrary", () => {
   });
 
   test("a failure at depth names the directory that failed, not its root", async () => {
-    const tree: Record<string, DirEntry[]> = {
+    const tree = {
       content: [dir("posts", "content/posts")],
-    };
+    } satisfies Record<string, DirEntry[]>;
     const scan = await scanLibrary(["content"], { listDirectory: listDirectory(tree) });
     expect(scan.failures.map((f) => f.dir)).toEqual(["content/posts"]);
   });
@@ -189,13 +189,16 @@ describe("scanLibrary", () => {
   });
 
   test("a file with no extension still gets a type", async () => {
-    const tree: Record<string, DirEntry[]> = { misc: [file("Makefile", "misc/Makefile")] };
+    const tree = { misc: [file("Makefile", "misc/Makefile")] } satisfies Record<string, DirEntry[]>;
     const scan = await scanLibrary(["misc"], { listDirectory: listDirectory(tree) });
     expect(scan.files[0]!.type).toBe("file");
   });
 
   test("a content file outside every declared collection falls back to its extension", async () => {
-    const tree: Record<string, DirEntry[]> = { content: [file("note.md", "content/note.md")] };
+    const tree = { content: [file("note.md", "content/note.md")] } satisfies Record<
+      string,
+      DirEntry[]
+    >;
     const scan = await scanLibrary(["content"], { listDirectory: listDirectory(tree) });
     expect(scan.files[0]!.type).toBe(".md");
   });
@@ -263,12 +266,12 @@ describe("filterLibrary", () => {
 // ─── Locales ─────────────────────────────────────────────────────────────────
 
 describe("the locale a file sits under", () => {
-  const I18N_TREE: Record<string, DirEntry[]> = {
+  const I18N_TREE = {
     layouts: [file("main.json", "layouts/main.json")],
     pages: [dir("fr", "pages/fr"), dir("de", "pages/de"), file("index.json", "pages/index.json")],
     "pages/de": [file("index.json", "pages/de/index.json")],
     "pages/fr": [file("index.json", "pages/fr/index.json")],
-  };
+  } satisfies Record<string, DirEntry[]>;
 
   function multilingual(locales: string[] = ["en", "fr", "de"]) {
     resetStudioState({

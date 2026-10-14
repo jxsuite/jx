@@ -15,8 +15,14 @@ import { toChatMessages, toOpenAIMessages } from "@jxsuite/ai/messages";
 import type { StreamEvent } from "@jxsuite/ai/streaming-client";
 import { createToolDefinition, createToolRegistry } from "@jxsuite/ai/tools";
 
-const resetModelCache = mock(() => {});
-const ensureProxyProbe = mock(() => {});
+/** The model-reading calls the hooks made, in order: what a lapsed grant must and must not trigger. */
+const probes: string[] = [];
+const resetModelCache = mock(() => {
+  probes.push("resetModelCache");
+});
+const ensureProxyProbe = mock(() => {
+  probes.push("ensureProxyProbe");
+});
 void mock.module("../src/services/ai-models", () => ({ ensureProxyProbe, resetModelCache }));
 
 const { applyHarnessEvent } = await import("../src/services/harness/chat-reducer");
@@ -27,27 +33,50 @@ afterEach(() => {
   resetImportRuns();
   resetModelCache.mockClear();
   ensureProxyProbe.mockClear();
+  probes.length = 0;
 });
 
 const base = { v: 1 as const, seq: 0, turnId: "t" };
 
-/** A chat store whose method calls are logged by name and arguments. */
+/**
+ * A chat store whose method calls are logged by name and arguments.
+ *
+ * Every method the store has is replaced by a logging forwarder. The methods are closures over the
+ * store (none reads `this`), so a forwarder calls the original directly, and a method that calls
+ * another internally does so through its closure, unlogged, exactly as a reader of the store sees.
+ */
 function loggedChat() {
   const chat = createChatState({ model: "m" });
   const calls: [string, ...unknown[]][] = [];
-  const logged = new Proxy(chat, {
-    get(target, key) {
-      const value: unknown = Reflect.get(target, key);
-      if (typeof key !== "string" || typeof value !== "function") {
-        return value;
-      }
-      return (...args: unknown[]) => {
-        calls.push([key, ...args]);
-        return (value as (...a: unknown[]) => unknown).apply(target, args);
-      };
-    },
-  });
-  return { chat: logged, calls };
+  const log =
+    <A extends unknown[], R>(name: string, method: (...args: A) => R) =>
+    (...args: A): R => {
+      calls.push([name, ...args]);
+      return method(...args);
+    };
+  Object.assign(chat, {
+    appendDelta: log("appendDelta", chat.appendDelta),
+    appendReasoning: log("appendReasoning", chat.appendReasoning),
+    appendToolCallDelta: log("appendToolCallDelta", chat.appendToolCallDelta),
+    appendToolCallEnd: log("appendToolCallEnd", chat.appendToolCallEnd),
+    appendToolCallStart: log("appendToolCallStart", chat.appendToolCallStart),
+    appendToolResult: log("appendToolResult", chat.appendToolResult),
+    beginAssistantTurn: log("beginAssistantTurn", chat.beginAssistantTurn),
+    cancelStream: log("cancelStream", chat.cancelStream),
+    clearChat: log("clearChat", chat.clearChat),
+    clearUsage: log("clearUsage", chat.clearUsage),
+    finishStream: log("finishStream", chat.finishStream),
+    pushToolResultMessage: log("pushToolResultMessage", chat.pushToolResultMessage),
+    recordUsage: log("recordUsage", chat.recordUsage),
+    retryLast: log("retryLast", chat.retryLast),
+    sendMessage: log("sendMessage", chat.sendMessage),
+    setContextWarning: log("setContextWarning", chat.setContextWarning),
+    setError: log("setError", chat.setError),
+    setModel: log("setModel", chat.setModel),
+    setTokenCount: log("setTokenCount", chat.setTokenCount),
+    toMessagesArray: log("toMessagesArray", chat.toMessagesArray),
+  } satisfies Partial<typeof chat>);
+  return { chat, calls };
 }
 
 function outcome(kind: TurnOutcome["kind"], extra: Partial<TurnOutcome> = {}): TurnOutcome {
@@ -208,21 +237,25 @@ describe("applyHarnessEvent", () => {
 
 describe("studioTurnHooks", () => {
   test("after a call, the batch follows the document the tools moved to", () => {
-    const reanchor = mock(() => {});
-    const onSuperseded = mock(() => {});
-    const hooks = studioTurnHooks({ onSuperseded, reanchor, superseded: () => false });
+    const effects: string[] = [];
+    const hooks = studioTurnHooks({
+      onSuperseded: () => effects.push("onSuperseded"),
+      reanchor: () => effects.push("reanchor"),
+      superseded: () => false,
+    });
     hooks.afterTool?.({ callId: "c", name: "n", result: { success: true } });
-    expect(reanchor).toHaveBeenCalledTimes(1);
-    expect(onSuperseded).not.toHaveBeenCalled();
+    expect(effects).toEqual(["reanchor"]);
   });
 
   test("after a call into a replaced conversation, the turn stops and nothing is re-anchored", () => {
-    const reanchor = mock(() => {});
-    const onSuperseded = mock(() => {});
-    const hooks = studioTurnHooks({ onSuperseded, reanchor, superseded: () => true });
+    const effects: string[] = [];
+    const hooks = studioTurnHooks({
+      onSuperseded: () => effects.push("onSuperseded"),
+      reanchor: () => effects.push("reanchor"),
+      superseded: () => true,
+    });
     hooks.afterTool?.({ callId: "c", name: "n", result: { success: true } });
-    expect(onSuperseded).toHaveBeenCalledTimes(1);
-    expect(reanchor).not.toHaveBeenCalled();
+    expect(effects).toEqual(["onSuperseded"]);
   });
 
   test("a lapsed hosted grant re-probes; any other stream error does not", () => {
@@ -233,10 +266,9 @@ describe("studioTurnHooks", () => {
     });
     hooks.onStreamError?.({ message: "Upstream 500", code: "cf_upstream_error" });
     hooks.onStreamError?.({ message: "No code" });
-    expect(resetModelCache).not.toHaveBeenCalled();
+    expect(probes).toEqual([]);
     hooks.onStreamError?.({ message: "Reconnect", code: "cf_reconnect_required" });
-    expect(resetModelCache).toHaveBeenCalledTimes(1);
-    expect(ensureProxyProbe).toHaveBeenCalledTimes(1);
+    expect(probes).toEqual(["resetModelCache", "ensureProxyProbe"]);
   });
 });
 

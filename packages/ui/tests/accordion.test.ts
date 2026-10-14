@@ -8,7 +8,8 @@ import { documentStyleText } from "@jxsuite/runtime";
 import { buildStyleRules } from "@jxsuite/runtime/css";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
-import type { JxElement, JxStyle } from "@jxsuite/schema/types";
+import { isFunctionDef, isNodeObject } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
 
 import { documents, INVOKER_TAGS, POPOVER_TAGS } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -26,23 +27,47 @@ type JxAccordionItem = HTMLElement & {
 };
 
 /** Every rule an element's own style block emits, under a stand-in scope handle. */
-const sheetOf = (tag: string): string[] =>
-  buildStyleRules(documents[tag]!.style as JxStyle, { scope: "S" }).map((rule) => rule.text);
+const sheetOf = (tag: keyof typeof documents): string[] => {
+  const { style } = documents[tag];
+  if (!style) {
+    throw new Error(`${tag} declares no style block`);
+  }
+  return buildStyleRules(style, { scope: "S" }).map((rule) => rule.text);
+};
 
 const sheet = () => sheetOf("jx-accordion-item");
 
-const page = JSON.parse(
-  readFileSync(resolve(import.meta.dir, "../stylebook/jx-accordion-item.json"), "utf8"),
-) as JxElement;
+/** A stylebook page, read off disk and checked to be a document object. */
+function readPage(name: string): JxElement {
+  const parsed: unknown = JSON.parse(
+    readFileSync(resolve(import.meta.dir, `../stylebook/${name}.json`), "utf8"),
+  );
+  if (!isNodeObject(parsed)) {
+    throw new TypeError(`stylebook/${name}.json is not a document object`);
+  }
+  return parsed;
+}
 
-const containerPage = JSON.parse(
-  readFileSync(resolve(import.meta.dir, "../stylebook/jx-accordion.json"), "utf8"),
-) as JxElement;
+const page = readPage("jx-accordion-item");
+
+const containerPage = readPage("jx-accordion");
+
+/** A node's element children: text children dropped, and a repeater read as having none. */
+function elementChildren(node: JxElement): JxElement[] {
+  return Array.isArray(node.children) ? node.children.filter((child) => isNodeObject(child)) : [];
+}
 
 /** Every node in a document tree, so a gate cannot be dodged by nesting one level deeper. */
 function walk(node: JxElement): JxElement[] {
-  const kids = (node.children ?? []) as JxElement[];
-  return [node, ...kids.flatMap((child) => walk(child))];
+  return [node, ...elementChildren(node).flatMap((child) => walk(child))];
+}
+
+/** A fresh, unattached `jx-accordion-item`, typed with the state its document declares. */
+function createItem(): JxAccordionItem {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-accordion-item` from its document before any
+     test runs, so `createElement` constructs that class synchronously, and the class exposes every
+     declared state entry (each JxAccordionItem member) as a property. */
+  return document.createElement("jx-accordion-item") as JxAccordionItem;
 }
 
 beforeAll(async () => {
@@ -57,7 +82,7 @@ async function item(
   attrs: Record<string, string> = {},
   children: Element[] = [],
 ): Promise<JxAccordionItem> {
-  const el = document.createElement("jx-accordion-item") as JxAccordionItem;
+  const el = createItem();
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
   }
@@ -74,7 +99,11 @@ const summaryOf = (el: Element) => el.querySelector<HTMLElement>('[part="summary
 function record(el: Element): [unknown, unknown][] {
   const seen: [unknown, unknown][] = [];
   el.addEventListener("toggle", (e) => {
-    seen.push([(e as CustomEvent).detail, (e.target as HTMLDetailsElement).open]);
+    const { target } = e;
+    seen.push([
+      "detail" in e ? e.detail : undefined,
+      target !== null && "open" in target ? target.open : undefined,
+    ]);
   });
   return seen;
 }
@@ -119,7 +148,7 @@ describe("jx-accordion-item", () => {
     const el = await item({ label: "Layout" });
     const targets: (string | null)[] = [];
     el.addEventListener("toggle", (e) => {
-      targets.push((e.target as Element).getAttribute("part"));
+      targets.push(e.target instanceof Element ? e.target.getAttribute("part") : null);
     });
     summaryOf(el).click();
     await tick();
@@ -170,9 +199,11 @@ describe("jx-accordion-item", () => {
        `event.newState` with no target guard. Measured in Chrome before the boundary existed: a
        section opened inside a shown popover flipped the panel's `open` to false and dropped its
        `data-open` styling while it was still in the top layer. */
+    /* SAFETY: `registerUi()` in `beforeAll` defined `jx-popover` from its document, so this is that
+       class, which exposes its declared `open` state as a property. */
     const panel = document.createElement("jx-popover") as HTMLElement & { open: boolean };
     panel.setAttribute("popover", "");
-    const inner = document.createElement("jx-accordion-item") as JxAccordionItem;
+    const inner = createItem();
     inner.setAttribute("label", "Section");
     panel.append(inner);
     document.body.append(panel);
@@ -184,7 +215,7 @@ describe("jx-accordion-item", () => {
     expect(panel.matches("[data-open]")).toBe(true);
     const escaped: string[] = [];
     document.body.addEventListener("toggle", (e) => {
-      escaped.push((e.target as Element).localName);
+      escaped.push(e.target instanceof Element ? e.target.localName : "(not an element)");
     });
     summaryOf(inner).click();
     await tick();
@@ -201,7 +232,7 @@ describe("jx-accordion-item", () => {
        re-announcement stops at its own host for the same reason — so an inner section opening
        writes neither the outer section's `open` nor a second event carrying the wrong node's
        state, and the outer's own listener hears nothing at all. */
-    const inner = document.createElement("jx-accordion-item") as JxAccordionItem;
+    const inner = createItem();
     inner.setAttribute("label", "Inner");
     const outer = await item({ label: "Outer" }, [inner]);
     await tick();
@@ -282,13 +313,14 @@ describe("jx-accordion-item", () => {
        is the case `:has` still answers, and it is the one every test in this file that passes no
        children is in. Asserted as text as well as measured, because happy-dom's `:has` matches an
        occupied row too. */
-    expect(sheet()).toContain(
+    const rules = sheet();
+    expect(rules).toContain(
       'S > [part="details"] > [part="summary"] > [part="actions"]:empty { display: none }',
     );
     /* One branch, not two. The rule carried a `:has([part="actions-slot"]:empty)` half because a
        slot used to survive distribution and keep `:empty` false. Slots now unwrap whether or not
        they matched, so an actions row with nothing slotted into it is simply empty. */
-    expect(sheet()).not.toContain("actions-slot");
+    expect(rules).not.toContain("actions-slot");
     const bare = await item({ label: "Layout" });
     expect(bare.querySelector("slot")).toBeNull();
     expect(bare.querySelector('[part="actions"]')!.matches(":empty")).toBe(true);
@@ -433,7 +465,7 @@ describe("jx-accordion-item", () => {
   });
 
   test("the element writes no aria-expanded and no role of its own", async () => {
-    const doc = documents["jx-accordion-item"]!;
+    const doc = documents["jx-accordion-item"];
     const json = JSON.stringify(doc);
     // `aria-expanded` is computed by the platform from the `open` content attribute; writing one
     // Would fight that mapping with a second, staler answer.
@@ -453,13 +485,12 @@ describe("jx-accordion-item", () => {
        `null` by construction and every `event#/…` in the body reads `undefined`. It is silent:
        no lint, no typecheck, no schema rule, and a page whose whole point is a live value just
        prints "undefined". This page carried exactly that, and so did two others. */
-    for (const [key, entry] of Object.entries((page.state ?? {}) as Record<string, unknown>)) {
-      const fn = entry as { $prototype?: string; parameters?: unknown[]; body?: unknown };
-      if (fn?.$prototype !== "Function" || !fn.body) {
+    for (const [key, entry] of Object.entries(page.state ?? {})) {
+      if (!isFunctionDef(entry) || !entry.body) {
         continue;
       }
-      if (JSON.stringify(fn.body).includes("event#/")) {
-        expect(fn.parameters, key).toBeUndefined();
+      if (JSON.stringify(entry.body).includes("event#/")) {
+        expect(entry.parameters, key).toBeUndefined();
       }
     }
   });
@@ -467,7 +498,7 @@ describe("jx-accordion-item", () => {
   test("the element and a consumer document both pass the kit's lints", async () => {
     /* As a DOCUMENT and as something a consumer wrote, because that second reading is what Studio
        and `jx validate` actually perform. */
-    const doc = documents["jx-accordion-item"]! as JxElement;
+    const doc = documents["jx-accordion-item"];
     expect(findA11yDefects(doc)).toEqual([]);
     expect(
       findPopoverDefects(doc, { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS }),
@@ -509,7 +540,7 @@ describe("jx-accordion-item", () => {
     expect(containers.length).toBeGreaterThanOrEqual(2);
     for (const container of containers) {
       expect(container.attributes?.["class"]).toBeUndefined();
-      for (const child of container.children as JxElement[]) {
+      for (const child of elementChildren(container)) {
         expect(child.tagName).toBe("jx-accordion-item");
       }
     }
@@ -520,7 +551,7 @@ describe("jx-accordion-item", () => {
     // And the exclusive form the platform gives for one forwarded attribute is still shown.
     const exclusive = containers.at(-1)!;
     expect(exclusive.$props?.["multiple"]).toBe(false);
-    for (const child of exclusive.children as JxElement[]) {
+    for (const child of elementChildren(exclusive)) {
       expect(child.$props?.["name"]).toBe("stylebook-exclusive");
     }
 
@@ -535,14 +566,14 @@ describe("jx-accordion-item", () => {
       expect(node.attributes?.["class"]).toBeUndefined();
     }
     // Two top-level stacks and one NESTED, which is the shape the seam claim needs demonstrated.
-    expect((containerPage.children as JxElement[]).filter((n) => n.tagName === "jx-accordion")) //
+    expect(elementChildren(containerPage).filter((n) => n.tagName === "jx-accordion")) //
       .toHaveLength(2);
-    const nested = own.filter((node) => !(containerPage.children as JxElement[]).includes(node));
+    const nested = own.filter((node) => !elementChildren(containerPage).includes(node));
     expect(nested).toHaveLength(1);
     // Exactly one stack declares the exclusive intent, and every item in it carries the `name`.
     const declared = own.filter((node) => node.$props?.["multiple"] === false);
     expect(declared).toHaveLength(1);
-    for (const child of declared[0]!.children as JxElement[]) {
+    for (const child of elementChildren(declared[0]!)) {
       expect(child.$props?.["name"]).toBe("stylebook-exclusive");
     }
     // And a section bound HIDDEN, which is the case `* + *` got wrong and the element does not.
@@ -789,8 +820,7 @@ describe("jx-accordion", () => {
        reads `""` on a stack whose `Object.keys(dataset)` still answers `["jx"]`. */
     const marks = (el: HTMLElement) =>
       [...el.attributes]
-        .map((attr) => attr.name)
-        .filter((name) => name.startsWith("data-") && name !== "data-jx")
+        .flatMap(({ name }) => (name.startsWith("data-") && name !== "data-jx" ? [name] : []))
         .toSorted();
     expect(marks(open)).toEqual([]);
     expect(marks(exclusive)).toEqual(["data-exclusive"]);
@@ -799,11 +829,11 @@ describe("jx-accordion", () => {
       expect(section.querySelector('[part="details"]')!.hasAttribute("name")).toBe(false);
     }
     // And nothing in the definition so much as mentions the attribute it refuses to write.
-    expect(JSON.stringify(documents["jx-accordion"]!)).not.toContain('"name"');
+    expect(JSON.stringify(documents["jx-accordion"])).not.toContain('"name"');
   });
 
   test("the element and its stylebook page both pass the kit's lints, and every section is named", () => {
-    const doc = documents["jx-accordion"]! as JxElement;
+    const doc = documents["jx-accordion"];
     expect(findA11yDefects(doc)).toEqual([]);
     expect(
       findPopoverDefects(doc, { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS }),

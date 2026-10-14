@@ -8,40 +8,49 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { isJsonObject } from "../src/guards";
+import type { JsonObject, JsonValue } from "../types";
+
 // ── Fake ajv / ajv-formats (optional peers, not installed in this repo) ────────
-type FakeValidate = ((doc: unknown) => boolean) & {
+/** The constructor options `validateWithSchema` passes to Ajv. */
+interface FakeAjvOptions {
+  allErrors: boolean;
+  ownProperties: boolean;
+  strict: boolean;
+}
+
+type FakeValidate = ((doc: JsonValue) => boolean) & {
   errors: { instancePath: string; message: string }[] | null;
 };
 
-const compiledSchemas: unknown[] = [];
+const compiledSchemas: { options: FakeAjvOptions; schema: JsonObject }[] = [];
 
 class FakeAjv {
-  options: unknown;
+  options: FakeAjvOptions;
 
-  constructor(options: unknown) {
+  constructor(options: FakeAjvOptions) {
     this.options = options;
   }
 
-  compile(schema: unknown): FakeValidate {
+  compile(schema: JsonObject): FakeValidate {
     compiledSchemas.push({ options: this.options, schema });
-    const validate = ((doc: unknown) => {
-      const bad =
-        typeof doc === "object" &&
-        doc !== null &&
-        (doc as Record<string, unknown>).__invalid === true;
-      validate.errors = bad ? [{ instancePath: "", message: "fake schema violation" }] : null;
-      return !bad;
-    }) as FakeValidate;
-    validate.errors = null;
+    const validate: FakeValidate = Object.assign(
+      (doc: JsonValue) => {
+        const bad = isJsonObject(doc) && doc.__invalid === true;
+        validate.errors = bad ? [{ instancePath: "", message: "fake schema violation" }] : null;
+        return !bad;
+      },
+      { errors: null },
+    );
     return validate;
   }
 }
 
-const addFormatsCalls: unknown[] = [];
+const addFormatsCalls: FakeAjv[] = [];
 
 void mock.module("ajv/dist/2020", () => ({ default: FakeAjv }));
 void mock.module("ajv-formats", () => ({
-  default: (ajv: unknown) => {
+  default: (ajv: FakeAjv) => {
     addFormatsCalls.push(ajv);
   },
 }));
@@ -78,10 +87,11 @@ describe("CLI default branch", () => {
   });
 
   test("logs the generated file names", () => {
-    expect(cliMessages.join("\n")).toContain("Generated:");
-    expect(cliMessages.join("\n")).toContain("schema.json (component)");
-    expect(cliMessages.join("\n")).toContain("project-schema.json");
-    expect(cliMessages.join("\n")).toContain("class-schema.json");
+    const log = cliMessages.join("\n");
+    expect(log).toContain("Generated:");
+    expect(log).toContain("schema.json (component)");
+    expect(log).toContain("project-schema.json");
+    expect(log).toContain("class-schema.json");
   });
 });
 
@@ -113,7 +123,7 @@ describe("validateDocument", () => {
     await validateDocument({ tagName: "p" });
     expect(addFormatsCalls.length).toBeGreaterThan(0);
     expect(addFormatsCalls[0]).toBeInstanceOf(FakeAjv);
-    expect((addFormatsCalls[0] as FakeAjv).options).toEqual({
+    expect(addFormatsCalls[0]?.options).toEqual({
       allErrors: true,
       ownProperties: true,
       strict: false,

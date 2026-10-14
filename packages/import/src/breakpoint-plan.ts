@@ -20,6 +20,8 @@
  * @docs studio/design/breakpoints
  */
 
+import { IMPORT_MAX_BREAKPOINTS } from "@jxsuite/protocol/types";
+
 /** One breakpoint: what to call it, what to emit, and the viewport width to sample it at. */
 export interface Breakpoint {
   /** Jx breakpoint name, e.g. `--768`. */
@@ -60,8 +62,11 @@ export const DEFAULT_BREAKPOINT_POLICY: BreakpointPolicy = {
   rounding: "nearest",
 };
 
-/** The most breakpoints a project may be asked to keep. Past this, "limit" is not limiting. */
-export const MAX_BREAKPOINTS = 12;
+/**
+ * The most breakpoints a project may be asked to keep. Past this, "limit" is not limiting. The
+ * value is the wire contract's, so a client that offers a count offers the same ceiling.
+ */
+export const MAX_BREAKPOINTS = IMPORT_MAX_BREAKPOINTS;
 
 /** The viewport widths an override may name. Outside this a "width" is a typo, not a breakpoint. */
 export const MIN_BREAKPOINT_WIDTH = 120;

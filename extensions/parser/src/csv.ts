@@ -1,10 +1,10 @@
 /**
  * Csv — CSV content format for Jx
  *
- * RFC 4180-style CSV parsing with schema-driven type coercion, packaged as a Jx
- * format-extension class. `parse` and `rewrite` are pure and browser-safe; `discover`, `load`, and
- * instance `resolve` touch the filesystem (or fetch remote URLs) and dynamically
- * import node modules so the module itself stays importable in the browser.
+ * RFC 4180-style CSV parsing with schema-driven type coercion, packaged as a Jx format-extension
+ * class. `parse` and `rewrite` are pure and browser-safe; `discover`, `load`, and instance
+ * `resolve` touch the filesystem (or fetch remote URLs) and dynamically import node modules so the
+ * module itself stays importable in the browser.
  *
  * There is no `serialize`, and there will not be one: a collection is a data source entries are
  * loaded FROM, and re-emitting one would mean choosing a quoting style, a line ending and a column
@@ -15,6 +15,7 @@
  * @license MIT
  */
 
+import type { ValueEdit } from "@jxsuite/schema/format-registry";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry } from "./types.ts";
 
@@ -97,13 +98,11 @@ export function parseCSV(csv: string): Record<string, string>[] {
 
 // ─── Cell-level rewriting ────────────────────────────────────────────────────
 
-/** One authored value to replace, wherever a data cell holds exactly it. */
-export interface CsvEdit {
-  /** The cell value as `parse` produced it — unquoted and trimmed. */
-  from: string;
-  /** What to write in its place. */
-  to: string;
-}
+/**
+ * One authored value to replace, wherever a data cell holds exactly it. `from` is the cell value as
+ * `parse` produced it: unquoted and trimmed. Kept under its own name for importers of this module.
+ */
+export type { ValueEdit as CsvEdit } from "@jxsuite/schema/format-registry";
 
 /** One field of a CSV source: where its bytes are, and what {@link parseCSV} made of it. */
 interface CsvField {
@@ -226,7 +225,7 @@ function encodeField(raw: string, value: string): string {
  * @param edits — authored values to replace
  * @returns The source with exactly those cells rewritten
  */
-export function rewriteCSV(source: string, edits: readonly CsvEdit[]): string {
+export function rewriteCSV(source: string, edits: readonly ValueEdit[]): string {
   const replacements = new Map<string, string>();
   for (const edit of edits) {
     if (edit.from !== edit.to) {
@@ -273,7 +272,7 @@ export function coerceCSVRows(
   idField?: string,
 ): ContentLoaderEntry[] {
   return rows.map((row, i) => {
-    const data: Record<string, unknown> = { ...row };
+    const data: ContentLoaderEntry["data"] = { ...row };
     if (schema?.properties) {
       for (const [key, def] of Object.entries(schema.properties)) {
         if (!(key in data)) {
@@ -302,6 +301,11 @@ export function coerceCSVRows(
         }
       }
     }
+    /*
+     * SAFETY: each candidate is a cell copied from `row`, so a string, unless the schema typed that
+     * column as number, boolean or array and the loop above coerced it. An id column typed that way
+     * would put its coerced value here as the entry id (see the coercion rules in the doc comment).
+     */
     const id =
       (idField ? (data[idField] as string | undefined) : undefined) ??
       (data.id as string | undefined) ??
@@ -342,7 +346,7 @@ export class Csv {
    * changed without inventing an opinion about quoting, line endings or column order. See
    * {@link rewriteCSV}.
    */
-  static rewrite(source: string, edits: readonly CsvEdit[] = []): string {
+  static rewrite(source: string, edits: readonly ValueEdit[] = []): string {
     return rewriteCSV(source, edits);
   }
 

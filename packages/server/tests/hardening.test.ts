@@ -11,7 +11,7 @@ const FIXTURES = resolve(import.meta.dir, "_hardening_fixtures");
 const ROOT = join(FIXTURES, "served-root");
 const OUTSIDE = join(FIXTURES, "outside");
 
-let server: ReturnType<typeof Bun.serve> | Awaited<ReturnType<typeof createDevServer>>;
+let server: Awaited<ReturnType<typeof createDevServer>>;
 let base = "";
 
 beforeAll(async () => {
@@ -27,11 +27,11 @@ beforeAll(async () => {
     watch: false,
     studio: true,
   });
-  base = `http://127.0.0.1:${(server as { port: number }).port}`;
+  base = `http://127.0.0.1:${server.port}`;
 });
 
 afterAll(() => {
-  (server as { stop?: () => void }).stop?.();
+  void server.stop();
   rmSync(FIXTURES, { force: true, recursive: true });
 });
 

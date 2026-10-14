@@ -2,6 +2,8 @@ import { flush } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
 import { formatPreviewValue, previewExpression } from "../src/services/preview-eval";
 import { mountExpressionEditor } from "../src/ui/expression-editor";
+import type { ExpressionEditorOpts } from "../src/ui/expression-editor";
+import type { ExpressionValue } from "../src/ui/formula-chips";
 
 const ref = ($ref: string) => ({ $ref });
 
@@ -102,14 +104,17 @@ describe("the editor draws a preview's live values", () => {
   });
 
   /** Mount the editor over a node and its own preview, into an attached host. */
-  async function mount(node: unknown, opts: Record<string, unknown>): Promise<HTMLElement> {
+  async function mount(
+    node: ExpressionValue,
+    opts: Omit<ExpressionEditorOpts, "allowEventRef">,
+  ): Promise<HTMLElement> {
     const host = document.createElement("div");
     document.body.append(host);
     hosts.push(host);
     mountExpressionEditor(host, node, () => {}, {
       allowEventRef: false,
       ...opts,
-    } as never);
+    });
     await flush(6);
     return host;
   }

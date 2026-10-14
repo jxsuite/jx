@@ -50,9 +50,12 @@ import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
+import { isFunctionDef, isNonNullObject } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxElement, JxFunctionDef } from "@jxsuite/schema/types";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import { mountSelect, syncSelect } from "../src/behaviors/select.ts";
+import type { SelectState } from "../src/behaviors/select.ts";
 import { expectInertWhileEmpty } from "./error-region.ts";
 
 const tick = () =>
@@ -105,8 +108,10 @@ afterEach(() => {
 /** An element with whatever attributes and properties it was given, rendered. */
 async function select(
   attrs: Record<string, string> = {},
-  props: Record<string, unknown> = {},
+  props: Partial<JxSelect> = {},
 ): Promise<JxSelect> {
+  /* SAFETY: registerUi() in beforeAll defined jx-select from its component document, which
+     declares every prop `JxSelect` lists, so createElement returns that upgraded element. */
   const el = document.createElement("jx-select") as JxSelect;
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
@@ -123,14 +128,14 @@ const values = (el: Element) => [...control(el).options].map((option) => option.
 const parts = (el: Element, part: string) => [...el.querySelectorAll(`[part="${part}"]`)];
 
 /** Every emitted CSS rule scoped to this element's own document, in source order. */
-function rules(el: Element): string[] {
-  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+function rules(el: HTMLElement): string[] {
+  const scope = `[data-jx="${el.dataset["jx"]}"]`;
   return documentStyleText()
     .split("\n")
     .filter((line) => line.startsWith(scope) || line.includes(`{ ${scope}`));
 }
 /** The first emitted rule whose selector carries `selector`. */
-const ruleFor = (el: Element, selector: string) =>
+const ruleFor = (el: HTMLElement, selector: string) =>
   rules(el).find((line) => line.slice(0, line.indexOf("{") + 1).includes(selector)) ?? "";
 
 /**
@@ -140,23 +145,35 @@ const ruleFor = (el: Element, selector: string) =>
  * @param path A label for messages.
  * @yields {[string, string, unknown]} The owner's path, the key, and the value
  */
-function* entries(node: unknown, path = "root"): Generator<[string, string, unknown]> {
+function* entries(
+  node: JxDocumentValue | JxDocumentValue[] | undefined,
+  path = "root",
+): Generator<[string, string, unknown]> {
   if (Array.isArray(node)) {
     for (const [i, item] of node.entries()) {
       yield* entries(item, `${path}[${i}]`);
     }
     return;
   }
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return;
   }
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(node)) {
     yield [path, key, value];
     yield* entries(value, `${path}.${key}`);
   }
 }
 
-const doc = documents["jx-select"]!;
+const doc = documents["jx-select"];
+
+/** The `onChange` handler the shipped document declares. */
+function onChangeHandler(): JxFunctionDef {
+  const entry = doc.state?.["onChange"];
+  if (!isFunctionDef(entry)) {
+    throw new Error("jx-select declares no onChange function");
+  }
+  return entry;
+}
 
 describe("jx-select", () => {
   test("is one native select, named, with the document's rows inside it", async () => {
@@ -223,7 +240,7 @@ describe("jx-select", () => {
        `connectedCallback`, so a row appended to the call site afterwards is never distributed. That
        is the whole reason the data path above exists. Measured in Chrome: `select.options.length` 2,
        with the value and the trigger correct. */
-    const el = document.createElement("jx-select") as JxSelect;
+    const el = document.createElement("jx-select");
     el.setAttribute("label", "Alignment");
     el.setAttribute("value", "center");
     for (const [value, label] of [
@@ -284,10 +301,9 @@ describe("jx-select", () => {
     const optionLabels = [...entries(doc)].filter(
       ([, key, value]) =>
         key === "attributes" &&
-        typeof value === "object" &&
-        value !== null &&
+        isNonNullObject(value) &&
         "part" in value &&
-        (value as { part: string }).part === "option" &&
+        value.part === "option" &&
         "label" in value,
     );
     expect(optionLabels).toEqual([]);
@@ -358,13 +374,13 @@ describe("jx-select", () => {
       sel.append(option);
     }
     const kept = [{ label: "groove", value: "groove" }];
-    const state: Record<string, unknown> = { unlisted: kept, value: "groove" };
+    const state: SelectState = { unlisted: kept, value: "groove" };
     syncSelect(state, sel);
-    expect(state["unlisted"]).toBe(kept);
+    expect(state.unlisted).toBe(kept);
     // And a value the DOCUMENT listed needs no stand-in, so the list is emptied instead.
-    const other: Record<string, unknown> = { unlisted: kept, value: "solid" };
+    const other: SelectState = { unlisted: kept, value: "solid" };
     syncSelect(other, sel);
-    expect(other["unlisted"]).toEqual([]);
+    expect(other.unlisted).toEqual([]);
   });
 
   test("a value no row holds is stood in for, rather than falling silently to index 0", async () => {
@@ -455,9 +471,12 @@ describe("jx-select", () => {
   test("change writes the value and says nothing of its own", async () => {
     const el = await select({ label: "Font" }, { options: FACES });
     const heard: string[] = [];
-    el.addEventListener("change", (e) =>
-      heard.push(`${(e.target as Element).localName}:${(e.target as HTMLSelectElement).value}`),
-    );
+    el.addEventListener("change", (e) => {
+      /* SAFETY: the only nodes that can dispatch `change` inside this jx-select are its inner
+         `<select>` and the host itself, and both carry a string `value`. */
+      const target = e.target as Element & { value: string };
+      heard.push(`${target.localName}:${target.value}`);
+    });
     control(el).value = "serif";
     control(el).value = '"Times New Roman", serif';
     control(el).dispatchEvent(new Event("change", { bubbles: true }));
@@ -468,12 +487,13 @@ describe("jx-select", () => {
     /* The count above is the part happy-dom can hold. The re-entry it guards against is structural:
        an `onchange` body that also dispatches `change` hears its own event — one real pick produced
        43 of them in Chrome. The body says one thing, and this is what keeps it saying one thing. */
-    const body = (doc.state as Record<string, { body?: unknown[] }>)["onChange"]!.body!;
+    const handler = onChangeHandler();
+    const body = Array.isArray(handler.body) ? handler.body : [];
     expect(body.length).toBe(1);
     for (const [path, key] of entries(body)) {
       expect(key, `onChange.body${path}`).not.toBe("dispatchEvent");
     }
-    expect((doc.state as Record<string, { emits?: unknown }>)["onChange"]!.emits).toBeUndefined();
+    expect(handler.emits).toBeUndefined();
   });
 
   test("a description belongs to the list, and is not mirrored into the closed trigger", async () => {
@@ -489,7 +509,7 @@ describe("jx-select", () => {
        `appearance: base-select` renders an `<hr>` between options as a real separator, and this
        element exists to delimit groups — so the hook is deliberate rather than residue, and the
        rule is dead the moment nothing proves a slotted rule reaches it. */
-    const el = document.createElement("jx-select") as JxSelect;
+    const el = document.createElement("jx-select");
     el.setAttribute("label", "Font");
     const first = document.createElement("option");
     first.value = "a";
@@ -558,25 +578,20 @@ describe("jx-select", () => {
     );
 
     // The channels are declared ONCE, by the element, and read the property the row set.
-    expect(ruleFor(el, '[part="text"]')).toContain("font-family: var(--jx-row-face, inherit)");
-    expect(ruleFor(el, '[part="text"]')).toContain("font-weight: var(--jx-row-weight, inherit)");
-    expect(ruleFor(el, '[part="text"]')).toContain("font-style: var(--jx-row-slant, inherit)");
-    expect(ruleFor(el, '[part="text"]')).toContain("font-variant: var(--jx-row-variant, inherit)");
-    expect(ruleFor(el, '[part="text"]')).toContain(
-      "text-transform: var(--jx-row-transform, inherit)",
-    );
-    expect(ruleFor(el, '[part="text"]')).toContain(
-      "text-decoration: var(--jx-row-decoration, inherit)",
-    );
-    expect(ruleFor(el, '[part="swatch"]')).toContain(
-      "background: var(--jx-row-swatch, transparent)",
-    );
-    expect(ruleFor(el, '[part="swatch"]')).toContain("inline-size: 16px");
-    expect(ruleFor(el, '[part="swatch"]')).toContain("block-size: 16px");
-    expect(ruleFor(el, '[part="line"]')).toContain(
-      "border-block-start: 2px var(--jx-row-line, none) currentColor",
-    );
-    expect(ruleFor(el, '[part="line"]')).toContain("inline-size: 32px");
+    const textRule = ruleFor(el, '[part="text"]');
+    expect(textRule).toContain("font-family: var(--jx-row-face, inherit)");
+    expect(textRule).toContain("font-weight: var(--jx-row-weight, inherit)");
+    expect(textRule).toContain("font-style: var(--jx-row-slant, inherit)");
+    expect(textRule).toContain("font-variant: var(--jx-row-variant, inherit)");
+    expect(textRule).toContain("text-transform: var(--jx-row-transform, inherit)");
+    expect(textRule).toContain("text-decoration: var(--jx-row-decoration, inherit)");
+    const swatchRule = ruleFor(el, '[part="swatch"]');
+    expect(swatchRule).toContain("background: var(--jx-row-swatch, transparent)");
+    expect(swatchRule).toContain("inline-size: 16px");
+    expect(swatchRule).toContain("block-size: 16px");
+    const lineRule = ruleFor(el, '[part="line"]');
+    expect(lineRule).toContain("border-block-start: 2px var(--jx-row-line, none) currentColor");
+    expect(lineRule).toContain("inline-size: 32px");
 
     // Every row carries real text, so typeahead prefix-matches and an off-Chrome engine still reads.
     expect(first!.textContent).toBe("Georgia");
@@ -613,9 +628,9 @@ describe("jx-select", () => {
        reports nothing, so it is worse than no gate. Names are small, printable, and say which part
        broke. */
     expect(
-      [...big.querySelectorAll<HTMLElement>("[part]")]
-        .filter((node) => node.dataset["jx"] !== undefined)
-        .map((node) => node.getAttribute("part")),
+      [...big.querySelectorAll<HTMLElement>("[part]")].flatMap((node) =>
+        node.dataset["jx"] === undefined ? [] : [node.getAttribute("part")],
+      ),
     ).toEqual([]);
     expect(big.querySelectorAll('[part="text"][style]').length).toBe(70);
   });
@@ -657,19 +672,19 @@ describe("jx-select", () => {
       }
     }
     // Every row is a native option, and every node inside the control is one of four native tags.
-    const tags = [...entries(doc)].filter(([, key]) => key === "tagName").map((entry) => entry[2]);
+    const tags = [...entries(doc)].flatMap(([, key, value]) => (key === "tagName" ? [value] : []));
     for (const tag of ["select", "option", "optgroup", "legend"]) {
       expect(tags).toContain(tag);
     }
     // And the rule is live over this element's own tag, not only over `<select>`.
-    const forged = {
+    const forged: JxElement = {
       children: [{ attributes: { value: "a" }, children: ["Alpha"], tagName: "jx-option" }],
       tagName: "jx-select",
     };
-    expect(findA11yDefects(forged as never).map((defect) => defect.rule)).toEqual([
+    expect(findA11yDefects(forged).map((defect) => defect.rule)).toEqual([
       "custom-element-in-select",
     ]);
-    expect(findA11yDefects(doc as never)).toEqual([]);
+    expect(findA11yDefects(doc)).toEqual([]);
   });
 
   test("both appearance declarations sit in one object, and the picker parts are styled", async () => {
@@ -681,9 +696,10 @@ describe("jx-select", () => {
        nor `CSS.supports` is a valid feature test — a non-zero first-option rect is, and it measured
        205.3 x 24 in Chrome. */
     expect(ruleFor(el, "select {")).toContain("appearance: base-select");
-    expect(ruleFor(el, "select::picker(select)")).toContain("appearance: base-select");
+    const pickerRule = ruleFor(el, "select::picker(select)");
+    expect(pickerRule).toContain("appearance: base-select");
     // A selector-list split that respected paren depth is what keeps `::picker(select)` whole.
-    expect(ruleFor(el, "select::picker(select)")).toContain("box-shadow: var(--jx-shadow-popover)");
+    expect(pickerRule).toContain("box-shadow: var(--jx-shadow-popover)");
     expect(ruleFor(el, "select:open::picker-icon")).toContain("rotate: 180deg");
     /* GEOMETRY AND ORDER on every checkmark, COLOUR only on the checked one. The UA generates
        `::checkmark` on every option and hides the unchecked ones with `visibility: hidden`, so
@@ -748,12 +764,13 @@ describe("jx-select", () => {
        once, so a sidecar that disconnected at `disconnectedCallback` could never install another:
        a re-parent fires remove then insert, and the element would come back rendering, reactive and
        DEAF. The observer is collected with the subtree it is registered on instead. */
-    const state: Record<string, unknown> = { unlisted: [], value: "x" };
+    const state: SelectState = { unlisted: [], value: "x" };
     const bare = document.createElement("div");
     mountSelect(state, bare);
-    expect(state["uid"]).toStartWith("jx-select-");
-    expect(state["unlisted"]).toEqual([]);
-    expect((doc.state as Record<string, unknown>)["onUnmount"]).toBeUndefined();
+    expect(state.uid).toStartWith("jx-select-");
+    expect(state.unlisted).toEqual([]);
+    expect(doc.state).toBeDefined();
+    expect(doc.state?.["onUnmount"]).toBeUndefined();
   });
 
   test("an element that is moved keeps following its own option list", async () => {
@@ -784,7 +801,7 @@ describe("jx-select", () => {
   test("the sidecar writes selectedness only onto a value the list holds", async () => {
     const el = await select({ label: "Font" }, { options: FACES });
     const sel = control(el);
-    const state: Record<string, unknown> = { unlisted: [], value: "serif" };
+    const state: SelectState = { unlisted: [], value: "serif" };
     sel.value = "Georgia, serif";
     /* "serif" is in no option here, so the row is never guessed at — and the control is taken OFF
        every row rather than left showing Georgia, which the element does not hold. Leaving it was
@@ -794,7 +811,7 @@ describe("jx-select", () => {
        what discriminates. */
     syncSelect(state, sel);
     expect(sel.selectedIndex).toBe(-1);
-    expect(state["unlisted"]).toEqual([{ label: "serif", value: "serif" }]);
+    expect(state.unlisted).toEqual([{ label: "serif", value: "serif" }]);
     /* And it lands the moment the row it asked for exists. In the element that row arrives by
        re-render, one microtask later; here it is appended by hand, which is the same event as far
        as this function is concerned. */
@@ -804,9 +821,9 @@ describe("jx-select", () => {
     sel.append(stand);
     syncSelect(state, sel);
     expect(sel.value).toBe("serif");
-    state["value"] = '"Times New Roman", serif';
+    state.value = '"Times New Roman", serif';
     syncSelect(state, sel);
     expect(sel.value).toBe('"Times New Roman", serif');
-    expect(state["unlisted"]).toEqual([]);
+    expect(state.unlisted).toEqual([]);
   });
 });

@@ -23,10 +23,12 @@
  */
 
 import { compareRoutes, fileToRoute, isRoutedPageFile, matchRoute } from "./routes.ts";
-import type { RouteShape } from "./routes.ts";
+import type { FileRoute } from "./routes.ts";
 import { resolveLayout } from "./layout.ts";
 import { mergeHead } from "./head-merger.ts";
+import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { localeDirection, localeOfRoute, resolveI18n } from "@jxsuite/schema/locale";
 import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxDocument, JxElement, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
@@ -64,7 +66,7 @@ export interface SiteIO {
 }
 
 /** A page file and the route it answers. */
-export interface PageRoute extends RouteShape {
+export interface PageRoute extends FileRoute {
   /** Project path of the page source, e.g. `pages/blog/[slug].json`. */
   sourcePath: string;
 }
@@ -72,8 +74,11 @@ export interface PageRoute extends RouteShape {
 /** The route table, in match order. Static beats dynamic beats catch-all. */
 export function routeTable(paths: readonly string[]): PageRoute[] {
   return paths
-    .filter((path) => path.startsWith("pages/") && isRoutedPageFile(path))
-    .map((path) => Object.assign(fileToRoute(path), { sourcePath: path }))
+    .flatMap((path) =>
+      path.startsWith("pages/") && isRoutedPageFile(path)
+        ? [Object.assign(fileToRoute(path), { sourcePath: path })]
+        : [],
+    )
     .toSorted(compareRoutes);
 }
 
@@ -93,14 +98,17 @@ async function readDocument(io: SiteIO, path: string): Promise<JxDocument | null
 export async function readProjectConfig(io: SiteIO): Promise<ProjectConfig> {
   const text = await io.read("project.json");
   if (text === null) {
-    return {} as ProjectConfig;
+    return {};
   }
   try {
+    /* SAFETY: only the syntax is checked here, deliberately: every ProjectConfig member is
+       optional, and shape checking is `validateProject`'s job against the per-project schema,
+       which `jx build` runs and a live preview of a half-edited config must not refuse over. */
     return JSON.parse(text) as ProjectConfig;
   } catch {
     /* A project whose config does not parse still has pages, and refusing to render any of them
        would hide the one error the author can act on behind a blank origin. */
-    return {} as ProjectConfig;
+    return {};
   }
 }
 
@@ -111,18 +119,18 @@ export async function readProjectConfig(io: SiteIO): Promise<ProjectConfig> {
  * name, so a page and its layout declaring the same component register it once.
  */
 export function unionElements(
-  ...lists: (readonly unknown[] | undefined)[]
+  ...lists: (readonly (string | JxElement)[] | undefined)[]
 ): (string | JxElement)[] | undefined {
   const seen = new Set<string>();
   const merged: (string | JxElement)[] = [];
   for (const entry of lists.flatMap((list) => list ?? [])) {
-    const key =
-      typeof entry === "string"
-        ? entry
-        : ((entry as { $ref?: string } | null)?.$ref ?? JSON.stringify(entry));
+    /* An authored list can hold a `null` its type does not admit; it is keyed by its own JSON
+       (`"null"`) like any other entry without a `$ref`, rather than throwing. */
+    const ref = isNonNullObject(entry) ? entry.$ref : undefined;
+    const key = isString(entry) ? entry : (ref ?? JSON.stringify(entry));
     if (!seen.has(key)) {
       seen.add(key);
-      merged.push(entry as string | JxElement);
+      merged.push(entry);
     }
   }
   return merged.length > 0 ? merged : undefined;
@@ -142,22 +150,26 @@ function refPath(ref: string): string {
   return new URL(ref, "file:///").pathname;
 }
 
-/** Every custom-element tag a document tree names, root included. */
-function collectTagNames(node: unknown, into: Set<string>): void {
-  if (!node || typeof node !== "object") {
+/**
+ * Every custom-element tag a document tree names, root included.
+ *
+ * Text children are skipped, and so is a `null` an authored children array can still hold.
+ */
+function collectTagNames(node: JxElement | string, into: Set<string>): void {
+  if (!isNonNullObject(node)) {
     return;
   }
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      collectTagNames(child, into);
-    }
-    return;
-  }
-  const { children, tagName } = node as { children?: unknown; tagName?: unknown };
-  if (typeof tagName === "string" && tagName.includes("-")) {
+  const { children, tagName } = node;
+  if (isString(tagName) && tagName.includes("-")) {
     into.add(tagName);
   }
-  collectTagNames(children, into);
+  /* A repeater filling the whole children slot names no tag of its own, and its row template
+     (`map`) is not walked, so only an array of children leads anywhere. */
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      collectTagNames(child, into);
+    }
+  }
 }
 
 /**
@@ -197,21 +209,21 @@ async function discoverElements(io: SiteIO, doc: JxDocument): Promise<{ $ref: st
      bring components of its own — it is just not declared a second time. */
   const declared = new Set<string>();
   for (const entry of doc.$elements ?? []) {
-    const ref = (entry as { $ref?: unknown } | null)?.$ref;
-    if (typeof ref === "string") {
+    const ref = isNonNullObject(entry) ? entry.$ref : undefined;
+    if (isString(ref)) {
       declared.add(refPath(ref));
     }
   }
 
   const discovered: { $ref: string }[] = [];
   const opened = new Set<string>();
-  let frontier: unknown[] = [doc];
+  let frontier: JxDocument[] = [doc];
   while (frontier.length > 0) {
     const tags = new Set<string>();
     for (const node of frontier) {
       collectTagNames(node, tags);
     }
-    const next: unknown[] = [];
+    const next: JxDocument[] = [];
     for (const tag of tags) {
       const path = available.get(tag);
       if (path === undefined || opened.has(tag)) {
@@ -286,7 +298,7 @@ export async function composePage(
     );
   }
 
-  const merged = await resolveLayout(pageDoc, config as Record<string, unknown>, async (ref) => {
+  const merged = await resolveLayout(pageDoc, config, async (ref) => {
     const doc = await readDocument(io, ref.replace(/^\.\//, ""));
     if (!doc) {
       throw new ComposeError(`Layout not found: ${ref}`);
@@ -323,21 +335,25 @@ export async function composePage(
     merged.$elements = withDiscovered;
   }
 
+  /* SAFETY: `_pageHead` is no authored key; `resolveLayout` is its only writer and stores a page's
+     (or a nested layout's) `$head` array in it, which is the `JxHeadEntry[]` asserted here. */
   const pageHead = (pageDoc.$head ?? merged._pageHead ?? []) as JxHeadEntry[];
-  const layoutHead = (merged.$head ?? []) as JxHeadEntry[];
-  const siteHead = (config.$head ?? []) as JxHeadEntry[];
+  const layoutHead = merged.$head ?? [];
+  const siteHead = config.$head ?? [];
+  /* SAFETY: `pageDoc.title` and `config.name` are declared strings, and `_pageTitle` is no authored
+     key: `resolveLayout` is its only writer and stores a page's (or a nested layout's) `title`. */
   const title = (pageDoc.title ?? merged._pageTitle ?? config.name ?? "") as string;
   const lang =
-    (typeof pageDoc.$lang === "string" ? pageDoc.$lang : undefined) ??
+    (isString(pageDoc.$lang) ? pageDoc.$lang : undefined) ??
     localeOfRoute(route.urlPattern, i18n) ??
     config.defaults?.lang ??
     "en";
 
-  const head = mergeHead(siteHead, layoutHead, pageHead, {
-    lang,
-    title,
-    ...(config.name === undefined ? {} : { siteName: config.name }),
-  });
+  const headContext: HeadMergeContext = { lang, title };
+  if (config.name !== undefined) {
+    headContext.siteName = config.name;
+  }
+  const head = mergeHead(siteHead, layoutHead, pageHead, headContext);
 
   /* `$head` is merged out of the document and rendered into the shell, so leaving it on the
      document would have the runtime inject every entry a second time on mount. */

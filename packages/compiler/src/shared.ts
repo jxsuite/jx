@@ -9,6 +9,7 @@
 import {
   COLOR_SCHEME_ATTR,
   COLOR_SCHEME_STORAGE_KEY,
+  MAX_COMPONENT_NESTING,
   RESERVED_KEYS,
   booleanAttrValue,
   buildStyleRules,
@@ -26,30 +27,37 @@ import {
   childrenContainArray,
   hasStructuredBody,
   isExpressionDef,
+  isBoolean,
+  isFunction,
   isFunctionDef,
   isMappedArray,
   isNamedFormulaDef,
+  isNonNullObject,
+  isNumber,
   isPrototypeDef,
   isRef,
-  isSchemaOnlyDef as isSchemaOnly,
+  isSchemaOnlyDef,
   isServerFnDef,
+  isString,
   isTagExpression,
   isTemplateString,
   paramNames,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
+import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
 import type { ShadowMode } from "./shadow.ts";
-import type { ExpressionNode } from "@jxsuite/runtime/expression";
 import { readPath } from "@jxsuite/runtime/pointer";
+import type { JxScope } from "@jxsuite/runtime/types";
 import type {
+  CemParameter,
   JsonValue,
+  JxDocumentValue,
   JxElement,
   JxMutableNode,
   JxPrototypeDef,
   JxRef,
   JxStateDefinition,
-  JxStateObject,
   JxStyle,
   ProjectConfig,
 } from "@jxsuite/schema/types";
@@ -80,20 +88,49 @@ export { compileStatements, runStatements } from "@jxsuite/runtime/statements";
  * declared parameter names (honoring CemParameter defaults) as the `_args` object the compiled
  * body's `$args/` refs read from. Call sites stay positional, matching the interpreter.
  */
-export function emitFormulaFn(def: { parameters?: unknown[] }, compiledBody: string): string {
+export function emitFormulaFn(
+  def: { parameters?: readonly FormulaParameter[] | undefined },
+  compiledBody: string,
+): string {
   const entries: string[] = [];
   for (const [i, p] of (def.parameters ?? []).entries()) {
-    const name = typeof p === "string" ? p : ((p as { name?: string } | null)?.name ?? "");
+    const name = formulaParameterName(p);
     if (!name) {
       continue;
     }
-    const hasDefault = typeof p === "object" && p !== null && "default" in p;
-    const arg = hasDefault
-      ? `_a[${i}] === undefined ? ${JSON.stringify((p as { default?: unknown }).default)} : _a[${i}]`
+    const arg = hasParameterDefault(p)
+      ? `_a[${i}] === undefined ? ${JSON.stringify(p.default)} : _a[${i}]`
       : `_a[${i}]`;
     entries.push(`${JSON.stringify(name)}: ${arg}`);
   }
   return `(..._a) => { const _args = { ${entries.join(", ")} }; return ${compiledBody}; }`;
+}
+
+/**
+ * One declared formula parameter as a document holds it: a bare name or a CEM parameter object. A
+ * hand-edited list may also carry a `null` hole, which both the emitted and the build-time callable
+ * skip like an unnamed entry.
+ */
+type FormulaParameter = string | CemParameter | null;
+
+/**
+ * The name a formula parameter binds under `$args/`, or "" for an entry that names nothing.
+ *
+ * @param {FormulaParameter} p
+ * @returns {string}
+ */
+function formulaParameterName(p: FormulaParameter): string {
+  return isString(p) ? p : (p?.name ?? "");
+}
+
+/**
+ * Whether a formula parameter declares a `default`, which fills an argument the call site omits.
+ *
+ * @param {FormulaParameter} p
+ * @returns {boolean}
+ */
+function hasParameterDefault(p: FormulaParameter): p is CemParameter {
+  return isNonNullObject(p) && "default" in p;
 }
 
 /**
@@ -109,10 +146,10 @@ export function emitFormulaFn(def: { parameters?: unknown[] }, compiledBody: str
  * only reachable as `default as key`.
  *
  * @param {string} key - State key, and the local binding name
- * @param {unknown} def - The Function definition
+ * @param {SrcExportOwner} def - The Function definition
  * @returns {string}
  */
-export function srcImportBinding(key: string, def: unknown) {
+export function srcImportBinding(key: string, def: SrcExportOwner) {
   const exportName = srcExportName(key, def);
   return exportName === key ? key : `${exportName} as ${key}`;
 }
@@ -125,13 +162,22 @@ export function srcImportBinding(key: string, def: unknown) {
  * to, where the local name is chosen by the generated code and only the export name is fixed.
  *
  * @param {string} key - State key
- * @param {unknown} def - The Function definition
+ * @param {SrcExportOwner} def - The Function definition
  * @returns {string}
  */
-export function srcExportName(key: string, def: unknown): string {
-  const declared = (def as { $export?: unknown } | null | undefined)?.$export;
-  return typeof declared === "string" && declared !== "" ? declared : key;
+export function srcExportName(key: string, def: SrcExportOwner): string {
+  const declared = def?.$export;
+  return isString(declared) && declared !== "" ? declared : key;
 }
+
+/**
+ * The Function definition a `$src` export is named on, as the document holds it. `$export` is read
+ * unchecked from document data, so anything but a non-empty string falls back to the state key.
+ */
+type SrcExportOwner =
+  | { $export?: JxDocumentValue | undefined; [key: string]: JxDocumentValue | undefined }
+  | null
+  | undefined;
 
 /**
  * Emit the auto-fetch `effect()` for a `$prototype: "Request"` state entry.
@@ -173,7 +219,7 @@ export function emitRequestFetch(
 
   if (isTemplateUrl) {
     lines.push(
-      `  const url = \`${withStatePrefix(url as string, statePrefix)}\`;`,
+      `  const url = \`${withStatePrefix(url, statePrefix)}\`;`,
       '  if (!url || url === "undefined" || url.includes("undefined")) return;',
     );
   } else {
@@ -188,10 +234,9 @@ export function emitRequestFetch(
     fetchOpts.push(`headers: ${JSON.stringify(def.headers)}`);
   }
   if (def.body) {
-    const bodyStr =
-      typeof def.body === "object"
-        ? JSON.stringify(JSON.stringify(def.body))
-        : JSON.stringify(def.body);
+    const bodyStr = isNonNullObject(def.body)
+      ? JSON.stringify(JSON.stringify(def.body))
+      : JSON.stringify(def.body);
     fetchOpts.push(`body: ${bodyStr}`);
   }
 
@@ -229,7 +274,6 @@ function withStatePrefix(str: string, statePrefix: string) {
       `\${${expr.replaceAll(/(?<!this\.)\bstate\./g, `${statePrefix}.`)}}`,
   );
 }
-export type { ExpressionNode } from "@jxsuite/runtime/expression";
 
 /**
  * Non-enumerable marker on a build-time scope listing the state keys that hold no build-time value.
@@ -267,7 +311,7 @@ export function isClassJsonSrc(src?: unknown): src is string {
  * @returns {boolean}
  */
 export function isDynamic(def: JxElement | JxMutableNode | string) {
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return false;
   }
 
@@ -277,25 +321,20 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
       if (k === "$site" || k === "$page") {
         continue;
       }
+      if (!isNonNullObject(d) || Array.isArray(d)) {
+        return true;
+      }
       // Skip timing: "compiler" entries — resolved at build time, baked into static HTML
-      if (
-        d &&
-        typeof d === "object" &&
-        !Array.isArray(d) &&
-        (d as JxPrototypeDef).timing === "compiler"
-      ) {
+      if (d.timing === "compiler") {
         continue;
       }
-      if (typeof d !== "object" || d === null || Array.isArray(d)) {
+      if (d.$prototype) {
         return true;
       }
-      if ((d as JxPrototypeDef).$prototype) {
+      if ("default" in d) {
         return true;
       }
-      if ("default" in /** @type {object} */ d) {
-        return true;
-      }
-      if (isSchemaOnly(d)) {
+      if (isSchemaOnlyDef(d)) {
         continue;
       }
       return true;
@@ -317,11 +356,7 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
     if (RESERVED_KEYS.has(key)) {
       continue;
     }
-    if (
-      val !== null &&
-      typeof val === "object" &&
-      typeof (val as JxMutableNode).$ref === "string"
-    ) {
+    if (isRef(val)) {
       return true;
     }
     if (isTemplateString(val)) {
@@ -329,7 +364,7 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
     }
   }
 
-  if (def.style && typeof def.style === "object") {
+  if (isNonNullObject(def.style)) {
     for (const val of Object.values(def.style)) {
       if (isTemplateString(val)) {
         return true;
@@ -337,7 +372,7 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
     }
   }
 
-  if (def.attributes && typeof def.attributes === "object") {
+  if (isNonNullObject(def.attributes)) {
     for (const val of Object.values(def.attributes)) {
       if (isTemplateString(val)) {
         return true;
@@ -355,7 +390,7 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
  * @returns {boolean}
  */
 export function isNodeDynamic(def: JxElement | JxMutableNode | string) {
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return false;
   }
 
@@ -370,11 +405,7 @@ export function isNodeDynamic(def: JxElement | JxMutableNode | string) {
     if (RESERVED_KEYS.has(key)) {
       continue;
     }
-    if (
-      val !== null &&
-      typeof val === "object" &&
-      typeof (val as JxMutableNode).$ref === "string"
-    ) {
+    if (isRef(val)) {
       return true;
     }
     if (isTemplateString(val)) {
@@ -382,7 +413,7 @@ export function isNodeDynamic(def: JxElement | JxMutableNode | string) {
     }
   }
 
-  if (def.style && typeof def.style === "object") {
+  if (isNonNullObject(def.style)) {
     for (const val of Object.values(def.style)) {
       if (isTemplateString(val)) {
         return true;
@@ -390,7 +421,7 @@ export function isNodeDynamic(def: JxElement | JxMutableNode | string) {
     }
   }
 
-  if (def.attributes && typeof def.attributes === "object") {
+  if (isNonNullObject(def.attributes)) {
     for (const val of Object.values(def.attributes)) {
       if (isTemplateString(val)) {
         return true;
@@ -408,7 +439,7 @@ export function isNodeDynamic(def: JxElement | JxMutableNode | string) {
  * @returns {boolean}
  */
 export function hasAnyIsland(def: JxElement | JxMutableNode | string): boolean {
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return false;
   }
   if (isDynamic(def)) {
@@ -422,31 +453,58 @@ export function hasAnyIsland(def: JxElement | JxMutableNode | string): boolean {
 
 // ─── Scope / value resolution ─────────────────────────────────────────────────
 
-/**
- * @param {JxElement | JxMutableNode | null} raw
- * @param {Record<string, unknown> | null} [parentScope]
- * @param {Record<string, unknown>} [scopeDefs]
- * @param {Record<string, string>} [media]
- * @returns {CompileContext}
- */
+/** What a compile target threads down the tree: the scope in effect, its definitions and `$media`. */
 export interface CompileContext {
-  scope: Record<string, unknown>;
-  scopeDefs: Record<string, unknown>;
+  scope: JxScope;
+  /** The `state` definitions the scope was built from. */
+  scopeDefs: Record<string, JxStateDefinition>;
   media: Record<string, string>;
   /** True inside a `<pre>`-like subtree, where emitters must not indent nested children. */
   preformatted?: boolean;
 }
 
+/**
+ * @param {JxElement | JxMutableNode | null} raw
+ * @param {JxScope | null} [parentScope]
+ * @param {Record<string, JxStateDefinition>} [scopeDefs]
+ * @param {Record<string, string>} [media]
+ * @returns {CompileContext}
+ */
 export function createCompileContext(
   raw: JxElement | JxMutableNode | null,
-  parentScope: Record<string, unknown> | null = null,
-  scopeDefs: Record<string, unknown> = {},
+  parentScope: JxScope | null = null,
+  scopeDefs: Record<string, JxStateDefinition> = {},
   media: Record<string, string> = {},
 ): CompileContext {
-  const scope: Record<string, unknown> = raw?.state
+  const scope = raw?.state
     ? buildInitialScope(raw.state, parentScope)
-    : (parentScope ?? (Object.create(null) as Record<string, unknown>));
+    : (parentScope ?? emptyScope());
   return { media, scope, scopeDefs };
+}
+
+/**
+ * A fresh scope inheriting from `parent`, or from nothing at all, so no `Object.prototype` member
+ * can answer for an undeclared state key.
+ *
+ * @param {JxScope | null} [parent]
+ * @returns {JxScope}
+ */
+function emptyScope(parent: JxScope | null = null): JxScope {
+  /* SAFETY: `Object.create` returns a new object with no own keys whose prototype is `parent` (a
+     scope) or null, so every key it answers is a scope member or absent — exactly a JxScope. */
+  return Object.create(parent) as JxScope;
+}
+
+/**
+ * The runtime-only marks `buildInitialScope` attached to `scope` or to a scope it inherits from.
+ *
+ * @param {JxScope} scope
+ * @returns {Set<string> | undefined}
+ */
+function runtimeOnlyKeysOf(scope: JxScope): Set<string> | undefined {
+  /* SAFETY: `RUNTIME_ONLY_KEYS` is module-private and `buildInitialScope` is the only writer, which
+     always stores a `Set<string>` under it; a scope built anywhere else answers undefined. */
+  return (scope as { [RUNTIME_ONLY_KEYS]?: Set<string> })[RUNTIME_ONLY_KEYS];
 }
 
 /**
@@ -469,20 +527,19 @@ const STATE_MUTATING_METHOD_RE =
  * distinguishes it from a constant — but if a handler assigns to it, interpolating it at build time
  * replaces the template in the emitted output and the element is dead for the life of the page.
  *
- * @param {unknown} node
+ * @param {JxDocumentValue | undefined} node
  * @param {Set<string>} into
  */
-function collectAssignedStateKeys(node: unknown, into: Set<string>) {
-  if (typeof node === "string") {
+function collectAssignedStateKeys(node: JxDocumentValue | undefined, into: Set<string>) {
+  if (isString(node)) {
     for (const m of node.matchAll(STATE_ASSIGNMENT_RE)) {
+      // SAFETY: the pattern's one capture group is outside any optional part, so a match has it.
       into.add(m[1] as string);
     }
     for (const m of node.matchAll(STATE_MUTATING_METHOD_RE)) {
+      // SAFETY: the pattern's one capture group is outside any optional part, so a match has it.
       into.add(m[1] as string);
     }
-    return;
-  }
-  if (!node || typeof node !== "object") {
     return;
   }
   if (Array.isArray(node)) {
@@ -491,14 +548,22 @@ function collectAssignedStateKeys(node: unknown, into: Set<string>) {
     }
     return;
   }
-  const rec = node as Record<string, unknown>;
+  if (!isNonNullObject(node)) {
+    return;
+  }
+  /* SAFETY: `node` is a non-array object inside a handler body or an expression, so it is a
+     document object, and every member of a document object is itself a document value. */
+  const rec = node as Record<string, JxDocumentValue | undefined>;
   // A mutating expression names its destination as `target: { $ref: "#/state/x" }`.
-  const op = rec.operator;
-  if (typeof op === "string" && isMutating(op)) {
-    const target = rec.target as { $ref?: string } | undefined;
-    if (target && typeof target.$ref === "string" && target.$ref.startsWith("#/state/")) {
-      into.add(target.$ref.slice("#/state/".length).split("/")[0] as string);
-    }
+  const { operator, target } = rec;
+  if (
+    isString(operator) &&
+    isMutating(operator) &&
+    isRef(target) &&
+    target.$ref.startsWith("#/state/")
+  ) {
+    // SAFETY: `String.prototype.split` always returns at least one element.
+    into.add(target.$ref.slice("#/state/".length).split("/")[0] as string);
   }
   for (const value of Object.values(rec)) {
     collectAssignedStateKeys(value, into);
@@ -507,18 +572,18 @@ function collectAssignedStateKeys(node: unknown, into: Set<string>) {
 
 /**
  * @param {Record<string, JxStateDefinition>} [defs]
- * @param {Record<string, unknown> | null} [parentScope]
- * @returns {Record<string, unknown>}
+ * @param {JxScope | null} [parentScope]
+ * @returns {JxScope}
  */
 export function buildInitialScope(
   defs: Record<string, JxStateDefinition> = {},
-  parentScope: Record<string, unknown> | null = null,
+  parentScope: JxScope | null = null,
 ) {
-  const scope = Object.create(parentScope ?? null) as Record<string, unknown>;
+  const scope = emptyScope(parentScope);
   // Keys whose real value only exists after hydration, so prerender must not interpolate them —
   // See `readsRuntimeOnlyState`. Seeded from the parent so nested scopes inherit the marks.
-  const inherited = (parentScope as Record<PropertyKey, unknown> | null)?.[RUNTIME_ONLY_KEYS];
-  const runtimeOnly = new Set<string>(inherited instanceof Set ? (inherited as Set<string>) : []);
+  const inherited = parentScope ? runtimeOnlyKeysOf(parentScope) : undefined;
+  const runtimeOnly = new Set<string>(inherited);
   // Attached up front, and mutated in place by the passes below, so the template pass at the end can
   // Consult the marks the earlier passes added.
   Object.defineProperty(scope, RUNTIME_ONLY_KEYS, {
@@ -534,12 +599,8 @@ export function buildInitialScope(
   // Builder cannot open, so a write that only happens there is still missed (issue #125).
   const assigned = new Set<string>();
   for (const def of Object.values(defs)) {
-    if (def && typeof def === "object" && (isFunctionDef(def) || isExpressionDef(def))) {
-      collectAssignedStateKeys(
-        (def as { body?: unknown; $expression?: unknown }).body ??
-          (def as { $expression?: unknown }).$expression,
-        assigned,
-      );
+    if (isFunctionDef(def) || isExpressionDef(def)) {
+      collectAssignedStateKeys(def.body ?? def.$expression, assigned);
     }
   }
   for (const key of assigned) {
@@ -549,17 +610,16 @@ export function buildInitialScope(
   }
 
   for (const [key, def] of Object.entries(defs)) {
-    if (typeof def !== "object" || def === null || Array.isArray(def)) {
+    if (!isNonNullObject(def) || Array.isArray(def)) {
       setOwnScopeValue(scope, key, cloneValue(def));
       continue;
     }
-    const d = def as JxStateObject & JxPrototypeDef;
-    if ("default" in d) {
-      setOwnScopeValue(scope, key, cloneValue(d.default));
+    if ("default" in def) {
+      setOwnScopeValue(scope, key, cloneValue(def.default));
       continue;
     }
-    if (!d.$prototype && !("$expression" in d) && !isSchemaOnly(d)) {
-      setOwnScopeValue(scope, key, cloneValue(d));
+    if (!def.$prototype && !("$expression" in def) && !isSchemaOnlyDef(def)) {
+      setOwnScopeValue(scope, key, cloneValue(def));
     }
   }
 
@@ -572,34 +632,32 @@ export function buildInitialScope(
   const computedBodies: [string, string][] = [];
 
   for (const [key, def] of Object.entries(defs)) {
-    if (typeof def === "string" && isTemplateString(def)) {
+    if (isTemplateString(def)) {
       templateDefs.push([key, def]);
       continue;
     }
-    if (!def || typeof def !== "object") {
+    if (!isNonNullObject(def)) {
       continue;
     }
     if (isExpressionDef(def)) {
-      const node = def.$expression as ExpressionNode;
+      const node = def.$expression;
       if (isNamedFormulaDef(def)) {
         // Named formula: callable, positional args mapped onto its declared parameters.
-        const params = def.parameters as (string | { name?: string; default?: unknown })[];
-        setOwnScopeValue(scope, key, (...argValues: unknown[]) => {
-          const args: Record<string, unknown> = {};
+        const params: readonly FormulaParameter[] = def.parameters;
+        setOwnScopeValue(scope, key, (...argValues: JxScope[string][]) => {
+          const args: JxScope = {};
           for (const [i, p] of params.entries()) {
-            const name = typeof p === "string" ? p : (p?.name ?? "");
+            const name = formulaParameterName(p);
             if (!name) {
               continue;
             }
             args[name] =
-              argValues[i] === undefined && typeof p === "object" && p !== null && "default" in p
-                ? p.default
-                : argValues[i];
+              argValues[i] === undefined && hasParameterDefault(p) ? p.default : argValues[i];
           }
           return evaluateExpression(node, scope, null, { args });
         });
       } else if (isMutating(node.operator)) {
-        setOwnScopeValue(scope, key, (s: Record<string, unknown>, event: Event) =>
+        setOwnScopeValue(scope, key, (s: JxScope, event: Event) =>
           evaluateExpression(node, s, event),
         );
       } else {
@@ -609,12 +667,13 @@ export function buildInitialScope(
     }
     if (isFunctionDef(def)) {
       if (hasStructuredBody(def)) {
-        // Structured body (spec §20): a side-effecting handler in the build-time scope.
+        // Structured body (spec §20): a side-effecting handler in the build-time scope. Build-time
+        // Code may call it bare, so the scope it runs against falls back to this one.
         const { body } = def;
-        setOwnScopeValue(scope, key, (s: Record<string, unknown>, event?: Event) => {
+        setOwnScopeValue(scope, key, (s?: JxScope, event?: Event) => {
           void runStatements(body, s ?? scope, event ?? null);
         });
-      } else if (typeof def.body === "string") {
+      } else if (isString(def.body)) {
         const declared = def.parameters ? paramNames(def.parameters) : (def.arguments ?? []);
         const { body } = def;
         // Declared names bind by name, not by position (spec.md §5.3 4d): a parameter literally
@@ -623,8 +682,13 @@ export function buildInitialScope(
         // The older behaviour here — produced a duplicate parameter for the `["state", "event"]`
         // Form that examples/components/task-manager.json uses, leaving `state` undefined.
         const params = declared.includes("state") ? declared : ["state", ...declared];
-        const fn = new Function(...params, body) as (...args: unknown[]) => unknown;
-        const invoke = (state: Record<string, unknown>, event?: unknown) =>
+        /* SAFETY: `new Function` returns an ordinary function of exactly `params`; `invoke` below is
+           its only caller and passes the scope or the event in each position, and what the body
+           returns is one more scope member. */
+        const fn = new Function(...params, body) as (
+          ...args: (JxScope | Event | undefined)[]
+        ) => JxScope[string];
+        const invoke = (state: JxScope, event?: Event) =>
           fn(...params.map((name) => (name === "state" ? state : event)));
         if (bodyReturnsValue(body)) {
           defineLazyScopeValue(scope, key, () => invoke(scope));
@@ -677,11 +741,11 @@ export function buildInitialScope(
 }
 
 /**
- * @param {Record<string, unknown>} scope
+ * @param {JxScope} scope
  * @param {string} key
- * @param {unknown} value
+ * @param {JxScope[string]} value - Any scope member: document data or a build-time callable
  */
-export function setOwnScopeValue(scope: Record<string, unknown>, key: string, value: unknown) {
+export function setOwnScopeValue(scope: JxScope, key: string, value: JxScope[string]) {
   Object.defineProperty(scope, key, {
     configurable: true,
     enumerable: true,
@@ -691,15 +755,11 @@ export function setOwnScopeValue(scope: Record<string, unknown>, key: string, va
 }
 
 /**
- * @param {Record<string, unknown>} scope
+ * @param {JxScope} scope
  * @param {string} key
- * @param {() => unknown} getter
+ * @param {() => JxScope[string]} getter - Computes the member on read
  */
-export function defineLazyScopeValue(
-  scope: Record<string, unknown>,
-  key: string,
-  getter: () => unknown,
-) {
+export function defineLazyScopeValue(scope: JxScope, key: string, getter: () => JxScope[string]) {
   Object.defineProperty(scope, key, {
     configurable: true,
     enumerable: true,
@@ -708,16 +768,17 @@ export function defineLazyScopeValue(
 }
 
 /**
- * @param {unknown} value
- * @param {Record<string, unknown>} scope
+ * @param {JxDocumentValue | undefined} value - A bindable document value: a `$ref`, a template
+ *   string, or a literal returned as is
+ * @param {JxScope | null} scope
  * @returns {unknown}
  */
-export function resolveStaticValue(value: unknown, scope: Record<string, unknown> | null) {
-  if (isRefObject(value)) {
-    return resolveRefValue((value as JxMutableNode).$ref, scope!);
+export function resolveStaticValue(value: JxDocumentValue | undefined, scope: JxScope | null) {
+  if (isRef(value)) {
+    return resolveRefValue(value.$ref, scope!);
   }
   if (isTemplateString(value)) {
-    return evaluateStaticTemplate(value as string, scope!);
+    return evaluateStaticTemplate(value, scope);
   }
   return value;
 }
@@ -731,18 +792,22 @@ export function isRefObject(value: unknown): value is JxRef {
 }
 
 /**
- * @param {unknown} refValue
- * @param {Record<string, unknown>} scope
+ * @param {JsonValue | undefined} refValue - A `$ref` member as the document holds it; anything but
+ *   a string is returned as is
+ * @param {JxScope} scope
  * @returns {unknown}
  */
-export function resolveRefValue(refValue: unknown, scope: Record<string, unknown>) {
-  if (typeof refValue !== "string") {
+export function resolveRefValue(refValue: JsonValue | undefined, scope: JxScope) {
+  if (!isString(refValue)) {
     return refValue;
   }
   if (refValue.startsWith("$map/")) {
     const parts = refValue.split("/");
     const key = parts[1]!;
-    const base = (scope.$map as Record<string, unknown> | undefined)?.[key] ?? scope[`$map/${key}`];
+    /* SAFETY: `?.` stops at null and undefined, and every other value answers a member read by
+       name; the member comes back as a scope member, so the view claims nothing about its type. */
+    const row = scope.$map as JxScope | null | undefined;
+    const base = row?.[key] ?? scope[`$map/${key}`];
     return parts.length > 2 ? getPathValue(base, parts.slice(2).join("/")) : base;
   }
   if (refValue.startsWith("#/state/")) {
@@ -770,31 +835,32 @@ export function resolveRefValue(refValue: unknown, scope: Record<string, unknown
  * formulas (spec.md §19.4c) are meant to be used during prerender.
  *
  * @param {string} str
- * @param {Record<string, unknown>} scope
+ * @param {JxScope | null} scope
  * @returns {boolean}
  */
-function readsRuntimeOnlyState(str: string, scope: Record<string, unknown>) {
+function readsRuntimeOnlyState(str: string, scope: JxScope | null) {
   if (!scope) {
     return false;
   }
-  const runtimeOnly = (scope as Record<PropertyKey, unknown>)[RUNTIME_ONLY_KEYS];
+  const runtimeOnly = runtimeOnlyKeysOf(scope);
   for (const match of str.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*(\()?/g)) {
     if (match[2]) {
       continue;
     }
+    // SAFETY: capture group 1 is outside any optional part of the pattern, so a match has it.
     const key = match[1] as string;
-    if (runtimeOnly instanceof Set && runtimeOnly.has(key)) {
+    if (runtimeOnly?.has(key)) {
       return true;
     }
     // Reading the key can run a computed's getter, which is free to throw on partial build-time
     // Data. A throw says nothing about whether the entry is runtime-only, so it is not a mark.
-    let value: unknown;
+    let value: JxScope[string];
     try {
       value = scope[key];
     } catch {
       continue;
     }
-    if (typeof value === "function") {
+    if (isFunction(value)) {
       return true;
     }
   }
@@ -803,10 +869,10 @@ function readsRuntimeOnlyState(str: string, scope: Record<string, unknown>) {
 
 /**
  * @param {string} str
- * @param {Record<string, unknown>} scope
+ * @param {JxScope | null} scope
  * @returns {unknown}
  */
-export function evaluateStaticTemplate(str: string, scope: Record<string, unknown>) {
+export function evaluateStaticTemplate(str: string, scope: JxScope | null) {
   if (readsRuntimeOnlyState(str, scope)) {
     return null;
   }
@@ -822,7 +888,9 @@ export function evaluateStaticTemplate(str: string, scope: Record<string, unknow
   const values = [scope, scope?.$map, scope?.$site, scope?.$page];
   try {
     const body = isSingleExpression(str) ? `return (${str.slice(2, -1)})` : `return \`${str}\``;
-    const fn = new Function(...args, body) as (...a: unknown[]) => unknown;
+    /* SAFETY: `new Function` compiles exactly the four parameters in `args`, and its body returns a
+       template's value, which is whatever the scope it reads holds: one more scope member. */
+    const fn = new Function(...args, body) as (...a: JxScope[string][]) => JxScope[string];
     return fn(...values);
   } catch {
     return null;
@@ -830,20 +898,24 @@ export function evaluateStaticTemplate(str: string, scope: Record<string, unknow
 }
 
 /**
- * @param {unknown} base
+ * @param {JxScope[string]} base - A scope, or any member read from one
  * @param {string} path
  * @returns {unknown}
  */
-export function getPathValue(base: unknown, path: string) {
+export function getPathValue(base: JxScope[string], path: string) {
   return readPath(base, path);
 }
 
 /**
- * @param {unknown} value
- * @returns {unknown}
+ * A deep copy of an object, so a scope never aliases the document it was built from; anything else
+ * is returned as is.
+ *
+ * @template T
+ * @param {T} value
+ * @returns {T}
  */
-export function cloneValue(value: unknown) {
-  if (value === null || typeof value !== "object") {
+export function cloneValue<T>(value: T): T {
+  if (!isNonNullObject(value)) {
     return value;
   }
   return structuredClone(value);
@@ -857,12 +929,12 @@ export function cloneValue(value: unknown) {
  * class handle), so only a per-instance value is written on the element.
  *
  * @param {JxStyle | null | undefined} style
- * @param {Record<string, unknown> | null} scope
+ * @param {JxScope | null} scope
  * @returns {string} `prop: value; prop: value`, or "" when nothing resolves
  */
 export function inlineStyleDeclarations(
   style: JxStyle | null | undefined,
-  scope: Record<string, unknown> | null,
+  scope: JxScope | null,
 ): string {
   if (!style || !scope) {
     return "";
@@ -875,9 +947,6 @@ export function inlineStyleDeclarations(
         !k.startsWith("&") &&
         !k.startsWith("[") &&
         !k.startsWith("@") &&
-        v !== null &&
-        typeof v !== "object" &&
-        typeof v === "string" &&
         isTemplateString(v),
     )
     .map(([k, v]) => {
@@ -892,18 +961,14 @@ export function inlineStyleDeclarations(
  * Build an HTML attribute string from a static element definition.
  *
  * @param {JxElement | JxMutableNode} def
- * @param {Record<string, unknown>} scope
+ * @param {JxScope | null} scope
  * @param {string} [hostStyle] - Declarations resolved by the caller against ANOTHER scope, folded
  *   into the same `style` attribute after the node's own. A nested component instance is the one
  *   caller: its own `style` resolves against the parent's scope, while the definition's host style
  *   resolves against the instance's, and an element cannot carry two `style` attributes.
  * @returns {string}
  */
-export function buildAttrs(
-  def: JxElement | JxMutableNode,
-  scope: Record<string, unknown> | null,
-  hostStyle = "",
-) {
+export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null, hostStyle = "") {
   let out = "";
 
   const id = resolveStaticValue(def.id, scope);
@@ -971,18 +1036,14 @@ export function buildAttrs(
        * Sidebar's own not-the-current-page marker, and second-guessing it would be this same defect
        * Pointed the other way.
        */
-      if (typeof value === "boolean") {
+      if (isBoolean(value)) {
         const text = booleanAttrValue(k, value);
         if (text !== null) {
           out += text === "" ? ` ${k}` : ` ${k}="${escapeHtml(text)}"`;
         }
         continue;
       }
-      if (
-        value !== null &&
-        value !== undefined &&
-        (typeof value === "string" || typeof value === "number")
-      ) {
+      if (isString(value) || isNumber(value)) {
         out += ` ${k}="${escapeHtml(String(value))}"`;
       }
     }
@@ -1018,29 +1079,33 @@ export function childSeparator(preformatted: boolean | undefined, indent = "  ")
 }
 
 /**
+ * A {@link CompileContext} as a static emitter hands it to a node, before that node's own scope is
+ * known: the scope in effect may still be none.
+ */
+export type InnerCompileContext = Omit<CompileContext, "scope"> & { scope: JxScope | null };
+
+/**
  * Build the inner HTML (textContent or children) for a node.
  *
  * @param {JxElement} def
  * @param {JxElement | null} raw
- * @param {{
- *   scope: Record<string, unknown>;
- *   scopeDefs: Record<string, unknown>;
- *   media: Record<string, string>;
- *   preformatted?: boolean;
- * }} context
- * @param {(def: unknown, raw: unknown, context: unknown) => string} childCompiler
+ * @param {InnerCompileContext} context
+ * @param {(
+ *   def: JxElement | string,
+ *   raw: JxElement | string,
+ *   context: InnerCompileContext,
+ * ) => string} childCompiler
  * @returns {string}
  */
 export function buildInner(
   def: JxElement,
   raw: JxElement | null,
-  context: {
-    scope: Record<string, unknown> | null;
-    scopeDefs: Record<string, unknown>;
-    media: Record<string, string>;
-    preformatted?: boolean;
-  },
-  childCompiler: (def: unknown, raw: unknown, context: unknown) => string,
+  context: InnerCompileContext,
+  childCompiler: (
+    def: JxElement | string,
+    raw: JxElement | string,
+    context: InnerCompileContext,
+  ) => string,
 ) {
   const source = raw ?? def;
 
@@ -1049,13 +1114,14 @@ export function buildInner(
     return value == null ? "" : escapeHtml(String(value));
   }
   if (source.innerHTML) {
-    return (resolveStaticValue(source.innerHTML, context.scope) as string) ?? "";
+    const value = resolveStaticValue(source.innerHTML, context.scope);
+    return value == null ? "" : String(value);
   }
   if (Array.isArray(source.children)) {
     const rawChildren = raw?.children;
     return source.children
-      .map((c: JxElement | JxMutableNode | string, i: number) => {
-        const childRaw = (rawChildren as (JxElement | string)[] | undefined)?.[i] ?? c;
+      .map((c, i) => {
+        const childRaw = (Array.isArray(rawChildren) ? rawChildren[i] : undefined) ?? c;
         return childCompiler(c, childRaw, context);
       })
       .join(childSeparator(context.preformatted));
@@ -1127,7 +1193,7 @@ function recordDroppedReactive(
   value: string | JxRef,
   selector: string | null,
 ): null {
-  const source = typeof value === "string" ? value : value.$ref;
+  const source = isString(value) ? value : value.$ref;
   _droppedReactive.push({ property, selector, source });
   return null;
 }
@@ -1230,7 +1296,7 @@ export function compileStyles(
      `color-scheme` triplet a scheme query in `$media` still calls for, which is exactly what a
      page with a scheme query and no project style has always carried. */
   const projectSheet = buildSiteStyleCSS(
-    projectStyle && typeof projectStyle === "object" ? projectStyle : {},
+    isNonNullObject(projectStyle) ? projectStyle : {},
     mediaQueries,
     (value) => value,
     recordDroppedReactive,
@@ -1276,7 +1342,7 @@ export function collectStyles(
   prefix = "jx",
 ) {
   const counter = counterArg ?? { n: 0 };
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return;
   }
 
@@ -1307,16 +1373,9 @@ export function collectStyles(
   }
 
   // $switch case nodes render in place of the container's content — collect their styles too
-  if (def.cases && typeof def.cases === "object") {
-    for (const c of Object.values(def.cases)) {
-      collectStyles(
-        c as JxElement | JxMutableNode | string,
-        rules,
-        mediaQueries,
-        selector,
-        counter,
-        prefix,
-      );
+  if (isNonNullObject(def.cases)) {
+    for (const c of Object.values<JxElement | JxMutableNode>(def.cases)) {
+      collectStyles(c, rules, mediaQueries, selector, counter, prefix);
     }
   }
 }
@@ -1380,18 +1439,13 @@ export function collectSrcImports(doc: JxElement) {
  * @param {Set<string>} srcs
  */
 function _walkSrc(def: JxElement | JxMutableNode | string, srcs: Set<string>) {
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return;
   }
   if (def.state) {
     for (const d of Object.values(def.state)) {
-      if (
-        d &&
-        typeof d === "object" &&
-        (d as JxMutableNode).$prototype === "Function" &&
-        (d as JxMutableNode).$src
-      ) {
-        srcs.add((d as JxMutableNode).$src as string);
+      if (isFunctionDef(d) && d.$src) {
+        srcs.add(d.$src);
       }
     }
   }
@@ -1422,7 +1476,7 @@ function _walkServerEntries(
   def: JxElement | JxMutableNode | string,
   entries: Map<string, { key: string; exportName: string; src: string }>,
 ) {
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return;
   }
   if (def.state) {
@@ -1461,15 +1515,12 @@ export const SELF_CLOSING = new Set<string>([
  * precisely because the old `${…}` form was left as text and then re-resolved against the page
  * scope, where a component's own state is undefined.
  *
- * @param {unknown} tagName
- * @param {Record<string, unknown>} scope
+ * @param {TagNameSlot} tagName
+ * @param {JxScope | null} scope
  * @returns {string}
  */
-export function resolveStaticTagName(
-  tagName: unknown,
-  scope: Record<string, unknown> | null,
-): string {
-  if (typeof tagName === "string") {
+export function resolveStaticTagName(tagName: TagNameSlot, scope: JxScope | null): string {
+  if (isString(tagName)) {
     return tagName;
   }
   const candidates = tagNameCandidates(tagName);
@@ -1480,10 +1531,14 @@ export function resolveStaticTagName(
     return candidates[0]!;
   }
   const expression = tagName.$expression;
+  /* SAFETY: a tag expression is parsed from a document, so its `target` is a document value (a
+     `$ref`, a template string or a literal); the schema leaves it untyped only because any operand
+     may stand there. */
+  const target = expression.target as JxDocumentValue | undefined;
   if (expression.operator === "?:") {
-    return resolveStaticValue(expression.target, scope) ? expression.value : expression.initial;
+    return resolveStaticValue(target, scope) ? expression.value : expression.initial;
   }
-  const key = resolveStaticValue(expression.target, scope);
+  const key = resolveStaticValue(target, scope);
   return expression.cases[String(key)] ?? expression.default;
 }
 
@@ -1515,17 +1570,13 @@ interface PrerenderFrame {
   key: string;
 }
 
-/**
- * How deep component nesting may go before the build refuses to continue.
- *
- * The cycle check below catches a definition that renders ITSELF — same tag, same props — which is
- * the only shape that can never terminate. A self-reference whose props change at every level
- * (`depth: "${state.depth + 1}"`) is data-driven recursion, legitimate when a `$switch` bottoms it
- * out and unbounded when the author forgot to. The seen-set cannot tell those apart, so this cap is
- * what turns the second into a diagnostic instead of a stack overflow. Thirty-two is far beyond any
- * component library's real depth and far below the call stack's.
- */
-export const MAX_COMPONENT_NESTING = 32;
+/** What {@link liftPropsAttributes} splits an instance's attributes into. */
+export interface LiftedPropsAttributes {
+  /** The `props.*` values keyed by prop name, or null when the instance wrote none. */
+  lifted: Record<string, JsonValue> | null;
+  /** Every other attribute, unchanged. */
+  rest: NonNullable<JxElement["attributes"]>;
+}
 
 /**
  * Lift literal `props.*` attribute keys off an instance's attributes.
@@ -1538,20 +1589,17 @@ export const MAX_COMPONENT_NESTING = 32;
  * definition every page shares.
  *
  * @param {Record<string, JxAttributeValue> | undefined} attributes
- * @returns {{ lifted: Record<string, JsonValue> | null; rest: Record<string, JxAttributeValue> }}
- *   The lifted props (null when there were none) and the attributes that remain
+ * @returns {LiftedPropsAttributes} The lifted props (null when there were none) and the attributes
+ *   that remain
  */
-export function liftPropsAttributes(attributes: JxElement["attributes"]): {
-  lifted: Record<string, JsonValue> | null;
-  rest: NonNullable<JxElement["attributes"]>;
-} {
+export function liftPropsAttributes(attributes: JxElement["attributes"]): LiftedPropsAttributes {
   let lifted: Record<string, JsonValue> | null = null;
   const rest: NonNullable<JxElement["attributes"]> = {};
   for (const [key, value] of Object.entries(attributes ?? {})) {
     if (key.startsWith("props.") && key.length > "props.".length) {
       lifted ??= {};
-      // JxAttributeValue is JSON-representable (primitives or a $ref object), so the narrowing to
-      // JsonValue is sound.
+      /* SAFETY: a JxAttributeValue is a JSON primitive or a `{ $ref }` object with one string
+         member, so it is a JsonValue; only the interface's missing index signature hides that. */
       lifted[key.slice("props.".length)] = value as JsonValue;
     } else {
       rest[key] = value;
@@ -1571,32 +1619,31 @@ export function liftPropsAttributes(attributes: JxElement["attributes"]): {
  *
  * @param {JxElement} doc - Component definition
  * @param {Record<string, JsonValue> | null} props - Instance-specific prop values
- * @returns {Record<string, unknown>}
+ * @returns {JxScope}
  */
 export function buildInstanceScope(
   doc: JxElement,
   props: Record<string, JsonValue> | null,
-): Record<string, unknown> {
-  let stateDefs: Record<string, JxStateDefinition> = doc.state ?? {};
-  if (props) {
-    stateDefs = { ...stateDefs };
-    for (const [key, value] of Object.entries(props)) {
-      if (key in stateDefs) {
-        const existing = stateDefs[key];
-        stateDefs[key] =
-          existing &&
-          typeof existing === "object" &&
-          !Array.isArray(existing) &&
-          "default" in existing
-            ? { .../** @type {JxStateObject} */ existing, default: value }
-            : (value as JxStateDefinition);
-      } else {
-        stateDefs[key] = value as JxStateDefinition;
-      }
-    }
+): JxScope {
+  if (!props) {
+    return buildInitialScope(doc.state ?? {}, null);
+  }
+  const stateDefs = { ...doc.state };
+  for (const [key, value] of Object.entries(props)) {
+    const existing = stateDefs[key];
+    stateDefs[key] =
+      isNonNullObject(existing) && !Array.isArray(existing) && "default" in existing
+        ? { ...existing, default: value }
+        : value;
   }
   return buildInitialScope(stateDefs, null);
 }
+
+/**
+ * Resolved host declarations by (camelCase) property: each is what its template read from the
+ * instance's scope.
+ */
+export type ResolvedHostStyle = Record<string, JxScope[string]>;
 
 /**
  * The definition's host `style` entries that depend on the instance, resolved against it.
@@ -1607,26 +1654,22 @@ export function buildInstanceScope(
  * one.
  *
  * @param {JxStyle | null | undefined} style - The definition's `style`
- * @param {Record<string, unknown>} scope - The instance's scope (`buildInstanceScope`)
- * @returns {Record<string, unknown>} Resolved values by (camelCase) property
+ * @param {JxScope} scope - The instance's scope (`buildInstanceScope`)
+ * @returns {ResolvedHostStyle}
  */
 export function resolveHostStyle(
   style: JxStyle | null | undefined,
-  scope: Record<string, unknown>,
-): Record<string, unknown> {
-  const resolved: Record<string, unknown> = {};
-  if (!style) {
-    return resolved;
-  }
-  for (const [prop, value] of Object.entries(style)) {
-    if (typeof value === "string" && isTemplateString(value)) {
-      const val = resolveStaticValue(value, scope);
-      if (val != null) {
-        resolved[prop] = val;
+  scope: JxScope,
+): ResolvedHostStyle {
+  return Object.fromEntries(
+    Object.entries(style ?? {}).flatMap(([prop, value]) => {
+      if (!isTemplateString(value)) {
+        return [];
       }
-    }
-  }
-  return resolved;
+      const val = resolveStaticValue(value, scope);
+      return val == null ? [] : [[prop, val] as const];
+    }),
+  );
 }
 
 /**
@@ -1638,14 +1681,14 @@ export function resolveHostStyle(
  * the shape spec.md §17.2 recommends when every child is a bare string — prerendered to nothing.
  *
  * @param {JxElement | JxMutableNode} node
- * @param {Record<string, unknown> | null} scope
+ * @param {JxScope | null} scope
  * @param {string | null} slotContent
  * @param {ComponentPrerenderContext | null} context
  * @returns {string}
  */
 function renderInner(
   node: JxElement | JxMutableNode,
-  scope: Record<string, unknown> | null,
+  scope: JxScope | null,
   slotContent: string | null,
   context: ComponentPrerenderContext | null,
 ): string {
@@ -1655,7 +1698,7 @@ function renderInner(
   }
   if (node.innerHTML) {
     const val = resolveStaticValue(node.innerHTML, scope);
-    return val != null ? String(val) : (node.innerHTML as string);
+    return val != null ? String(val) : node.innerHTML;
   }
   if (Array.isArray(node.children)) {
     return node.children
@@ -1668,39 +1711,49 @@ function renderInner(
 }
 
 /**
+ * A child slot as the static renderer meets it: a node or a text string, plus the JSON scalars,
+ * holes and nested lists a hand-written `children` array may also carry.
+ */
+export type StaticChild =
+  | JxElement
+  | JxMutableNode
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | StaticChild[];
+
+/**
  * Recursively render a Jx node tree to static HTML for pre-rendering.
  *
- * @param {JxElement | JxMutableNode | string} node
- * @param {Record<string, unknown>} scope
+ * @param {StaticChild} node
+ * @param {JxScope | null} scope
  * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
  * @param {ComponentPrerenderContext | null} [context] - The component registry, when a custom
  *   element tag met here should be expanded rather than emitted bare
  * @returns {string}
  */
 export function renderStaticNode(
-  node: JxElement | JxMutableNode | string,
-  scope: Record<string, unknown> | null,
+  node: StaticChild,
+  scope: JxScope | null,
   slotContent: string | null = null,
   context: ComponentPrerenderContext | null = null,
 ): string {
-  if (typeof node === "string") {
+  if (isString(node)) {
     if (isTemplateString(node) && scope) {
       const val = evaluateStaticTemplate(node, scope);
       return val != null ? escapeHtml(String(val)) : escapeHtml(node);
     }
     return escapeHtml(node);
   }
-  if (typeof node === "number" || typeof node === "boolean") {
+  if (isNumber(node) || isBoolean(node)) {
     return escapeHtml(String(node));
   }
   if (Array.isArray(node)) {
-    return (node as (JxElement | JxMutableNode | string)[])
-      .map((c: JxElement | JxMutableNode | string): string =>
-        renderStaticNode(c, scope, slotContent, context),
-      )
-      .join("\n");
+    return node.map((c): string => renderStaticNode(c, scope, slotContent, context)).join("\n");
   }
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return "";
   }
 
@@ -1716,10 +1769,7 @@ export function renderStaticNode(
     const switchTag = node.tagName ?? "div";
     const attrs = buildAttrs(node, scope);
     const key = resolveStaticValue(node.$switch, scope);
-    const caseDef =
-      key == null
-        ? undefined
-        : (node.cases as Record<string, JxElement | string> | undefined)?.[String(key)];
+    const caseDef = key == null ? undefined : node.cases?.[String(key)];
     const inner =
       caseDef !== undefined && !isRefObject(caseDef)
         ? renderStaticNode(caseDef, scope, slotContent, context)
@@ -1775,7 +1825,7 @@ export function renderStaticNode(
  *
  * @param {JxElement | JxMutableNode} node - The instance as written in the parent's tree
  * @param {JxElement} def - The registered definition for its tag
- * @param {Record<string, unknown> | null} scope - The parent's scope
+ * @param {JxScope | null} scope - The parent's scope
  * @param {string | null} slotContent - The parent's slot content
  * @param {ComponentPrerenderContext} context
  * @returns {string}
@@ -1784,15 +1834,20 @@ export function renderStaticNode(
 function renderComponentInstance(
   node: JxElement | JxMutableNode,
   def: JxElement,
-  scope: Record<string, unknown> | null,
+  scope: JxScope | null,
   slotContent: string | null,
   context: ComponentPrerenderContext,
 ): string {
+  /* SAFETY: the caller looked `def` up in `componentDefs` by the node's resolved string tag, and
+     that registry is keyed by each definition's own `tagName`, so this is that same string. */
   const tag = def.tagName as string;
   const { lifted, rest: attributes } = liftPropsAttributes(node.attributes);
   const written = { ...lifted, ...node.$props };
   const props: Record<string, JsonValue> = {};
   for (const [key, value] of Object.entries(written)) {
+    /* SAFETY: a prop resolves against the parent's build-time scope, where what a `$ref` or template
+       may read is JSON state, and the props travel on as JSON either way (`data-jx-props` below), as
+       the page walk serializes a page-level instance's. */
     props[key] = (resolveStaticValue(value, scope) as JsonValue | null) ?? value;
   }
   const hasProps = Object.keys(props).length > 0;
@@ -1840,7 +1895,7 @@ function renderComponentInstance(
 
   // The element as the page walk would leave it: props consumed, children rendered, stamped. A
   // Copy, because `node` is a definition every page shares.
-  const instance: JxElement = { ...(node as JxElement) };
+  const instance = { ...node };
   delete instance.$props;
   delete instance.children;
   instance.attributes =
@@ -1891,7 +1946,7 @@ export function isComponentFullyStatic(doc: JxElement) {
  * @returns {boolean}
  */
 function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boolean {
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return true;
   }
   if (Array.isArray(node)) {
@@ -1910,14 +1965,13 @@ function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boole
   // Check state entries
   if (node.state) {
     for (const def of Object.values(node.state)) {
-      if (!def || typeof def !== "object") {
+      if (!isNonNullObject(def) || Array.isArray(def)) {
         continue;
       }
-      const d = def as JxMutableNode;
-      if (d.$prototype) {
+      if (def.$prototype) {
         return false;
       }
-      if (d.$ref) {
+      if (def.$ref) {
         return false;
       }
     }
@@ -1934,8 +1988,8 @@ function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boole
   if (Array.isArray(node.children)) {
     return node.children.every((c) => _isStaticNode(c));
   }
-  // Children descriptor object ($prototype: "Array", etc.)
-  if (node.children && typeof node.children === "object" && node.children.$prototype) {
+  // The legacy bare children slot: a mapped array builds its children at runtime.
+  if (isMappedArray(node.children)) {
     return false;
   }
 
@@ -2015,7 +2069,7 @@ export function buildComponentCSS(
    */
   const scope = styleScopePrefix(tagName, shadow);
 
-  if (styleDef && typeof styleDef === "object") {
+  if (isNonNullObject(styleDef)) {
     /* The top level is walked here rather than handed straight to the builder, because ONE of its
        keys does not mean what `resolveNestedSelector` would make of it: `:host` and `:host(.foo)`
        are TRANSLATED per {@link resolveSelector} so a style object means the same thing in both
@@ -2030,8 +2084,8 @@ export function buildComponentCSS(
          not an at-rule, not a nested selector — and was dropped without reaching the builder at
          all, so the one emitter that could have reported it never saw it. */
       if (isRef(value)) {
-        own[prop] = value as never;
-      } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        own[prop] = value;
+      } else if (isNonNullObject(value) && !Array.isArray(value)) {
         blocks.push([prop, value]);
       } else if (!prop.startsWith("@") && !isNestedSelectorKey(prop)) {
         own[prop] = value;

@@ -18,11 +18,8 @@ export const canvasSlashHandler: CanvasSlashHandler = {
      opened. Typing "/" needs none — the author keeps typing into the iframe's contenteditable and
      the engine re-posts `slashShow` with the updated filter. A menu opened BY NAME
      (`insert.openSlashMenu`) has no "/…" run to type into, so without the field the only way past
-     fifteen blocks is scrolling. */
+     fifteen blocks is scrolling. The menu reads `showFilter` for truthiness alone, so `false` and an
+     absent key are one state to it. */
   show: ({ rect, filter, showFilter, onSelect, onDismiss }) =>
-    showSlashMenuAtRect(rect, filter, {
-      onDismiss,
-      onSelect,
-      ...(showFilter === true ? { showFilter: true } : {}),
-    }),
+    showSlashMenuAtRect(rect, filter, { onDismiss, onSelect, showFilter: showFilter === true }),
 };

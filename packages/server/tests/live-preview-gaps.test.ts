@@ -11,28 +11,32 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 
 /* The project's format registry. On a desktop backend this is real and markdown pages render; a
    Worker has no such thing and the composer reports the page by name instead. */
-let parseImpl: ((text: string) => unknown) | null = null;
+let parseImpl: ((text: string) => JsonObject) | null = null;
 let registryFailure: string | null = null;
 /* What the host asked the registry to be built FROM. Recorded rather than ignored: a stub that
    answers `.md` whatever it is handed cannot tell a host that passes the project's config from one
    that does not, and the extension list lives in that config — see
    `live-preview-markdown.test.ts`, which drives the real registry for the same reason. */
-const registryCalls: { config: unknown; root: string }[] = [];
+const registryCalls: { config: ProjectConfig | undefined; root: string }[] = [];
 
 void mock.module("@jxsuite/compiler/format-host", () => ({
-  buildProjectFormatRegistry: (root: string, config?: unknown) => {
+  buildProjectExtensionRegistry: (root: string, config?: ProjectConfig) => {
     registryCalls.push({ config, root });
     if (registryFailure !== null) {
       return Promise.reject(new Error(registryFailure));
     }
     return Promise.resolve({
-      byExtension: (ext: string) =>
-        parseImpl && ext === ".md"
-          ? { call: (_capability: string, text: string) => Promise.resolve(parseImpl!(text)) }
-          : undefined,
+      formats: {
+        byExtension: (ext: string) =>
+          parseImpl && ext === ".md"
+            ? { parseDocument: (text: string) => Promise.resolve(parseImpl!(text)) }
+            : undefined,
+      },
     });
   },
 }));
@@ -69,14 +73,10 @@ const {
 
 const TMP = resolve(import.meta.dir, "__test-live-preview-gaps__");
 
-function write(relPath: string, content: string | object) {
+function write(relPath: string, content: string | JsonObject) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 beforeAll(() => {

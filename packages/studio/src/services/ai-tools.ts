@@ -10,7 +10,7 @@
 
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolRegistry, ToolResult, WriteLedger } from "@jxsuite/ai/tools";
-import type { JxMutableNode, JxPath, JxStateDefinition } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import { getNodeAtPath } from "../state";
 import type { Tab } from "../tabs/tab";
 import {
@@ -32,7 +32,7 @@ import {
   snapshotBeforeWrite,
   translateValidationError,
 } from "./ai-write-report";
-import type { RenderVerdict } from "./ai-write-report";
+import type { CandidateDocument, RenderVerdict } from "./ai-write-report";
 
 /* Re-exported from its new home so `ai-project-tools.ts` and the tests keep their import: the
    translation moved with the verdict it belongs to (`ai-write-report.ts`), where every document
@@ -42,6 +42,14 @@ export { translateValidationError } from "./ai-write-report";
 const PATH_DESCRIPTION =
   "Path to a node in the document, as a JSON array of keys/indices from the root " +
   '(e.g. ["children", 0, "children", 1]). Use read_document to discover valid paths.';
+
+/**
+ * The node at `path`, typed as what {@link getNodeAtPath} actually answers: a path the model made up
+ * runs off the tree, and that is `undefined`, which every tool here reports as "No node exists".
+ */
+function nodeAt(doc: JxMutableNode, path: JxPath): JxMutableNode | undefined {
+  return getNodeAtPath(doc, path);
+}
 
 /** Steering error for document tools called with no active tab. */
 function noDocError(): ToolResult {
@@ -64,8 +72,8 @@ function noDocError(): ToolResult {
  * @param {import("../tabs/tab").Tab} tab
  * @param {(t: import("../tabs/tab").Tab) => void} mutationFn
  * @param {string} summary
- * @param {(doc: unknown) => Promise<string[]>} validate
- * @param {((doc: unknown) => Promise<RenderVerdict>) | undefined} renderCheck
+ * @param {(doc: CandidateDocument) => Promise<string[]>} validate
+ * @param {((doc: CandidateDocument) => Promise<RenderVerdict>) | undefined} renderCheck
  * @param {Record<string, string> | undefined} projectStyle
  * @returns {Promise<import("@jxsuite/ai/tools").ToolResult>}
  */
@@ -74,8 +82,8 @@ async function applyAndValidate(
   tab: Tab,
   mutationFn: (t: Tab) => void,
   summary: string,
-  validate: (doc: unknown) => Promise<string[]>,
-  renderCheck: ((doc: unknown) => Promise<RenderVerdict>) | undefined,
+  validate: (doc: CandidateDocument) => Promise<string[]>,
+  renderCheck: ((doc: CandidateDocument) => Promise<RenderVerdict>) | undefined,
   projectStyle: Record<string, string> | undefined,
 ): Promise<ToolResult> {
   const deps = { getProjectStyle: () => projectStyle, renderCheck, validate };
@@ -109,9 +117,9 @@ async function applyAndValidate(
  * @param {import("@jxsuite/ai/tools").ToolRegistry} registry
  * @param {{
  *   getTab: () => import("../tabs/tab").Tab | null;
- *   validate?: (doc: unknown) => Promise<string[]>;
+ *   validate?: (doc: CandidateDocument) => Promise<string[]>;
  *   saveFile?: (relPath: string, content: string) => Promise<void>;
- *   renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
+ *   renderCheck?: (doc: CandidateDocument) => Promise<{ ok: true } | { ok: false; error: string }>;
  *   projectStyle?: Record<string, string>;
  *   getProjectStyle?: () => Record<string, string> | undefined;
  *   findOpenTab?: (path: string) => import("../tabs/tab").Tab | null;
@@ -131,9 +139,9 @@ export function registerAiTools(
     reloadTab,
   }: {
     getTab: () => Tab | null;
-    validate?: (doc: unknown) => Promise<string[]>;
+    validate?: (doc: CandidateDocument) => Promise<string[]>;
     saveFile?: (relPath: string, content: string) => Promise<void>;
-    renderCheck?: (doc: unknown) => Promise<{ ok: true } | { ok: false; error: string }>;
+    renderCheck?: (doc: CandidateDocument) => Promise<{ ok: true } | { ok: false; error: string }>;
     projectStyle?: Record<string, string> | undefined;
     /**
      * Live variant of `projectStyle` — takes precedence; re-read per tool call so a project
@@ -195,9 +203,11 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, which refuses
+           a `path` that is present but not an array. Its items are not checked; a key that does
+           not resolve makes `nodeAt` answer undefined, reported just below. */
         const { path } = args as { path?: JxPath };
-        const node =
-          path && path.length > 0 ? getNodeAtPath(tab.doc.document, path) : tab.doc.document;
+        const node = path && path.length > 0 ? nodeAt(tab.doc.document, path) : tab.doc.document;
         if (node === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
@@ -239,8 +249,12 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
+           present array and `key` a present string. `value` declares no type, so it is any JSON
+           value or absent, all of which `JxNodeValue` includes. A `path` whose items do not resolve
+           is caught by `nodeAt` just below. */
         const { path, key, value } = args as { path: JxPath; key: string; value?: JxNodeValue };
-        const node = getNodeAtPath(tab.doc.document, path);
+        const node = nodeAt(tab.doc.document, path);
         if (node === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
@@ -286,6 +300,11 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `parentPath` is
+           a present array, `node` a present object, and `index` a present number — or a numeric
+           string, which the validator also admits for an integer and `splice` coerces alike.
+           `node` is a model-written tree whose shape the schema check after the write judges, and
+           a `parentPath` that does not resolve is caught just below. */
         const {
           parentPath,
           index,
@@ -295,7 +314,7 @@ export function registerAiTools(
           index: number;
           node: JxMutableNode;
         };
-        const parent = getNodeAtPath(tab.doc.document, parentPath);
+        const parent = nodeAt(tab.doc.document, parentPath);
         if (parent === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(parentPath)}.` };
         }
@@ -373,12 +392,12 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
-        const { path, property, value } = args as {
-          path: JxPath;
-          property: string;
-          value?: unknown;
-        };
-        if (getNodeAtPath(tab.doc.document, path) === undefined) {
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
+           present array and `property` a present string; a `path` that does not resolve is caught
+           just below. `value` is read untyped and stringified. */
+        const { path, property } = args as { path: JxPath; property: string };
+        const { value } = args;
+        if (nodeAt(tab.doc.document, path) === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         const prop = property;
@@ -420,8 +439,11 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
+           present array and `value` a present string; a `path` that does not resolve is caught
+           just below. */
         const { path, value } = args as { path: JxPath; value: string };
-        if (getNodeAtPath(tab.doc.document, path) === undefined) {
+        if (nodeAt(tab.doc.document, path) === undefined) {
           return { success: false, error: `No node exists at path ${JSON.stringify(path)}.` };
         }
         return applyAndValidate(
@@ -469,7 +491,10 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
-        const { key, value } = args as { key: string; value: JxStateDefinition };
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, so `key` is a
+           present string. */
+        const { key } = args as { key: string };
+        const { value } = args;
         if (tab.doc.document.state && tab.doc.document.state[key] !== undefined) {
           return {
             success: false,
@@ -482,6 +507,10 @@ export function registerAiTools(
           /* `mutateAddDef` rather than `mutateUpdateProperty`: the latter deletes on "", which is
              wrong for a state default (`"title": ""`). It also records the op, so the canvas, the
              history and collaborators each get the edit as an edit. */
+          /* SAFETY: `value` is required, so the registry refused it missing or null; it is the
+             model's state entry, possibly a scalar default (`0`, `""`) the schema admits.
+             `mutateAddDef` only clones `def` and stores it under `state[key]`, never reading it
+             as the object its parameter names. */
           (t) => mutateAddDef(t, key, value as Record<string, JsonValue>),
           `Added state "${key}".`,
           validate,
@@ -519,7 +548,10 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
-        const { key, value } = args as { key: string; value?: JxStateDefinition | null };
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, so `key` is a
+           present string. */
+        const { key } = args as { key: string };
+        const { value } = args;
         if (!tab.doc.document.state || tab.doc.document.state[key] === undefined) {
           return {
             success: false,
@@ -535,6 +567,9 @@ export function registerAiTools(
             if (value == null) {
               mutateRemoveDef(t, key);
             } else {
+              /* SAFETY: the model's state entry, possibly a scalar default the schema admits.
+                 `mutateAddDef` only clones `def` and stores it under `state[key]`, never reading
+                 it as the object its parameter names. */
               mutateAddDef(t, key, value as Record<string, JsonValue>);
             }
           },
@@ -580,6 +615,9 @@ export function registerAiTools(
         if (!tab) {
           return noDocError();
         }
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: both paths are
+           present arrays, and `toIndex` a present number or numeric string (the validator admits
+           both for an integer). Paths that do not resolve are caught just below. */
         const { fromPath, toParentPath, toIndex } = args as {
           fromPath: JxPath;
           toParentPath: JxPath;
@@ -588,13 +626,13 @@ export function registerAiTools(
         if (fromPath.length < 2) {
           return { success: false, error: "Cannot move the document root." };
         }
-        if (getNodeAtPath(tab.doc.document, fromPath) === undefined) {
+        if (nodeAt(tab.doc.document, fromPath) === undefined) {
           return {
             success: false,
             error: `No node exists at fromPath ${JSON.stringify(fromPath)}.`,
           };
         }
-        if (getNodeAtPath(tab.doc.document, toParentPath) === undefined) {
+        if (nodeAt(tab.doc.document, toParentPath) === undefined) {
           return {
             success: false,
             error: `No node exists at toParentPath ${JSON.stringify(toParentPath)}.`,
@@ -644,7 +682,10 @@ export function registerAiTools(
             error: "File operations are not available in this environment.",
           };
         }
-        const { path, content } = args as { path: string; content: object };
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
+           present string and `content` a present JSON object (not an array, not null). Whether that
+           object is a Jx document is what `validate` and `renderCheck` below decide. */
+        const { path, content } = args as { path: string; content: JsonObject };
         // Inside the project or not at all (ai.md §4): the platform write is given this path.
         const relPath = normalizeRelPath(path);
         if (relPath === null) {
@@ -728,7 +769,10 @@ export function registerAiTools(
             error: "File operations are not available in this environment.",
           };
         }
-        const { path, content } = args as { path: string; content: object };
+        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `path` is a
+           present string and `content` a present JSON object (not an array, not null). Whether that
+           object is a Jx document is what `validate` and `renderCheck` below decide. */
+        const { path, content } = args as { path: string; content: JsonObject };
         const relPath = normalizeRelPath(path);
         if (relPath === null) {
           return invalidPathResult(path);

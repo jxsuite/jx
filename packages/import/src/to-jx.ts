@@ -1,4 +1,5 @@
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
 
 export interface ToJxResult {
@@ -39,27 +40,30 @@ export const STRIP_TAGS = new Set([
 ]);
 
 function countNodes(node: JxElement | string): number {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return 0;
   }
   let n = 1;
   if (Array.isArray(node.children)) {
     for (const c of node.children) {
-      n += countNodes(c as JxElement | string);
+      n += countNodes(c);
     }
   }
   return n;
 }
 
-function stripTags(nodes: (JxElement | string)[]): {
+/** A converted subtree with the stripped tags removed, and the inline CSS harvested from them. */
+interface StrippedNodes {
   cleaned: (JxElement | string)[];
   styles: string[];
-} {
+}
+
+function stripTags(nodes: (JxElement | string)[]): StrippedNodes {
   const cleaned: (JxElement | string)[] = [];
   const styles: string[] = [];
 
   for (const node of nodes) {
-    if (typeof node === "string") {
+    if (isString(node)) {
       cleaned.push(node);
       continue;
     }
@@ -69,7 +73,7 @@ function stripTags(nodes: (JxElement | string)[]): {
     // Collect inline <style> content for Phase 1. Style elements hold raw text, which htmlToJx
     // Always collapses into textContent (never string children).
     if (tag === "style") {
-      if (typeof node.textContent === "string") {
+      if (isString(node.textContent)) {
         styles.push(node.textContent);
       }
       continue;
@@ -81,8 +85,8 @@ function stripTags(nodes: (JxElement | string)[]): {
 
     // Recurse into children
     if (Array.isArray(node.children)) {
-      const sub = stripTags(node.children as (JxElement | string)[]);
-      node.children = sub.cleaned as JxElement[];
+      const sub = stripTags(node.children);
+      node.children = sub.cleaned;
       styles.push(...sub.styles);
     }
 
@@ -98,7 +102,7 @@ export function convertToJx(bodyHtml: string): ToJxResult {
 
   const document: JxElement = {
     tagName: "div",
-    children: cleaned as JxElement[],
+    children: cleaned,
   };
 
   return {

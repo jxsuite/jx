@@ -1,6 +1,6 @@
 // oxlint-disable unicorn/no-process-exit -- standalone launcher CLI; exit codes are its interface
 import { basename, isAbsolute, resolve } from "node:path";
-import type { SettingsPatch } from "@jxsuite/protocol";
+import type { KeyValuePatch } from "@jxsuite/protocol";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import {
@@ -91,6 +91,9 @@ import {
   watchFocusRequests,
 } from "./window-registry";
 import { createProjectServer } from "@jxsuite/server/project-server";
+import type { RpcHandler, RpcResult } from "@jxsuite/server/project-server";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { listStarters } from "@jxsuite/starters";
 import { readRecents, writeRecents } from "../recent-store";
 import { patchSettings, readSettings, watchSettings } from "../settings-store";
@@ -100,7 +103,7 @@ import {
   githubTokenStatus,
   setAuthorizationHost,
 } from "../github-signin";
-import type { RecentProjectEntry } from "../rpc-schema";
+import type { RecentProjectEntry, StudioRPC } from "../rpc-schema";
 
 // ─── Project root ────────────────────────────────────────────────────────────
 
@@ -179,8 +182,8 @@ const profileDir =
  * @param root Project to open, or null for a welcome window.
  */
 function spawnWindow(root: string | null): void {
-  const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
     JX_STUDIO_PROFILE_DIR: root ? projectProfile(root) : nextWelcomeProfile(),
     /* "No project" has to be explicit, because the child inherits this process's cwd and would
        otherwise adopt whatever project lives there. */
@@ -206,7 +209,9 @@ function spawnWindow(root: string | null): void {
  * The answer is asked BEFORE anything is opened, because the caller has to be able to report which
  * of the two happened — "opened in a new window" is a lie when a window merely came forward.
  */
-function openProjectInNewWindow(root: string): { focused: boolean } {
+function openProjectInNewWindow(
+  root: string,
+): StudioRPC["bun"]["requests"]["openProjectInNewWindow"]["response"] {
   const existing = findWindowByRoot(root);
   if (existing) {
     requestFocus(existing.pid);
@@ -218,67 +223,77 @@ function openProjectInNewWindow(root: string): { focused: boolean } {
 
 // ─── RPC handler dispatch map ────────────────────────────────────────────────
 
+/**
+ * Adapt a handler typed against its own params to the project server's {@link RpcHandler}.
+ *
+ * The server hands every handler the request frame's decoded `params`, untyped. What the shell
+ * sends under each method name is fixed by rpc-schema.ts, which Studio's chromium transport and the
+ * electrobun build's `defineRPC<StudioRPC>` map both compile against, and tests/_rpc-parity.ts
+ * holds this map's method names to that schema. A handler that resolves `void` resolves
+ * `undefined`, which the server sends as `null`.
+ */
+function wire<P>(handler: (params: P) => Promise<RpcResult> | Promise<void>): RpcHandler {
+  /* SAFETY: `params` is the decoded frame the shell sent for this method, whose shape rpc-schema.ts
+     declares and `handler`'s signature (P) restates; and a `Promise<void>` settles to `undefined`,
+     which is an RpcResult. */
+  return (params) => handler(params as P) as Promise<RpcResult>;
+}
+
 /* Exported so the schema↔handler parity test can enumerate the registered method names without
    standing up a browser: a request declared in rpc-schema.ts with no entry here reaches Studio as a
    silent empty result (that is exactly how searchFiles shipped unhandled). */
-export const handlers: Record<string, (params: unknown) => Promise<unknown>> = {
-  addPackage: (params) => addPackage(params as { name: string }),
-  codeService: (params) => codeService(params),
+export const handlers = {
+  addPackage: wire(addPackage),
+  /* `codeService` declares no params today, but the frame's params are still handed through, so a
+     backend that grows them receives what the shell sent. */
+  codeService: wire(codeService),
   dependenciesNeedInstall: () => dependenciesNeedInstall(),
-  createDirectory: (params) => handleCreateDirectory(params as { path: string }),
-  deleteFile: (params) => handleDeleteFile(params as { path: string }),
-  discoverComponents: (params) => discoverComponents(params as { dir?: string }),
-  fetchPluginSchema: (params) =>
-    fetchPluginSchema(params as { src: string; prototype?: string; base?: string }),
-  formatAction: (params) =>
-    formatAction(
-      params as {
-        format: string;
-        action: string;
-        source?: string;
-        doc?: Record<string, unknown>;
-        options?: Record<string, unknown>;
-      },
-    ),
-  gitAddRemote: (params) => gitAddRemote(params as { name: string; url: string }),
+  createDirectory: wire(handleCreateDirectory),
+  deleteFile: wire(handleDeleteFile),
+  discoverComponents: wire(discoverComponents),
+  fetchPluginSchema: wire(fetchPluginSchema),
+  formatAction: wire(formatAction),
+  gitAddRemote: wire(gitAddRemote),
   gitBranches: () => gitBranches(),
   // `View: Open in Browser` builds before it opens, so the reader sees what the author sees.
   buildSite: () => buildSite(),
-  previewSite: (params) => previewSite(params as { route: string }),
+  previewSite: wire(previewSite),
   /* Both publish synchronously into an in-memory overlay — `rpc-schema` declares `response: void`
      and `createProjectSession` throws where it is called, which `preview-site.test.ts` pins. The
      map's contract is a promise, so the adaptation is here rather than in the session. */
-  setPreviewOverlay: async (params) =>
-    setPreviewOverlay(params as { contents: string; path: string }),
-  clearPreviewOverlay: async (params) => clearPreviewOverlay(params as { path?: string }),
-  gitCheckout: (params) => gitCheckout(params as { branch: string }),
-  gitCommit: (params) => gitCommit(params as { message: string }),
-  gitCreateBranch: (params) => gitCreateBranch(params as { name: string }),
-  gitDiff: (params) => gitDiff(params as { path?: string }),
-  gitDiscard: (params) => gitDiscard(params as { files: string[] }),
-  gitFetch: () => gitFetch(),
-  gitInit: () => gitInit(),
-  gitLog: (params) => gitLog(params as { limit?: number }),
-  gitPull: () => gitPull(),
-  gitPush: (params) => gitPush(params as { setUpstream?: boolean }),
-  gitShow: (params) => gitShow(params as { path: string; ref?: string }),
-  gitStage: (params) => gitStage(params as { files: string[] }),
+  setPreviewOverlay: wire(async (params: Parameters<typeof setPreviewOverlay>[0]) =>
+    setPreviewOverlay(params),
+  ),
+  clearPreviewOverlay: wire(async (params: Parameters<typeof clearPreviewOverlay>[0]) =>
+    clearPreviewOverlay(params),
+  ),
+  gitCheckout: wire(gitCheckout),
+  gitCommit: wire(gitCommit),
+  gitCreateBranch: wire(gitCreateBranch),
+  gitDiff: wire(gitDiff),
+  gitDiscard: wire(gitDiscard),
+  gitFetch: wire(() => gitFetch()),
+  gitInit: wire(() => gitInit()),
+  gitLog: wire(gitLog),
+  gitPull: wire(() => gitPull()),
+  gitPush: wire(gitPush),
+  gitShow: wire(gitShow),
+  gitStage: wire(gitStage),
   gitStatus: () => gitStatus(),
-  gitUnstage: (params) => gitUnstage(params as { files: string[] }),
+  gitUnstage: wire(gitUnstage),
   fetchProjectSchemas: () => fetchProjectSchemas(),
-  listDirectory: (params) => listDirectory(params as { dir: string }),
+  listDirectory: wire(listDirectory),
   listExtensionCatalog: () => listExtensionCatalog(),
   listExtensions: () => listExtensions(),
   listFormats: () => listFormats(),
   installDependencies: () => installDependencies(),
   listPackages: () => listPackages(),
-  locateFile: (params) => locateFile(params as { name: string }),
-  searchFiles: (params) => searchFiles(params as { query: string; extensions?: string[] }),
+  locateFile: wire(locateFile),
+  searchFiles: wire(searchFiles),
   packageVersions: () => packageVersions(),
-  setPackageVersions: (params) =>
-    setPackageVersions(params as { updates: { name: string; version: string; dev?: boolean }[] }),
+  setPackageVersions: wire(setPackageVersions),
   openProject: () => openProject(),
-  openExternal: (params) => openExternal(params as { url: string }),
+  openExternal: wire(openExternal),
   // About screen. No `updateStatus`: this build is replaced by whatever packaged it, not by itself.
   appInfo: () => Promise.resolve(appInfo()),
   // The picker WITHOUT the binding — `openProject` above re-roots this window as part of picking,
@@ -288,41 +303,20 @@ export const handlers: Record<string, (params: unknown) => Promise<unknown>> = {
     return picked && { name: picked.name, root: picked.root };
   },
   // Multi-window. A window is a launcher process here; window-registry.ts is the map.
-  newWindow: () => {
+  newWindow: wire(() => {
     spawnWindow(null);
     return Promise.resolve();
-  },
-  openProjectInNewWindow: (params) =>
-    Promise.resolve(openProjectInNewWindow((params as { root: string }).root)),
+  }),
+  openProjectInNewWindow: wire(({ root }: { root: string }) =>
+    Promise.resolve(openProjectInNewWindow(root)),
+  ),
   listOpenWindows: () =>
     Promise.resolve(listWindows().map((win) => ({ id: win.pid, projectRoot: win.root }))),
-  createProject: (params) =>
-    createProject(
-      params as {
-        name: string;
-        description?: string;
-        url?: string;
-        adapter?: string;
-        directory: string;
-        destination: { kind: "path"; parent: string };
-        starter?: string;
-        template?: string;
-        design?: {
-          accent?: string;
-          background?: string;
-          text?: string;
-          bodyFont?: string;
-          headingFont?: string;
-          media?: Record<string, string>;
-          logo?: { name: string; base64: string };
-        };
-      },
-    ),
+  createProject: wire(createProject),
   listStarters: () => Promise.resolve(listStarters()),
   pickDirectory: async () => ({ path: await openDirectoryDialog() }),
   getProjectRoot: () => Promise.resolve({ root: getProjectRoot() }),
-  setWindowProject: (params) => {
-    const { root } = params as { root: string };
+  setWindowProject: wire(({ root }: { root: string }) => {
     /* Dedupe first: if ANOTHER window already holds this project, raise it and say so rather than
        binding a second window to the same files. Studio treats `deduped` as "nothing was loaded
        here", so this window keeps whatever it was showing. */
@@ -336,38 +330,37 @@ export const handlers: Record<string, (params: unknown) => Promise<unknown>> = {
     setProjectRoot(root);
     updateWindow(process.pid, { name: basename(root.replace(/[/\\]+$/, "")) || null, root });
     return Promise.resolve({ config: null, deduped: false });
-  },
+  }),
   getRecentProjects: () => readRecents(),
-  saveRecentProjects: (params) =>
-    writeRecents((params as { projects: RecentProjectEntry[] }).projects),
+  saveRecentProjects: wire(({ projects }: { projects: RecentProjectEntry[] }) =>
+    writeRecents(projects),
+  ),
   getSettings: () => readSettings(),
-  patchSettings: (params) => patchSettings((params as { patch: SettingsPatch }).patch),
-  githubSignIn: (params) => githubSignIn(params as { force?: boolean }),
-  githubSignOut: () => githubSignOut(),
+  patchSettings: wire(({ patch }: { patch: KeyValuePatch }) => patchSettings(patch)),
+  githubSignIn: wire(githubSignIn),
+  githubSignOut: wire(() => githubSignOut()),
   githubToken: () => githubTokenStatus(),
-  jxResolve: (params) => jxResolve(params as { body: string }),
-  jxServerFunction: (params) => jxServerFunction(params as { body: string }),
+  jxResolve: wire(jxResolve),
+  jxServerFunction: wire(jxServerFunction),
   // Data surface + secrets (desktop twins of /__studio/data/* + /__studio/secrets)
   dataConnections: () => dataConnections(),
-  dataConnectionTest: (params) => dataConnectionTest(params as { connection: string }),
-  dataPush: (params) => dataPush(params as { connection?: string; dryRun?: boolean }),
-  dataRows: (params) => dataRows(params as { table: string }),
-  dataInsertRow: (params) =>
-    dataInsertRow(params as { table: string; values: Record<string, unknown> }),
-  dataUpdateRow: (params) =>
-    dataUpdateRow(params as { table: string; pk: string | number; set: Record<string, unknown> }),
-  dataDeleteRow: (params) => dataDeleteRow(params as { table: string; pk: string | number }),
+  dataConnectionTest: wire(dataConnectionTest),
+  dataPush: wire(dataPush),
+  dataRows: wire(dataRows),
+  dataInsertRow: wire(dataInsertRow),
+  dataUpdateRow: wire(dataUpdateRow),
+  dataDeleteRow: wire(dataDeleteRow),
   listSecrets: () => listSecrets(),
-  setSecrets: (params) => setSecrets(params as { set?: Record<string, string>; remove?: string[] }),
-  readFile: (params) => handleReadFile(params as { path: string }),
-  readFileBytes: (params) => handleReadFileBytes(params as { path: string }),
-  removePackage: (params) => removePackage(params as { name: string }),
-  renameFile: (params) => handleRenameFile(params as { from: string; to: string }),
-  findReferences: (params) => findReferences(params as { path?: string; tagName?: string }),
-  resolveSiteContext: (params) => handleResolveSiteContext(params as { filePath: string }),
-  uploadFile: (params) => handleUploadFile(params as { path: string; data: string }),
-  writeFile: (params) => handleWriteFile(params as { path: string; content: string }),
-};
+  setSecrets: wire(setSecrets),
+  readFile: wire(handleReadFile),
+  readFileBytes: wire(handleReadFileBytes),
+  removePackage: wire(removePackage),
+  renameFile: wire(handleRenameFile),
+  findReferences: wire(findReferences),
+  resolveSiteContext: wire(handleResolveSiteContext),
+  uploadFile: wire(handleUploadFile),
+  writeFile: wire(handleWriteFile),
+} satisfies Record<string, RpcHandler>;
 
 // ─── Static file serving + WebSocket RPC server ──────────────────────────────
 
@@ -391,11 +384,15 @@ function findChromium(): string | null {
     "chromium-browser",
     "google-chrome",
     "google-chrome-stable",
-  ].filter(Boolean) as string[];
+  ];
 
   // Bun.which resolves a binary in PATH on every platform (no dependency on a POSIX `which`, which
   // Is absent from a stock Windows shell and made resolution flaky depending on the host shell).
   for (const bin of candidates) {
+    // An unset or empty CHROMIUM_BIN is skipped, not looked up.
+    if (!bin) {
+      continue;
+    }
     const found = Bun.which(bin);
     if (found) {
       return found;
@@ -494,20 +491,17 @@ console.log(`[chromium] Project root: ${projectRoot ?? "(none — welcome window
 export function seedChromiumPreferences(userDataDir: string): void {
   const defaultDir = resolve(userDataDir, "Default");
   const prefsFile = resolve(defaultDir, "Preferences");
-  let prefs: Record<string, unknown> = {};
+  let prefs: JsonObject = {};
   try {
-    const parsed = JSON.parse(readFileSync(prefsFile, "utf8")) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      prefs = parsed as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(readFileSync(prefsFile, "utf8"));
+    if (isJsonObject(parsed)) {
+      prefs = parsed;
     }
   } catch {
     // Missing or corrupt Preferences: start from a fresh object.
   }
   prefs.credentials_enable_service = false;
-  const profile =
-    prefs.profile && typeof prefs.profile === "object" && !Array.isArray(prefs.profile)
-      ? (prefs.profile as Record<string, unknown>)
-      : {};
+  const profile = isJsonObject(prefs.profile) ? prefs.profile : {};
   profile.password_manager_enabled = false;
   profile.password_manager_leak_detection = false;
   prefs.profile = profile;

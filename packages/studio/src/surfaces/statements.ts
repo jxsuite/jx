@@ -26,24 +26,19 @@
  * @docs studio/logic/statements
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { REGION_ATTR } from "../ui/regions";
 import { mountSurface, registerSurface } from "../ui/surface";
 import statementsDoc from "./statements.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("statements", statementsDoc as unknown as JxDocument);
+registerSurface("statements", statementsDoc);
 
 /** Which control one operand of a statement draws. The flow picks it; the document switches on it. */
 export type StatementFieldKind = "control" | "text" | "select" | "flags";
-
-/** A closed list of choices, in the shape the kit's select reads. */
-export interface StatementOption {
-  value: string;
-  label: string;
-}
 
 /** One `eventInit` flag of a `dispatchEvent` statement. */
 export interface StatementFlagView {
@@ -64,7 +59,7 @@ export interface StatementFieldView {
   /** What a `text` or `select` control holds. Empty for the other two kinds. */
   value: string;
   placeholder: string;
-  options: StatementOption[];
+  options: SurfaceOption[];
   flags: StatementFlagView[];
 }
 
@@ -119,7 +114,7 @@ export interface StatementIslands {
   controlSlot: (id: string, host: HTMLElement) => void;
 }
 
-interface StatementScope extends Record<string, unknown>, StatementActions {
+interface StatementScope extends StatementActions {
   rows: StatementRowView[];
 }
 
@@ -171,7 +166,7 @@ export function renderStatementsSurface(
      region is a fact about the HOST — who is drawing this editor — not about the document inside
      it, so it should be true the moment the host is claimed rather than a frame later. */
   host.setAttribute(REGION_ATTR, region);
-  const scope = reactive({ ...actions, rows }) as StatementScope;
+  const scope: StatementScope = reactive<StatementScope>({ ...actions, rows });
   const record: Mounted = { disposed: false, handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a repaint arriving while this is in flight takes the branch above — a
@@ -200,16 +195,16 @@ export function renderStatementsSurface(
 
 /** The `part` a node was rendered with, or "". */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `key` of the `$map` item a node was rendered inside, or "". */
 function itemKey(state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: unknown } | undefined)?.item;
-  const key =
-    item !== null && typeof item === "object" ? (item as Record<string, unknown>).key : "";
-  return typeof key === "string" ? key : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const key = isJsonObject(item) ? item["key"] : "";
+  return isString(key) ? key : "";
 }
 
 /**

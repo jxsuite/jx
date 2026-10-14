@@ -30,7 +30,9 @@ import { disposeDeployChecklistSurface } from "../src/surfaces/panel-deploy-chec
 import { getPanel, panelContext, resetPanels } from "../src/panels/panel-registry";
 import { problems, resetNotifications } from "../src/services/notify";
 import { effect, effectScope } from "../src/reactivity";
+import { nothing } from "lit-html";
 import type { TemplateResult } from "lit-html";
+import type { NavigatorPanelDeps, PanelBody } from "../src/panels/panel-registry";
 
 beforeEach(() => {
   resetActivities();
@@ -50,6 +52,14 @@ afterEach(() => {
   resetPanels();
 });
 
+/** A panel body as the template it is: the Activity panel always draws one, never `nothing`. */
+function template(body: PanelBody): TemplateResult {
+  if (body === nothing) {
+    throw new Error("the Activity panel drew `nothing` where it always draws its two containers");
+  }
+  return body;
+}
+
 /**
  * Paint the tab the way the Bottom dock does — lit's body, then the panel's `afterRender` — and let
  * the document mount into the container that body carries.
@@ -59,7 +69,7 @@ afterEach(() => {
  */
 async function paint(host: HTMLElement = document.createElement("div")): Promise<HTMLElement> {
   document.body.append(host);
-  await renderInto(renderActivityBody() as TemplateResult, host);
+  await renderInto(template(renderActivityBody()), host);
   syncActivitySurface(host);
   await flush();
   await flush();
@@ -431,7 +441,7 @@ describe("the panel's afterRender", () => {
     beginActivity({ title: "Install" });
     const host = document.createElement("div");
     document.body.append(host);
-    await renderInto(renderActivityBody() as TemplateResult, host);
+    await renderInto(template(renderActivityBody()), host);
     const container = host.querySelector<HTMLElement>("[data-activity-surface]")!;
 
     // `mountSurface` waits for the kit, so a tab switch can land between the two — and a document
@@ -462,10 +472,12 @@ describe("the panel record", () => {
   test("renders a body with the containers its two surfaces mount into, and no document", async () => {
     registerActivityPanel();
     const panel = getPanel("activity")!;
-    const ctx = { deps: {} as never, doc: null, rerender: () => {} };
+    /* SAFETY: the Activity record's `render` is `() => renderActivityBody()`, which takes no
+       context at all, so not one NavigatorPanelDeps member is ever read off this empty object. */
+    const ctx = { deps: {} as NavigatorPanelDeps, doc: null, rerender: () => {} };
     const host = document.createElement("div");
     document.body.append(host);
-    await renderInto(panel.render(ctx) as TemplateResult, host);
+    await renderInto(template(panel.render(ctx)), host);
     /* Two hosts, because a document CLEARS the node it is given and lit renders BESIDE foreign
        nodes: the deploy checklist and the feed can never share one. */
     expect(host.querySelector("[data-deploy-checklist]")).not.toBeNull();

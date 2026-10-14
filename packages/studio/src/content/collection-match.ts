@@ -32,11 +32,9 @@
 import { defaultContentFormat, formatByName } from "../format/format-host";
 import { projectState } from "../store";
 import { resolveI18n } from "@jxsuite/schema/locale";
+import { LOCALE_PLACEHOLDER } from "../canvas/asset-resolve";
 import type { ContentSectionEntry } from "../types";
 import type { ProjectConfig } from "@jxsuite/schema/types";
-
-/** The placeholder a localized `source` carries, standing for one directory per declared locale. */
-export const LOCALE_PLACEHOLDER = "{locale}";
 
 /** What a path's collection is, and everything a caller needs in order to act on it. */
 export interface CollectionMatch {
@@ -69,11 +67,14 @@ function normalize(path: string): string {
 
 /** The config a lookup reads: the caller's, or the open project's. */
 function configOf(config: ProjectConfig | null | undefined): ProjectConfig | null {
-  return config ?? (projectState?.projectConfig as ProjectConfig | null | undefined) ?? null;
+  return config ?? projectState?.projectConfig ?? null;
 }
 
 /** The `content` section of a config, or an empty one. */
 function contentSection(config: ProjectConfig | null): Record<string, ContentSectionEntry> {
+  /* SAFETY: `content` is the parser extension's section — collection name → entry object, its
+     project fragment schema the source of truth. `ContentSectionEntry` names only the fields Studio
+     reads, every one optional, and each reader below tests `source` before using it. */
   return (config?.content ?? {}) as Record<string, ContentSectionEntry>;
 }
 

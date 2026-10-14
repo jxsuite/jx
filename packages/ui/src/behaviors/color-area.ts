@@ -37,7 +37,9 @@
  * @docs extending/ui-kit
  */
 
-import { snapToStep } from "../color.ts";
+import { isFunction } from "@jxsuite/schema/guards";
+
+import { ARROW_SIGN, snapToStep } from "../color.ts";
 
 /** The tag this sidecar belongs to. */
 const HOST = "jx-color-area";
@@ -54,27 +56,18 @@ export interface ColorAreaState {
   step: number;
   /** Whether the element refuses to move. */
   disabled: boolean;
-  [key: string]: unknown;
 }
 
 /** Which state key each axis writes. `x` is saturation and `y` is brightness. */
 const AXIS_KEY = { x: "saturation", y: "brightness" } as const;
 
 /** The axis a key belongs to when nothing cancels it. */
-const KEY_AXIS: Readonly<Record<string, "x" | "y">> = {
-  ArrowDown: "y",
-  ArrowLeft: "x",
-  ArrowRight: "x",
-  ArrowUp: "y",
-};
-
-/** Which way each arrow moves its axis. Up and Right increase; the square's y is measured upward. */
-const KEY_SIGN: Readonly<Record<string, number>> = {
-  ArrowDown: -1,
-  ArrowLeft: -1,
-  ArrowRight: 1,
-  ArrowUp: 1,
-};
+const KEY_AXIS: ReadonlyMap<string, "x" | "y"> = new Map([
+  ["ArrowDown", "y"],
+  ["ArrowLeft", "x"],
+  ["ArrowRight", "x"],
+  ["ArrowUp", "y"],
+]);
 
 /** The hosts with a pointer down on them. Off to the side, because a drag is not element state. */
 const dragging = new WeakSet<HTMLElement>();
@@ -151,6 +144,8 @@ export function onAreaAxisInput(state: ColorAreaState, event: Event): void {
     return;
   }
   event.stopPropagation();
+  /* SAFETY: axisOf answers only for a node whose part is `x` or `y`, and jx-color-area.json renders
+     exactly those two parts, each as a native `<input type="range">`. */
   writeAxis(state, axis, Number((event.target as HTMLInputElement).value));
   announce(host, "input");
 }
@@ -168,6 +163,8 @@ export function onAreaAxisChange(state: ColorAreaState, event: Event): void {
     return;
   }
   event.stopPropagation();
+  /* SAFETY: axisOf answers only for a node whose part is `x` or `y`, and jx-color-area.json renders
+     exactly those two parts, each as a native `<input type="range">`. */
   writeAxis(state, axis, Number((event.target as HTMLInputElement).value));
   announce(host, "change");
 }
@@ -188,7 +185,7 @@ export function onAreaKeydown(state: ColorAreaState, event: KeyboardEvent): void
   if (!host || !focused || state.disabled === true) {
     return;
   }
-  const axis = KEY_AXIS[event.key];
+  const axis = KEY_AXIS.get(event.key);
   if (!axis) {
     return;
   }
@@ -197,7 +194,7 @@ export function onAreaKeydown(state: ColorAreaState, event: KeyboardEvent): void
   }
   event.preventDefault();
   event.stopPropagation();
-  const delta = stepOf(state) * (event.shiftKey ? 10 : 1) * (KEY_SIGN[event.key] ?? 0);
+  const delta = stepOf(state) * (event.shiftKey ? 10 : 1) * (ARROW_SIGN.get(event.key) ?? 0);
   if (writeAxis(state, axis, Number(state[AXIS_KEY[axis]]) + delta)) {
     /* Both names: a keystroke on a slider is a move AND a commit, which is what the platform's own
        arrow does on the axis it owns. A key that changed nothing says nothing. */
@@ -244,7 +241,7 @@ export function onAreaPointerDown(state: ColorAreaState, event: PointerEvent): v
   event.preventDefault();
   dragging.add(host);
   const track = trackOf(host);
-  if (track && typeof track.setPointerCapture === "function") {
+  if (track && isFunction(track.setPointerCapture)) {
     /* Capture on the TRACK, so a drag that leaves the square keeps arriving here rather than
        stopping wherever the pointer crossed the edge. */
     try {
@@ -294,8 +291,9 @@ export function onAreaPointerUp(_state: ColorAreaState, event: PointerEvent): vo
   const track = trackOf(host);
   if (
     track &&
-    typeof track.releasePointerCapture === "function" &&
-    track.hasPointerCapture?.(event.pointerId)
+    isFunction(track.releasePointerCapture) &&
+    isFunction(track.hasPointerCapture) &&
+    track.hasPointerCapture(event.pointerId)
   ) {
     track.releasePointerCapture(event.pointerId);
   }

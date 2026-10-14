@@ -48,8 +48,10 @@ describe("what a draft is", () => {
   test("the pill's sentence does not promise the build excludes drafts", () => {
     // The compiler has no draft filtering (site/site-build.ts); a badge saying otherwise would be
     // A confident lie about what shipping does.
-    expect(DRAFT_MEANING).not.toContain("Excluded");
-    expect(DRAFT_MEANING).toContain("does not exclude them yet");
+    // Pinned whole, so any rewording has to be re-read against that promise before it lands.
+    expect(DRAFT_MEANING).toBe(
+      "Marked a draft. Studio filters drafts out of its own lists; the build does not exclude them yet.",
+    );
   });
 
   test("the filter drops drafts, and returns the input untouched when including them", () => {

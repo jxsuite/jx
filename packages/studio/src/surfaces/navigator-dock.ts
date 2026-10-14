@@ -16,14 +16,15 @@
  * @docs studio/interface
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import navigatorDockDoc from "./navigator-dock.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JsonObject, JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("navigator-dock", navigatorDockDoc as unknown as JxDocument);
+registerSurface("navigator-dock", navigatorDockDoc);
 
 /** The panel showing, as the document draws it. */
 export interface NavigatorPanelView {
@@ -65,19 +66,17 @@ export interface NavigatorDockHandle {
   dispose: () => void;
 }
 
-interface NavigatorDockScope extends Record<string, unknown>, NavigatorDockValues {}
-
 /** The `part` a node was declared with, or the empty string. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `$map` item a node was rendered inside, if it was rendered inside one. */
-function mapItem(state: JxScope | undefined): Record<string, unknown> | null {
-  const map = state?.["$map"] as { item?: unknown } | undefined;
-  const item = map?.item;
-  return item !== null && typeof item === "object" ? (item as Record<string, unknown>) : null;
+function mapItem(state: JxScope | undefined): JsonObject | null {
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  return isJsonObject(item) ? item : null;
 }
 
 /**
@@ -91,7 +90,7 @@ export function mountNavigatorDock(
   values: NavigatorDockValues,
   options: NavigatorDockOptions,
 ): NavigatorDockHandle {
-  const scope = reactive<NavigatorDockScope>({ panels: values.panels }) as NavigatorDockScope;
+  const scope: NavigatorDockValues = reactive<NavigatorDockValues>({ panels: values.panels });
 
   container.textContent = "";
   // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
@@ -105,7 +104,7 @@ export function mountNavigatorDock(
         return;
       }
       const key = mapItem(state)?.["key"];
-      if (typeof key === "string") {
+      if (isString(key)) {
         options.onContent(key, element);
       }
     },

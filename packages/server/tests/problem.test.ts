@@ -8,6 +8,12 @@
 import { describe, expect, test } from "bun:test";
 import { PROBLEM_TYPES } from "@jxsuite/protocol";
 import { problem, problemTypeForStatus } from "../src/problem";
+import type { ProblemTypeName } from "@jxsuite/protocol";
+
+/** Whether an `Object.entries(PROBLEM_TYPES)` key names a registered problem type. */
+function isProblemTypeName(name: string): name is ProblemTypeName {
+  return Object.hasOwn(PROBLEM_TYPES, name);
+}
 
 describe("problem()", () => {
   test("answers application/problem+json at the type's own status", async () => {
@@ -26,16 +32,16 @@ describe("problem()", () => {
    * the server land alone instead of in lockstep with ~160 client call sites.
    */
   test("carries the deprecated error alias equal to detail", async () => {
-    const body = (await problem("invalidRequest", "Missing path param").json()) as {
-      detail: string;
-      error: string;
-    };
+    const body: { detail: string; error: string } = await problem(
+      "invalidRequest",
+      "Missing path param",
+    ).json();
     expect(body.error).toBe(body.detail);
   });
 
   test("carries the extension members a type documents", async () => {
     const res = problem("forbidden", "root not permitted", { ok: false });
-    const body = (await res.json()) as { ok: boolean };
+    const body: { ok: boolean } = await res.json();
     expect(res.status).toBe(403);
     expect(body.ok).toBe(false);
   });
@@ -43,7 +49,10 @@ describe("problem()", () => {
   // The status comes from the type: a type answerable with two statuses would be two types.
   test("the status is the type's, not the call site's", async () => {
     for (const [name, declared] of Object.entries(PROBLEM_TYPES)) {
-      const res = problem(name as keyof typeof PROBLEM_TYPES, "x");
+      if (!isProblemTypeName(name)) {
+        throw new Error(`Object.entries(PROBLEM_TYPES) yielded the unregistered name ${name}`);
+      }
+      const res = problem(name, "x");
       expect({ name, status: res.status }).toEqual({ name, status: declared.status });
     }
   });

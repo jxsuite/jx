@@ -34,13 +34,18 @@ import {
   reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
-import type { DirEntry, StudioPlatform } from "../src/types";
+import type { DirEntry, GitStatusResult, ProjectState, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
 import { resetAssetVersions, versionOf } from "../src/files/asset-versions";
 import { deriveJsonLayout } from "@jxsuite/schema/json-layout";
 import { registerCollabPath, unregisterCollabPath } from "../src/collab/collab-state";
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
+
+/** A git status answer that says only whether the project is a repository. */
+function gitStatus(isRepo: boolean): GitStatusResult {
+  return { ahead: 0, behind: 0, branch: "main", files: [], isRepo, remotes: [] };
+}
 
 /** Derive DirEntry[] (with `type`, as files.ts expects) from the mock platform's file map. */
 function dirEntries(files: Map<string, string>, dir: string): DirEntry[] {
@@ -74,7 +79,7 @@ function installFsPlatform(
       formatAction: mockFormatAction,
       listFormats: async () => [MARKDOWN_FORMAT],
       ...overrides,
-    } as Partial<StudioPlatform>,
+    },
     seed,
   );
   if (!overrides.listDirectory) {
@@ -86,7 +91,7 @@ function installFsPlatform(
   return handle;
 }
 
-function siteState(overrides: Record<string, unknown> = {}) {
+function siteState(overrides: Partial<ProjectState> = {}) {
   setProjectState({
     dirs: new Map(),
     expanded: new Set(),
@@ -98,7 +103,7 @@ function siteState(overrides: Record<string, unknown> = {}) {
     searchQuery: "",
     selectedPath: null,
     ...overrides,
-  } as never);
+  });
 }
 
 beforeEach(() => {
@@ -195,11 +200,10 @@ describe("loadProject", () => {
     const { state } = installFsPlatform(
       { "pages/index.json": "{}" },
       {
-        probeRootProject: async () =>
-          ({
-            info: { isSiteProject: false },
-            meta: { name: "mono", root: "/srv/mono" },
-          }) as never,
+        probeRootProject: async () => ({
+          info: { isSiteProject: false },
+          meta: { name: "mono", root: "/srv/mono" },
+        }),
       },
     );
 
@@ -220,15 +224,14 @@ describe("loadProject", () => {
         "pages/index.md": "---\ntitle: Home\n---\n\n# Welcome\n",
       },
       {
-        probeRootProject: async () =>
-          ({
-            info: {
-              directories: ["pages"],
-              isSiteProject: true,
-              projectConfig: { name: "My Blog" },
-            },
-            meta: { name: "fallback", root: "/srv/blog" },
-          }) as never,
+        probeRootProject: async () => ({
+          info: {
+            directories: ["pages"],
+            isSiteProject: true,
+            projectConfig: { name: "My Blog" },
+          },
+          meta: { name: "fallback", root: "/srv/blog" },
+        }),
       },
     );
 
@@ -266,11 +269,10 @@ describe("loadProject", () => {
           listed += 1;
           return [MARKDOWN_FORMAT];
         },
-        probeRootProject: async () =>
-          ({
-            info: { isSiteProject: true, projectConfig: { name: "Fresh" } },
-            meta: { name: "fresh", root: "/srv/fresh" },
-          }) as never,
+        probeRootProject: async () => ({
+          info: { isSiteProject: true, projectConfig: { name: "Fresh" } },
+          meta: { name: "fresh", root: "/srv/fresh" },
+        }),
       },
     );
 
@@ -293,11 +295,10 @@ describe("loadProject", () => {
           listed += 1;
           return [MARKDOWN_FORMAT];
         },
-        probeRootProject: async () =>
-          ({
-            info: { isSiteProject: true, projectConfig: { name: "Installed" } },
-            meta: { name: "installed", root: "/srv/i" },
-          }) as never,
+        probeRootProject: async () => ({
+          info: { isSiteProject: true, projectConfig: { name: "Installed" } },
+          meta: { name: "installed", root: "/srv/i" },
+        }),
       },
     );
 
@@ -310,11 +311,10 @@ describe("loadProject", () => {
     installFsPlatform(
       { "pages/index.json": JSON.stringify({ tagName: "div" }) },
       {
-        probeRootProject: async () =>
-          ({
-            info: { isSiteProject: true },
-            meta: { name: "meta-name", root: "/srv/x" },
-          }) as never,
+        probeRootProject: async () => ({
+          info: { isSiteProject: true },
+          meta: { name: "meta-name", root: "/srv/x" },
+        }),
       },
     );
 
@@ -408,10 +408,7 @@ describe("findHomePage", () => {
 
 describe("initProjectRepo", () => {
   test("binds to the new root and initialises a repository the scaffold does not have", async () => {
-    const { state } = installFsPlatform(
-      {},
-      { gitStatus: (async () => ({ files: [], isRepo: false })) as never },
-    );
+    const { state } = installFsPlatform({}, { gitStatus: async () => gitStatus(false) });
     expect(await initProjectRepo("/home/dev/Sites/fresh")).toBe(true);
     // Activation comes first: gitInit takes no argument and would otherwise run against whichever
     // Project the window was already serving.
@@ -421,10 +418,7 @@ describe("initProjectRepo", () => {
   });
 
   test("leaves an existing repository alone", async () => {
-    const { state } = installFsPlatform(
-      {},
-      { gitStatus: (async () => ({ files: [], isRepo: true })) as never },
-    );
+    const { state } = installFsPlatform({}, { gitStatus: async () => gitStatus(true) });
     expect(await initProjectRepo("/home/dev/Sites/cloned")).toBe(false);
     expect(state.calls.map((c) => c[0])).not.toContain("gitInit");
   });
@@ -432,18 +426,19 @@ describe("initProjectRepo", () => {
   test("skips repository-backed platforms entirely", async () => {
     const { state } = installFsPlatform({}, { createDestination: "repo" });
     expect(await initProjectRepo("acme/site@main")).toBe(false);
-    expect(state.calls.map((c) => c[0])).not.toContain("activate");
-    expect(state.calls.map((c) => c[0])).not.toContain("gitInit");
+    const called = state.calls.map((c) => c[0]);
+    expect(called).not.toContain("activate");
+    expect(called).not.toContain("gitInit");
   });
 
   test("reports a git failure without failing the create", async () => {
     installFsPlatform(
       {},
       {
-        gitInit: (async () => {
+        gitInit: async () => {
           throw new Error("git not installed");
-        }) as never,
-        gitStatus: (async () => ({ files: [], isRepo: false })) as never,
+        },
+        gitStatus: async () => gitStatus(false),
       },
     );
     expect(await initProjectRepo("/home/dev/Sites/gitless")).toBe(false);
@@ -481,11 +476,10 @@ describe("openProject", () => {
         "project.json": "{}",
       },
       {
-        openProject: async () =>
-          ({
-            config: { name: "My Site" },
-            handle: { name: "proj-dir", root: "/abs/proj" },
-          }) as never,
+        openProject: async () => ({
+          config: { name: "My Site" },
+          handle: { name: "proj-dir", projectConfig: { name: "My Site" }, root: "/abs/proj" },
+        }),
       },
     );
 
@@ -517,8 +511,10 @@ describe("openProject", () => {
     installFsPlatform(
       { "project.json": "{}" },
       {
-        openProject: async () =>
-          ({ config: {}, handle: { name: "proj-dir", root: "/abs/p2" } }) as never,
+        openProject: async () => ({
+          config: {},
+          handle: { name: "proj-dir", projectConfig: {}, root: "/abs/p2" },
+        }),
       },
     );
 
@@ -1009,13 +1005,16 @@ describe("reloadFileInTab", () => {
 
     test("an edit made during a format parse keeps the edit", async () => {
       let onParse = () => {};
-      const { state } = installFsPlatform({ "post.md": "# Disk\n" }, {
-        formatAction: async (payload: Record<string, unknown>) => {
-          const result = await mockFormatAction(payload);
-          onParse();
-          return result;
+      const { state } = installFsPlatform(
+        { "post.md": "# Disk\n" },
+        {
+          formatAction: async (payload) => {
+            const result = await mockFormatAction(payload);
+            onParse();
+            return result;
+          },
         },
-      } as Partial<StudioPlatform>);
+      );
       siteState();
       const tab = openTab({
         document: { children: [], tagName: "div" },
@@ -1094,16 +1093,13 @@ describe("pickAndUploadTo", () => {
   test("opens a multi-file picker carrying the host's accept list", () => {
     installMockPlatform();
     const created: HTMLInputElement[] = [];
-    const realCreate = document.createElement.bind(document);
-    const spy = spyOn(document, "createElement").mockImplementation(((tag: string) => {
-      const el = realCreate(tag);
-      if (tag === "input") {
-        created.push(el as HTMLInputElement);
-        // The picker calls click() immediately; a headless DOM must not act on it.
-        (el as HTMLInputElement).click = () => {};
-      }
-      return el;
-    }) as typeof document.createElement);
+    // The picker calls click() immediately; a headless DOM must not act on it, so the click is
+    // Where the input is caught.
+    const spy = spyOn(HTMLInputElement.prototype, "click").mockImplementation(function catchClick(
+      this: HTMLInputElement,
+    ) {
+      created.push(this);
+    });
     try {
       pickAndUploadTo("public", () => {});
     } finally {

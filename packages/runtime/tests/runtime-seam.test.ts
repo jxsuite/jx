@@ -1,7 +1,9 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { describe, expect, test } from "bun:test";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { defineElement, Jx, renderNode } from "../src/runtime";
+import type { JxScope } from "../src/types.ts";
 import { elementCSS } from "./style-text.ts";
 
 try {
@@ -34,18 +36,22 @@ describe("the runtime seam", () => {
       state: {},
       style: { color: "red", padding: "4px", ":hover": { color: "green", outline: "none" } },
       tagName: tag,
-    } as never);
+    });
     const host = document.createElement("div");
     document.body.append(host);
     await Jx(
       {
         children: [{ style: { color: "blue", ":hover": { color: "teal" } }, tagName: tag }],
         tagName: "div",
-      } as never,
+      },
       host,
     );
     await tick();
-    const css = elementCSS(host.querySelector(tag) as HTMLElement);
+    const instance = host.querySelector(tag);
+    if (!(instance instanceof HTMLElement)) {
+      throw new Error(`Jx did not render a <${tag}> into the host`);
+    }
+    const css = elementCSS(instance);
     // The definition's own declarations survive…
     expect(css).toContain("padding: 4px");
     expect(css).toContain("outline: none");
@@ -64,7 +70,7 @@ describe("the runtime seam", () => {
       state: {},
       style: { '& > [part="body"] > b': { fontWeight: "700" } },
       tagName: tag,
-    } as never);
+    });
     const el = document.createElement(tag);
     const slotted = document.createElement("b");
     slotted.textContent = "B";
@@ -73,9 +79,9 @@ describe("the runtime seam", () => {
     await tick();
 
     expect(el.querySelector("slot")).toBeNull();
-    const body = el.querySelector('[part="body"]') as HTMLElement;
+    const body = el.querySelector('[part="body"]');
     // A CHILD of the part the definition put the slot in, not a grandchild behind a surviving slot.
-    expect(slotted.parentElement).toBe(body);
+    expect(slotted.parentNode).toBe(body);
     expect(el.textContent).toBe("B");
     el.remove();
   });
@@ -86,7 +92,7 @@ describe("the runtime seam", () => {
       children: [{ attributes: { name: "aside" }, children: ["none yet"], tagName: "slot" }],
       state: {},
       tagName: tag,
-    } as never);
+    });
     const el = document.createElement(tag);
     el.append(document.createTextNode("body"));
     document.body.append(el);
@@ -98,7 +104,7 @@ describe("the runtime seam", () => {
 
   test("R3: the display default is a rule a consumer can beat without !important", async () => {
     const tag = uniqueTag();
-    await defineElement({ state: {}, style: { color: "red" }, tagName: tag } as never);
+    await defineElement({ state: {}, style: { color: "red" }, tagName: tag });
     const el = document.createElement(tag);
     document.body.append(el);
     await tick();
@@ -114,7 +120,7 @@ describe("the runtime seam", () => {
       state: {},
       style: { ":hover": { display: "grid" } },
       tagName: tag,
-    } as never);
+    });
     const el = document.createElement(tag);
     document.body.append(el);
     await tick();
@@ -126,7 +132,7 @@ describe("the runtime seam", () => {
 
   test("R3: display revert is the author's opt-out and is respected", async () => {
     const tag = uniqueTag();
-    await defineElement({ state: {}, style: { display: "revert" }, tagName: tag } as never);
+    await defineElement({ state: {}, style: { display: "revert" }, tagName: tag });
     const el = document.createElement(tag);
     document.body.append(el);
     await tick();
@@ -135,7 +141,7 @@ describe("the runtime seam", () => {
   });
 
   test("R4: a $map pointer spelled #/$map/… resolves", () => {
-    const scope = { $map: { item: { rows: ["x", "y"] } } } as never;
+    const scope: JxScope = { $map: { item: { rows: ["x", "y"] } } };
     const el = renderNode(
       {
         children: {
@@ -144,9 +150,12 @@ describe("the runtime seam", () => {
           map: { tagName: "li", textContent: "${$map.item}" },
         },
         tagName: "ul",
-      } as never,
+      },
       scope,
-    ) as HTMLElement;
+    );
+    if (!(el instanceof HTMLElement)) {
+      throw new Error("renderNode returned a Text node for an element definition");
+    }
     // The bare `$map/…` spelling already worked; `#/` is how every other pointer is written, and
     // A `$map` over it rendered zero rows with no warning.
     expect([...el.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["x", "y"]);
@@ -156,18 +165,18 @@ describe("the runtime seam", () => {
     /* A sidecar that must reach the element it belongs to had no way to: the runtime handed it
        the scope alone, so elements dispatched an event at themselves purely so a root handler
        could read `currentTarget`. That round trip stood in for a missing parameter. */
-    const seen: unknown[] = [];
+    const seen: { hasScope: boolean; host: HTMLElement }[] = [];
     const { preloadModule } = await import("../src/runtime");
     preloadModule("seam:/probe.ts", {
-      record: (state: unknown, host: unknown) => {
-        seen.push({ hasScope: typeof state === "object", host });
+      record: (state: JxScope, host: HTMLElement) => {
+        seen.push({ hasScope: isNonNullObject(state), host });
       },
     });
     const tag = uniqueTag();
     await defineElement({
       state: { onMount: { $export: "record", $prototype: "Function", $src: "seam:/probe.ts" } },
       tagName: tag,
-    } as never);
+    });
     const el = document.createElement(tag);
     document.body.append(el);
     await tick();

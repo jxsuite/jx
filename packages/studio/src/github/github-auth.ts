@@ -59,8 +59,14 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import { layerHost } from "../ui/layers";
 import { openGithubAuthSurface } from "../surfaces/github-auth";
-import type { GithubAuthSurfaceHandle } from "../surfaces/github-auth";
-import { getGithubToken, nativeAuth, setNativeToken, STORAGE_KEY } from "./github-auth-status";
+import {
+  getGithubToken,
+  GITHUB_OAUTH_CLIENT_ID,
+  nativeAuth,
+  setNativeToken,
+  STORAGE_KEY,
+} from "./github-auth-status";
+import type { DialogLayerHandle } from "../ui/surface";
 
 // Every other caller in Studio still reaches these through this module.
 export {
@@ -70,8 +76,6 @@ export {
   githubTokenStored,
   hydrateGithubToken,
 } from "./github-auth-status";
-
-const CLIENT_ID = "Ov23liYVlMFpgjOEPXJH";
 
 /** One key for the whole sign-in, so a second attempt REPLACES the first report. */
 const NOTIFY_KEY = "github.auth";
@@ -108,10 +112,10 @@ interface TokenResponse {
 }
 
 /** The request never completed — a Problem, with the one sentence that covers both causes. */
-function reportUnreachable(error: unknown): void {
+function reportUnreachable(cause: unknown): void {
   notify.error("Could not reach GitHub to sign in.", {
     action: RETRY,
-    detail: `${UNREACHABLE_DETAIL}\n\n${errorMessage(error)}`,
+    detail: `${UNREACHABLE_DETAIL}\n\n${errorMessage(cause)}`,
     key: NOTIFY_KEY,
     source: SOURCE,
   });
@@ -132,7 +136,7 @@ async function requestDeviceCode(): Promise<DeviceCodeResponse | null> {
   let codeRes: Response;
   try {
     codeRes = await fetch("https://github.com/login/device/code", {
-      body: JSON.stringify({ client_id: CLIENT_ID, scope: "repo" }),
+      body: JSON.stringify({ client_id: GITHUB_OAUTH_CLIENT_ID, scope: "repo" }),
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -151,6 +155,9 @@ async function requestDeviceCode(): Promise<DeviceCodeResponse | null> {
     );
     return null;
   }
+  /* SAFETY: a 2xx from GitHub's device-code endpoint (checked just above) is the JSON object
+     RFC 8628 §3.2 defines — `device_code`, `user_code`, `verification_uri` and an optional
+     `interval` — which is exactly what `DeviceCodeResponse` declares. */
   return (await codeRes.json()) as DeviceCodeResponse;
 }
 
@@ -247,7 +254,7 @@ export async function authenticateGithub() {
       try {
         const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
           body: JSON.stringify({
-            client_id: CLIENT_ID,
+            client_id: GITHUB_OAUTH_CLIENT_ID,
             device_code,
             grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           }),
@@ -257,6 +264,9 @@ export async function authenticateGithub() {
           },
           method: "POST",
         });
+        /* SAFETY: GitHub's token endpoint answers every poll with a JSON object carrying either an
+           `access_token` (RFC 6749 §5.1) or an `error` code (RFC 8628 §3.5); `TokenResponse` makes
+           Both optional, and every branch below reads them as possibly absent. */
         const tokenData = (await tokenRes.json()) as TokenResponse;
         failures = 0;
 
@@ -303,7 +313,7 @@ export async function authenticateGithub() {
      * the surface existed would find a binding that is not initialised yet — which a zero-second
      * device interval makes reachable rather than theoretical.
      */
-    const handle: GithubAuthSurfaceHandle = openGithubAuthSurface({
+    const handle: DialogLayerHandle = openGithubAuthSurface({
       layer: layerHost("dialog"),
       onCancel: () => {
         takeDown();

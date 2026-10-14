@@ -9,9 +9,17 @@
  * deletion. The server is authoritative — there are no file fingerprints; conflicts surface as
  * per-row API errors.
  */
+import { isJsonPrimitive, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { deleteRow, fetchRows, insertRow, updateRow } from "../../services/data-service";
 import { makeGridTabId } from "../grid-source";
-import type { DataColumnMeta, DataRowsQuery } from "../../types";
+import type {
+  DataColumnMeta,
+  DataRowDelete,
+  DataRowInsert,
+  DataRowUpdate,
+  DataRowsQuery,
+} from "../../types";
 import type {
   CommitResult,
   GridCellValue,
@@ -48,11 +56,11 @@ function editableColumn(column: DataColumnMeta): boolean {
 }
 
 /** DB value → grid cell value (JSON-ish values surface as text). */
-function toCellValue(value: unknown): GridCellValue {
-  if (value === null || value === undefined) {
+function toCellValue(value: JsonValue | undefined): GridCellValue {
+  if (value === undefined) {
     return null;
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (isJsonPrimitive(value)) {
     return value;
   }
   return JSON.stringify(value);
@@ -72,17 +80,23 @@ export function createConnectorSource(connection: string | undefined, table: str
     }
   };
 
-  const toQuery = (query?: GridQuery): DataRowsQuery => ({
-    table,
-    ...(connection ? { connection } : {}),
-    limit: query?.limit ?? DATA_PAGE_SIZE,
-    offset: query?.offset ?? 0,
-    ...(query?.orderBy ? { dir: query.dir ?? "asc", orderBy: query.orderBy } : {}),
-  });
+  const toQuery = (query?: GridQuery): DataRowsQuery => {
+    const rowsQuery: DataRowsQuery = { table };
+    if (connection) {
+      rowsQuery.connection = connection;
+    }
+    rowsQuery.limit = query?.limit ?? DATA_PAGE_SIZE;
+    rowsQuery.offset = query?.offset ?? 0;
+    if (query?.orderBy) {
+      rowsQuery.dir = query.dir ?? "asc";
+      rowsQuery.orderBy = query.orderBy;
+    }
+    return rowsQuery;
+  };
 
-  const rowKeyOf = (row: Record<string, unknown>, index: number): string => {
+  const rowKeyOf = (row: JsonObject, index: number): string => {
     const pk = row[pkName];
-    if (typeof pk === "string" || typeof pk === "number") {
+    if (isString(pk) || isNumber(pk)) {
       pkValues.set(String(pk), pk);
       return String(pk);
     }
@@ -132,11 +146,15 @@ export function createConnectorSource(connection: string | undefined, table: str
           continue;
         }
         try {
-          const set: Record<string, unknown> = {};
+          const set: JsonObject = {};
           for (const patch of patches) {
             set[patch.field] = patch.value;
           }
-          await updateRow({ pk, set, table, ...(connection ? { connection } : {}) });
+          const update: DataRowUpdate = { pk, set, table };
+          if (connection) {
+            update.connection = connection;
+          }
+          await updateRow(update);
           outcome(true);
         } catch (error) {
           outcome(false, error instanceof Error ? error.message : String(error));
@@ -145,16 +163,21 @@ export function createConnectorSource(connection: string | undefined, table: str
 
       for (const insert of batch.inserts) {
         try {
-          const values: Record<string, unknown> = {};
+          const values: JsonObject = {};
           for (const [field, value] of Object.entries(insert.cells)) {
             if (value !== null) {
               values[field] = value;
             }
           }
-          const { row } = await insertRow({ table, values, ...(connection ? { connection } : {}) });
+          const request: DataRowInsert = { table, values };
+          if (connection) {
+            request.connection = connection;
+          }
+          const { row } = await insertRow(request);
           const pk = row[pkName];
-          const newKey = typeof pk === "string" || typeof pk === "number" ? String(pk) : undefined;
-          if (newKey !== undefined && (typeof pk === "string" || typeof pk === "number")) {
+          let newKey: string | undefined;
+          if (isString(pk) || isNumber(pk)) {
+            newKey = String(pk);
             pkValues.set(newKey, pk);
           }
           result.inserts.push({ newKey, ok: true, tempKey: insert.tempKey });
@@ -178,7 +201,11 @@ export function createConnectorSource(connection: string | undefined, table: str
           continue;
         }
         try {
-          await deleteRow({ pk, table, ...(connection ? { connection } : {}) });
+          const request: DataRowDelete = { pk, table };
+          if (connection) {
+            request.connection = connection;
+          }
+          await deleteRow(request);
           result.deletes.push({ ok: true, rowKey: del.rowKey });
         } catch (error) {
           result.deletes.push({

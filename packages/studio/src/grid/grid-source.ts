@@ -6,6 +6,7 @@
  * pending edits; they never see the grid engine. Grid tabs over non-file sources are "virtual" —
  * their tab id is a `grid://` URI rather than a document path.
  */
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JsonSchema } from "../ui/schema-form";
 
 /** A single cell value. JSON-shaped so batches serialize cleanly. */
@@ -126,14 +127,7 @@ export function cellValuesEqual(a: GridCellValue, b: GridCellValue): boolean {
   if (Array.isArray(a) && Array.isArray(b)) {
     return a.length === b.length && a.every((v, i) => v === b[i]);
   }
-  if (
-    a !== null &&
-    b !== null &&
-    typeof a === "object" &&
-    typeof b === "object" &&
-    !Array.isArray(a) &&
-    !Array.isArray(b)
-  ) {
+  if (isNonNullObject(a) && isNonNullObject(b) && !Array.isArray(a) && !Array.isArray(b)) {
     return a.$ref === b.$ref;
   }
   return false;
@@ -142,6 +136,12 @@ export function cellValuesEqual(a: GridCellValue, b: GridCellValue): boolean {
 // ─── Grid tab identity ────────────────────────────────────────────────────────
 
 const GRID_SCHEME = "grid://";
+
+/**
+ * Placeholder document for grid tabs: the grid never reads it, and save routes to the controller.
+ * Every tab takes its own `structuredClone` of it.
+ */
+export const GRID_STUB_DOCUMENT = { children: [], tagName: "div" };
 
 /**
  * The virtual sources a tab id can name.

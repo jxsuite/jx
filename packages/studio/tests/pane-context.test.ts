@@ -27,10 +27,13 @@ import {
   pointer,
   resetStudioState,
   resetWorkspaceWithTab,
+  stubRect,
 } from "./harness";
 import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { CommandArgValues } from "../src/commands/command-args";
 
 const paneContext = await import("../src/panels/pane-context");
 const { PRIMARY_PANE, SECONDARY_PANE, closeAllTabs, focusPane, openTab, splitRight, workspace } =
@@ -67,10 +70,10 @@ type Ctx = Parameters<typeof paneContext.mount>[1];
 function makeCtx(overrides: Partial<Ctx> = {}): Ctx {
   return {
     exportFile: mock(() => {}),
-    parseMediaEntries: mock(() => ({
+    parseMediaEntries: mock((): ReturnType<Ctx["parseMediaEntries"]> => ({
       baseWidth: 1200,
-      featureQueries: [] as { name: string; query: string }[],
-      sizeBreakpoints: [] as { name: string; query: string; width: number; type: string }[],
+      featureQueries: [],
+      sizeBreakpoints: [],
     })),
     setCanvasMode: mock((tab: Tab | null, mode: string) => {
       if (tab) {
@@ -78,7 +81,7 @@ function makeCtx(overrides: Partial<Ctx> = {}): Ctx {
       }
     }),
     ...overrides,
-  } as Ctx;
+  };
 }
 
 /**
@@ -101,14 +104,17 @@ function ctxInMode(mode: string, overrides: Partial<Ctx> = {}): Ctx {
 }
 
 function openTestTab(media?: Record<string, string>): Tab {
-  const tab = resetWorkspaceWithTab(
-    {
-      children: [{ tagName: "p", textContent: "Hi" }],
-      tagName: "div",
-      ...(media ? { $media: media } : {}),
-    } as never,
-    { documentPath: "/project/index.json", id: "pane-context-tab" },
-  );
+  const doc: JxMutableNode = {
+    children: [{ tagName: "p", textContent: "Hi" }],
+    tagName: "div",
+  };
+  if (media) {
+    doc.$media = media;
+  }
+  const tab = resetWorkspaceWithTab(doc, {
+    documentPath: "/project/index.json",
+    id: "pane-context-tab",
+  });
   tab.capabilities.modes = ["edit", "design", "preview", "source"];
   return tab;
 }
@@ -144,7 +150,7 @@ function partAll(name: string, host: HTMLElement = root): HTMLElement[] {
 
 /** A kit button's accessible name: the words it prints, or the label it carries when it prints none. */
 function nameOf(el: Element): string {
-  const printed = el.querySelector('[part="label"]')?.textContent?.trim() ?? "";
+  const printed = el.querySelector('[part="label"]')?.textContent.trim() ?? "";
   return printed || (el.querySelector('[part="control"]')?.getAttribute("aria-label") ?? "");
 }
 
@@ -176,7 +182,7 @@ function control(el: Element): HTMLElement {
 
 /** The axis labels the bar prints, in order — the assertion the restructure exists for. */
 function axes(host: HTMLElement = root): string[] {
-  return partAll("axis-label", host).map((el) => el.textContent?.trim() ?? "");
+  return partAll("axis-label", host).map((el) => el.textContent.trim());
 }
 
 /** The segments of a named radio/toggle group, by printed word. */
@@ -199,7 +205,7 @@ function choose(el: HTMLSelectElement | HTMLInputElement, value: string): void {
 function group(label: string, host: HTMLElement = root): HTMLElement | null {
   return (
     partAll("ctx-group", host).find(
-      (g) => g.querySelector('[part="ctx-group-label"]')?.textContent?.trim() === label,
+      (g) => g.querySelector('[part="ctx-group-label"]')?.textContent.trim() === label,
     ) ?? null
   );
 }
@@ -254,8 +260,8 @@ function installRegistry(ran: string[]) {
     id: "settings.open",
     level: "project",
     menus: ["palette"],
-    run: (_ctx, args) => {
-      ran.push(`settings.open:${String((args as { section?: string }).section)}`);
+    run: (_ctx, args: CommandArgValues) => {
+      ran.push(`settings.open:${String(args.section)}`);
     },
     title: "Open Settings",
   });
@@ -454,7 +460,7 @@ describe("editor kind", () => {
     await mountBar();
     const picker = select("editor-kind")!;
     expect(picker).not.toBeNull();
-    const options = [...picker.querySelectorAll("option")].map((o) => o.textContent?.trim());
+    const options = [...picker.querySelectorAll("option")].map((o) => o.textContent.trim());
     // Edit/design/preview all name the Canvas; source names Code. No dead entry for grid or diff.
     expect(options).toEqual(["Canvas", "Code"]);
     expect(picker.value).toBe("canvas");
@@ -466,7 +472,7 @@ describe("editor kind", () => {
     tab.capabilities.modes = ["edit", "design", "preview"];
     await mountBar();
     expect(part("editor-kind")).toBeNull();
-    expect(part("static")?.textContent?.trim()).toBe("Canvas");
+    expect(part("static")?.textContent.trim()).toBe("Canvas");
   });
 
   test("choosing a kind lands on that kind's first mode and clears preview", async () => {
@@ -732,7 +738,7 @@ describe("rendering context", () => {
   test("groups a document declares nothing for are absent", async () => {
     openTestTab();
     await mountBar();
-    expect(partAll("ctx-group-label").map((el) => el.textContent?.trim())).toEqual(["Size"]);
+    expect(partAll("ctx-group-label").map((el) => el.textContent.trim())).toEqual(["Size"]);
   });
 
   // ─── The language segment ───────────────────────────────────────────────────
@@ -746,10 +752,13 @@ describe("rendering context", () => {
   /** A project that declares `locales`, with `path` open. */
   function multilingual(locales: string[], path = "pages/about.json"): Tab {
     resetStudioState({ isSiteProject: true, projectConfig: { i18n: { locales } } });
-    const tab = resetWorkspaceWithTab({ children: [], tagName: "div" } as never, {
-      documentPath: path,
-      id: "locale-tab",
-    });
+    const tab = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      {
+        documentPath: path,
+        id: "locale-tab",
+      },
+    );
     tab.capabilities.modes = ["edit", "design", "preview", "source"];
     return tab;
   }
@@ -821,7 +830,7 @@ describe("rendering context", () => {
   test("the layout switch shows for a site page with a layout and flips showLayout", async () => {
     resetStudioState({ isSiteProject: true });
     const tab = resetWorkspaceWithTab(
-      { $layout: "./layouts/base.json", children: [], tagName: "div" } as never,
+      { $layout: "./layouts/base.json", children: [], tagName: "div" },
       { documentPath: "pages/about.json", id: "layout-tab" },
     );
     await mountBar();
@@ -905,8 +914,7 @@ describe("rendering context", () => {
       openTestTab();
       await mountBar(withScheme());
       const trigger = part("context-trigger")!;
-      trigger.getBoundingClientRect = () =>
-        ({ bottom: 40, height: 20, left: 300, right: 360, top: 20, width: 60 }) as DOMRect;
+      stubRect(trigger, { bottom: 40, height: 20, left: 300, right: 360, top: 20, width: 60 });
       pointer(trigger, "click");
       await flush(4);
       /* Below it, and RIGHT-aligned to it: the three axes sit at the trailing edge of a pane that
@@ -920,7 +928,7 @@ describe("rendering context", () => {
     test("a close the platform decided on reaches the flag the command reads", async () => {
       resetStudioState({ isSiteProject: true });
       resetWorkspaceWithTab(
-        { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
+        { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" },
         { documentPath: "pages/products/[sku].json", id: "toggle-param" },
       );
       await mountBar();
@@ -950,7 +958,7 @@ describe("rendering context", () => {
     test("taking the chrome down closes whatever it had open", async () => {
       resetStudioState({ isSiteProject: true });
       resetWorkspaceWithTab(
-        { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
+        { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" },
         { documentPath: "pages/products/[sku].json", id: "dispose-param" },
       );
       await mountBar();
@@ -994,7 +1002,7 @@ describe("resolving with", () => {
         $paths: { param: "sku", values: ["alpha", "beta"] },
         children: [],
         tagName: "div",
-      } as never,
+      },
       { documentPath: "pages/products/[sku].json", id: "param-tab" },
     );
     await mountBar();
@@ -1002,7 +1010,7 @@ describe("resolving with", () => {
 
     const picker = select("param")!;
     expect(picker).not.toBeNull();
-    expect([...picker.querySelectorAll("option")].map((o) => o.textContent?.trim())).toEqual([
+    expect([...picker.querySelectorAll("option")].map((o) => o.textContent.trim())).toEqual([
       "alpha",
       "beta",
     ]);
@@ -1023,16 +1031,15 @@ describe("resolving with", () => {
      */
     resetStudioState({ isSiteProject: true });
     resetWorkspaceWithTab(
-      { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
+      { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" },
       { documentPath: "pages/products/[sku].json", id: "inline-param" },
     );
     await mountBar();
     await flush(4);
 
     const picker = part("param")!;
-    expect((picker.closest('[part="popover"]') as HTMLElement | null)?.dataset.popover).toBe(
-      "resolving",
-    );
+    const popover = picker.closest('[part="popover"]');
+    expect(popover instanceof HTMLElement ? popover.dataset.popover : undefined).toBe("resolving");
     // The phrase is the popover's group heading, and the fields stack under it.
     expect(
       picker.closest('[part="ctx-group"]')!.querySelector('[part="ctx-group-label"]')!.textContent,
@@ -1049,7 +1056,7 @@ describe("resolving with", () => {
         $paths: { param: "sku", values: ["alpha", "beta"] },
         children: [],
         tagName: "div",
-      } as never,
+      },
       { documentPath: "pages/products/[sku].json", id: "count-param" },
     );
     await mountBar();
@@ -1067,7 +1074,7 @@ describe("resolving with", () => {
     // Test value would need a CSS selector, which the shot contract forbids outright.
     resetStudioState({ isSiteProject: true });
     resetWorkspaceWithTab(
-      { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" } as never,
+      { $paths: { param: "sku", values: ["alpha"] }, children: [], tagName: "div" },
       { documentPath: "pages/products/[sku].json", id: "cmd-param" },
     );
     await mountBar();
@@ -1110,7 +1117,7 @@ describe("resolving with", () => {
           title: "Hello",
         },
         tagName: "x-card",
-      } as never,
+      },
       { documentPath: "components/x-card.json", id: "comp-tab" },
     );
     await mountBar();
@@ -1133,7 +1140,7 @@ describe("resolving with", () => {
 
   test("clearing the last prop field resets previewProps to null", async () => {
     const tab = resetWorkspaceWithTab(
-      { children: [], state: { title: "Hello" }, tagName: "x-card" } as never,
+      { children: [], state: { title: "Hello" }, tagName: "x-card" },
       { documentPath: "components/x-card.json", id: "comp-clear" },
     );
     tab.session.ui.previewProps = { title: "Test drive" };
@@ -1219,7 +1226,7 @@ describe("zoom pod", () => {
     await mountBar(ctxInMode("design"));
 
     const fit = select("fit")!;
-    expect([...fit.querySelectorAll("option")].map((o) => o.textContent?.trim())).toEqual([
+    expect([...fit.querySelectorAll("option")].map((o) => o.textContent.trim())).toEqual([
       "Fit page",
       "Fit width",
       "Actual size",
@@ -1369,9 +1376,9 @@ describe("export", () => {
 describe("two bars, two panes", () => {
   let sideHost: HTMLElement;
 
-  const WITH_MD = {
+  const WITH_MD: ReturnType<Ctx["parseMediaEntries"]> = {
     baseWidth: 1200,
-    featureQueries: [] as { name: string; query: string }[],
+    featureQueries: [],
     sizeBreakpoints: [{ name: "md", query: "(min-width: 768px)", type: "min", width: 768 }],
   };
 
@@ -1386,7 +1393,7 @@ describe("two bars, two panes", () => {
         $media: SCHEME_MEDIA,
         children: [{ tagName: "p", textContent: "Away" }],
         tagName: "div",
-      } as never,
+      },
       documentPath: "/project/away.json",
       id: "pane-context-away",
     });

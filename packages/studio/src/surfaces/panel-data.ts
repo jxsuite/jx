@@ -22,10 +22,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import dataTreeDoc from "./panel-data.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-data", dataTreeDoc as unknown as JxDocument);
+registerSurface("panel-data", dataTreeDoc);
 
 /**
  * One line of a value tree, as the document reads it.
@@ -69,7 +68,7 @@ export interface DataTreeActions {
 }
 
 /** The scope the document reads. */
-interface DataTreeScope extends Record<string, unknown>, DataTreeActions {
+interface DataTreeScope extends DataTreeActions {
   rows: DataTreeRow[];
 }
 
@@ -113,7 +112,7 @@ export function renderDataTreeSurface(
   }
   takeDown(host, existing);
   host.textContent = "";
-  const scope = reactive({ rows, showMore: actions.showMore }) as DataTreeScope;
+  const scope: DataTreeScope = reactive<DataTreeScope>({ rows, showMore: actions.showMore });
   const record: Mounted = { disposed: false, handle: null, scope };
   mounts.set(host, record);
   /* No race to arbitrate: a repaint arriving while this is in flight takes the branch above — a

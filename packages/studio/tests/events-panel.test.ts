@@ -22,18 +22,26 @@
 import { answerPromptDialog, flush, installMockPlatform, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-import type { JxMutableNode } from "@jxsuite/schema/types";
-
-type AnyRec = Record<string, any>;
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { OpenMenuOptions } from "../src/surfaces/menu";
+import type {
+  JsonObject,
+  JsonValue,
+  JxDocumentValue,
+  JxFunctionDef,
+  JxMappedArray,
+  JxMutableNode,
+  JxPath,
+} from "@jxsuite/schema/types";
 
 /**
  * The rung picker, the event-name list and the add-statement list are all the kit's MENU now — one
  * list of actions rather than three private popovers (studio-ui-guidelines.md §12.5). It is a
  * settled surface, so what is asserted here is what it is OFFERED and what a pick commits.
  */
-const menus: AnyRec[] = [];
+const menus: OpenMenuOptions[] = [];
 void mock.module("../src/surfaces/menu", () => ({
-  openMenu: (options: AnyRec) => {
+  openMenu: (options: OpenMenuOptions) => {
     menus.push(options);
     return { close: () => {} };
   },
@@ -85,7 +93,7 @@ function makeDoc(tagName = "div"): JxMutableNode {
       legacyHandler: { $handler: "x" },
     },
     tagName,
-  } as unknown as JxMutableNode;
+  };
 }
 
 // ─── Mounting ────────────────────────────────────────────────────────────────
@@ -107,10 +115,10 @@ afterEach(() => {
  */
 async function logic(
   doc: JxMutableNode,
-  selection: (string | number)[][] = [["children", 0]],
+  selection: JxPath[] = [["children", 0]],
 ): Promise<HTMLElement> {
   const tab = resetWorkspaceWithTab(doc);
-  tab.session.selection = selection as never;
+  tab.session.selection = selection;
   host = document.createElement("div");
   document.body.append(host);
   bindLogicPanelHost(host);
@@ -121,13 +129,92 @@ async function logic(
 /** Let a commit travel back through the watcher and the document's own bindings. */
 const settle = () => flush(4);
 
-function selectedNode(): Record<string, unknown> {
+function selectedNode(): JxMutableNode {
   const tab = activeTab.value!;
-  return getNodeAtPath(tab.doc.document, tab.session.selection.at(-1)!) as Record<string, unknown>;
+  const node = getNodeAtPath(tab.doc.document, tab.session.selection.at(-1)!);
+  if (!node) {
+    throw new Error("the selection names no node");
+  }
+  return node;
 }
 
-function docNow(): Record<string, any> {
-  return activeTab.value!.doc.document as unknown as Record<string, any>;
+/** The repeater member a whole-children fixture is normalised to: the document's first child. */
+function repeaterNow(): JxMutableNode {
+  const { children } = activeTab.value!.doc.document;
+  const member = Array.isArray(children) ? children[0] : undefined;
+  if (member === undefined || isString(member)) {
+    throw new Error("The document's first child is not a repeater member");
+  }
+  return member;
+}
+
+/** The repeater's `map` template. */
+function mapNow(): JxMutableNode {
+  const { map } = repeaterNow();
+  if (!map) {
+    throw new Error("The repeater has no map template");
+  }
+  return map;
+}
+
+/** An object-valued property as a JSON object, or undefined when it holds anything else. */
+function objectAt(value: JxDocumentValue | JsonValue | undefined): JsonObject | undefined {
+  return isJsonObject(value) ? value : undefined;
+}
+
+/** The last menu `openMenu` was asked to show. */
+function lastMenu(): OpenMenuOptions {
+  const menu = menus.at(-1);
+  if (!menu) {
+    throw new Error("No menu was opened");
+  }
+  return menu;
+}
+
+/** Run a row through the menu-wide `run(id)`, as a pick does. */
+function runMenuRow(id: string): void {
+  const { run } = lastMenu();
+  if (!run) {
+    throw new Error("The menu has no run handler");
+  }
+  run(id);
+}
+
+/** Run the menu's last row through its own `run`. */
+function runLastMenuRow(): void {
+  const last = lastMenu().rows.at(-1);
+  if (!last?.run) {
+    throw new Error("The menu's last row runs nothing of its own");
+  }
+  last.run();
+}
+
+/** The HTML element `selector` finds under `root`, or null. */
+function htmlAt(root: ParentNode, selector: string): HTMLElement | null {
+  const el = root.querySelector(selector);
+  return el instanceof HTMLElement ? el : null;
+}
+
+/** A form control a reader can give a value to. */
+type ValueControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement;
+
+/** Whether `el` is a control that carries a `value`. */
+function isValueControl(el: Element | null | undefined): el is ValueControl {
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement ||
+    el instanceof HTMLButtonElement
+  );
+}
+
+/** The value control `selector` finds under `root`; a missing one fails the test by name. */
+function controlAt(root: ParentNode | null | undefined, selector: string): ValueControl {
+  const el = root?.querySelector(selector);
+  if (!isValueControl(el)) {
+    throw new Error(`No value control matches ${selector}`);
+  }
+  return el;
 }
 
 /** Press a kit control the way a reader does: the click lands on the button inside it. */
@@ -138,14 +225,14 @@ function press(el: Element | null): void {
 
 /** Commit a control: the value is set and `change` fires, as a blur or a pick does. */
 function commit(el: Element | null, value: string): void {
-  const input = el!.querySelector('[part="input"], [part="control"]') as HTMLInputElement;
+  const input = controlAt(el, '[part="input"], [part="control"]');
   input.value = value;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /** Type into a control: it reports, and the event bubbles to the element that owns the handler. */
 function type(el: Element | null, value: string): void {
-  const input = el!.querySelector('[part="input"]') as HTMLInputElement;
+  const input = controlAt(el, '[part="input"]');
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -161,25 +248,32 @@ function checkedState(root: Element, part: string): string | null {
   return root.querySelector(`[part="${part}"] [part="control"]`)!.getAttribute("aria-checked");
 }
 
-const section = (root: Element, id: string) =>
-  root.querySelector(`[data-section="${id}"]`) as HTMLElement | null;
+const section = (root: Element, id: string) => htmlAt(root, `[data-section="${id}"]`);
 
 const binding = (root: Element, key: string) =>
-  root.querySelector(`[data-event="${key}"][part="binding"]`) as HTMLElement | null;
+  htmlAt(root, `[data-event="${key}"][part="binding"]`);
 
-const row = (root: Element, prop: string) =>
-  root.querySelector(`[data-prop="${prop}"]`) as HTMLElement | null;
+const row = (root: Element, prop: string) => htmlAt(root, `[data-prop="${prop}"]`);
+
+/** A section's `<details>`, the element a reader opens and shuts. */
+function detailsIn(item: HTMLElement): HTMLDetailsElement {
+  const details = item.querySelector('[part="details"]');
+  if (!(details instanceof HTMLDetailsElement)) {
+    throw new Error("The section renders no details element");
+  }
+  return details;
+}
 
 /** Open a menu from a chip and run one of its rows. */
 async function pick(chip: Element | null, id: string): Promise<void> {
   press(chip);
-  menus.at(-1)!.run(id);
+  runMenuRow(id);
   await settle();
 }
 
 /** Open a section the way a reader does — through the details element the kit renders. */
 async function openSection(item: HTMLElement, open: boolean): Promise<void> {
-  const details = item.querySelector('[part="details"]') as HTMLDetailsElement;
+  const details = detailsIn(item);
   details.open = open;
   details.dispatchEvent(new Event("toggle"));
   await settle();
@@ -243,24 +337,22 @@ describe("Logic tab — rendering bindings", () => {
   test("an inline function body renders the code field with its text", async () => {
     const c = await logic(makeDoc());
     const field = binding(c, "onclick")!.querySelector('[part="body-field"]')!;
-    expect((field.querySelector('[part="input"]') as HTMLInputElement).value).toBe("doIt()");
+    expect(controlAt(field, '[part="input"]').value).toBe("doIt()");
   });
 
   test("a formula body is an ISLAND filled with the expression editor", async () => {
     const c = await logic(makeDoc());
-    const island = binding(c, "oninput")!.querySelector('[part="expression-host"]') as HTMLElement;
+    const island = htmlAt(binding(c, "oninput")!, '[part="expression-host"]');
     expect(island).toBeTruthy();
     // The document renders the host node and NOTHING inside it; the flow MOUNTS its own document
     // Into it — the editor is a surface of its own now, not a lit template rendered beside one.
-    expect(island.querySelector('[part="expression"]')).toBeTruthy();
+    expect(island!.querySelector('[part="expression"]')).toBeTruthy();
   });
 
   test("a ref body renders the handler select with the current ref and every function def", async () => {
     const c = await logic(makeDoc());
     const select = binding(c, "onchange")!.querySelector('[part="event-handler"]')!;
-    expect((select.querySelector('[part="control"]') as HTMLSelectElement).value).toBe(
-      "#/state/handleClick",
-    );
+    expect(controlAt(select, '[part="control"]').value).toBe("#/state/handleClick");
     const labels = [...select.querySelectorAll('[part="option"] [part="text"]')].map(
       (o) => o.textContent,
     );
@@ -306,7 +398,7 @@ describe("Logic tab — editing bindings", () => {
   test("the name menu suggests this element's own keys and the ten worth offering", async () => {
     const c = await logic(makeDoc());
     press(binding(c, "onchange")!.querySelector('[part="event-name"]'));
-    const rows = menus.at(-1)!.rows as AnyRec[];
+    const { rows } = lastMenu();
     // Already bound first, then the suggestions, then the escape hatch — and no duplicates.
     expect(rows.slice(0, 3).map((r) => r.id)).toEqual(["onchange", "onclick", "oninput"]);
     expect(rows.map((r) => r.id)).toContain("onmouseleave");
@@ -324,7 +416,7 @@ describe("Logic tab — editing bindings", () => {
        for any other name. */
     const c = await logic(makeDoc());
     press(binding(c, "onchange")!.querySelector('[part="event-name"]'));
-    (menus.at(-1)!.rows as AnyRec[]).at(-1)!.run();
+    runLastMenuRow();
     await flush(6);
     await answerPromptDialog("onpointerdown");
     await settle();
@@ -337,7 +429,7 @@ describe("Logic tab — editing bindings", () => {
     // `Hello there` onto the element as a binding.
     const c = await logic(makeDoc());
     press(binding(c, "onchange")!.querySelector('[part="event-name"]'));
-    (menus.at(-1)!.rows as AnyRec[]).at(-1)!.run();
+    runLastMenuRow();
     await flush(6);
     await answerPromptDialog("class");
     await settle();
@@ -350,7 +442,7 @@ describe("Logic tab — editing bindings", () => {
        ladder every other row in the inspector names Fixed value / From data… / Formula. */
     const c = await logic(makeDoc());
     press(binding(c, "onchange")!.querySelector('[part="event-source"]'));
-    const rows = menus.at(-1)!.rows as AnyRec[];
+    const { rows } = lastMenu();
     expect(rows.map((r) => r.id)).toEqual(["ref", "expression", "function"]);
     expect(rows.map((r) => r.title)).toEqual(["From data…", "Formula", "Inline function"]);
   });
@@ -389,14 +481,14 @@ describe("Logic tab — editing bindings", () => {
     await pick(binding(c, "onclick")!.querySelector('[part="event-source"]'), "expression");
     expect(selectedNode().onclick).toEqual({ $expression: { operator: "=", target: null } });
     await pick(binding(c, "onclick")!.querySelector('[part="event-source"]'), "function");
-    expect((selectedNode().onclick as { body: unknown }).body).toBe("doIt()");
+    expect(objectAt(selectedNode().onclick)?.body).toBe("doIt()");
   });
 
   test("switching to From data… with no function defs uses an empty ref", async () => {
     const c = await logic({
       children: [{ onclick: { $prototype: "Function", body: "x()" }, tagName: "button" }],
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     await pick(binding(c, "onclick")!.querySelector('[part="event-source"]'), "ref");
     expect(selectedNode().onclick).toEqual({ $ref: "" });
   });
@@ -457,29 +549,31 @@ describe("Logic tab — editing bindings", () => {
 
   test("the expression island writes back through $expression", async () => {
     const c = await logic(makeDoc());
-    const control = binding(c, "oninput")!.querySelector(
+    const control = controlAt(
+      binding(c, "oninput"),
       '[part="expression-host"] [part="operator"] [part="control"]',
-    ) as HTMLSelectElement;
-    expect(control).toBeTruthy();
+    );
     control.value = "push";
     control.dispatchEvent(new Event("change", { bubbles: true }));
     await settle();
-    expect(
-      (selectedNode().oninput as { $expression?: { operator?: string } }).$expression?.operator,
-    ).toBe("push");
+    const expression = objectAt(selectedNode().oninput)?.$expression;
+    expect(objectAt(expression)?.operator).toBe("push");
   });
 });
 
 // ─── Inline body modes (spec.md §20) ─────────────────────────────────────────
 
 describe("Logic tab — inline body modes (spec.md §20)", () => {
-  function structuredDoc(body: unknown, extra: Record<string, unknown> = {}): JxMutableNode {
+  function structuredDoc(
+    body: JxFunctionDef["body"],
+    extra: Partial<JxFunctionDef> = {},
+  ): JxMutableNode {
     return {
       children: [
         { onclick: { $prototype: "Function", body, parameters: [], ...extra }, tagName: "button" },
       ],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
   }
 
   test("a string body is the Code mode: the toggle is there and Code is selected", async () => {
@@ -504,11 +598,11 @@ describe("Logic tab — inline body modes (spec.md §20)", () => {
     const b = binding(c, "onclick")!;
     expect(checkedState(b, "body-statements")).toBe("true");
     expect(b.querySelector('[part="body-field"]')).toBeNull();
-    const island = b.querySelector('[part="statements-host"]') as HTMLElement;
+    const island = htmlAt(b, '[part="statements-host"]');
     expect(island).toBeTruthy();
     // The statement editor is a mounted document of its own, named by the handler it edits.
-    expect(island.dataset.jxRegion).toBe("inspector/statements:onclick");
-    expect(island.querySelector('[part="card"]')).toBeTruthy();
+    expect(island!.dataset.jxRegion).toBe("inspector/statements:onclick");
+    expect(island!.querySelector('[part="card"]')).toBeTruthy();
   });
 
   test("switching back to Code replaces the body with an empty string", async () => {
@@ -522,7 +616,7 @@ describe("Logic tab — inline body modes (spec.md §20)", () => {
     const c = await logic(makeDoc());
     press(binding(c, "onclick")!.querySelector('[part="body-code"]'));
     await settle();
-    expect((selectedNode().onclick as { body: string }).body).toBe("doIt()");
+    expect(objectAt(selectedNode().onclick)?.body).toBe("doIt()");
   });
 
   test("statement editor edits write the inline binding through", async () => {
@@ -530,7 +624,7 @@ describe("Logic tab — inline body modes (spec.md §20)", () => {
     await flush(4);
     const add = binding(c, "onclick")!.querySelector('[part="add-statement"]')!;
     press(add);
-    menus.at(-1)!.run("dispatch");
+    runMenuRow("dispatch");
     await settle();
     expect(selectedNode().onclick).toEqual({
       $prototype: "Function",
@@ -567,7 +661,7 @@ describe("Logic tab — add event", () => {
     const c = await logic({
       children: [{ tagName: "p", textContent: "x" }],
       tagName: "div",
-    } as unknown as JxMutableNode);
+    });
     press(c.querySelector('[part="add-event"]'));
     await settle();
     expect(selectedNode().onclick).toEqual({ $prototype: "Function", body: "", parameters: [] });
@@ -593,7 +687,7 @@ describe("Logic tab — add event", () => {
 
 // ─── Repeating list (arrived from Content, §6) ───────────────────────────────
 
-function repeaterDoc(extra: Record<string, unknown> = {}) {
+function repeaterDoc(extra: Partial<JxMappedArray> = {}): JxMutableNode {
   return {
     children: {
       $prototype: "Array",
@@ -603,7 +697,28 @@ function repeaterDoc(extra: Record<string, unknown> = {}) {
     },
     state: { posts: { default: ["a"] } },
     tagName: "ul",
-  } as unknown as JxMutableNode;
+  };
+}
+
+/**
+ * A repeater whose `items` is a formula. The Logic tab renders that state (the formula rung of the
+ * Items row), but `JxMappedArray.items` is typed `Bindable<JsonValue[]>`, which has no
+ * `$expression` member yet, so this fixture is written as plain JSON.
+ */
+function formulaItemsDoc(): JxMutableNode {
+  const fixture: JsonObject = {
+    children: {
+      $prototype: "Array",
+      items: { $expression: { operator: "!", target: null } },
+      map: { tagName: "li" },
+    },
+    state: { posts: { default: ["a"] } },
+    tagName: "ul",
+  };
+  /* SAFETY: every key here is a JxMutableNode key holding the value that type declares, except
+     `children.items`, a `JxExpressionDef` the panel reads through its own `$expression` check
+     rather than as an array, which is exactly the branch these tests drive. */
+  return fixture as JxMutableNode;
 }
 
 describe("Logic tab — repeating list", () => {
@@ -635,34 +750,30 @@ describe("Logic tab — repeating list", () => {
     expect(c.textContent).not.toContain("Add filter");
     expect(c.textContent).not.toContain("Add sort");
     // Unset, so the dot says so.
-    expect((row(c, "filter")!.querySelector('[part="dot"]') as HTMLElement).dataset.state).toBe(
-      "unset",
-    );
+    expect(htmlAt(row(c, "filter")!, '[part="dot"]')?.dataset.state).toBe("unset");
   });
 
   test("typing a filter sets it; emptying it removes the key", async () => {
     const c = await logic(repeaterDoc());
     type(row(c, "filter")!.querySelector('[part="text"]'), "a > 1");
     await settle();
-    expect(docNow().children[0].filter).toBe("a > 1");
+    expect(repeaterNow().filter).toBe("a > 1");
 
     type(row(c, "filter")!.querySelector('[part="text"]'), "");
     await settle();
-    expect(docNow().children[0].filter).toBeUndefined();
+    expect(repeaterNow().filter).toBeUndefined();
   });
 
   test("the Filter row's set dot removes the key outright", async () => {
     const c = await logic(repeaterDoc({ filter: "a > 1" }));
     press(row(c, "filter")!.querySelector('[part="set"]'));
     await settle();
-    expect(docNow().children[0].filter).toBeUndefined();
+    expect(repeaterNow().filter).toBeUndefined();
   });
 
   test("Items cannot be cleared: a repeater without a source is not a state to reach", async () => {
     const c = await logic(repeaterDoc());
-    const set = row(c, "items")!.querySelector(
-      '[part="set"] [part="control"]',
-    ) as HTMLButtonElement;
+    const set = controlAt(row(c, "items"), '[part="set"] [part="control"]');
     expect(set.disabled).toBe(true);
   });
 
@@ -675,7 +786,8 @@ describe("Logic tab — repeating list", () => {
   test("dropping Items to a fixed value restores the signal's declared default", async () => {
     const c = await logic(repeaterDoc());
     await pick(row(c, "items")!.querySelector('[part="source"]'), "literal");
-    expect(docNow().children[0].items).toBe('["a"]');
+    // The fixed rung writes the default as JSON TEXT, which `Bindable<JsonValue[]>` does not model.
+    expect<JxDocumentValue | undefined>(repeaterNow().items).toBe('["a"]');
   });
 
   test("picking the rung Items is already on is a no-op", async () => {
@@ -683,7 +795,7 @@ describe("Logic tab — repeating list", () => {
     // Items already reads From data… (`{ $ref: "#/state/posts" }`) — picking "ref" again must not
     // Rewrite it.
     await pick(row(c, "items")!.querySelector('[part="source"]'), "ref");
-    expect(docNow().children[0].items).toEqual({ $ref: "#/state/posts" });
+    expect(repeaterNow().items).toEqual({ $ref: "#/state/posts" });
   });
 
   test("handler and Function state entries are excluded from the signal options", async () => {
@@ -695,7 +807,7 @@ describe("Logic tab — repeating list", () => {
         posts: { default: [] },
       },
       tagName: "ul",
-    } as unknown as JxMutableNode);
+    });
     const options = [
       ...row(c, "items")!.querySelectorAll('[part="select"] [part="option"] [part="text"]'),
     ].map((o) => o.textContent);
@@ -711,17 +823,17 @@ describe("Logic tab — a repeater field holding $expression is an island, like 
   });
 
   test("an Items field holding $expression mounts its own expression editor via control-host", async () => {
-    const c = await logic(repeaterDoc({ items: { $expression: { operator: "!", target: null } } }));
-    const island = row(c, "items")!.querySelector('[part="control-host"]') as HTMLElement;
+    const c = await logic(formulaItemsDoc());
+    const island = htmlAt(row(c, "items")!, '[part="control-host"]');
     expect(island).toBeTruthy();
     // Same island contract the event bindings use (studio-ui-guidelines.md §9.4): the document
     // Renders the host and nothing inside it, and the flow mounts its own expression-editor
     // Document into it.
-    expect(island.querySelector('[part="expression"]')).toBeTruthy();
+    expect(island!.querySelector('[part="expression"]')).toBeTruthy();
   });
 
   test("a stale control-host island is dropped on the next repaint once its field disappears", async () => {
-    const c = await logic(repeaterDoc({ items: { $expression: { operator: "!", target: null } } }));
+    const c = await logic(formulaItemsDoc());
     expect(row(c, "items")!.querySelector('[part="control-host"]')).toBeTruthy();
     // Select the root instead: no longer a repeater, so `items`/`filter`/`sort` drop out of
     // `fields` entirely, and the "items" island this session already painted is now stale — the
@@ -734,7 +846,7 @@ describe("Logic tab — a repeater field holding $expression is an island, like 
 
 // ─── Condition ───────────────────────────────────────────────────────────────
 
-function switchDoc() {
+function switchDoc(): JxMutableNode {
   return {
     children: {
       $prototype: "Array",
@@ -746,10 +858,10 @@ function switchDoc() {
       },
     },
     tagName: "ul",
-  } as unknown as JxMutableNode;
+  };
 }
 
-const inMap = [["children", 0, "map"]];
+const inMap: JxPath[] = [["children", 0, "map"]];
 
 describe("Logic tab — condition", () => {
   beforeEach(() => {
@@ -761,8 +873,8 @@ describe("Logic tab — condition", () => {
     const sw = section(c, "condition")!;
     expect(sw).not.toBeNull();
     expect(row(sw, "$switch")).not.toBeNull();
-    const names = [...sw.querySelectorAll('[part="case-name"] [part="input"]')].map(
-      (i) => (i as HTMLInputElement).value,
+    const names = [...sw.querySelectorAll('[part="case-name"] [part="input"]')].map((i) =>
+      isValueControl(i) ? i.value : null,
     );
     expect(names).toEqual(["alpha", "beta"]);
   });
@@ -777,7 +889,7 @@ describe("Logic tab — condition", () => {
     );
     press(remove);
     await settle();
-    expect(Object.keys(docNow().children[0].map.cases)).toEqual(["beta"]);
+    expect(Object.keys(mapNow().cases ?? {})).toEqual(["beta"]);
   });
 
   test("the edit arrow navigates the selection into the case", async () => {
@@ -790,7 +902,7 @@ describe("Logic tab — condition", () => {
     const c = await logic(switchDoc(), inMap);
     press(c.querySelector('[part="add-case"]'));
     await settle();
-    expect(Object.keys(docNow().children[0].map.cases)).toEqual(["alpha", "beta", "case3"]);
+    expect(Object.keys(mapNow().cases ?? {})).toEqual(["alpha", "beta", "case3"]);
   });
 
   test("renaming a case commits on change — the rename rebuilds the branch under it", async () => {
@@ -800,13 +912,13 @@ describe("Logic tab — condition", () => {
     const c = await logic(switchDoc(), inMap);
     commit(row(c, "case:alpha")!.querySelector('[part="case-name"]'), "gamma");
     await settle();
-    expect(Object.keys(docNow().children[0].map.cases)).toEqual(["beta", "gamma"]);
+    expect(Object.keys(mapNow().cases ?? {})).toEqual(["beta", "gamma"]);
   });
 
   test("inside a map template the expression offers the $map signals", async () => {
     const c = await logic(switchDoc(), inMap);
     await pick(row(c, "$switch")!.querySelector('[part="source"]'), "ref");
-    expect(docNow().children[0].map.$switch).toEqual({ $ref: "$map/item" });
+    expect(mapNow().$switch).toEqual({ $ref: "$map/item" });
 
     const options = [...row(c, "$switch")!.querySelectorAll('[part="select"] [part="option"]')].map(
       (o) => o.getAttribute("value"),
@@ -818,7 +930,7 @@ describe("Logic tab — condition", () => {
   test("the Expression row offers no Fixed value rung — a $switch is inherently dynamic", async () => {
     const c = await logic(switchDoc(), inMap);
     press(row(c, "$switch")!.querySelector('[part="source"]'));
-    expect((menus.at(-1)!.rows as AnyRec[]).map((r) => r.id)).not.toContain("literal");
+    expect(lastMenu().rows.map((r) => r.id)).not.toContain("literal");
   });
 
   test("committing a new choice on the $switch select writes a fresh $ref", async () => {
@@ -826,7 +938,7 @@ describe("Logic tab — condition", () => {
     await pick(row(c, "$switch")!.querySelector('[part="source"]'), "ref");
     commit(row(c, "$switch")!.querySelector('[part="select"]'), "$map/index");
     await settle();
-    expect(docNow().children[0].map.$switch).toEqual({ $ref: "$map/index" });
+    expect(mapNow().$switch).toEqual({ $ref: "$map/index" });
   });
 
   test("once From data… is the ONLY rung, the source chip locks (sourceLocked)", async () => {
@@ -842,7 +954,7 @@ describe("Logic tab — condition", () => {
 
 // ─── The custom element's outward contract ───────────────────────────────────
 
-function widgetDoc(overrides: Record<string, unknown> = {}) {
+function widgetDoc(overrides: Partial<JxMutableNode> = {}): JxMutableNode {
   return {
     attributes: { part: "root" },
     children: [{ attributes: { part: "icon" }, tagName: "span" }],
@@ -853,7 +965,7 @@ function widgetDoc(overrides: Record<string, unknown> = {}) {
     style: { "--accent": "red", color: "blue" },
     tagName: "my-widget",
     ...overrides,
-  } as unknown as JxMutableNode;
+  };
 }
 
 describe("Logic tab — the custom element's outward contract", () => {
@@ -934,8 +1046,6 @@ describe("Logic tab — the custom element's outward contract", () => {
     const c = await logic(repeaterDoc());
     await openSection(section(c, "repeater")!, false);
     expect(activeTab.value!.session.ui.inspectorSections["__repeater"]).toBe(false);
-    expect(
-      (section(c, "repeater")!.querySelector('[part="details"]') as HTMLDetailsElement).open,
-    ).toBe(false);
+    expect(detailsIn(section(c, "repeater")!).open).toBe(false);
   });
 });

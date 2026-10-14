@@ -40,10 +40,10 @@ export function isNotFoundRoute(urlPattern: string): boolean {
  * `/` either way, and any other setting leaves the route as written.
  *
  * @param {string} urlPattern - A concrete route (`/about`, `/kb/a/b`)
- * @param {string} [trailingSlash] - `build.trailingSlash`
+ * @param {string | null} [trailingSlash] - `build.trailingSlash`
  * @returns {string} The route as the host serves it
  */
-export function servedRoute(urlPattern: string, trailingSlash?: string): string {
+export function servedRoute(urlPattern: string, trailingSlash?: string | null): string {
   if (urlPattern === "/") {
     return "/";
   }
@@ -93,7 +93,7 @@ export function htmlDeclaresNoindex(html: string): boolean {
 }
 
 /** The `<head>` of a built page, or the whole string when it has no closing tag. */
-function headOf(html: string): { head: string; end: number } {
+function headOf(html: string) {
   const end = html.search(/<\/head\s*>/i);
   return { end, head: end === -1 ? html : html.slice(0, end) };
 }

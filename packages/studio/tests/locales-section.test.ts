@@ -30,8 +30,7 @@ import {
 import { clearProblems, problems, toasts } from "../src/services/notify";
 import type { MockPlatformState } from "./harness";
 import type { StudioPlatform } from "../src/types";
-
-type AnyConfig = Record<string, any>;
+import type { ProjectConfig } from "@jxsuite/schema/types";
 
 /**
  * Draw the section into a fresh container and let the surface mount.
@@ -41,11 +40,11 @@ type AnyConfig = Record<string, any>;
  * with no `input` inside it.
  */
 async function setup(
-  cfg: AnyConfig | null,
+  cfg: ProjectConfig | null,
   overrides: Partial<StudioPlatform> = {},
 ): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides);
-  resetStudioState({ projectConfig: cfg as unknown });
+  resetStudioState({ projectConfig: cfg });
   const container = document.createElement("div");
   document.body.append(container);
   renderLocalesSection(container);
@@ -53,27 +52,49 @@ async function setup(
   return { container, state };
 }
 
-function config(): AnyConfig {
-  return (projectState as AnyConfig).projectConfig;
+/** The live project config, as the section left it. */
+function config(): ProjectConfig {
+  const live = projectState?.projectConfig;
+  if (!live) {
+    throw new Error("no project config is loaded");
+  }
+  return live;
 }
 
-function written(state: MockPlatformState): AnyConfig {
-  return JSON.parse(state.files.get("project.json")!) as AnyConfig;
+/** `project.json` as the section serialized it. */
+function written(state: MockPlatformState): ProjectConfig {
+  /* SAFETY: the only writer of `project.json` in these suites is `commitProjectConfig`, which
+     serializes the live ProjectConfig with JSON.stringify; parsing that text yields the same shape
+     back. */
+  return JSON.parse(state.files.get("project.json")!) as ProjectConfig;
 }
 
 /** The refusal drawn under the tag field — the kit's own error sentence, permanently present. */
 function refusal(container: HTMLElement): string {
-  return container.querySelector('[part="add-field"] [part="error"]')?.textContent?.trim() ?? "";
+  return container.querySelector('[part="add-field"] [part="error"]')?.textContent.trim() ?? "";
 }
 
 /** The whole-file write failure, said under the section title rather than beside a control. */
 function alertText(container: HTMLElement): string | undefined {
-  return container.querySelector('[role="alert"]')?.textContent?.trim();
+  return container.querySelector('[role="alert"]')?.textContent.trim();
 }
 
 /** The tag field's native control, which is where a reader types. */
 function tagInput(container: HTMLElement): HTMLInputElement {
-  return container.querySelector('[part="add-field"] [part="input"]') as HTMLInputElement;
+  const input = container.querySelector('[part="add-field"] [part="input"]');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("the section drew no tag input");
+  }
+  return input;
+}
+
+/** The native `<select>` inside one of the two pickers, which is the control a reader operates. */
+function picker(container: HTMLElement, part: string): HTMLSelectElement {
+  const select = container.querySelector(`[part="${part}"] select`);
+  if (!(select instanceof HTMLSelectElement)) {
+    throw new Error(`the section drew no ${part} picker`);
+  }
+  return select;
 }
 
 /** Type into the add field, the way the author does. */
@@ -100,7 +121,7 @@ function pressAdd(container: HTMLElement): void {
 
 /** Pick a value in one of the two pickers, from the native control the reader operates. */
 async function pick(container: HTMLElement, part: string, value: string): Promise<void> {
-  const select = container.querySelector(`[part="${part}"] select`) as HTMLSelectElement;
+  const select = picker(container, part);
   select.value = value;
   select.dispatchEvent(new Event("change", { bubbles: true }));
   await flush(4);
@@ -110,7 +131,7 @@ async function pick(container: HTMLElement, part: string, value: string): Promis
 function options(container: HTMLElement, part: string): [string, string][] {
   return [...container.querySelectorAll(`[part="${part}"] option[part="option"]`)].map((o) => [
     o.getAttribute("value") ?? "",
-    o.textContent?.trim() ?? "",
+    o.textContent.trim(),
   ]);
 }
 
@@ -121,7 +142,7 @@ function texts(container: HTMLElement, part: string): (string | null)[] {
 /** A platform whose every write is refused. */
 const failing = {
   writeFile: () => Promise.reject(new Error("EROFS: read-only file system")),
-} as unknown as Partial<StudioPlatform>;
+} satisfies Partial<StudioPlatform>;
 
 beforeEach(() => {
   resetWorkspaceWithTab();
@@ -145,12 +166,8 @@ describe("the Locales section", () => {
     const { container } = await setup({});
     expect(container.querySelector('[part="empty"]')?.textContent).toContain("No languages");
     // Nothing to choose between, said to the control rather than only drawn.
-    expect((container.querySelector('[part="default"] select') as HTMLSelectElement).disabled).toBe(
-      true,
-    );
-    expect((container.querySelector('[part="routing"] select') as HTMLSelectElement).disabled).toBe(
-      true,
-    );
+    expect(picker(container, "default").disabled).toBe(true);
+    expect(picker(container, "routing").disabled).toBe(true);
   });
 
   test("Add appends the canonical tag to the live config and to project.json", async () => {
@@ -158,8 +175,8 @@ describe("the Locales section", () => {
     await typeTag(container, "  FR-ca  ");
     pressAdd(container);
     await flush(4);
-    expect(config().i18n.locales).toEqual(["en", "fr-CA"]);
-    expect(written(state).i18n.locales).toEqual(["en", "fr-CA"]);
+    expect(config().i18n?.locales).toEqual(["en", "fr-CA"]);
+    expect(written(state).i18n?.locales).toEqual(["en", "fr-CA"]);
     // The row reconciles in place, and the field it was typed in is empty again.
     expect(texts(container, "tag")).toEqual(["en", "fr-CA"]);
     expect(tagInput(container).value).toBe("");
@@ -172,7 +189,7 @@ describe("the Locales section", () => {
       new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
     );
     await flush(4);
-    expect(config().i18n.locales).toEqual(["en", "de"]);
+    expect(config().i18n?.locales).toEqual(["en", "de"]);
   });
 
   test("the sibling keys survive the add — the merge is top-level only", async () => {
@@ -195,7 +212,7 @@ describe("the Locales section", () => {
     expect(refusal(container)).toContain("not a well-formed language tag");
     pressAdd(container);
     await flush(4);
-    expect(config().i18n.locales).toEqual(["en"]);
+    expect(config().i18n?.locales).toEqual(["en"]);
     expect(state.files.has("project.json")).toBe(false);
   });
 
@@ -205,7 +222,7 @@ describe("the Locales section", () => {
     expect(refusal(container)).toContain("already declared");
     pressAdd(container);
     await flush(4);
-    expect(config().i18n.locales).toEqual(["en"]);
+    expect(config().i18n?.locales).toEqual(["en"]);
     expect(state.files.has("project.json")).toBe(false);
   });
 
@@ -235,8 +252,8 @@ describe("the Locales section", () => {
     });
     pointer(removeButton(container, "fr"), "click");
     await flush(4);
-    expect(config().i18n.locales).toEqual(["en", "de"]);
-    expect(written(state).i18n.defaultLocale).toBe("en");
+    expect(config().i18n?.locales).toEqual(["en", "de"]);
+    expect(written(state).i18n?.defaultLocale).toBe("en");
   });
 
   test("removing the default language moves the default rather than orphaning it", async () => {
@@ -268,7 +285,7 @@ describe("the Locales section", () => {
       ["fr", "français"],
     ]);
     await pick(container, "default", "fr");
-    expect(config().i18n.defaultLocale).toBe("fr");
+    expect(config().i18n?.defaultLocale).toBe("fr");
     expect(written(state).i18n).toEqual({ defaultLocale: "fr", locales: ["en", "fr"] });
   });
 
@@ -280,8 +297,8 @@ describe("the Locales section", () => {
       LOCALE_ROUTINGS.map((r) => r.value),
     );
     await pick(container, "routing", "prefix-always");
-    expect(config().i18n.routing).toBe("prefix-always");
-    expect(written(state).i18n.defaultLocale).toBe("en");
+    expect(config().i18n?.routing).toBe("prefix-always");
+    expect(written(state).i18n?.defaultLocale).toBe("en");
   });
 
   test("a rejected write is shown under the title instead of being dropped", async () => {
@@ -302,15 +319,15 @@ describe("the Locales section", () => {
 
     /* The failed remove still landed in MEMORY — `commitProjectConfig` mutates and then writes, so
        the parked error is the only thing telling the author that the file disagrees. */
-    expect(config().i18n.locales).toEqual(["en"]);
+    expect(config().i18n?.locales).toEqual(["en"]);
 
     const { state: writable } = installMockPlatform();
     await typeTag(container, "de");
     pressAdd(container);
     await flush(4);
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(config().i18n.locales).toEqual(["en", "de"]);
-    expect(written(writable).i18n.locales).toEqual(["en", "de"]);
+    expect(config().i18n?.locales).toEqual(["en", "de"]);
+    expect(written(writable).i18n?.locales).toEqual(["en", "de"]);
     expect(state.files.has("project.json")).toBe(false);
   });
 
@@ -347,7 +364,7 @@ describe("addProjectLocale — the write both doors make", () => {
     // `true` is the answer the command's report reads: this run wrote the file.
     expect(await addProjectLocale("pt-br")).toBe(true);
     expect(config().i18n).toEqual({ locales: ["pt-BR"] });
-    expect(written(state).i18n.locales).toEqual(["pt-BR"]);
+    expect(written(state).i18n?.locales).toEqual(["pt-BR"]);
   });
 
   test("spreads the parent, so defaultLocale and routing survive", async () => {
@@ -367,7 +384,7 @@ describe("addProjectLocale — the write both doors make", () => {
     const { state } = installMockPlatform();
     resetStudioState({ projectConfig: { i18n: { locales: ["en"] } } });
     expect(await addProjectLocale("en US")).toBe(false);
-    expect(config().i18n.locales).toEqual(["en"]);
+    expect(config().i18n?.locales).toEqual(["en"]);
     expect(state.files.has("project.json")).toBe(false);
     // `error` files a Problem rather than a toast — a refusal that must be fixed, not one that
     // Rests and fades.
@@ -378,7 +395,7 @@ describe("addProjectLocale — the write both doors make", () => {
     const { state } = installMockPlatform();
     resetStudioState({ projectConfig: { i18n: { locales: ["FR-ca"] } } });
     expect(await addProjectLocale("fr-CA")).toBe(false);
-    expect(config().i18n.locales).toEqual(["FR-ca"]);
+    expect(config().i18n?.locales).toEqual(["FR-ca"]);
     expect(state.files.has("project.json")).toBe(false);
     expect(toasts.some((t) => t.message.includes("already one of this project's"))).toBe(true);
   });

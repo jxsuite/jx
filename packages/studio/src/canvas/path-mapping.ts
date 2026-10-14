@@ -11,6 +11,8 @@
  * result for the `data-jx-path` attribute.
  */
 
+import { isJsonObject, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 
 /**
@@ -83,22 +85,27 @@ export function wrapsPageContent(path: JxPath, prefix: JxPath | null): boolean {
  * Resolve a runtime render path to a document path (or flag it as layout-originated). Pure — the
  * caller decides whether to record the result in a WeakMap or `data-jx-*` attributes.
  */
-export function classifyRenderNode(path: JxPath, def: unknown, ctx: PathMapCtx): RenderNodeClass {
+export function classifyRenderNode(
+  path: JxPath,
+  def: JxElement | string,
+  ctx: PathMapCtx,
+): RenderNodeClass {
   // Layout-originated nodes have no page-document path; the caller stamps their origin instead
   // (data-jx-layout-path / data-jx-layout-file).
-  const marker =
-    ctx.layoutWrapped && typeof def === "object"
-      ? (def as { $__layout?: unknown } | null)?.$__layout
-      : undefined;
+  const marker = ctx.layoutWrapped && isNonNullObject(def) ? def["$__layout"] : undefined;
   if (marker) {
-    const origin = (typeof marker === "object" ? marker : {}) as Partial<LayoutMarker>;
+    // A legacy bare `true` marker carries no origin, so it reads as an empty one.
+    const origin = isJsonObject(marker) ? marker : {};
+    const { file, path: originPath } = origin;
     return {
       // The root is never chrome even when the layout distributed nothing: it IS the render, and a
       // Dimmed, frozen root would be a canvas nobody can touch.
       chrome: path.length > 0 && !wrapsPageContent(path, ctx.pageContentPrefix),
       kind: "layout",
-      layoutFile: typeof origin.file === "string" ? origin.file : "",
-      layoutPath: Array.isArray(origin.path) ? origin.path : [],
+      layoutFile: isString(file) ? file : "",
+      /* SAFETY: markLayoutNodes (canvas-live-render.ts) is the only writer of `$__layout`, and the
+       * `path` it stamps is a LayoutMarker's JxPath. */
+      layoutPath: Array.isArray(originPath) ? (originPath as JxPath) : [],
     };
   }
 
@@ -112,10 +119,9 @@ export function classifyRenderNode(path: JxPath, def: unknown, ctx: PathMapCtx):
     if (path.length >= pfx.length && pfx.every((seg, i) => path[i] === seg)) {
       const rest = path.slice(pfx.length);
       const [containerIdx] = rest;
-      mappedPath =
-        typeof containerIdx === "number"
-          ? ["children", containerIdx - (ctx.pageContentOffset ?? 0), ...rest.slice(1)]
-          : ["children", ...rest];
+      mappedPath = isNumber(containerIdx)
+        ? ["children", containerIdx - (ctx.pageContentOffset ?? 0), ...rest.slice(1)]
+        : ["children", ...rest];
     }
   }
 
@@ -154,5 +160,6 @@ export function serializeJxPath(path: JxPath): string {
 
 /** Decode a `data-jx-path` attribute back into a document path. */
 export function parseJxPath(serialized: string): JxPath {
+  // SAFETY: only serializeJxPath writes `data-jx-path`, and it is JSON.stringify of a JxPath.
   return JSON.parse(serialized) as JxPath;
 }

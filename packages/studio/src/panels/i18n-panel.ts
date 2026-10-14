@@ -63,6 +63,7 @@ import type {
   I18nSurfaceHandle,
   I18nValues,
 } from "../surfaces/panel-i18n";
+import type { CommandArgValues } from "../commands/command-args";
 import type { LibraryFile, ScanFailure } from "../browse/library-model";
 import type { NavigatorPanelContext, PanelBody } from "./panel-registry";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
@@ -254,7 +255,7 @@ export function parityRows(
   /* Every key the paths alone produce, so a declared one can be matched against a real file rather
      than against a spelling. */
   const derivedKeys = new Set(
-    files.filter((f) => f.category !== "Media").map((f) => translationKeyOfPath(f.path, i18n)),
+    files.flatMap((f) => (f.category === "Media" ? [] : [translationKeyOfPath(f.path, i18n)])),
   );
   const keyOf = (file: LibraryFile): string => {
     const own = declared.get(file.path);
@@ -401,7 +402,7 @@ function cellTitle(cell: ParityCell, locale: string, refusal: string | undefined
  * report is what makes the next such drift a sentence in the Problems panel rather than an
  * exception out of a click.
  */
-function runByName(id: string, args: Record<string, unknown> = {}): void {
+function runByName(id: string, args: CommandArgValues = {}): void {
   const registry = activeRegistry();
   if (!registry?.get(id)) {
     return;
@@ -437,7 +438,13 @@ function projectRow(row: ParityRow, i18n: ResolvedI18n): I18nParityRow {
 }
 
 /** How many squares are not yet a file, and how many are behind their source. */
-function countCells(rows: readonly ParityRow[]): { missing: number; stale: number } {
+interface CellCounts {
+  missing: number;
+  stale: number;
+}
+
+/** Tallies {@link CellCounts} over every square of the grid. */
+function countCells(rows: readonly ParityRow[]): CellCounts {
   let missing = 0;
   let stale = 0;
   for (const row of rows) {

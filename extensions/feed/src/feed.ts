@@ -9,10 +9,18 @@
  * @docs framework/site/feeds
  */
 
+import type { EmitHostContext } from "@jxsuite/schema/format-registry";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { canonicalizeLocale, localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { ContentLoaderEntry, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  ContentLoaderEntry,
+  JsonValue,
+  JxHeadEntry,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 import { atomUrl, renderAtom } from "./atom.ts";
+import type { AtomPage } from "./atom.ts";
 import { jsonFeedUrl, renderJsonFeed } from "./json-feed.ts";
 import {
   entryToItem,
@@ -24,13 +32,6 @@ import {
 } from "./shared.ts";
 import type { NormalizedFeed, NormalizedFeedConfig } from "./shared.ts";
 
-interface EmitContext {
-  projectConfig?: ProjectConfig;
-  root?: string;
-  sections?: Record<string, unknown>;
-  routes?: unknown[];
-}
-
 interface HeadContext {
   projectConfig?: ProjectConfig;
   root?: string;
@@ -40,7 +41,13 @@ const MEDIA_TYPES = { atom: "application/atom+xml", json: "application/feed+json
 
 function siteUrlOf(projectConfig: ProjectConfig | undefined): string | null {
   const url = projectConfig?.url;
-  return typeof url === "string" && url !== "" ? url : null;
+  return isString(url) && url !== "" ? url : null;
+}
+
+/** The project's resolved i18n, and the locales one feed is published in. */
+interface FeedLocales {
+  i18n: ResolvedI18n | null;
+  locales: string[];
 }
 
 /**
@@ -57,17 +64,14 @@ function siteUrlOf(projectConfig: ProjectConfig | undefined): string | null {
  *
  * @param {ProjectConfig | undefined} projectConfig
  * @param {string} collection
- * @returns {{ i18n: ResolvedI18n | null; locales: string[] }}
+ * @returns {FeedLocales}
  */
-function feedLocales(
-  projectConfig: ProjectConfig | undefined,
-  collection: string,
-): { i18n: ResolvedI18n | null; locales: string[] } {
+function feedLocales(projectConfig: ProjectConfig | undefined, collection: string): FeedLocales {
   const { i18n } = resolveI18n(projectConfig ?? {});
-  const content = (projectConfig as { content?: Record<string, { source?: unknown }> } | undefined)
-    ?.content;
-  const source = content?.[collection]?.source;
-  const localized = typeof source === "string" && source.includes("{locale}");
+  const content = projectConfig?.content;
+  const contentType = isJsonObject(content) ? content[collection] : undefined;
+  const source = isJsonObject(contentType) ? contentType.source : undefined;
+  const localized = isString(source) && source.includes("{locale}");
   return { i18n, locales: i18n !== null && localized ? i18n.locales : [] };
 }
 
@@ -84,7 +88,7 @@ function localeVariant(feed: NormalizedFeed, locale: string, i18n: ResolvedI18n 
 
 export const Feed = {
   /** Normalize the `feed` section into `_project.feed`. */
-  projectData(sectionValue: unknown, ctx?: HeadContext): NormalizedFeedConfig {
+  projectData(sectionValue: JsonValue | undefined, ctx?: HeadContext): NormalizedFeedConfig {
     return normalizeFeedConfig(sectionValue, ctx?.projectConfig?.defaults?.lang);
   },
 
@@ -94,7 +98,7 @@ export const Feed = {
    * Pure configuration, which is exactly why this can run before content loads — a feed's URL comes
    * from its `output`, not from its entries.
    */
-  head(sectionValue: unknown, ctx: HeadContext): JxHeadEntry[] {
+  head(sectionValue: JsonValue | undefined, ctx: HeadContext): JxHeadEntry[] {
     const siteUrl = siteUrlOf(ctx.projectConfig);
     if (siteUrl === null) {
       return [];
@@ -116,18 +120,15 @@ export const Feed = {
             format === "atom"
               ? atomUrl(siteUrl, variant.output)
               : jsonFeedUrl(siteUrl, variant.output);
-          entries.push({
-            attributes: {
-              href,
-              ...(variant.language !== null && locales.length > 0
-                ? { hreflang: variant.language }
-                : {}),
-              rel: "alternate",
-              title: variant.title === "" ? "Feed" : variant.title,
-              type: MEDIA_TYPES[format],
-            },
-            tagName: "link",
-          });
+          // Attribute order is emitted order: href, then hreflang when localized, then the rest.
+          const attributes: NonNullable<JxHeadEntry["attributes"]> = { href };
+          if (variant.language !== null && locales.length > 0) {
+            attributes.hreflang = variant.language;
+          }
+          attributes.rel = "alternate";
+          attributes.title = variant.title === "" ? "Feed" : variant.title;
+          attributes.type = MEDIA_TYPES[format];
+          entries.push({ attributes, tagName: "link" });
         }
       }
     }
@@ -135,13 +136,19 @@ export const Feed = {
   },
 
   /** Serialize every configured feed, plus its RFC 5005 archives when enabled. */
-  emit(sectionValue: unknown, ctx: EmitContext): { path: string; content: string }[] {
+  emit(
+    sectionValue: JsonValue | undefined,
+    ctx: Partial<Pick<EmitHostContext, "projectConfig" | "sections">>,
+  ): { path: string; content: string }[] {
     const siteUrl = siteUrlOf(ctx.projectConfig);
     if (siteUrl === null) {
       console.warn("@jxsuite/feed: `url` is not set in project.json — feeds need absolute links.");
       return [];
     }
     const config = normalizeFeedConfig(sectionValue, ctx.projectConfig?.defaults?.lang);
+    /* SAFETY: the `content` section's owner (the parser's `Content.projectData`) answers a
+       Map of collection name to loaded entries (specs/extensions.md §8.4), and the host forwards
+       each section's answer unchanged. */
     const content = ctx.sections?.content as Map<string, ContentLoaderEntry[]> | undefined;
     const trailingSlash = String(ctx.projectConfig?.build?.trailingSlash ?? "always");
     const files: { path: string; content: string }[] = [];
@@ -198,38 +205,34 @@ function renderFeed(
   for (const format of feed.formats) {
     const url = format === "atom" ? atomUrl : jsonFeedUrl;
     if (format === "atom") {
-      files.push({
-        content: renderAtom({
-          complete,
-          feed,
-          items: current,
-          selfUrl: url(siteUrl, feed.output),
-          siteUrl,
-          updated: feedUpdated(items),
-          ...(archives.length > 0
-            ? { prevArchiveUrl: url(siteUrl, feed.output, archives.length - 1) }
-            : {}),
-        }),
-        path: feedPath(feed.output, "xml"),
-      });
+      const subscription: AtomPage = {
+        complete,
+        feed,
+        items: current,
+        selfUrl: url(siteUrl, feed.output),
+        siteUrl,
+        updated: feedUpdated(items),
+      };
+      if (archives.length > 0) {
+        subscription.prevArchiveUrl = url(siteUrl, feed.output, archives.length - 1);
+      }
+      files.push({ content: renderAtom(subscription), path: feedPath(feed.output, "xml") });
       // Archives run oldest-first, so `prev-archive` walks backwards through time.
       for (const [i, page] of archives.entries()) {
-        files.push({
-          content: renderAtom({
-            currentUrl: url(siteUrl, feed.output),
-            feed,
-            items: page,
-            selfUrl: url(siteUrl, feed.output, i),
-            siteUrl,
-            updated: feedUpdated(page),
-            ...(i > 0 ? { prevArchiveUrl: url(siteUrl, feed.output, i - 1) } : {}),
-            nextArchiveUrl:
-              i < archives.length - 1
-                ? url(siteUrl, feed.output, i + 1)
-                : url(siteUrl, feed.output),
-          }),
-          path: feedPath(feed.output, "xml", i),
-        });
+        const archive: AtomPage = {
+          currentUrl: url(siteUrl, feed.output),
+          feed,
+          items: page,
+          selfUrl: url(siteUrl, feed.output, i),
+          siteUrl,
+          updated: feedUpdated(page),
+        };
+        if (i > 0) {
+          archive.prevArchiveUrl = url(siteUrl, feed.output, i - 1);
+        }
+        archive.nextArchiveUrl =
+          i < archives.length - 1 ? url(siteUrl, feed.output, i + 1) : url(siteUrl, feed.output);
+        files.push({ content: renderAtom(archive), path: feedPath(feed.output, "xml", i) });
       }
     } else {
       files.push({

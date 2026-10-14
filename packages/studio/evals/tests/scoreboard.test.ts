@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { writeRun } from "../scoreboard.js";
 
 /** Build a minimal TaskResult-shaped object. */
@@ -65,10 +67,11 @@ describe("scoreboard", () => {
     expect(report).toContain(
       "**Tokens:** 1000 in · 750 cached (75% cache hit) · 40 out over 2 reporting request(s)",
     );
-    const results = JSON.parse(readFileSync(join(outDir, "results.json"), "utf8")) as {
-      tasks: { trials: { usage: unknown }[] }[];
-    };
-    expect(results.tasks[0]?.trials[0]?.usage).toEqual(usage);
+    const results: JsonValue = JSON.parse(readFileSync(join(outDir, "results.json"), "utf8"));
+    const task0 =
+      isJsonObject(results) && Array.isArray(results.tasks) ? results.tasks[0] : undefined;
+    const trial0 = isJsonObject(task0) && Array.isArray(task0.trials) ? task0.trials[0] : undefined;
+    expect(isJsonObject(trial0) ? trial0.usage : undefined).toEqual(usage);
     expect(readFileSync(join(outDir, "transcripts", "a-1.md"), "utf8")).toContain(
       "inputTokens=1000 cachedInputTokens=750 outputTokens=40",
     );

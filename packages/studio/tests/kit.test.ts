@@ -7,8 +7,11 @@ import { kitReady, registerKit } from "../src/ui/kit";
 
 describe("registerKit", () => {
   test("defines the kit once, adopts the theme, and touches no network", async () => {
-    const fetchMock = mock(() => Promise.reject(new Error("no network")));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const fetchMock = mock((_resource: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.reject<Response>(new Error("no network")),
+    );
+    // Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+    globalThis.fetch = Object.assign(fetchMock, { preconnect: globalThis.fetch.preconnect });
     const doc = document.implementation.createHTMLDocument("kit");
 
     const first = registerKit(doc);

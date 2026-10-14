@@ -29,14 +29,15 @@
  * @docs studio/interface/canvas
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import canvasStageDoc from "./canvas-stage.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("canvas-stage", canvasStageDoc as unknown as JxDocument);
+registerSurface("canvas-stage", canvasStageDoc);
 
 /** One artboard, as the document reads it. Every field is already a string or a boolean. */
 export interface CanvasStagePanelItem {
@@ -104,7 +105,7 @@ export interface CanvasStageHandle {
 }
 
 /** The scope the document reads: {@link CanvasStageView} plus the one control it draws. */
-interface CanvasStageScope extends Record<string, unknown>, CanvasStageView {
+interface CanvasStageScope extends CanvasStageView {
   pickPanel: (key: string) => void;
 }
 
@@ -117,16 +118,16 @@ interface CanvasStageScope extends Record<string, unknown>, CanvasStageView {
  * `data-side` tells the two width handles apart — the one part the document draws twice.
  */
 function attrOf(def: JxElement | string, name: string): string {
-  const value = typeof def === "string" ? undefined : def.attributes?.[name];
-  return typeof value === "string" ? value : "";
+  const value = isString(def) ? undefined : def.attributes?.[name];
+  return isString(value) ? value : "";
 }
 
 /** The `key` of the `$map` item a node was rendered inside, or "". */
 function itemKey(state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: unknown } | undefined)?.item;
-  const key =
-    item !== null && typeof item === "object" ? (item as Record<string, unknown>).key : "";
-  return typeof key === "string" ? key : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const key = isJsonObject(item) ? item["key"] : "";
+  return isString(key) ? key : "";
 }
 
 /** The three parts an artboard is made of; everything else is a singleton host. */
@@ -180,7 +181,7 @@ export function mountCanvasStage(
      "the iframe survives" means — so the record a fresh render builds is filled from here rather
      than from a callback that will not fire again. */
   const boards = new Map<string, Map<string, HTMLElement>>();
-  const scope = reactive<CanvasStageScope>({
+  const scope: CanvasStageScope = reactive<CanvasStageScope>({
     frame: "boards",
     framePart: "panzoom",
     frameVars: "",
@@ -190,7 +191,7 @@ export function mountCanvasStage(
     lead: "none",
     panels: [],
     pickPanel: actions.pickPanel,
-  }) as CanvasStageScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;

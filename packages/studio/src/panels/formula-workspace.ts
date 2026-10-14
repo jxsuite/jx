@@ -42,10 +42,11 @@
  */
 
 import { nothing } from "lit-html";
-import { getEventBinding, isExpressionDef, isJsonObject } from "@jxsuite/schema/guards";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { getEventBinding, isExpressionDef, isJsonObject, isString } from "@jxsuite/schema/guards";
 
 import { effect, effectScope, shallowRef } from "../reactivity";
-import { getNodeAtPath, updateUi } from "../store";
+import { updateUi } from "../store";
 import { activeTab } from "../workspace/workspace";
 import { mutateAddDef, mutateUpdateDef, mutateUpdateProperty, transactDoc } from "../tabs/transact";
 import { setBottomTab } from "../shell";
@@ -69,14 +70,19 @@ import {
   stringProperty,
 } from "../commands/command-args";
 
-import type { JxNodeValue } from "../tabs/transact";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { PanelBody } from "./panel-registry";
 import type { ExpressionPreview } from "../services/preview-eval";
-import type { FormulaEditDef, FunctionEditDef, JsonValue } from "../types";
+import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { Tab } from "../tabs/tab";
-import type { JxStateDefinition } from "@jxsuite/schema/types";
+import type {
+  JsonObject,
+  JsonValue,
+  JxEventBinding,
+  JxStateDefinition,
+} from "@jxsuite/schema/types";
 import type { EffectScope } from "@vue/reactivity";
+import type { ScopeValue } from "../editor/merge-tags";
 import type {
   LogicChipView,
   LogicScopeEntryView,
@@ -125,10 +131,10 @@ export function logicTarget(tab: Tab | null = activeTab.value): LogicTarget | nu
     return null;
   }
   if (ui.editingFunction) {
-    return { editing: ui.editingFunction as FunctionEditDef, surface: "function" };
+    return { editing: ui.editingFunction, surface: "function" };
   }
   if (ui.editingFormula) {
-    return { editing: ui.editingFormula as FormulaEditDef, surface: "formula" };
+    return { editing: ui.editingFormula, surface: "formula" };
   }
   return null;
 }
@@ -176,25 +182,35 @@ export function openLogicTarget(target: LogicTarget): void {
   revealLogicPanel();
 }
 
-function isExprNode(value: unknown): value is Record<string, unknown> {
-  return isJsonObject(value) && typeof value.operator === "string";
+/** An expression node: a plain object naming its `operator`. */
+function isExprNode(value: JsonValue | undefined): value is JsonObject {
+  return isJsonObject(value) && isString(value.operator);
 }
 
 // ─── Document access ─────────────────────────────────────────────────────────
 
+/**
+ * The `$expression` of an expression entry or binding, as the JSON object it is; null for anything
+ * else. `isExpressionDef` has already checked it is a plain object, and the guard carries that to
+ * the type.
+ */
+function expressionOf(value: JxStateDefinition | JxEventBinding | undefined): JsonObject | null {
+  if (!isExpressionDef(value)) {
+    return null;
+  }
+  const { $expression } = value;
+  return isJsonObject($expression) ? $expression : null;
+}
+
 /** Read the workspace target's current root expression node from the document. */
-export function formulaRoot(tab: Tab, editing: FormulaEditDef): Record<string, unknown> | null {
+export function formulaRoot(tab: Tab, editing: FormulaEditDef): JsonObject | null {
   const { document } = tab.doc;
   if (editing.type === "def" && editing.defName) {
-    const def = document?.state?.[editing.defName];
-    return isExpressionDef(def) ? (def.$expression as unknown as Record<string, unknown>) : null;
+    return expressionOf(document.state?.[editing.defName]);
   }
   if (editing.type === "event" && editing.path && editing.eventKey) {
     const node = getNodeAtPath(document, editing.path);
-    const binding = node ? getEventBinding(node, editing.eventKey) : undefined;
-    return isExpressionDef(binding)
-      ? (binding.$expression as unknown as Record<string, unknown>)
-      : null;
+    return expressionOf(node ? getEventBinding(node, editing.eventKey) : undefined);
   }
   return null;
 }
@@ -203,18 +219,18 @@ export function formulaRoot(tab: Tab, editing: FormulaEditDef): Record<string, u
  * Resolve a chip selection to its editable node: the deepest expression-node prefix of `path` (head
  * chips target ref/literal operands; stale paths fall back toward the root).
  */
-function resolveSelection(
-  root: Record<string, unknown>,
-  path: NodePath,
-): { node: Record<string, unknown>; path: NodePath } {
-  let current: unknown = root;
-  let node: Record<string, unknown> = root;
+function resolveSelection(root: JsonObject, path: NodePath) {
+  let current: JsonValue | undefined = root;
+  let node = root;
   let nodePath: NodePath = [];
   for (const [i, seg] of path.entries()) {
-    if (!current || typeof current !== "object") {
+    if (Array.isArray(current)) {
+      current = current[Number(seg)];
+    } else if (isJsonObject(current)) {
+      current = current[String(seg)];
+    } else {
       break;
     }
-    current = (current as Record<string, unknown>)[seg as keyof typeof current];
     if (isExprNode(current)) {
       node = current;
       nodePath = path.slice(0, i + 1);
@@ -224,30 +240,28 @@ function resolveSelection(
 }
 
 /** Immutably replace the value at `path` within `node` (object keys / array indexes). */
-function replaceAtPath(node: unknown, path: NodePath, value: unknown): unknown {
-  if (path.length === 0) {
+function replaceAtPath(node: JsonValue | undefined, path: NodePath, value: JsonValue): JsonValue {
+  const [head, ...rest] = path;
+  if (head === undefined) {
     return value;
   }
-  const [head, ...rest] = path as [string | number, ...NodePath];
   if (Array.isArray(node)) {
-    const copy = [...(node as unknown[])];
+    const copy = [...node];
     copy[Number(head)] = replaceAtPath(copy[Number(head)], rest, value);
     return copy;
   }
-  const base: Record<string, unknown> = isJsonObject(node) ? node : {};
-  return { ...base, [head]: replaceAtPath(base[head as string], rest, value) };
+  const base: JsonObject = isJsonObject(node) ? node : {};
+  return { ...base, [head]: replaceAtPath(base[head], rest, value) };
 }
 
 /** Write the whole updated root node back to the document position (one undo step). */
-function writeRoot(tab: Tab, editing: FormulaEditDef, newRoot: unknown) {
+function writeRoot(tab: Tab, editing: FormulaEditDef, newRoot: JsonValue) {
   if (editing.type === "def" && editing.defName) {
     const { defName } = editing;
-    transactDoc(tab, (t) => mutateUpdateDef(t, defName, { $expression: newRoot as JsonValue }));
+    transactDoc(tab, (t) => mutateUpdateDef(t, defName, { $expression: newRoot }));
   } else if (editing.type === "event" && editing.path && editing.eventKey) {
     const { eventKey, path } = editing;
-    transactDoc(tab, (t) =>
-      mutateUpdateProperty(t, path, eventKey, { $expression: newRoot } as JxNodeValue),
-    );
+    transactDoc(tab, (t) => mutateUpdateProperty(t, path, eventKey, { $expression: newRoot }));
   }
 }
 
@@ -295,8 +309,8 @@ function selectionKey(editing: FormulaEditDef): string {
 interface Resolved {
   tab: Tab;
   editing: FormulaEditDef;
-  root: Record<string, unknown>;
-  selected: Record<string, unknown>;
+  root: JsonObject;
+  selected: JsonObject;
   selectedPath: NodePath;
   stateEntries: Record<string, JxStateDefinition>;
   preview: ExpressionPreview | null;
@@ -304,19 +318,27 @@ interface Resolved {
   /** Chip key → node path, so a chip click needs no path parsing (a `switch` case may hold "/"). */
   chipPaths: Map<string, NodePath>;
   /** Rail entry name → the value its tree draws. */
-  scopeValues: Map<string, unknown>;
+  scopeValues: Map<string, ScopeValue>;
 }
 
 let _resolved: Resolved | null = null;
 
-/** Replace the selected sub-node inside the root and write the whole root back. */
-function writeSelected(next: unknown): void {
+/**
+ * Replace the selected sub-node inside the root and write the whole root back.
+ *
+ * Typed as the expression editor's own change callback, which is one of its two callers; the other
+ * is a catalog pick's `onChange`.
+ */
+const writeSelected: Parameters<typeof mountExpressionEditor>[2] = (next) => {
   const held = _resolved;
   if (!held) {
     return;
   }
-  writeRoot(held.tab, held.editing, replaceAtPath(held.root, held.selectedPath, next));
-}
+  /* SAFETY: both callers hand back an expression node built of JSON operator/operand values: the
+     expression editor's edited tree, and the node a catalog pick inserts (a JxExpressionNode). */
+  const node = next as JsonValue;
+  writeRoot(held.tab, held.editing, replaceAtPath(held.root, held.selectedPath, node));
+};
 
 // ─── The projection ──────────────────────────────────────────────────────────
 
@@ -354,13 +376,13 @@ function resultOf(
 }
 
 /** The live data context — a SECOND opinion now that the page itself is on screen, not the only one. */
-function railOf(scope: Record<string, unknown> | null | undefined): {
-  entries: LogicScopeEntryView[];
-  values: Map<string, unknown>;
-} {
+function railOf(scope: Tab["session"]["canvas"]["scope"] | undefined) {
   const entries: LogicScopeEntryView[] = [];
-  const values = new Map<string, unknown>();
-  for (const [name, value] of Object.entries(scope ?? {})) {
+  const values = new Map<string, ScopeValue>();
+  /* SAFETY: the canvas scope's one writer (iframe-host.ts, on a `dataScope` message) stores that
+     message's `scope`, a JsonObject of deep-cloned values (serialize-scope.ts). */
+  const snapshot = (scope ?? {}) as JsonObject;
+  for (const [name, value] of Object.entries(snapshot)) {
     entries.push({ key: name, name, type: dataTypeLabel(value) });
     values.set(name, unwrapSignal(value));
   }
@@ -422,7 +444,7 @@ export function workspaceView(): LogicWorkspaceView {
     };
   }
 
-  const stateEntries = (tab.doc.document?.state ?? {}) as Record<string, JxStateDefinition>;
+  const stateEntries = tab.doc.document.state ?? {};
   /* Live-context evaluation in the canvas iframe with snapshot fallback (M6). The canvas is no
      longer unmounted while this surface is open — that is the entire point of the move — so the
      live path is the ORDINARY case now rather than the one that never happened. An event target's
@@ -595,7 +617,10 @@ const ACTIONS: LogicWorkspaceActions = {
 };
 
 /** Vendor a packaged formula's state entry into the document, as one undo step. */
-function insertDef(defName: string, def: unknown): void {
+function insertDef(defName: string, def: JxStateDefinition): void {
+  /* SAFETY: the only def the editor and the catalog insert is a packaged formula's vendored entry
+     (formula-catalog.ts `ensure`): `$description`, `$expression` and `parameters`, all JSON from
+     @jxsuite/formulas. */
   transactDoc(activeTab.value, (t) => mutateAddDef(t, defName, def as Record<string, JsonValue>));
 }
 
@@ -750,7 +775,7 @@ export function formulaEditorCommands(): AnyCommand[] {
         if (!tab) {
           throw new RangeError(`command "formula.editDef" needs an open document`);
         }
-        const defs = tab.doc.document?.state ?? {};
+        const defs = tab.doc.document.state ?? {};
         if (!(defName in defs)) {
           const defined = Object.keys(defs);
           throw new RangeError(

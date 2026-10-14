@@ -15,22 +15,53 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { normalizeFeedConfig } from "../src/shared.js";
 
 const require = createRequire(import.meta.url);
 
 const MANIFEST_PATH = resolve(import.meta.dir, "../jx-extension.json");
 
-function loadJson(path: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+/** The value at `keys` under `value`, or `undefined` where a step is not an object — `?.` for JSON. */
+function at(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
 }
 
-const manifest = loadJson(MANIFEST_PATH) as {
-  name: string;
-  title: string;
-  classes: Record<string, string>;
-  schemas: { project: string };
-};
+function objectOf(value: JsonValue | undefined, label: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new Error(`${label} is not a JSON object`);
+  }
+  return value;
+}
+
+function stringOf(value: JsonValue | undefined, label: string): string {
+  if (!isString(value)) {
+    throw new Error(`${label} is not a string`);
+  }
+  return value;
+}
+
+function loadJson(path: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(path, "utf8"));
+  return objectOf(parsed, path);
+}
+
+const manifest = loadJson(MANIFEST_PATH);
+const manifestClasses = objectOf(manifest.classes, "manifest.classes");
+const classRefs = Object.entries(manifestClasses).map(([name, ref]) =>
+  stringOf(ref, `manifest.classes.${name}`),
+);
+
+/** The Feed class descriptor the manifest names. */
+function loadFeedClass(): JsonObject {
+  const ref = stringOf(manifestClasses.Feed, "manifest.classes.Feed");
+  return loadJson(resolve(dirname(MANIFEST_PATH), ref));
+}
 
 describe("jx-extension.json manifest", () => {
   test("validates against the extension-manifest schema", () => {
@@ -41,30 +72,24 @@ describe("jx-extension.json manifest", () => {
   });
 
   test("carries the package name and is wired through package.json", () => {
-    const pkg = loadJson(resolve(import.meta.dir, "../package.json")) as {
-      name: string;
-      jx: string;
-      exports: Record<string, string>;
-      files: string[];
-      dependencies: Record<string, string>;
-    };
+    const pkg = loadJson(resolve(import.meta.dir, "../package.json"));
     expect(manifest.name).toBe(pkg.name);
     expect(pkg.jx).toBe("./jx-extension.json");
-    expect(pkg.exports["./jx-extension.json"]).toBe("./jx-extension.json");
-    expect(pkg.exports["./schemas/project.fragment.schema.json"]).toBeDefined();
+    expect(at(pkg, "exports", "./jx-extension.json")).toBe("./jx-extension.json");
+    expect(at(pkg, "exports", "./schemas/project.fragment.schema.json")).toBeDefined();
     expect(pkg.files).toContain("jx-extension.json");
     expect(pkg.files).toContain("schemas/");
-    expect(pkg.dependencies["@jxsuite/schema"]).toBe("workspace:^");
+    expect(at(pkg, "dependencies", "@jxsuite/schema")).toBe("workspace:^");
     // Every class descriptor is addressable through the exports map.
-    for (const ref of Object.values(manifest.classes)) {
+    for (const ref of classRefs) {
       const exportKey = ref.replace("./src/", "./");
-      expect(pkg.exports[exportKey]).toBe(ref);
+      expect(at(pkg, "exports", exportKey)).toBe(ref);
     }
   });
 
   test("every classes entry points at an existing descriptor", () => {
-    expect(Object.keys(manifest.classes).toSorted()).toEqual(["Feed"]);
-    for (const ref of Object.values(manifest.classes)) {
+    expect(Object.keys(manifestClasses).toSorted()).toEqual(["Feed"]);
+    for (const ref of classRefs) {
       const classPath = resolve(dirname(MANIFEST_PATH), ref);
       expect(existsSync(classPath)).toBe(true);
     }
@@ -77,26 +102,21 @@ describe("jx-extension.json manifest", () => {
    * module '.../feed/dist/feed.ts'" for every site that used the feed section.
    */
   test("the class descriptor names the JavaScript implementation, which Node loads from dist/", () => {
-    const feed = loadJson(resolve(dirname(MANIFEST_PATH), manifest.classes.Feed!)) as {
-      $implementation?: string;
-    };
-    expect(feed.$implementation).toBe("./feed.js");
+    expect(loadFeedClass().$implementation).toBe("./feed.js");
   });
 
   test("admission blocks: the feed section owner declares projectData, head, and emit", () => {
-    const feed = loadJson(resolve(dirname(MANIFEST_PATH), manifest.classes.Feed!)) as {
-      project?: { key: string };
-      $defs: { methods: Record<string, { role?: string; timing?: string[] }> };
-    };
+    const feed = loadFeedClass();
+    const methods = at(feed, "$defs", "methods");
 
-    expect(feed.project?.key).toBe("feed");
-    expect(feed.$defs.methods.projectData?.role).toBe("projectData");
+    expect(at(feed, "project", "key")).toBe("feed");
+    expect(at(methods, "projectData", "role")).toBe("projectData");
     // The only capability that also runs on the server — the dev server needs _project.feed.
-    expect(feed.$defs.methods.projectData?.timing).toEqual(["compiler", "server"]);
-    expect(feed.$defs.methods.head?.role).toBe("head");
-    expect(feed.$defs.methods.head?.timing).toEqual(["compiler"]);
-    expect(feed.$defs.methods.emit?.role).toBe("emit");
-    expect(feed.$defs.methods.emit?.timing).toEqual(["compiler"]);
+    expect(at(methods, "projectData", "timing")).toEqual(["compiler", "server"]);
+    expect(at(methods, "head", "role")).toBe("head");
+    expect(at(methods, "head", "timing")).toEqual(["compiler"]);
+    expect(at(methods, "emit", "role")).toBe("emit");
+    expect(at(methods, "emit", "timing")).toEqual(["compiler"]);
   });
 });
 
@@ -106,9 +126,9 @@ describe("project fragment", () => {
   test("is a standalone-valid 2020-12 schema contributing the feed section", () => {
     const ajv = new Ajv2020({ allErrors: true, strict: false });
     const validate = ajv.compile(fragment);
-    expect(typeof validate).toBe("function");
+    expect(validate).toBeInstanceOf(Function);
     expect(fragment.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
-    expect(Object.keys(fragment.properties as Record<string, unknown>)).toEqual(["feed"]);
+    expect(Object.keys(objectOf(fragment.properties, "fragment.properties"))).toEqual(["feed"]);
   });
 
   test("carries the shared first-party fragment $id shape (specs/extensions.md §5.1)", () => {
@@ -175,14 +195,13 @@ describe("project fragment", () => {
 
     const fromRuntime = normalizeFeedConfig({ blog: { collection: "posts", basePath: "/blog/" } });
 
-    const properties = fragment.properties as Record<
-      string,
-      { additionalProperties: { properties: Record<string, { default?: unknown }> } }
-    >;
-    const declared = properties.feed!.additionalProperties.properties;
-    const keysWithDefaults = Object.entries(declared)
-      .filter(([, schema]) => "default" in schema)
-      .map(([key]) => key);
+    const declared = objectOf(
+      at(fragment, "properties", "feed", "additionalProperties", "properties"),
+      "the per-feed properties",
+    );
+    const keysWithDefaults = Object.entries(declared).flatMap(([key, schema]) =>
+      isJsonObject(schema) && "default" in schema ? [key] : [],
+    );
 
     // If this list shrinks, a default was dropped from the schema and this test stops covering it.
     expect(keysWithDefaults.toSorted()).toEqual([
@@ -195,10 +214,9 @@ describe("project fragment", () => {
       "updatedField",
     ]);
 
-    const injected = fromSchema.feed.blog as unknown as Record<string, unknown>;
-    const normalized = fromRuntime.blog as unknown as Record<string, unknown>;
-    for (const key of keysWithDefaults) {
-      expect({ [key]: injected[key] }).toEqual({ [key]: normalized[key] });
-    }
+    // Ajv wrote its defaults into `fromSchema` in place, so the literal now carries more keys.
+    const injected: JsonObject = fromSchema.feed.blog;
+    const schemaDefaults = Object.fromEntries(keysWithDefaults.map((key) => [key, injected[key]]));
+    expect(fromRuntime.blog).toMatchObject(schemaDefaults);
   });
 });

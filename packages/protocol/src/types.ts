@@ -7,7 +7,12 @@
  * @license MIT
  */
 
-import type { JsonValue as SchemaJsonValue, JxMutableNode } from "@jxsuite/schema/types";
+import type { ProjectBlock, StudioHints } from "@jxsuite/schema/format-registry";
+import type {
+  JsonObject,
+  JsonValue as SchemaJsonValue,
+  JxMutableNode,
+} from "@jxsuite/schema/types";
 
 /**
  * A JSON document value, or `undefined` to signal property removal in the mutators. Re-uses the
@@ -30,7 +35,7 @@ export interface ErrorBody {
   error: string;
   /** Machine-readable discriminator (e.g. "remote_moved", "cf_not_connected"). */
   code?: string;
-  detail?: unknown;
+  detail?: SchemaJsonValue;
 }
 
 // ─── Filesystem ──────────────────────────────────────────────────────────────
@@ -95,11 +100,12 @@ export interface UploadResult {
 
 /**
  * The most paths one `filesRead` request may name. A backend answers at most this many and lists
- * the rest under {@link ReadFilesResult.omitted}, so a client that sends more is not refused — it is
- * answered in part, and asks again.
+ * the rest under {@link ReadFilesResult.omitted}, so a client that sends more is not refused — it
+ * is answered in part, and asks again.
  *
- * The one runtime value in this file: a client sizes its batches to it, so it has to exist at
- * runtime rather than only in a summary string.
+ * One of this file's three runtime values (with {@link IMPORT_MAX_PAGES} and
+ * {@link IMPORT_MAX_BREAKPOINTS}): a client sizes its batches to it, so it has to exist at runtime
+ * rather than only in a summary string.
  */
 export const READ_FILES_MAX_PATHS = 200;
 
@@ -154,7 +160,7 @@ export interface AssetCapabilities {
 export interface ReferenceHit {
   /**
    * Which key carried it: `$ref`, `$layout`, `$src`, `attr`, `imports`, `$elements`, `url`,
-   * `tagName`.
+   * `source`, `copy`, `tagName`.
    */
   refType: string;
   /** The reference exactly as authored (`"./Card.json"`), or `"<my-card>"` for a tag instance. */
@@ -195,8 +201,13 @@ export interface ReferencesResult {
 // ─── Git ─────────────────────────────────────────────────────────────────────
 
 export interface GitFileStatus {
+  /**
+   * One porcelain letter — `M`, `A`, `D`, `R`, `U` — never a word and never the raw two-column
+   * code.
+   */
   status: string;
   path: string;
+  /** Whether this change is in the index. Absent reads as unstaged. */
   staged?: boolean;
 }
 
@@ -239,34 +250,30 @@ export interface ComponentMeta {
   tagName: string;
   $id?: string | null;
   path: string;
-  props?: { name: string; type?: string; default?: JsonValue; [k: string]: unknown }[];
+  props?: { name: string; type?: string; default?: JsonValue; [k: string]: JsonValue }[];
   slots?: ComponentSlotMeta[];
   hasElements?: boolean;
 }
 
 // ─── Extensions (specs/extensions.md §9/§9.1) ────────────────────────────────
 
-/** The `project` admission block of a section-owning extension class. */
-export interface ExtensionProjectBlock {
-  /** The project.json top-level property the class owns. */
-  key: string;
-  title?: string;
-  description?: string;
-  referenceable?: boolean;
-}
+/* The `project` admission block of a section-owning extension class: the descriptor's own block,
+   declared once in @jxsuite/schema and served here unchanged. */
+export type { ProjectBlock as ExtensionProjectBlock } from "@jxsuite/schema/format-registry";
 
 /** One project-section contribution of an extension class, as served on the formats route. */
 export interface ExtensionContributionInfo {
   /** The $prototype-visible class name declaring the `project` block. */
   className: string;
-  project: ExtensionProjectBlock;
+  project: ProjectBlock;
   /** The class descriptor's `$studio` block (settings-section vocabulary), when declared. */
-  studio?: Record<string, unknown> | null;
+  studio?: StudioHints | null;
   /**
-   * The section's value schema — `properties[<key>]` of the extension's shipped project fragment —
-   * resolved backend-side; null when the extension ships no fragment (or it lacks the key).
+   * The section's value schema — `properties[<key>]` of the extension's shipped project fragment,
+   * which JSON Schema lets be a boolean as well as an object — resolved backend-side; null when the
+   * extension ships no fragment (or it lacks the key).
    */
-  entrySchema?: Record<string, unknown> | null;
+  entrySchema?: SchemaJsonValue;
 }
 
 /**
@@ -292,7 +299,7 @@ export interface ExtensionsInfo {
     name: string;
     path: string;
     state?: boolean;
-    stateDefaults?: Record<string, unknown>;
+    stateDefaults?: JsonObject;
   }[];
 }
 
@@ -369,8 +376,8 @@ export interface ExtensionCatalogEntry {
  * editors can register them without resolving relative `$ref`s.
  */
 export interface ProjectSchemasResponse {
-  project?: Record<string, unknown> | null;
-  document?: Record<string, unknown> | null;
+  project?: JsonObject | null;
+  document?: JsonObject | null;
 }
 
 // ─── Data surface (connector domain; specs/extensions.md §13) ───────────────
@@ -397,7 +404,7 @@ export interface DataConnectionInfo {
   name: string;
   provider: string;
   /** The connection's project.json value — identifiers and env-var names, never secrets. */
-  settings: Record<string, unknown>;
+  settings: JsonObject;
   /** True when every env-var name the connection references resolves in the backend env. */
   configured: boolean;
   /** Referenced env-var NAMES with no value in the backend environment. */
@@ -419,11 +426,9 @@ export interface DataConnectionsResponse {
   connections: DataConnectionInfo[];
 }
 
-/** Result of the connection-test route (mirrors the connector's testConnection capability). */
-export interface DataConnectionTestResult {
-  ok: boolean;
-  error?: string;
-}
+/* Result of the connection-test route: the connector `testConnection` capability's own result,
+   declared once in @jxsuite/schema and relayed unchanged. */
+export type { TestConnectionResult as DataConnectionTestResult } from "@jxsuite/schema/format-registry";
 
 /**
  * A push-plan step kind. Open string union: connector DDL kinds today, and future push-step
@@ -450,13 +455,9 @@ export interface DataPushStep {
   connection?: string;
 }
 
-/** Request body of the data-push route. */
-export interface DataPushRequest {
-  /** Restrict the push to one connection; omitted = every declared connection. */
-  connection?: string;
-  /** Compile the plan without executing it. */
-  dryRun?: boolean;
-}
+/* Request body of the data-push route: the same request `jx db push` takes, declared once in
+   @jxsuite/schema. */
+export type { DataPushRequest } from "@jxsuite/schema/format-registry";
 
 /** Result of the data-push route. */
 export interface DataPushResult {
@@ -491,7 +492,7 @@ export interface DataColumnMeta {
 
 /** Result of the data-rows route. */
 export interface DataRowsResult {
-  rows: Record<string, unknown>[];
+  rows: JsonObject[];
   /** Total row count of the table (for pagination). */
   total: number;
   columns: DataColumnMeta[];
@@ -501,7 +502,7 @@ export interface DataRowsResult {
 export interface DataRowInsert {
   table: string;
   connection?: string;
-  values: Record<string, unknown>;
+  values: JsonObject;
 }
 
 /** Body of the row-update route (keyed on the introspected primary key). */
@@ -509,7 +510,7 @@ export interface DataRowUpdate {
   table: string;
   connection?: string;
   pk: string | number;
-  set: Record<string, unknown>;
+  set: JsonObject;
 }
 
 /** Parameters of the row-delete route. */
@@ -526,35 +527,34 @@ export interface SecretsListResponse {
   names: string[];
 }
 
-/** Request body of the secrets-set route (values flow in, never back out). */
-export interface SecretsSetRequest {
-  set?: Record<string, string>;
-  remove?: string[];
-}
-
 /** Response of the secrets-set route — the resulting NAMES, never values. */
 export interface SecretsSetResponse {
   ok: boolean;
   names: string[];
 }
 
-// ─── User settings (desktop launchers; specs/desktop.md §3.1) ───────────────
+// ─── Key-value patches (secrets and user settings) ──────────────────────────
 
 /**
- * A set of changes to the user-level settings store.
+ * A set of changes to a string-valued key store: the request body of the secrets-set route (values
+ * flow in, never back out; specs/extensions.md §13), and the patch the desktop launchers apply to
+ * the user-level settings store (specs/desktop.md §3.1).
  *
- * A patch rather than the whole map, and for the same reason {@link SecretsSetRequest} is one: a key
- * named by neither `set` nor `remove` must be left exactly as it was found. Writing the whole map
- * let any window overwrite the shared store with its own view of it — and on the chromium launcher
- * every window is a separate process with a separate browser profile, so a window holding no
- * settings could clear the credentials another had just stored.
+ * A patch rather than the whole map: a key named by neither `set` nor `remove` must be left exactly
+ * as it was found. Writing the whole settings map let any window overwrite the shared store with
+ * its own view of it — and on the chromium launcher every window is a separate process with a
+ * separate browser profile, so a window holding no settings could clear the credentials another had
+ * just stored.
  */
-export interface SettingsPatch {
+export interface KeyValuePatch {
   /** Keys to store, with their new values. */
   set?: Record<string, string>;
   /** Keys to forget. */
   remove?: string[];
 }
+
+/** The former published names of {@link KeyValuePatch}, kept for existing importers. */
+export type { KeyValuePatch as SecretsSetRequest, KeyValuePatch as SettingsPatch };
 
 // ─── Packages ────────────────────────────────────────────────────────────────
 
@@ -602,22 +602,32 @@ export interface AppInfo {
 
 export interface CodeServiceResult {
   code?: string;
-  diagnostics?: unknown[];
-  [key: string]: unknown;
+  diagnostics?: SchemaJsonValue[];
+  [key: string]: JsonValue;
 }
 
 // ─── Projects & starters ─────────────────────────────────────────────────────
 
-/** A starter template surfaced in the New Project picker (mirrors @jxsuite/starters StarterMeta). */
+/**
+ * A starter template surfaced in the New Project picker: one entry of `@jxsuite/starters`'
+ * `registry.json`, everything the picker needs to render a template card.
+ */
 export interface StarterInfo {
+  /** Stable id; also the directory name under `sites/` and the value threaded as `starter`. */
   id: string;
+  /** Human-facing display name, e.g. "Bistro & Café". */
   name: string;
+  /** Industry archetype label, e.g. "Restaurant & Food". */
   industry: string;
+  /** One-line summary shown under the name. */
   tagline: string;
+  /** Longer description for the showcase / tooltip. */
   description: string;
+  /** Short bullets naming the Jx features the starter demonstrates. */
   features: string[];
+  /** Accent colour (hex), mirroring the site's primary token; used for card theming. */
   accent: string;
-  /** Preview image as a self-contained `data:` URI. */
+  /** Small preview image as a self-contained `data:` URI so the picker needs no extra plumbing. */
   thumbnail: string;
 }
 
@@ -681,6 +691,18 @@ export interface ImportReadyEvent {
   /** The project root, in the platform's own form. */
   root: string;
 }
+
+/**
+ * The most pages one site import may capture. A backend clamps {@link ImportSiteOptions.maxPages} to
+ * it, and a client that builds the options clamps to the same bound before it asks.
+ */
+export const IMPORT_MAX_PAGES = 100;
+
+/**
+ * The most breakpoints one site import may be asked to keep; past it, a "limit" policy is not
+ * limiting. `@jxsuite/import`'s planner clamps to it, and a client offers no larger count.
+ */
+export const IMPORT_MAX_BREAKPOINTS = 12;
 
 /** Options for the import-site pipeline (StudioPlatform.importSite). */
 export interface ImportSiteOptions {

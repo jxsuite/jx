@@ -21,13 +21,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import progressDoc from "./progress-modal.json";
 import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
 
-registerSurface("progress-modal", progressDoc as unknown as JxDocument);
+registerSurface("progress-modal", progressDoc);
 
 /** What the flow hands the surface. Everything is a projection; the flow keeps the operation. */
 export interface ProgressSurfaceOptions {
@@ -64,7 +63,7 @@ export interface ProgressSurfaceHandle {
   close: () => void;
 }
 
-interface ProgressScope extends Record<string, unknown> {
+interface ProgressScope {
   title: string;
   status: string;
   /**
@@ -91,7 +90,11 @@ export function openProgressSurface(options: ProgressSurfaceOptions): ProgressSu
   options.layer.append(slot);
 
   let closed = false;
-  const scope = reactive<ProgressScope>({
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
+  const scope: ProgressScope = reactive<ProgressScope>({
     background: () => {
       options.onBackground();
     },
@@ -104,12 +107,15 @@ export function openProgressSurface(options: ProgressSurfaceOptions): ProgressSu
     },
     status: options.status,
     title: options.title,
-  }) as ProgressScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("progress-modal", scope, slot).then(async (surface) => {
+    /* SAFETY: `progress-modal.json`'s root definition carries `tagName: "jx-dialog"`, so the
+       runtime mounts an HTMLElement; a `Text` root only comes from a document whose root is a
+       bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
@@ -118,7 +124,7 @@ export function openProgressSurface(options: ProgressSurfaceOptions): ProgressSu
        DOCUMENT rendered, while the element's OWN template is one `connectedCallback` later.
        `showModal` in between finds no `<dialog>` to open, and the surface never shows. */
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -134,7 +140,7 @@ export function openProgressSurface(options: ProgressSurfaceOptions): ProgressSu
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does.
       mounted?.dispose();

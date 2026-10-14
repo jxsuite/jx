@@ -2,13 +2,29 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ─── Mock electrobun/main (ApplicationMenu) ─────────────────────────────────
 
-let capturedMenu: unknown = null;
-let clickHandler: ((event: unknown) => unknown) | null = null;
-const setApplicationMenu = mock((menu: unknown) => {
+interface MenuItem {
+  label?: string;
+  action?: string;
+  accelerator?: string;
+  type?: string;
+  role?: string;
+  submenu?: MenuItem[];
+}
+
+/** The payload Electrobun emits for `application-menu-clicked`: the clicked item's `data`. */
+interface MenuClick {
+  data: { action?: string };
+}
+
+type MenuClickHandler = (event: MenuClick) => void | Promise<void>;
+
+let capturedMenu: MenuItem[] = [];
+let clickHandler: MenuClickHandler | null = null;
+const setApplicationMenu = mock((menu: MenuItem[]) => {
   capturedMenu = menu;
 });
-const on = mock((event: string, handler: (event: unknown) => unknown) => {
-  if (event === "application-menu-clicked") {
+const on = mock((name: string, handler: MenuClickHandler) => {
+  if (name === "application-menu-clicked") {
     clickHandler = handler;
   }
 });
@@ -32,16 +48,7 @@ void mock.module("../src/window-manager", () => ({ openProjectWindow }));
 
 const { installApplicationMenu } = await import("../src/menu");
 
-interface MenuItem {
-  label?: string;
-  action?: string;
-  accelerator?: string;
-  type?: string;
-  role?: string;
-  submenu?: MenuItem[];
-}
-
-function fire(action?: string): Promise<unknown> {
+function fire(action?: string): Promise<void> {
   return Promise.resolve(clickHandler!({ data: action == null ? {} : { action } }));
 }
 
@@ -57,8 +64,7 @@ describe("installApplicationMenu", () => {
   test("registers a File menu with the multi-window entry points", () => {
     installApplicationMenu();
     expect(setApplicationMenu).toHaveBeenCalledTimes(1);
-    const menu = capturedMenu as MenuItem[];
-    const file = menu.find((m) => m.label === "File")!;
+    const file = capturedMenu.find((m) => m.label === "File")!;
     expect(file).toBeDefined();
     const actions = file.submenu!.map((i) => i.action ?? i.role ?? i.type);
     expect(actions).toEqual(["new-window", "open-project", "divider", "close"]);
@@ -69,8 +75,7 @@ describe("installApplicationMenu", () => {
     // ⌘⇧N and ⌘O are `view.newWindow` and `project.open`, which the shell dispatches on every
     // Launcher. A chord with two owners fires twice — two welcome windows from one press.
     installApplicationMenu();
-    const menu = capturedMenu as MenuItem[];
-    const file = menu.find((m) => m.label === "File")!;
+    const file = capturedMenu.find((m) => m.label === "File")!;
     expect(file.submenu!.map((item) => item.accelerator)).toEqual([
       undefined,
       undefined,
@@ -97,6 +102,7 @@ describe("installApplicationMenu", () => {
     installApplicationMenu();
     openFileDialog.mockResolvedValueOnce("/home/me/site/readme.md");
     await fire("open-project");
+    expect(openFileDialog).toHaveBeenCalledWith();
     expect(openProjectWindow).not.toHaveBeenCalled();
   });
 
@@ -104,6 +110,7 @@ describe("installApplicationMenu", () => {
     installApplicationMenu();
     openFileDialog.mockResolvedValueOnce(null);
     await fire("open-project");
+    expect(openFileDialog).toHaveBeenCalledWith();
     expect(openProjectWindow).not.toHaveBeenCalled();
   });
 
@@ -111,7 +118,9 @@ describe("installApplicationMenu", () => {
     installApplicationMenu();
     await fire("some-other-action");
     await fire();
-    expect(openProjectWindow).not.toHaveBeenCalled();
+    // The known action, fired last, is the only one that reaches a window.
+    await fire("new-window");
+    expect(openProjectWindow.mock.calls).toEqual([[null]]);
     expect(openFileDialog).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,6 @@ import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
 import { buildStyleRules } from "@jxsuite/runtime/css";
-import type { JxStyle } from "@jxsuite/schema/types";
 import checkboxDoc from "../components/jx-checkbox.json";
 import { registerUi } from "../src/index.ts";
 
@@ -33,8 +32,16 @@ afterEach(() => {
  * @param {string} [markup] Light-DOM children, slotted as the visible label
  * @returns {Promise<JxCheckbox>} The connected element, after its first render
  */
+/** A fresh, unattached `jx-checkbox`, typed with the state its document declares. */
+function createCheckbox(): JxCheckbox {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-checkbox` from its document before any test
+     runs, so `createElement` constructs that class synchronously, and the class exposes every
+     declared state entry (each JxCheckbox member) as a property. */
+  return document.createElement("jx-checkbox") as JxCheckbox;
+}
+
 async function box(attrs: Record<string, string> = {}, markup = ""): Promise<JxCheckbox> {
-  const el = document.createElement("jx-checkbox") as JxCheckbox;
+  const el = createCheckbox();
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
   }
@@ -103,7 +110,7 @@ describe("jx-checkbox", () => {
 
   test("a form reset is a no-op, which is the price of the checked attribute mirror", async () => {
     const form = document.createElement("form");
-    const el = document.createElement("jx-checkbox") as JxCheckbox;
+    const el = createCheckbox();
     el.setAttribute("name", "included");
     el.textContent = "Include in the build";
     // The control the element is measured against: same starting state, no element around it.
@@ -272,8 +279,10 @@ describe("jx-checkbox", () => {
 
     const heard: [EventTarget | null, boolean][] = [];
     el.addEventListener("change", (e) => {
-      const target = e.target as HTMLInputElement;
-      heard.push([target, target.checked]);
+      // A change from anything but an input leaves `heard` short, which the assertion below names.
+      if (e.target instanceof HTMLInputElement) {
+        heard.push([e.target, e.target.checked]);
+      }
     });
     input.click();
     input.click();
@@ -290,18 +299,16 @@ describe("jx-checkbox", () => {
        is bound as a property "not as the checked content attribute" while the input's `attributes`
        block bound exactly that, and `conformance.test.ts` only asks that a description be a string.
        A reader who trusts it reasons wrongly about a form reset, and no other gate can see it. */
-    const state = checkboxDoc.state as Record<string, { description?: string }>;
+    const { state } = checkboxDoc;
     // Both bindings exist, so both have to be accounted for — including what a reset then does.
-    expect(state["checked"]?.description).toMatch(/reset/i);
-    expect(state["checked"]?.description).toMatch(/default/i);
+    expect(state.checked.description).toMatch(/reset/i);
+    expect(state.checked.description).toMatch(/default/i);
     // And the mixed state has no attribute to mirror, which is why the element exists at all.
-    expect(state["indeterminate"]?.description).toMatch(/reset/i);
+    expect(state.indeterminate.description).toMatch(/reset/i);
   });
 
   test("the box is the platform's own, and an empty label collapses", () => {
-    const rules = buildStyleRules(checkboxDoc.style as JxStyle, { scope: "S" }).map(
-      (rule) => rule.text,
-    );
+    const rules = buildStyleRules(checkboxDoc.style, { scope: "S" }).map((rule) => rule.text);
     /* `accent-color` recolours the platform's tick and its mixed dash. Reaching for `appearance`
        would mean hand-drawing both, and a forced-colors block to put them back. */
     const input = rules.find((text) => text.startsWith('S [part="input"] '))!;
@@ -316,7 +323,7 @@ describe("jx-checkbox", () => {
        and the `:has()` form was the working one. Slots now unwrap whether or not they matched
        anything, so a label span with nothing slotted into it is simply empty, and `:empty` is both
        correct and the only rule needed. */
-    const rules = buildStyleRules(checkboxDoc.style as JxStyle, { scope: "S" }).map((r) => r.text);
+    const rules = buildStyleRules(checkboxDoc.style, { scope: "S" }).map((r) => r.text);
     expect(rules).toContain(COLLAPSE);
     expect(rules.join("\n")).not.toContain("label-slot");
 

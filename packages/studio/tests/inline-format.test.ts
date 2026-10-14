@@ -139,7 +139,7 @@ describe("normalizeInlineContent", () => {
 
     normalizeInlineContent(root);
     expect(root.querySelectorAll("strong").length).toBe(1);
-    expect((root.querySelector("strong") as Element).textContent).toBe("hello world");
+    expect(root.querySelector("strong")?.textContent).toBe("hello world");
   });
 
   test("collapses redundant nesting", () => {
@@ -256,9 +256,9 @@ describe("toggleInlineFormat", () => {
     document.body.append(root);
 
     const range = document.createRange();
-    range.setStart(root.firstChild as Node, 2);
+    range.setStart(root.firstChild!, 2);
     range.collapse(true);
-    const sel = window.getSelection() as Selection;
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
 
@@ -275,16 +275,16 @@ describe("toggleInlineFormat", () => {
     document.body.append(root);
 
     const range = document.createRange();
-    range.setStart(root.firstChild as Node, 6);
-    range.setEnd(root.firstChild as Node, 11);
-    const sel = window.getSelection() as Selection;
+    range.setStart(root.firstChild!, 6);
+    range.setEnd(root.firstChild!, 11);
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
 
     toggleInlineFormat("strong", root);
 
     expect(root.querySelector("strong")).not.toBeNull();
-    expect((root.querySelector("strong") as Element).textContent).toBe("world");
+    expect(root.querySelector("strong")?.textContent).toBe("world");
 
     root.remove();
   });
@@ -299,7 +299,7 @@ describe("toggleInlineFormat", () => {
 
     const range = document.createRange();
     range.selectNodeContents(strong);
-    const sel = window.getSelection() as Selection;
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
 
@@ -322,7 +322,7 @@ describe("toggleInlineFormat", () => {
 
     const range = document.createRange();
     range.selectNodeContents(outside);
-    const sel = window.getSelection() as Selection;
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
 

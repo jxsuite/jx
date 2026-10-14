@@ -19,6 +19,16 @@
 import { createHash } from "node:crypto";
 import type { CspConfig, HeadersConfig } from "@jxsuite/schema/types";
 
+/**
+ * The headers a policy adds: the policy itself under its enforcing or report-only name, and the
+ * endpoint group its `report-to` names when reporting is on.
+ */
+export interface CspHeaders {
+  "Content-Security-Policy"?: string;
+  "Content-Security-Policy-Report-Only"?: string;
+  "Reporting-Endpoints"?: string;
+}
+
 /** Everything a page contributed to the policy. Accumulated across the whole build. */
 export interface CspSources {
   /** `'sha256-…'` for each distinct inline script. */
@@ -59,10 +69,9 @@ const FONT_EXTENSION = /\.(woff2?|ttf|otf|eot)(\?|#|$)/i;
 
 /** Read one double- or single-quoted attribute out of a raw tag attribute string. */
 function attr(attrs: string, name: string): string | undefined {
-  return new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i")
-    .exec(attrs)
-    ?.slice(2)
-    .find((v) => v !== undefined);
+  // Group 2 is the double-quoted value and group 3 the single-quoted one; only one participates.
+  const match = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i").exec(attrs);
+  return match?.[2] ?? match?.[3];
 }
 
 /** The origin of an absolute http(s) URL, or null for anything relative, `data:` or malformed. */
@@ -176,12 +185,13 @@ export function normalizeCspConfig(security: HeadersConfig["security"]): CspConf
  *
  * @param {CspSources} sources
  * @param {CspConfig} config
- * @returns {Record<string, string>}
+ * @returns {CspHeaders}
  */
-export function buildCspHeaders(sources: CspSources, config: CspConfig): Record<string, string> {
+export function buildCspHeaders(sources: CspSources, config: CspConfig): CspHeaders {
   const list = (fixed: string[], origins: Set<string>) => [...fixed, ...origins].join(" ");
 
-  const directives: Record<string, string | false> = {
+  // The computed directives, in the same shape as the overrides `config.directives` merges in.
+  const directives: NonNullable<CspConfig["directives"]> = {
     "base-uri": "'self'",
     "default-src": "'self'",
     "font-src": list(["'self'"], sources.fontOrigins),
@@ -212,11 +222,10 @@ export function buildCspHeaders(sources: CspSources, config: CspConfig): Record<
     .map(([name, value]) => `${name} ${String(value)}`)
     .join("; ");
 
-  const headerName =
+  const headers: CspHeaders =
     config.mode === "report-only"
-      ? "Content-Security-Policy-Report-Only"
-      : "Content-Security-Policy";
-  const headers: Record<string, string> = { [headerName]: policy };
+      ? { "Content-Security-Policy-Report-Only": policy }
+      : { "Content-Security-Policy": policy };
   if (config.reportUri !== undefined && config.reportUri !== "") {
     headers["Reporting-Endpoints"] = `csp-endpoint="${config.reportUri}"`;
   }

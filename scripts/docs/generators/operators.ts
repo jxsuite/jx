@@ -79,6 +79,9 @@ function tokensOf(def: OperatorDef): string[] {
 
 /** Render the operator reference page. */
 export function generateOperators(): string {
+  /* SAFETY: schema.json is the committed core schema, a build output `schema:verify` holds to its
+   * generator. The operator `$defs` named in GROUPS are emitted as string `enum` or `const` token
+   * sets, and a def missing from `$defs` throws below rather than rendering an empty group. */
   const schema = JSON.parse(readFileSync(join(ROOT, "packages/schema/schema.json"), "utf8")) as {
     $defs: Record<string, OperatorDef>;
   };

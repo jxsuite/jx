@@ -57,7 +57,7 @@ describe("the name and the wire value", () => {
   test("the surface is named Project Styles and the canvas view it opens is not", () => {
     expect(PROJECT_STYLES_TITLE).toBe("Project Styles");
     expect(PROJECT_STYLES_VIEW).toBe("stylebook");
-    expect(PROJECT_STYLES_TITLE).not.toBe(PROJECT_STYLES_VIEW as string);
+    expect<string>(PROJECT_STYLES_TITLE).not.toBe(PROJECT_STYLES_VIEW);
   });
 
   test("the wire value is still a CANVAS_MODES member — renaming it is a protocol change", () => {
@@ -98,13 +98,13 @@ describe("token groups", () => {
 // ─── Listing ─────────────────────────────────────────────────────────────────
 
 describe("listing tokens", () => {
-  const style = {
+  const style: JxStyle = {
     "--color-primary": "#007acc",
     "--radius-md": 8,
     "--size-gap": "16px",
     "@--sm": { "--size-gap": "8px" },
     color: "blue",
-  } as unknown as JxStyle;
+  };
 
   test("only custom properties with scalar values are tokens", () => {
     expect(listTokens(style).map((t) => t.name)).toEqual([
@@ -171,25 +171,21 @@ describe("reading and writing an override", () => {
   const sm = contextNamed("--sm");
 
   test("an absent block, an absent key and a non-scalar value all read as no override", () => {
-    expect(readTokenOverride({} as JxStyle, sm, "--size-gap")).toBeUndefined();
-    expect(readTokenOverride({ "@--sm": {} } as unknown as JxStyle, sm, "--x")).toBeUndefined();
-    expect(
-      readTokenOverride({ "@--sm": "not a block" } as unknown as JxStyle, sm, "--x"),
-    ).toBeUndefined();
-    expect(
-      readTokenOverride({ "@--sm": { "--x": { deep: 1 } } } as unknown as JxStyle, sm, "--x"),
-    ).toBeUndefined();
+    expect(readTokenOverride({}, sm, "--size-gap")).toBeUndefined();
+    expect(readTokenOverride({ "@--sm": {} }, sm, "--x")).toBeUndefined();
+    expect(readTokenOverride({ "@--sm": "not a block" }, sm, "--x")).toBeUndefined();
+    expect(readTokenOverride({ "@--sm": { "--x": { deep: 1 } } }, sm, "--x")).toBeUndefined();
   });
 
   test("writing creates the block on demand and reading finds it", () => {
-    const style = {} as JxStyle;
+    const style: JxStyle = {};
     writeTokenOverride(style, sm, "--size-gap", "8px");
     expect(style["@--sm"]).toEqual({ "--size-gap": "8px" });
     expect(readTokenOverride(style, sm, "--size-gap")).toBe("8px");
   });
 
   test("clearing removes the key, and the block once it empties", () => {
-    const style = { "@--sm": { "--a": "1", "--b": "2" } } as unknown as JxStyle;
+    const style: JxStyle = { "@--sm": { "--a": "1", "--b": "2" } };
     writeTokenOverride(style, sm, "--a", "");
     expect(style["@--sm"]).toEqual({ "--b": "2" });
     writeTokenOverride(style, sm, "--b", "");
@@ -197,16 +193,16 @@ describe("reading and writing an override", () => {
   });
 
   test("clearing an override that never existed writes nothing at all", () => {
-    const style = {} as JxStyle;
+    const style: JxStyle = {};
     writeTokenOverride(style, sm, "--a", "");
     expect(Object.keys(style)).toEqual([]);
   });
 
   test("overrides are reported in context order, and only where they exist", () => {
-    const style = {
+    const style: JxStyle = {
       "@--dark": { "--color-primary": "#111" },
       "@--sm": { "--color-primary": "#222" },
-    } as unknown as JxStyle;
+    };
     expect(
       tokenOverrides(style, listTokenContexts(MEDIA), "--color-primary").map((o) => [
         o.context.name,
@@ -219,7 +215,7 @@ describe("reading and writing an override", () => {
   });
 
   test("the add affordance offers what is declared, unused, and not already on screen", () => {
-    const style = { "@--dark": { "--color-primary": "#111" } } as unknown as JxStyle;
+    const style: JxStyle = { "@--dark": { "--color-primary": "#111" } };
     const contexts = listTokenContexts(MEDIA);
     expect(addableContexts(style, contexts, "--color-primary").map((c) => c.name)).toEqual([
       "--light",
@@ -252,39 +248,39 @@ describe("token references", () => {
   });
 
   test("resolution follows a chain of aliases to the value at its end", () => {
-    const style = {
+    const style: JxStyle = {
       "--color-a": "var(--color-b)",
       "--color-b": "var(--color-c)",
       "--color-c": "#123456",
-    } as unknown as JxStyle;
+    };
     expect(resolveTokenValue(style, "var(--color-a)")).toBe("#123456");
     expect(resolveTokenValue(style, "#abcdef")).toBe("#abcdef");
     expect(resolveTokenValue(style, 8)).toBe(8);
   });
 
   test("a reference that leaves the block, loops, or runs too deep resolves to nothing", () => {
-    const missing = {} as JxStyle;
+    const missing: JxStyle = {};
     expect(resolveTokenValue(missing, "var(--nope)")).toBeUndefined();
     expect(resolveTokenValue(null, "var(--nope)")).toBeUndefined();
 
-    const loop = { "--a": "var(--b)", "--b": "var(--a)" } as unknown as JxStyle;
+    const loop: JxStyle = { "--a": "var(--b)", "--b": "var(--a)" };
     expect(resolveTokenValue(loop, "var(--a)")).toBeUndefined();
 
     // Longer than the hop budget, without ever repeating a name.
-    const chain: Record<string, string> = {};
+    const chain: JxStyle = {};
     for (let i = 0; i < 20; i += 1) {
       chain[`--t${i}`] = `var(--t${i + 1})`;
     }
     chain["--t20"] = "#fff";
-    expect(resolveTokenValue(chain as unknown as JxStyle, "var(--t0)")).toBeUndefined();
+    expect(resolveTokenValue(chain, "var(--t0)")).toBeUndefined();
 
     // A block whose value is an object is not a value either.
-    const nested = { "--a": { deep: 1 } } as unknown as JxStyle;
+    const nested: JxStyle = { "--a": { deep: 1 } };
     expect(resolveTokenValue(nested, "var(--a)")).toBeUndefined();
   });
 
   test("nothing in, nothing out", () => {
-    expect(resolveTokenValue({} as JxStyle, null)).toBeUndefined();
-    expect(resolveTokenValue({} as JxStyle, ABSENT)).toBeUndefined();
+    expect(resolveTokenValue({}, null)).toBeUndefined();
+    expect(resolveTokenValue({}, ABSENT)).toBeUndefined();
   });
 });

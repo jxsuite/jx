@@ -9,8 +9,15 @@
 
 import { setProjectSchemasForMonaco } from "../services/monaco-lazy";
 import { getPlatform } from "../platform";
-import type { ExtensionCatalogEntry, ExtensionsInfo } from "../types";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type {
+  ExtensionCatalogEntry,
+  ExtensionsInfo,
+  FormatActionRequest,
+  ProjectSchemasResponse,
+  StudioPlatform,
+} from "../types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
 export interface StudioFormatHints {
   icon?: string;
@@ -25,6 +32,10 @@ export interface StudioFormatHints {
     inline?: string[];
     void?: string[];
     textOnly?: string[];
+    /**
+     * Per-parent child rules. The registry arrives over the wire unvalidated, so a rule may be a
+     * JSON `null`, which every reader treats as a tag the format leaves undeclared.
+     */
     nesting?: Record<
       string,
       {
@@ -32,10 +43,9 @@ export interface StudioFormatHints {
         inline?: boolean;
         directive?: boolean;
         only?: string[];
-      }
+      } | null
     >;
   };
-  [key: string]: unknown;
 }
 
 export interface StudioFormat {
@@ -57,10 +67,11 @@ export function loadFormats(): Promise<StudioFormat[]> {
   if (!_loaded) {
     _loaded = (async () => {
       try {
-        const platform = getPlatform() as {
-          listFormats?: () => Promise<StudioFormat[]>;
-        };
-        _formats = (await platform.listFormats?.()) ?? [];
+        const platform = getPlatform();
+        /* SAFETY: every backend's formats route serializes its format registry as the records this
+           Module declares (`StudioFormat`); the PAL types the payload `unknown[]` only because this
+           Module, not `types.ts`, owns that shape. */
+        _formats = ((await platform.listFormats?.()) as StudioFormat[] | undefined) ?? [];
       } catch {
         _formats = [];
       }
@@ -100,9 +111,7 @@ export function loadExtensions(): Promise<ExtensionsInfo[]> {
   if (!_extensionsLoaded) {
     _extensionsLoaded = (async () => {
       try {
-        const platform = getPlatform() as {
-          listExtensions?: () => Promise<ExtensionsInfo[]>;
-        };
+        const platform = getPlatform();
         _extensions = (await platform.listExtensions?.()) ?? [];
       } catch {
         _extensions = [];
@@ -144,9 +153,7 @@ export function loadExtensionCatalog(): Promise<ExtensionCatalogEntry[]> {
   if (!_catalogLoaded) {
     _catalogLoaded = (async () => {
       try {
-        const platform = getPlatform() as {
-          listExtensionCatalog?: () => Promise<ExtensionCatalogEntry[]>;
-        };
+        const platform = getPlatform();
         _catalog = (await platform.listExtensionCatalog?.()) ?? [];
       } catch {
         _catalog = [];
@@ -180,10 +187,10 @@ export function setExtensionCatalog(catalog: ExtensionCatalogEntry[]) {
  * @param {object} platform - The studio platform (only `fetchProjectSchemas` is consulted)
  * @returns {Promise<void>} Resolves once both consumers have been updated
  */
-async function shareProjectSchemas(platform: {
-  fetchProjectSchemas?: () => Promise<{ project?: unknown; document?: unknown }>;
-}): Promise<void> {
-  let schemas: { project?: unknown; document?: unknown } | null = null;
+async function shareProjectSchemas(
+  platform: Pick<StudioPlatform, "fetchProjectSchemas">,
+): Promise<void> {
+  let schemas: ProjectSchemasResponse | null = null;
   try {
     schemas = (await platform.fetchProjectSchemas?.()) ?? null;
   } catch {
@@ -208,9 +215,7 @@ async function shareProjectSchemas(platform: {
  *
  * @param {object} platform - The studio platform (only `fetchProjectSchemas` is consulted here)
  */
-export function refreshExtensionUi(platform: {
-  fetchProjectSchemas?: () => Promise<{ project?: unknown; document?: unknown }>;
-}): void {
+export function refreshExtensionUi(platform: Pick<StudioPlatform, "fetchProjectSchemas">): void {
   void shareProjectSchemas(platform);
   // `installed` and `bundled` are per-project facts, so an install or a project switch can move
   // Them even when the shipped half has not changed.
@@ -284,10 +289,20 @@ export function defaultContentFormat(): StudioFormat | undefined {
   return _formats.find((f) => f.capabilities.serialize && f.documentKinds.includes("content"));
 }
 
-async function formatAction(payload: Record<string, unknown>): Promise<unknown> {
-  const platform = getPlatform() as {
-    formatAction?: (payload: Record<string, unknown>) => Promise<unknown>;
-  };
+/** The options a format capability is invoked with. */
+export interface FormatActionOptions {
+  /** `"roundtrip"` asks the format to preserve what it can of the source's own spelling. */
+  mode?: string;
+  /** Whether the serializer writes a frontmatter block. */
+  frontmatter?: boolean;
+}
+
+/**
+ * Send one request to the format route (POST /__studio/format, or the desktop RPC of the same
+ * name). A serialize request carries the caller's document through unchanged.
+ */
+async function formatAction(payload: FormatActionRequest): Promise<JxMutableNode | string> {
+  const platform = getPlatform();
   if (!platform.formatAction) {
     throw new Error("Platform does not support format actions");
   }
@@ -298,8 +313,11 @@ async function formatAction(payload: Record<string, unknown>): Promise<unknown> 
 export async function formatParse(
   name: string,
   source: string,
-  options?: Record<string, unknown>,
+  options?: FormatActionOptions,
 ): Promise<JxMutableNode> {
+  /* SAFETY: a format class's `parse` capability returns the Jx document it built from the source —
+     The contract every format class implements (specs/extensions.md) — and nothing here inspects
+     It before `splitFormatDocument` reads its keys. */
   return (await formatAction({
     action: "parse",
     format: name,
@@ -308,12 +326,19 @@ export async function formatParse(
   })) as JxMutableNode;
 }
 
-/** Serialize a Jx document to source text via the named format's serialize capability. */
+/**
+ * Serialize a Jx document to source text via the named format's serialize capability.
+ *
+ * `doc` is relayed to the format class verbatim: the document merged with its frontmatter, whose
+ * open keys are whatever the format's own parser produced.
+ */
 export async function formatSerialize(
   name: string,
-  doc: Record<string, unknown>,
-  options?: Record<string, unknown>,
+  doc: JxMutableNode,
+  options?: FormatActionOptions,
 ): Promise<string> {
+  /* SAFETY: a format class's `serialize` capability returns the source text it wrote — the contract
+     Every format class implements (specs/extensions.md) — so the answer is a string. */
   return (await formatAction({
     action: "serialize",
     doc,
@@ -322,42 +347,47 @@ export async function formatSerialize(
   })) as string;
 }
 
+/** A document's frontmatter: the open keys of a Jx node, as a format's parser left them. */
+export type FormatFrontmatter = Record<string, JxDocumentValue | undefined>;
+
+/** What {@link splitFormatDocument} makes of a parsed format document. */
+export interface SplitFormatDocument {
+  document: JxMutableNode;
+  frontmatter: FormatFrontmatter;
+  mode: "component" | "content";
+}
+
 /**
  * Split a parsed format document into { document, frontmatter, mode } per the format's
  * `$studio.documentMode` hints. Component documents (e.g. a frontmatter `tagName` with a hyphen)
  * keep their full shape; content documents separate frontmatter metadata from the body children.
  */
-export function splitFormatDocument(format: StudioFormat | undefined, doc: JxMutableNode) {
+export function splitFormatDocument(
+  format: StudioFormat | undefined,
+  doc: JxMutableNode,
+): SplitFormatDocument {
   const hints = format?.studio?.documentMode;
   const componentWhen = hints?.componentWhen;
   if (componentWhen?.frontmatterKey) {
     const value = doc[componentWhen.frontmatterKey];
     const pattern = componentWhen.matches ? new RegExp(componentWhen.matches) : /./;
-    if (typeof value === "string" && pattern.test(value)) {
-      return {
-        document: doc,
-        frontmatter: {} as Record<string, unknown>,
-        mode: "component",
-      };
+    if (isString(value) && pattern.test(value)) {
+      return { document: doc, frontmatter: {}, mode: "component" };
     }
   }
   if (hints?.default === "component") {
-    return {
-      document: doc,
-      frontmatter: {} as Record<string, unknown>,
-      mode: "component",
-    };
+    return { document: doc, frontmatter: {}, mode: "component" };
   }
 
   // Content document — children form the root-level body; other keys are frontmatter
-  const children = (doc.children as unknown[]) ?? [];
-  if (children.length === 0) {
+  const children = doc.children ?? [];
+  if (Array.isArray(children) && children.length === 0) {
     children.push({ children: [], tagName: "p" });
   }
 
   const documentKeys = new Set(["state", "imports"]);
-  const contentDoc: Record<string, unknown> = { children };
-  const frontmatter: Record<string, unknown> = {};
+  const contentDoc: JxMutableNode = { children };
+  const frontmatter: FormatFrontmatter = {};
   for (const [key, value] of Object.entries(doc)) {
     if (key === "children") {
       continue;
@@ -369,9 +399,5 @@ export function splitFormatDocument(format: StudioFormat | undefined, doc: JxMut
     }
   }
 
-  return {
-    document: contentDoc as JxMutableNode,
-    frontmatter,
-    mode: "content",
-  };
+  return { document: contentDoc, frontmatter, mode: "content" };
 }

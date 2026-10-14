@@ -11,6 +11,15 @@ import { problemResponse, refusal } from "./problem.ts";
 import { encodeSse, SSE_HEADERS } from "./sse.ts";
 import type { ChatGatewayOptions, GatewayRefusal, Upstream } from "./types.ts";
 
+/**
+ * The upstream a host forwards to when it configures none: OpenAI's own chat-completions API.
+ *
+ * The gateway never applies it itself (which upstream a request may reach is host policy, supplied
+ * through `resolveUpstream`). It lives here so every host that falls back to OpenAI, the dev server
+ * and the assistant's eval runner among them, names the same URL.
+ */
+export const DEFAULT_UPSTREAM_BASE_URL = "https://api.openai.com/v1";
+
 /** The refusal's detail for a body that is not JSON. */
 const INVALID_JSON = "Invalid JSON body";
 
@@ -160,6 +169,10 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
          JSON, as it was when the server read it with Bun's `req.json()`. The default decoder would
          strip it and accept the body; this extraction changes no byte a client receives. */
       const text = new TextDecoder("utf-8", { fatal: false, ignoreBOM: true }).decode(bytes);
+      /* SAFETY: every member of ChatRequestBody is optional and `unknown`, so the type claims only
+         that the parsed value can be destructured; each member is checked (messages, tools) or
+         forwarded as `unknown` (model, systemPrompt) below, and a JSON `null` throws at the
+         destructuring, as the route always has. */
       body = JSON.parse(text) as ChatRequestBody;
     } catch {
       return problemResponse(refusal("invalidRequest", INVALID_JSON));
@@ -192,13 +205,16 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       context,
     );
 
+    // SAFETY: Array.isArray above proved `messages` is an array; its entries are forwarded unread.
     const upstreamBody: UpstreamBody = {
       model,
       messages: [{ role: "system", content: systemPrompt }, ...(messages as unknown[])],
       stream: true,
       stream_options: { include_usage: true },
     };
-    // The wire has always forwarded `tools` as sent, so a non-array with a length passes through.
+    /* The wire has always forwarded `tools` as sent, so a non-array with a length passes through.
+       SAFETY: only `length` is read, off a truthy value, and that read is total: a value with no
+       numeric `length` yields `undefined` (or its own member), which `> 0` compares as it always has. */
     if (tools && (tools as { length: number }).length > 0) {
       upstreamBody.tools = tools;
       upstreamBody.tool_choice = "auto";

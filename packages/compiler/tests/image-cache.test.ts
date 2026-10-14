@@ -127,7 +127,7 @@ describe("image-cache", () => {
   test("getCached and setCached mark keys as touched", () => {
     const cache: any = { entries: {}, touched: new Set(), version: 1 };
     getCached(cache, "missing");
-    setCached(cache, "k1", "source.png", { variants: [] } as any);
+    setCached(cache, "k1", "source.png", { contentHash: "abcd1234", variants: [] });
     expect(cache.touched.has("missing")).toBe(true);
     expect(cache.touched.has("k1")).toBe(true);
   });

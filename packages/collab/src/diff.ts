@@ -9,6 +9,7 @@
  * a yjs-sized chunk with them.
  */
 
+import { cloneValue } from "@jxsuite/schema/doc-ops";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { metaMap, structureMap, toYChildren } from "./schema.ts";
 import type * as Y from "yjs";
@@ -19,26 +20,24 @@ export * from "./diff-core.ts";
  * Hard-replace the structure tree with `document` (the diff-overflow escape hatch) and bump the
  * in-doc canonicalRev so stale mirror writes computed against the old tree are discarded.
  */
-export function replaceYStructure(doc: Y.Doc, document: JxMutableNode, origin: unknown): void {
+export function replaceYStructure(doc: Y.Doc, document: JxMutableNode, origin: string): void {
   doc.transact(() => {
     const structure = structureMap(doc);
-    const next = document as Record<string, unknown>;
     // Detached copy: keys are deleted while iterating.
     const existingKeys = [...structure.keys()];
     for (const key of existingKeys) {
-      if (!(key in next) || next[key] === undefined) {
+      if (!(key in document) || document[key] === undefined) {
         structure.delete(key);
       }
     }
-    for (const [key, value] of Object.entries(next)) {
+    for (const [key, value] of Object.entries(document)) {
       if (value === undefined) {
         continue;
       }
       if (key === "children" && Array.isArray(value)) {
         structure.set(key, toYChildren(value));
       } else {
-        // oxlint-disable-next-line unicorn/prefer-structured-clone -- JSON normalization is the point
-        structure.set(key, JSON.parse(JSON.stringify(value)));
+        structure.set(key, cloneValue(value));
       }
     }
     const meta = metaMap(doc);

@@ -35,8 +35,8 @@ const DEFAULT_MODEL = "gpt-5.4";
  * Build a fully-wired headless harness around one working document.
  *
  * @param {object} opts
- * @param {Record<string, unknown>} opts.document - The page/component to edit (the live doc).
- * @param {Record<string, unknown>} [opts.projectConfig] - Project.json, for prompt context.
+ * @param {JxMutableNode} opts.document - The page/component to edit (the live doc).
+ * @param {ProjectConfig} [opts.projectConfig] - Project.json, for prompt context.
  * @param {{ name?: string; tag?: string; path?: string }[]} [opts.components] - Component list.
  * @param {string} [opts.projectRoot] - Absolute root, for prompt context + file-write tools.
  * @param {(relPath: string, content: string) => Promise<void>} [opts.saveFile] -
@@ -51,8 +51,8 @@ export function buildRealHarness({
   saveFile,
   model = process.env.JX_AI_MODEL || DEFAULT_MODEL,
 }: {
-  document: Record<string, unknown>;
-  projectConfig?: Record<string, unknown>;
+  document: JxMutableNode;
+  projectConfig?: ProjectConfig;
   components?: { name?: string; tag?: string; path?: string }[];
   projectRoot?: string;
   saveFile?: ((relPath: string, content: string) => Promise<void>) | undefined;
@@ -71,12 +71,15 @@ export function buildRealHarness({
 
   const chatState = createChatState({ model });
 
-  const toolRegistry = createToolRegistry() as ToolRegistry;
-  registerAiTools(toolRegistry, {
+  const toolRegistry: ToolRegistry = createToolRegistry();
+  const toolDeps: Parameters<typeof registerAiTools>[1] = {
     getTab: () => tab,
     validate: validateDoc,
-    saveFile,
-  } as Parameters<typeof registerAiTools>[1]);
+  };
+  if (saveFile) {
+    toolDeps.saveFile = saveFile;
+  }
+  registerAiTools(toolRegistry, toolDeps);
 
   const temperature =
     process.env.JX_AI_TEMP === undefined ? undefined : Number(process.env.JX_AI_TEMP);
@@ -89,8 +92,11 @@ export function buildRealHarness({
   });
 
   const systemPrompt = buildSystemPrompt({
-    document: document as JxMutableNode,
-    projectConfig: projectConfig as ProjectConfig | undefined,
+    document,
+    projectConfig,
+    /* SAFETY: the prompt's component summary reads an entry's `tagName || tag || name || path` and
+       its `$id`, every one of them optional at the point of use (ai-system-prompt.ts), so a legacy
+       `{ name, path }` entry with no `tagName` renders as `<name>` instead of failing. */
     components: components as ComponentEntry[] | undefined,
     projectRoot,
   });

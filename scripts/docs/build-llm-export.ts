@@ -10,6 +10,10 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
+
 import { readNav, sectionPaths } from "./nav";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -41,11 +45,14 @@ function readPage(slug: string): { title: string; description: string; body: str
   }
   const source = readFileSync(file, "utf8");
   const match = source.match(/^---\n([\s\S]*?)\n---\n/);
-  const fm = match ? (Bun.YAML.parse(match[1]!) as Record<string, unknown>) : {};
+  const parsed: unknown = match ? Bun.YAML.parse(match[1]!) : {};
+  // An empty or non-mapping block carries no fields, so the page falls back to its defaults.
+  const fm: JsonObject = isJsonObject(parsed) ? parsed : {};
+  const { description, title } = fm;
   return {
     body: match ? source.slice(match[0].length) : source,
-    description: typeof fm.description === "string" ? fm.description : "",
-    title: typeof fm.title === "string" ? fm.title : slug,
+    description: isString(description) ? description : "",
+    title: isString(title) ? title : slug,
   };
 }
 

@@ -21,20 +21,15 @@
  * @docs studio/logic/events
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import logicPanelDoc from "./logic-panel.json";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceAction, SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("logic-panel", logicPanelDoc as unknown as JxDocument);
-
-/** A closed list of choices, in the shape the kit's select reads. */
-export interface LogicOption {
-  value: string;
-  label: string;
-}
+registerSurface("logic-panel", logicPanelDoc);
 
 /** Which control a bindable row draws. The flow picks it; the document switches on it. */
 export type LogicFieldKind = "control" | "text" | "select";
@@ -55,7 +50,7 @@ export interface LogicFieldView {
   /** What a `text` or `select` control holds. Empty for a control host. */
   value: string;
   placeholder: string;
-  options: LogicOption[];
+  options: SurfaceOption[];
   /** Draw the text control monospaced — a pointer or a template string. */
   mono: boolean;
   /** The rung's own id, for `data-source`. */
@@ -131,7 +126,7 @@ export interface LogicBindingView {
   /** The code body's text. Empty for every other body. */
   code: string;
   refValue: string;
-  refOptions: LogicOption[];
+  refOptions: SurfaceOption[];
   /** The escape hatch's accessible name — the code editor, or the formula workspace. */
   openTitle: string;
 }
@@ -149,12 +144,6 @@ export interface LogicKvView {
   tags: string;
 }
 
-/** One button of an empty state — an id the flow knows, and the words on it. */
-export interface LogicEmptyAction {
-  id: string;
-  label: string;
-}
-
 /** Everything the Logic tab shows, already decided. */
 export interface LogicView {
   /** `empty` or `ready` — no document, no selection and a stale one are all the first. */
@@ -164,7 +153,7 @@ export interface LogicView {
    * What the reader can do about it. An empty state that teaches nothing offers none
    * (studio-ui-guidelines.md §11.1).
    */
-  emptyActions: LogicEmptyAction[];
+  emptyActions: SurfaceAction[];
   hasEmptyActions: boolean;
 
   hasRepeater: boolean;
@@ -233,7 +222,7 @@ export interface LogicIslands {
   statementsSlot: (key: string, host: HTMLElement) => void;
 }
 
-interface LogicScope extends Record<string, unknown>, LogicView, LogicActions {}
+interface LogicScope extends LogicView, LogicActions {}
 
 export interface LogicSurface {
   /** Re-project. The document's bindings skip every value that did not move. */
@@ -279,23 +268,21 @@ export function emptyLogicView(): LogicView {
 
 /** Assign the projection field by field: the runtime writes only the bindings that moved. */
 function project(scope: LogicScope, view: LogicView): void {
-  for (const [key, value] of Object.entries(view)) {
-    (scope as Record<string, unknown>)[key] = value;
-  }
+  Object.assign(scope, view);
 }
 
 /** The `part` a node was rendered with, or "". */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `key` of the `$map` item a node was rendered inside, or "". */
 function itemKey(state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: unknown } | undefined)?.item;
-  const key =
-    item !== null && typeof item === "object" ? (item as Record<string, unknown>).key : "";
-  return typeof key === "string" ? key : "";
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const key = isJsonObject(item) ? item["key"] : "";
+  return isString(key) ? key : "";
 }
 
 /**
@@ -316,10 +303,10 @@ export function mountLogicSurface(
   actions: LogicActions,
   islands: LogicIslands,
 ): LogicSurface {
-  const scope = reactive<LogicScope>({
+  const scope: LogicScope = reactive<LogicScope>({
     ...emptyLogicView(),
     ...actions,
-  } as LogicScope) as LogicScope;
+  });
   project(scope, view);
 
   let mounted: SurfaceHandle | null = null;

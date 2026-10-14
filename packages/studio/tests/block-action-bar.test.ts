@@ -19,6 +19,7 @@
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { hintOf, printedOf } from "./kit-readers";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
 import { getConvertTargets } from "../src/editor/convert-targets";
 import { dismissSlashMenu, isSlashMenuOpen } from "../src/editor/slash-menu";
 import { componentRegistry } from "../src/files/components";
@@ -29,18 +30,26 @@ import { activeTab } from "../src/workspace/workspace";
 
 import type { JxPath } from "../src/state";
 import type { JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
-import type { ApplyFormatIntent, SelectionSnapshot } from "../src/canvas/iframe-protocol";
+import type {
+  ApplyFormatIntent,
+  DragSrcKind,
+  SelectionSnapshot,
+} from "../src/canvas/iframe-protocol";
 
 // ─── DnD adapter mock (must precede the module-under-test import) ────────────
 
 interface DragRegistration {
   element: HTMLElement;
-  getInitialData: () => unknown;
+  getInitialData: () => DragSrcKind;
   /** Asked at the PRESS: whether this selection may be dragged at all. */
   canDrag: () => boolean;
 }
 
-const dnd: { draggables: DragRegistration[] } = { draggables: [] };
+interface DndMock {
+  draggables: DragRegistration[];
+}
+
+const dnd: DndMock = { draggables: [] };
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: (opts: DragRegistration) => {
@@ -139,7 +148,7 @@ function setup(docNode: JxMutableNode, selection: JxPath | null, opts: { id?: st
 }
 
 function bar(): HTMLElement | null {
-  return (view.blockActionBarEl?.querySelector('[part="bar"]') as HTMLElement) ?? null;
+  return view.blockActionBarEl?.querySelector<HTMLElement>('[part="bar"]') ?? null;
 }
 
 /** Render, then let the document reconcile: the bar is a mount, not a synchronous template. */
@@ -150,7 +159,7 @@ async function render(): Promise<void> {
 
 /** One of the bar's own parts. */
 function part(name: string): HTMLElement | null {
-  return (bar()?.querySelector(`[part="${name}"]`) as HTMLElement) ?? null;
+  return bar()?.querySelector<HTMLElement>(`[part="${name}"]`) ?? null;
 }
 
 /**
@@ -158,7 +167,7 @@ function part(name: string): HTMLElement | null {
  * only while it is disabled — the `title`; and the node a press is dispatched at.
  */
 function control(el: Element | null): HTMLElement | null {
-  return (el?.querySelector('[part="control"]') as HTMLElement) ?? null;
+  return el?.querySelector<HTMLElement>('[part="control"]') ?? null;
 }
 
 function isDisabled(el: Element | null): boolean {
@@ -215,7 +224,7 @@ function press(el: Element | null): void {
  * sentence when it cannot) and belongs to the record, not to this surface.
  */
 function cmdButton(id: string): HTMLElement {
-  const btn = bar()?.querySelector(`[data-command-id="${id}"]`) as HTMLElement | null;
+  const btn = bar()?.querySelector<HTMLElement>(`[data-command-id="${id}"]`);
   if (!btn) {
     throw new Error(`bar command not rendered: ${id}`);
   }
@@ -226,6 +235,24 @@ function doc(): JxMutableNode {
   return activeTab.value!.doc.document;
 }
 
+/**
+ * The root's children as element nodes. Every fixture this is used on builds its root with an array
+ * of element children, so anything else (a repeater slot, a bare text child) is a broken fixture or
+ * a broken edit, and it fails loudly rather than reading as an empty list.
+ */
+function childNodes(): JxMutableNode[] {
+  const { children } = doc();
+  if (!Array.isArray(children)) {
+    throw new TypeError("root children are not an array");
+  }
+  return children.map((child) => {
+    if (isString(child)) {
+      throw new TypeError(`root has a text child: ${child}`);
+    }
+    return child;
+  });
+}
+
 /** The link panel, when the document is drawing it. It lives inside the bar's own document. */
 function linkPanel(): HTMLElement | null {
   return part("link");
@@ -233,7 +260,7 @@ function linkPanel(): HTMLElement | null {
 
 /** The link panel's URL field — the kit textfield's own input. */
 function linkField(): HTMLInputElement | null {
-  return (linkPanel()?.querySelector('[part="input"]') as HTMLInputElement) ?? null;
+  return linkPanel()?.querySelector<HTMLInputElement>('[part="input"]') ?? null;
 }
 
 /** The link panel's buttons, by their visible text. */
@@ -313,7 +340,7 @@ describe("block action bar", () => {
     await render();
     expect(bar()).toBeNull();
 
-    activeTab.value!.session.selection = [["children", 0]] as never;
+    activeTab.value!.session.selection = [["children", 0]];
     host.anchor = null; // No anchor rect from the bridge → nothing to position from.
     await render();
     expect(bar()).toBeNull();
@@ -460,7 +487,7 @@ describe("block action bar", () => {
     );
     await render();
     press(cmdButton("selection.delete"));
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A"]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["A"]);
     expect(activeTab.value!.session.selection).toEqual([[]]);
   });
 
@@ -483,7 +510,7 @@ describe("block action bar", () => {
     press(cmdButton("selection.delete"));
 
     expect(activeTab.value!.session.selection).toEqual([["children", 0, "map"]]);
-    expect((doc().children as JxMutableNode[])[0]!.map).toEqual({
+    expect(childNodes()[0]!.map).toEqual({
       tagName: "li",
       textContent: "A",
     });
@@ -514,7 +541,7 @@ describe("block action bar", () => {
       setTransactGate(null);
     }
 
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "B"]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["A", "B"]);
     expect(tab.session.selection).toEqual([["children", 1]]);
   });
 
@@ -522,7 +549,7 @@ describe("block action bar", () => {
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, ["children", 0]);
     await render();
     press(cmdButton("selection.duplicate"));
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "A"]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["A", "A"]);
   });
 
   test("Delete on a multi-selection removes every one, in ONE undo step (§6.7)", async () => {
@@ -544,7 +571,7 @@ describe("block action bar", () => {
     const before = tab.history.index;
     await render();
     press(cmdButton("selection.delete"));
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["B"]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["B"]);
     expect(tab.history.index).toBe(before + 1);
   });
 
@@ -566,20 +593,12 @@ describe("block action bar", () => {
     const before = tab.history.index;
     await render();
     press(cmdButton("selection.duplicate"));
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual([
-      "A",
-      "A",
-      "B",
-      "B",
-    ]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["A", "A", "B", "B"]);
     expect(tab.history.index).toBe(before + 1);
   });
 
   test("badge prefers the node $id over the tag name", async () => {
-    setup({ children: [{ $id: "hero", tagName: "section" } as never], tagName: "div" }, [
-      "children",
-      0,
-    ]);
+    setup({ children: [{ $id: "hero", tagName: "section" }], tagName: "div" }, ["children", 0]);
     await render();
     expect(printedOf(part("tag"))).toBe("hero");
   });
@@ -632,13 +651,13 @@ describe("block action bar", () => {
     await render();
 
     press(cmdButton("selection.moveDown"));
-    let children = doc().children as JxMutableNode[];
+    let children = childNodes();
     expect(children.map((c) => c.textContent)).toEqual(["B", "A"]);
     expect(activeTab.value!.session.selection).toEqual([["children", 1]]);
 
     await render(); // Selection now at idx 1
     press(cmdButton("selection.moveUp"));
-    children = doc().children as JxMutableNode[];
+    children = childNodes();
     expect(children.map((c) => c.textContent)).toEqual(["A", "B"]);
     expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
   });
@@ -656,13 +675,13 @@ describe("block action bar", () => {
     );
     await render();
     press(cmdButton("selection.moveUp")); // Disabled guard
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "B"]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["A", "B"]);
 
-    activeTab.value!.session.selection = [["children", 1]] as never;
+    activeTab.value!.session.selection = [["children", 1]];
     await render();
     expect(isDisabled(cmdButton("selection.moveDown"))).toBe(true);
     press(cmdButton("selection.moveDown"));
-    expect((doc().children as JxMutableNode[]).map((c) => c.textContent)).toEqual(["A", "B"]);
+    expect(childNodes().map((c) => c.textContent)).toEqual(["A", "B"]);
   });
 
   // ─── Tag badge conversion ──────────────────────────────────────────────────
@@ -681,7 +700,7 @@ describe("block action bar", () => {
 
     document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await flush();
-    expect((doc().children as JxMutableNode[])[0]!.tagName).toBe(targets[0]!.tag);
+    expect(childNodes()[0]!.tagName).toBe(targets[0]!.tag);
   });
 
   test("empty nodes (no children or a lone br) offer the wider when-empty target set", async () => {
@@ -708,7 +727,7 @@ describe("block action bar", () => {
   // ─── Component nodes ───────────────────────────────────────────────────────
 
   test("registered components get a non-interactive badge and an Edit Component button", async () => {
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
     setup({ children: [{ tagName: "x-card" }], tagName: "div" }, ["children", 0]);
     await render();
 
@@ -724,7 +743,7 @@ describe("block action bar", () => {
   });
 
   test("a live prop session suffixes the badge with the prop and shows no format group", async () => {
-    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" });
     setup({ children: [{ $props: { title: "Local" }, tagName: "x-card" }], tagName: "div" }, [
       "children",
       0,
@@ -747,7 +766,7 @@ describe("block action bar", () => {
             $prototype: "Array",
             items: { $ref: "#/state/excavators" },
             map: { tagName: "li", textContent: "${item}" },
-          } as never,
+          },
         ],
         tagName: "div",
       },
@@ -828,7 +847,7 @@ describe("block action bar", () => {
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, ["children", 0]);
     await render();
     expect(dnd.draggables[0]!.canDrag()).toBe(true);
-    activeTab.value!.session.selection = [[]] as never;
+    activeTab.value!.session.selection = [[]];
     await render();
     expect(dnd.draggables[0]!.canDrag()).toBe(false);
     expect(part("drag-handle")!.getAttribute("aria-disabled")).toBe("true");
@@ -868,9 +887,9 @@ describe("block action bar", () => {
        rather than as a group-wide `selected` list, which is what the Spectrum group carried and
        what no assistive technology could read off it. The tag the snapshot named is the pressed
        one, and every other format button is unpressed. */
-    const pressedTags = [...part("format")!.querySelectorAll<HTMLElement>('[part="format-button"]')]
-      .filter((b) => control(b)!.getAttribute("aria-pressed") === "true")
-      .map((b) => b.dataset.tag);
+    const pressedTags = [
+      ...part("format")!.querySelectorAll<HTMLElement>('[part="format-button"]'),
+    ].flatMap((b) => (control(b)!.getAttribute("aria-pressed") === "true" ? [b.dataset.tag] : []));
     expect(pressedTags).toEqual(["strong"]);
   });
 
@@ -1301,7 +1320,7 @@ describe("suppression", () => {
   test("the selection is untouched — the Inspector still edits what the author selected", async () => {
     suppressBlockActionBar();
     await flush();
-    expect(activeTab.value!.session.selection).toEqual([["children", 0]] as never);
+    expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
   });
 
   test("a different selection releases it — an Outline row click hides the bar and shows it", async () => {
@@ -1309,7 +1328,7 @@ describe("suppression", () => {
     await flush();
     // One click, both halves: it is chrome (so it suppresses) AND it moves the selection (so the
     // Suppression is already over by the time the bar renders).
-    activeTab.value!.session.selection = [["children", 1]] as never;
+    activeTab.value!.session.selection = [["children", 1]];
     await render();
     expect(bar()).not.toBeNull();
     // Released for good, not for one pass.
@@ -1367,7 +1386,7 @@ describe("suppression", () => {
     await render();
     suppressBlockActionBar();
     await flush();
-    activeTab.value!.session.selection = [[]] as never;
+    activeTab.value!.session.selection = [[]];
     await render();
     expect(bar()).not.toBeNull();
   });

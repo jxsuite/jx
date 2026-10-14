@@ -12,12 +12,12 @@ import {
   renderSubtreeIframe,
 } from "../src/canvas/iframe-subtree";
 import type { IframeRenderCtx } from "../src/canvas/iframe-render";
-import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 let ctx: IframeRenderCtx;
 beforeAll(async () => {
   ctx = {
-    defs: await buildScope({} as JxDocument, {}, "http://localhost/"),
+    defs: await buildScope({}, {}, "http://localhost/"),
     docBase: "http://localhost/",
     mapperCtx: {
       arrayPaths: new Set(),
@@ -30,16 +30,26 @@ beforeAll(async () => {
   };
 });
 
-const docOf = (...children: unknown[]): JxMutableNode =>
-  ({ children, tagName: "div" }) as unknown as JxMutableNode;
+const docOf = (...children: (JxMutableNode | string)[]): JxMutableNode => ({
+  children,
+  tagName: "div",
+});
+
+/** Narrows a rendered node (or query result) to an element, failing the test when it is not one. */
+function elementOf(node: Node | null): HTMLElement {
+  if (!(node instanceof HTMLElement)) {
+    throw new Error("expected the render to produce an HTMLElement");
+  }
+  return node;
+}
 
 describe("renderSubtreeIframe", () => {
   test("renders a node into DOM stamped with its document path, descendants included", () => {
     const doc = docOf({ children: [{ tagName: "em", textContent: "x" }], tagName: "p" });
-    const el = renderSubtreeIframe(doc, ["children", 0], ctx) as HTMLElement;
+    const el = elementOf(renderSubtreeIframe(doc, ["children", 0], ctx));
     expect(el.tagName.toLowerCase()).toBe("p");
     expect(el.dataset.jxPath).toBe('["children",0]');
-    const em = el.querySelector("em") as HTMLElement;
+    const em = elementOf(el.querySelector("em"));
     expect(em.dataset.jxPath).toBe('["children",0,"children",0]');
   });
 
@@ -66,18 +76,16 @@ describe("renderSubtreeIframe", () => {
     };
     const doc = docOf({ tagName: "p", textContent: "x" });
     // The docPath children/0 renders at children/1/children/(0+2); the stamper maps it to children/0.
-    const el = renderSubtreeIframe(doc, ["children", 0], wrapped) as HTMLElement;
+    const el = elementOf(renderSubtreeIframe(doc, ["children", 0], wrapped));
     expect(el.dataset.jxPath).toBe('["children",0]');
   });
 });
 
 describe("disposeSubtree / disposeAllSubtrees", () => {
   test("stops the subtree's scope and hands its rule set back", () => {
-    const el = renderSubtreeIframe(
-      docOf({ tagName: "p", textContent: "x" }),
-      ["children", 0],
-      ctx,
-    ) as HTMLElement;
+    const el = elementOf(
+      renderSubtreeIframe(docOf({ tagName: "p", textContent: "x" }), ["children", 0], ctx),
+    );
     /* The runtime's own teardown API, not a `<style>` tag this test invents. Rule sets are shared
        between elements that style alike, so only a refcounted release is safe. */
     applyStyle(el, { color: "rebeccapurple" });
@@ -106,22 +114,18 @@ describe("disposeSubtree / disposeAllSubtrees", () => {
     // Template child keeps its live binding even under the design-mode ctx.
     const liveCtx: IframeRenderCtx = {
       ...ctx,
-      defs: await buildScope(
-        { state: { msg: "one" } } as unknown as JxDocument,
-        {},
-        "http://localhost/",
-      ),
+      defs: await buildScope({ state: { msg: "one" } }, {}, "http://localhost/"),
     };
     const node = renderSubtreeIframe(docOf("${state.msg}"), ["children", 0], liveCtx);
     expect(node.textContent).toBe("one");
 
     // Live before disposal: the effect tracks the reactive defs.
-    (liveCtx.defs as Record<string, unknown>).msg = "two";
+    liveCtx.defs["msg"] = "two";
     expect(node.textContent).toBe("two");
 
     // Dead after: further changes leave the detached text node untouched.
     disposeAllSubtrees();
-    (liveCtx.defs as Record<string, unknown>).msg = "three";
+    liveCtx.defs["msg"] = "three";
     expect(node.textContent).toBe("two");
   });
 });

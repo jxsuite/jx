@@ -1,7 +1,7 @@
 {
   "name": "plain-exchange",
   "description": "Two user turns answered in plain text. Every wire entry is exactly { role, content }, in transcript order, and ids and timestamps never reach the wire.",
-  "shapes": ["plain-exchange"],
+  "scenarios": ["plain-exchange"],
   "script": [
     ["sendMessage", "What is Jx?"],
     ["appendDelta", "Jx is a JSON-first "],

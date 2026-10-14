@@ -14,7 +14,11 @@ import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
 import type { CommandContext } from "../src/commands/context";
 import type { AutomationDeps } from "../src/services/automation";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: the harness registers happy-dom's GlobalRegistrator, which copies the window's members
+   onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 
 void mock.module("../src/panels/stylebook-panel", () => ({
   renderComponentPreview: async () => document.createElement("div"),
@@ -33,9 +37,20 @@ const {
 const { closeAllTabs } = await import("../src/workspace/workspace");
 const { shell } = await import("../src/shell");
 
-/** The rejection reason, as a value — `expect(...).rejects` is typed `void` here. */
+/**
+ * The rejection reason, as a value (`expect(...).rejects` is typed `void` here). A promise that
+ * settles any other way fails the test by name.
+ */
 async function rejection(promise: Promise<unknown>): Promise<Error> {
-  return (await promise.catch((error: unknown) => error)) as Error;
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new TypeError("rejected with a reason that is not an Error", { cause: error });
+  }
+  throw new Error("expected a rejection, but the promise fulfilled");
 }
 
 interface Fixture {
@@ -48,21 +63,27 @@ interface Fixture {
   ran: { id: string; args: unknown }[];
 }
 
+/** A command record with the defaults every case here shares; `extra` overrides any of them. */
+function commandRecord(
+  id: string,
+  run: AnyCommand["run"],
+  extra: Partial<AnyCommand> = {},
+): AnyCommand {
+  return { category: "View", id, level: "application", run, title: id, ...extra };
+}
+
 function makeFixture(patch: Partial<CommandContext> = {}): Fixture {
   const ctx = { ...makeContext(), ...patch };
   const ran: { id: string; args: unknown }[] = [];
   const registry = createCommandRegistry({ getContext: () => ctx });
-  const record = (id: string, extra: Partial<AnyCommand> = {}): AnyCommand =>
-    ({
-      category: "View",
+  const record = (id: string, extra: Partial<AnyCommand> = {}) =>
+    commandRecord(
       id,
-      level: "application",
-      run: (_context, args) => {
+      (_context, args) => {
         ran.push({ args, id });
       },
-      title: id,
-      ...extra,
-    }) as AnyCommand;
+      extra,
+    );
 
   registry.registerAll([
     record("view.setColorScheme", {
@@ -89,7 +110,7 @@ function makeFixture(patch: Partial<CommandContext> = {}): Fixture {
 
 beforeEach(() => {
   closeAllTabs();
-  delete (globalThis as Record<string, unknown>).__jxAutomation;
+  Reflect.deleteProperty(globalThis, "__jxAutomation");
 });
 
 describe("shouldInstallAutomation", () => {
@@ -106,13 +127,13 @@ describe("installAutomationHook", () => {
   test("does not install without the flag", () => {
     happyDOM.setURL("http://localhost:3000/packages/studio/index.html");
     expect(installAutomationHook(makeFixture().deps)).toBe(false);
-    expect((globalThis as Record<string, unknown>).__jxAutomation).toBeUndefined();
+    expect(globalThis.__jxAutomation).toBeUndefined();
   });
 
   test("installs exactly three members with the flag", () => {
     happyDOM.setURL("http://localhost:3000/packages/studio/index.html?automation=1");
     expect(installAutomationHook(makeFixture().deps)).toBe(true);
-    const api = (globalThis as Record<string, unknown>).__jxAutomation as Record<string, unknown>;
+    const api = globalThis.__jxAutomation ?? {};
     expect(Object.keys(api).toSorted()).toEqual(["probe", "run", "seed"]);
   });
 });
@@ -203,8 +224,9 @@ describe("run is registry.run", () => {
 
 describe("the scriptable projection", () => {
   test("every registry command except a toggle projects", () => {
-    expect(isScriptable({ id: "view.setDock" } as AnyCommand)).toBe(true);
-    expect(isScriptable({ id: "view.toggleAssistant" } as AnyCommand)).toBe(false);
+    const noop = () => {};
+    expect(isScriptable(commandRecord("view.setDock", noop))).toBe(true);
+    expect(isScriptable(commandRecord("view.toggleAssistant", noop))).toBe(false);
     expect(setterFor("view.toggleAssistant")).toBe("view.setAssistant");
   });
 

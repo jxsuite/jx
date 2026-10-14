@@ -12,6 +12,8 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { reactive } from "@vue/reactivity";
 
+import type { JxElement } from "@jxsuite/schema/types";
+
 try {
   GlobalRegistrator.register();
 } catch {
@@ -49,22 +51,14 @@ async function run(keyed: boolean): Promise<void> {
   const rows = reactive(makeRows(ROWS));
   const host = document.createElement("div");
   document.body.append(host);
+  // A repeater nested among children is structurally a JxElement (see JxElement.children).
+  const list: JxElement = { $prototype: "Array", items: { $ref: "#/state/rows" } };
+  if (keyed) {
+    list.key = { $ref: "$map/item/id" };
+  }
+  list.map = { tagName: "li", textContent: "${$map.index}:${$map.item.title}" };
   await timed("create", async () => {
-    await mount(
-      {
-        tagName: "ul",
-        children: [
-          {
-            $prototype: "Array",
-            items: { $ref: "#/state/rows" },
-            ...(keyed ? { key: { $ref: "$map/item/id" } } : {}),
-            map: { tagName: "li", textContent: "${$map.index}:${$map.item.title}" },
-          },
-        ],
-      },
-      host,
-      { scope: { rows } },
-    );
+    await mount({ tagName: "ul", children: [list] }, host, { scope: { rows } });
   });
   await timed("append 100", () => {
     rows.push(...makeRows(100, ROWS));

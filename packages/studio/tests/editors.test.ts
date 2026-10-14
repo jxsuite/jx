@@ -14,15 +14,51 @@
 import { flush, installMockPlatform, registerPrimaryStage, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { surfaceForPane } from "../src/canvas/surface-registry";
+import type { CanvasPanel, CodeServiceResult, FunctionEditDef, StudioPlatform } from "../src/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import type * as monaco from "monaco-editor";
 
 type ChangeListener = () => void;
 
+/** The text model the fake editor hands out; editors.ts only passes it on to `setModelMarkers`. */
+interface FakeModel {
+  id: string;
+}
+
+/** A completion as editors.ts's provider builds it: always a string label and string docs. */
+interface Suggestion {
+  documentation?: string;
+  insertText: string;
+  kind: number;
+  label: string;
+  range: monaco.IRange;
+}
+
+/**
+ * The completion provider editors.ts registers, as far as these tests drive it: its body reads only
+ * `model.getWordUntilPosition()` and `position.lineNumber`, and it answers synchronously.
+ */
+interface RegisteredProvider {
+  provideCompletionItems: (
+    model: { getWordUntilPosition: () => { endColumn: number; startColumn: number } },
+    position: { lineNumber: number },
+  ) => { suggestions: Suggestion[] };
+  triggerCharacters?: string[];
+}
+
+/** What the platform's code service is handed alongside its action name. */
+type CodeServicePayload = Parameters<StudioPlatform["codeService"]>[1];
+
+/** Answers one pending code-service round trip. */
+type CodeServiceResolver = (result: CodeServiceResult | null) => void;
+
 class FakeEditor {
   value: string;
-  options: Record<string, unknown>;
+  options: monaco.editor.IStandaloneEditorConstructionOptions;
   disposed = false;
   listeners: ChangeListener[] = [];
-  model: Record<string, unknown> | null = { id: "fake-model" };
+  model: FakeModel | null = { id: "fake-model" };
   _ignoreNextChange?: boolean;
   _editingTarget?: string | null;
   /**
@@ -34,12 +70,12 @@ class FakeEditor {
    */
   focused = false;
 
-  _el: unknown;
+  _el: HTMLElement;
   dom: HTMLElement | null = null;
 
-  constructor(el: unknown, options: Record<string, unknown>) {
+  constructor(el: HTMLElement, options: monaco.editor.IStandaloneEditorConstructionOptions) {
     this._el = el;
-    this.value = (options?.value as string) ?? "";
+    this.value = options.value ?? "";
     this.options = options;
   }
   /**
@@ -84,10 +120,9 @@ class FakeEditor {
    * whether that root is still attached, so the fake has to have one.
    */
   getDomNode() {
-    const el = this._el as HTMLElement | null;
-    if (el && !this.dom) {
-      this.dom = el.ownerDocument.createElement("div");
-      el.append(this.dom);
+    if (!this.dom) {
+      this.dom = this._el.ownerDocument.createElement("div");
+      this._el.append(this.dom);
     }
     return this.dom;
   }
@@ -104,8 +139,10 @@ class FakeEditor {
 }
 
 const created: FakeEditor[] = [];
-const setModelMarkers = mock((_model: unknown, _owner: string, _markers: unknown[]) => {});
-const registerCompletionItemProvider = mock((_lang: string, _provider: unknown) => ({
+const setModelMarkers = mock(
+  (_model: FakeModel | null, _owner: string, _markers: monaco.editor.IMarkerData[]) => {},
+);
+const registerCompletionItemProvider = mock((_lang: string, _provider: RegisteredProvider) => ({
   dispose: () => {},
 }));
 
@@ -113,7 +150,7 @@ void mock.module("monaco-editor/editor", () => ({
   MarkerSeverity: { Error: 8, Warning: 4 },
   Uri: { parse: (u: string) => ({ target: u, toString: () => u }) },
   editor: {
-    create: (el: unknown, options: Record<string, unknown>) => {
+    create: (el: HTMLElement, options: monaco.editor.IStandaloneEditorConstructionOptions) => {
       const ed = new FakeEditor(el, options);
       created.push(ed);
       return ed;
@@ -159,11 +196,20 @@ document.body.innerHTML = `<div id="app"><div class="pane-stage" data-jx-region=
 initShellRefs();
 registerPrimaryStage();
 
+/** An element of the fixture shell written into `document.body` above. */
+function shellElement(selector: string): HTMLElement {
+  const el = document.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`the fixture shell has no ${selector}`);
+  }
+  return el;
+}
+
 // The pane's stage, which is what `#canvas-wrap` was. Queried rather than destructured off a
 // Module binding for the same reason as before: the surface's `wrap` is assigned by the fixture.
-const canvasWrap = document.querySelector(".pane-stage") as HTMLElement;
+const canvasWrap = shellElement(".pane-stage");
 /** Stands in for the dock's `.bd-body` — what the Logic tab's `afterRender` is handed. */
-const dock = document.querySelector("#logic") as HTMLElement;
+const dock = shellElement("#logic");
 
 /**
  * One dock repaint: lit paints the tab's body, then the panel's `afterRender` runs against it.
@@ -192,7 +238,7 @@ const sleep = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-function docFixture() {
+function docFixture(): JxMutableNode {
   return {
     children: [
       {
@@ -216,20 +262,74 @@ function docFixture() {
       plain: "hello",
     },
     tagName: "div",
-  } as never;
+  };
 }
 
-let codeServiceCalls: [string, any][] = [];
-let formatResult: { code: string } | null = null;
-let lintResult: { diagnostics: unknown[] } | null = null;
+let codeServiceCalls: [string, CodeServicePayload][] = [];
+let formatResult: CodeServiceResult | null = null;
+let lintResult: CodeServiceResult | null = null;
 
-function setEditing(editing: Record<string, unknown> | null) {
-  (activeTab.value!.session.ui as any).editingFunction = editing;
+/** A code service that holds every `deferred` round trip for the test to answer; others get null. */
+function deferredCodeService(
+  deferred: string,
+  pending: CodeServiceResolver[],
+): StudioPlatform["codeService"] {
+  return (action) =>
+    action === deferred
+      ? new Promise<CodeServiceResult | null>((resolve) => {
+          pending.push(resolve);
+        })
+      : Promise.resolve(null);
+}
+
+function setEditing(editing: FunctionEditDef | null) {
+  activeTab.value!.session.ui.editingFunction = editing;
 }
 
 /** The target on a NAMED tab — the two-document tests set both before either is focused. */
-function setEditingOn(tab: StudioTab, editing: Record<string, unknown> | null) {
-  (tab.session.ui as any).editingFunction = editing;
+function setEditingOn(tab: StudioTab, editing: FunctionEditDef | null) {
+  tab.session.ui.editingFunction = editing;
+}
+
+/** The document's children array, which every fixture here builds as a plain array. */
+function childrenOf(tab: StudioTab): (JxMutableNode | string)[] {
+  const { children } = tab.doc.document;
+  if (!Array.isArray(children)) {
+    throw new TypeError("the fixture document's children are not an array");
+  }
+  return children;
+}
+
+/** The `onclick` handler def on the document's first child — the fixture's button. */
+function onclickOf(tab: StudioTab): JsonObject {
+  const [button] = childrenOf(tab);
+  if (button === undefined || isString(button)) {
+    throw new Error("the fixture document has no button");
+  }
+  const handler = button.onclick;
+  if (!isJsonObject(handler)) {
+    throw new Error("the button's onclick is not a handler def");
+  }
+  return handler;
+}
+
+/** The state entry `name` of a tab's document, which these tests only read as an object def. */
+function stateDef(tab: StudioTab, name: string): JsonObject {
+  const def = tab.doc.document.state?.[name];
+  if (!isJsonObject(def)) {
+    throw new Error(`state.${name} is not an object def`);
+  }
+  return def;
+}
+
+/** The suggestions `provider` offers at `lineNumber`, keyed by label. */
+function suggestionsByLabel(
+  provider: RegisteredProvider,
+  lineNumber: number,
+): Record<string, Suggestion> {
+  const model = { getWordUntilPosition: () => ({ endColumn: 4, startColumn: 1 }) };
+  const { suggestions } = provider.provideCompletionItems(model, { lineNumber });
+  return Object.fromEntries(suggestions.map((suggestion) => [suggestion.label, suggestion]));
 }
 
 /**
@@ -260,7 +360,7 @@ function twoPagesWithTheSameButton() {
 
 /** `children[0].onclick.body` on a tab, which is what both documents' handlers live at. */
 function handlerBody(tab: StudioTab) {
-  return ((tab.doc.document.children as any[])[0] as any).onclick.body as string;
+  return onclickOf(tab).body;
 }
 
 beforeEach(() => {
@@ -279,17 +379,19 @@ beforeEach(() => {
   surfaceForPane("primary").monacoEditor = null;
   resetNotifications();
   installMockPlatform({
-    codeService: (async (action: string, payload: unknown) => {
+    codeService: async (action, payload) => {
       codeServiceCalls.push([action, payload]);
       return action === "format" ? formatResult : lintResult;
-    }) as never,
+    },
   });
   resetWorkspaceWithTab(docFixture(), { documentPath: "/project/pages/index.json" });
 });
 
 describe("the code surface — def target", () => {
   test("mounts into the dock body and leaves the canvas mounted", async () => {
-    canvasPanels.push({ id: "panel" } as never);
+    /* SAFETY: this stand-in is only ever counted (`toHaveLength` below): the point is that the
+       Logic tab leaves the stage's panels alone, so nothing in these steps reads a panel member. */
+    canvasPanels.push({ mediaName: "panel" } as CanvasPanel);
     canvasWrap.textContent = "the rendered page";
     setEditing({ defName: "greet", type: "def" });
 
@@ -306,7 +408,7 @@ describe("the code surface — def target", () => {
     expect(created).toHaveLength(1);
     expect(created[0]!.options.language).toBe("javascript");
     expect(created[0]!.value).toBe("return 1;");
-    expect(view.functionEditor).toBe(created[0] as never);
+    expect(Object.is(view.functionEditor, created[0])).toBe(true);
     expect(view.functionEditor!._editingTarget).toBe(
       JSON.stringify({ defName: "greet", type: "def" }),
     );
@@ -342,7 +444,7 @@ describe("the code surface — def target", () => {
     expect(created[0]!.value).toBe("return 1;\n");
 
     expect(setModelMarkers).toHaveBeenCalledTimes(1);
-    const [model, owner, markers] = setModelMarkers.mock.calls[0] as any[];
+    const [model, owner, markers] = setModelMarkers.mock.calls[0]!;
     expect(model).toEqual({ id: "fake-model" });
     expect(owner).toBe("oxlint");
     expect(markers).toHaveLength(2);
@@ -355,7 +457,7 @@ describe("the code surface — def target", () => {
       startColumn: 2,
       startLineNumber: 1,
     });
-    expect(markers[0].code.value).toBe("no-undef");
+    expect(markers[0]).toMatchObject({ code: { value: "no-undef" } });
     expect(markers[1]).toMatchObject({ endColumn: 2, severity: 4, startColumn: 1 });
   });
 
@@ -389,7 +491,7 @@ describe("the code surface — def target", () => {
 
     ed!.type("return 42;");
     await sleep(600);
-    const { greet } = activeTab.value!.doc.document.state as any;
+    const greet = stateDef(activeTab.value!, "greet");
     expect(greet.body).toBe("return 42;");
     expect(greet.$prototype).toBe("Function");
     expect(leftPanelRender).toHaveBeenCalled();
@@ -412,7 +514,7 @@ describe("the code surface — def target", () => {
     expect(created.at(-1)!.value).toBe("");
     // Non-function defs fall back to the default arg names
     const formatCall = codeServiceCalls.findLast(([action]) => action === "format")!;
-    expect(formatCall[1].args).toEqual(["state", "event"]);
+    expect(formatCall[1]).toMatchObject({ args: ["state", "event"] });
   });
 });
 
@@ -424,16 +526,23 @@ describe("the code surface — event target", () => {
     const [first] = created;
     // Source mode's Monaco belongs to the PANE. The takeover disposed it on its way over the
     // Stage; a dock tab shares the screen with it and must leave it alone.
-    const paneMonaco = { dispose: mock(() => {}) };
-    surfaceForPane("primary").monacoEditor = paneMonaco as never;
+    let paneDisposals = 0;
+    const paneMonaco = {
+      dispose: () => {
+        paneDisposals += 1;
+      },
+    };
+    /* SAFETY: the only member a dock-tab teardown could reach on the pane's editor is `dispose`,
+       which this stand-in counts; nothing else in these steps reads the pane's Monaco. */
+    surfaceForPane("primary").monacoEditor = paneMonaco as monaco.editor.IStandaloneCodeEditor;
 
     setEditing({ eventKey: "onclick", path: ["children", 0], type: "event" });
     await paintLogic();
     await flush();
 
     expect(first!.disposed).toBe(true);
-    expect(paneMonaco.dispose).not.toHaveBeenCalled();
-    expect(surfaceForPane("primary").monacoEditor).toBe(paneMonaco as never);
+    expect(paneDisposals).toBe(0);
+    expect(Object.is(surfaceForPane("primary").monacoEditor, paneMonaco)).toBe(true);
     expect(created).toHaveLength(2);
     expect(created[1]!.value).toBe("go()");
   });
@@ -447,10 +556,11 @@ describe("the code surface — event target", () => {
     ed.type("doIt(state)");
     await sleep(600);
     // Field-by-field assertions — the document is a reactive proxy, which trips toMatchObject
-    const [node] = activeTab.value!.doc.document.children as any[];
-    expect(node.onclick.$prototype).toBe("Function");
-    expect(node.onclick.body).toBe("doIt(state)");
-    expect([...node.onclick.parameters]).toEqual(["state", "event"]);
+    const onclick = onclickOf(activeTab.value!);
+    expect(onclick.$prototype).toBe("Function");
+    expect(onclick.body).toBe("doIt(state)");
+    const { parameters } = onclick;
+    expect(Array.isArray(parameters) ? [...parameters] : parameters).toEqual(["state", "event"]);
   });
 
   test("renders an empty buffer for an unrecognized editing type", async () => {
@@ -461,15 +571,8 @@ describe("the code surface — event target", () => {
   });
 
   test("discards stale lint results when a newer edit superseded them", async () => {
-    const pendingLints: ((value: unknown) => void)[] = [];
-    installMockPlatform({
-      codeService: ((action: string) =>
-        action === "lint"
-          ? new Promise((resolve) => {
-              pendingLints.push(resolve);
-            })
-          : Promise.resolve(null)) as never,
-    });
+    const pendingLints: CodeServiceResolver[] = [];
+    installMockPlatform({ codeService: deferredCodeService("lint", pendingLints) });
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     await flush();
@@ -563,7 +666,7 @@ describe("living in a dock tab", () => {
     expect(tabBufferUnsaved(tab)).toBe(true);
 
     await commitTabBuffers(tab);
-    expect((tab.doc.document.state as any).greet.body).toBe("typed();");
+    expect(stateDef(tab, "greet").body).toBe("typed();");
     expect(tab.doc.dirty).toBe(true);
     expect(tabBufferUnsaved(tab)).toBe(false);
   });
@@ -598,7 +701,7 @@ describe("living in a dock tab", () => {
     // Return BEFORE it re-arms, so a revert left the original timer running and it wrote the
     // Reverted body half a second later — the repaint's opinion outliving the repaint.
     await sleep(900); // Past both the 500ms commit and the 750ms lint
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return 42;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
   });
 
   /**
@@ -621,7 +724,7 @@ describe("living in a dock tab", () => {
     expect(ed.value).toBe("return 42;");
 
     await sleep(900);
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return 42;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
   });
 
   /**
@@ -656,7 +759,7 @@ describe("living in a dock tab", () => {
     expect(ed!.disposed).toBe(true);
     expect(ed!.getValue()).toBe(""); // What a surviving timer would have read
 
-    const { greet } = activeTab.value!.doc.document.state as any;
+    const greet = stateDef(activeTab.value!, "greet");
     // The flush happened INSIDE the dispose, before the model was detached — synchronously, so the
     // Body is already written by the time the teardown returns.
     expect(greet.body).toBe("return 42;");
@@ -666,7 +769,7 @@ describe("living in a dock tab", () => {
     await sleep(900);
     // And nothing fires afterwards to undo it: the flush dropped the timer it ran, and `cancel`
     // Dropped the rest. `""` never reaches the document.
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return 42;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
     // The lint is NOT flushed — a round trip started for an editor being disposed answers to
     // Nobody, so the only lint is the one format-on-open made.
     expect(codeServiceCalls.filter(([action]) => action === "lint")).toHaveLength(1);
@@ -776,7 +879,7 @@ describe("closeFunctionEditor", () => {
 
     await closeFunctionEditor();
 
-    const { greet } = activeTab.value!.doc.document.state as any;
+    const greet = stateDef(activeTab.value!, "greet");
     // The mock code service answers null for "minify", so the raw buffer is what is stored — the
     // Point is that the CLOSE is what writes, rather than losing whatever the debounce had not.
     expect(greet.body).toBe("return    2;");
@@ -788,7 +891,7 @@ describe("closeFunctionEditor", () => {
     // Certifying the corrupting path. The timer read `""` off the dead editor and overwrote the
     // Correct body with it — the intended action destroying the work it exists to save.
     await sleep(900);
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return    2;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return    2;");
   });
 
   test("writes an event binding back with its Function shape intact", async () => {
@@ -798,9 +901,9 @@ describe("closeFunctionEditor", () => {
 
     await closeFunctionEditor();
 
-    const [node] = activeTab.value!.doc.document.children as any[];
-    expect(node.onclick.$prototype).toBe("Function");
-    expect(node.onclick.body).toBe("bye()");
+    const onclick = onclickOf(activeTab.value!);
+    expect(onclick.$prototype).toBe("Function");
+    expect(onclick.body).toBe("bye()");
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
   });
 
@@ -830,7 +933,7 @@ describe("closeFunctionEditor", () => {
 
     // The document never received it — and neither the editor nor the target went away, so the
     // Author is still looking at the text they typed.
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return 1;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return 1;");
     expect(view.functionEditor).toBe(editor);
     expect(ed.disposed).toBe(false);
     expect(activeTab.value!.session.ui.editingFunction).toEqual({
@@ -862,13 +965,13 @@ describe("closeFunctionEditor", () => {
       setTransactGate(null);
     }
 
-    expect((tab.doc.document.state as any).greet.body).toBe("return 1;");
+    expect(stateDef(tab, "greet").body).toBe("return 1;");
     expect(tabBufferUnsaved(tab)).toBe(true);
 
     // And the moment the freeze lifts, the same buffer commits normally.
     created.at(-1)!.type("return 43;");
     await commitTabBuffers(tab);
-    expect((tab.doc.document.state as any).greet.body).toBe("return 43;");
+    expect(stateDef(tab, "greet").body).toBe("return 43;");
     expect(tabBufferUnsaved(tab)).toBe(false);
   });
 
@@ -905,7 +1008,7 @@ describe("closeFunctionEditor", () => {
 
     expect(ed.disposed).toBe(true);
     expect(view.functionEditor).toBeNull();
-    expect((tab.doc.document.state as any).greet.body).toBe("return 1;");
+    expect(stateDef(tab, "greet").body).toBe("return 1;");
     // The buffer went with the text, so nothing else can ever report this.
     expect(tabBufferUnsaved(tab)).toBe(false);
     const toast = toasts.find((t) => t.key === `buffer-discarded:logic:${tab.id}`);
@@ -953,7 +1056,7 @@ describe("closeFunctionEditor", () => {
     litRender(nothing, dock);
     syncFunctionEditor(dock);
 
-    expect((tab.doc.document.state as any).greet.body).toBe("return 42;");
+    expect(stateDef(tab, "greet").body).toBe("return 42;");
     expect(toasts.filter((t) => t.key?.startsWith("buffer-discarded:"))).toEqual([]);
   });
 
@@ -975,7 +1078,7 @@ describe("closeFunctionEditor", () => {
     ed.type("boom()");
     const tab = activeTab.value!;
     // The delete arrives — over the wire, or from undo.
-    (tab.doc.document.children as any[]).length = 0;
+    childrenOf(tab).length = 0;
     resetNotifications();
 
     litRender(nothing, dock);
@@ -1009,15 +1112,8 @@ describe("closeFunctionEditor", () => {
    * to whatever is mounted when it runs — and those stopped being the same editor.
    */
   test("a retarget during a slow minify writes the old body and leaves the new editor alone", async () => {
-    let resolveMinify: ((value: unknown) => void) | undefined;
-    installMockPlatform({
-      codeService: ((action: string) =>
-        action === "minify"
-          ? new Promise((resolve) => {
-              resolveMinify = resolve;
-            })
-          : Promise.resolve(null)) as never,
-    });
+    const pendingMinifies: CodeServiceResolver[] = [];
+    installMockPlatform({ codeService: deferredCodeService("minify", pendingMinifies) });
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     const first = created.at(-1)!;
@@ -1033,15 +1129,15 @@ describe("closeFunctionEditor", () => {
     expect(second).not.toBe(first);
     expect(first.disposed).toBe(true);
 
-    resolveMinify!({ code: "return 42;" });
+    pendingMinifies.at(-1)!({ code: "return 42;" });
     await closing;
 
     // The buffer landed where it came from …
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return 42;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
     // … and the surface the user is actually looking at is untouched.
     expect(second.disposed).toBe(false);
-    expect(view.functionEditor).toBe(second as never);
-    const stillOpen = activeTab.value!.session.ui.editingFunction as any;
+    expect(Object.is(view.functionEditor, second)).toBe(true);
+    const stillOpen = activeTab.value!.session.ui.editingFunction;
     expect(stillOpen?.type).toBe("event");
     expect(stillOpen?.eventKey).toBe("onclick");
   });
@@ -1058,15 +1154,8 @@ describe("closeFunctionEditor", () => {
    * the strip, and re-opening the dock restored the body the user had just dismissed.
    */
   test("a Close whose editor is torn down mid-minify still clears the target", async () => {
-    let resolveMinify: ((value: unknown) => void) | undefined;
-    installMockPlatform({
-      codeService: ((action: string) =>
-        action === "minify"
-          ? new Promise((resolve) => {
-              resolveMinify = resolve;
-            })
-          : Promise.resolve(null)) as never,
-    });
+    const pendingMinifies: CodeServiceResolver[] = [];
+    installMockPlatform({ codeService: deferredCodeService("minify", pendingMinifies) });
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     const ed = created.at(-1)!;
@@ -1085,11 +1174,11 @@ describe("closeFunctionEditor", () => {
     expect(ed.disposed).toBe(true);
     expect(view.functionEditor).toBeNull();
 
-    resolveMinify!({ code: "return 42;" });
+    pendingMinifies.at(-1)!({ code: "return 42;" });
     await closing;
 
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
-    expect((activeTab.value!.doc.document.state as any).greet.body).toBe("return 42;");
+    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
     expect(view.functionEditor).toBeNull();
   });
 });
@@ -1104,15 +1193,8 @@ describe("closeFunctionEditor", () => {
  */
 describe("continuations that outlive their editor", () => {
   test("a format that lands after a retarget does not write into its successor", async () => {
-    const pendingFormats: ((value: unknown) => void)[] = [];
-    installMockPlatform({
-      codeService: ((action: string) =>
-        action === "format"
-          ? new Promise((resolve) => {
-              pendingFormats.push(resolve);
-            })
-          : Promise.resolve(null)) as never,
-    });
+    const pendingFormats: CodeServiceResolver[] = [];
+    installMockPlatform({ codeService: deferredCodeService("format", pendingFormats) });
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     const first = created.at(-1)!;
@@ -1141,15 +1223,8 @@ describe("continuations that outlive their editor", () => {
    * the request was computed from.
    */
   test("a format that lands after the user typed does not overwrite them", async () => {
-    const pendingFormats: ((value: unknown) => void)[] = [];
-    installMockPlatform({
-      codeService: ((action: string) =>
-        action === "format"
-          ? new Promise((resolve) => {
-              pendingFormats.push(resolve);
-            })
-          : Promise.resolve(null)) as never,
-    });
+    const pendingFormats: CodeServiceResolver[] = [];
+    installMockPlatform({ codeService: deferredCodeService("format", pendingFormats) });
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     const ed = created.at(-1)!;
@@ -1163,20 +1238,13 @@ describe("continuations that outlive their editor", () => {
 
     expect(ed.value).toBe("return 1; // mine");
     // The guard that was there is still true — which is the whole point.
-    expect(view.functionEditor).toBe(ed as never);
+    expect(Object.is(view.functionEditor, ed)).toBe(true);
     expect(ed.disposed).toBe(false);
   });
 
   test("a lint from the previous mount does not mark the editor that replaced it", async () => {
-    const pendingLints: ((value: unknown) => void)[] = [];
-    installMockPlatform({
-      codeService: ((action: string) =>
-        action === "lint"
-          ? new Promise((resolve) => {
-              pendingLints.push(resolve);
-            })
-          : Promise.resolve(null)) as never,
-    });
+    const pendingLints: CodeServiceResolver[] = [];
+    installMockPlatform({ codeService: deferredCodeService("lint", pendingLints) });
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     const first = created.at(-1)!;
@@ -1210,19 +1278,17 @@ describe("registerFunctionCompletions", () => {
     await registerFunctionCompletions();
     expect(registerCompletionItemProvider).toHaveBeenCalledTimes(1);
 
-    const [language, provider] = registerCompletionItemProvider.mock.calls[0] as any[];
+    const [language, provider] = registerCompletionItemProvider.mock.calls[0]!;
     expect(language).toBe("javascript");
     expect(provider.triggerCharacters).toEqual(["."]);
 
-    const model = { getWordUntilPosition: () => ({ endColumn: 4, startColumn: 1 }) };
-    const { suggestions } = provider.provideCompletionItems(model, { lineNumber: 7 });
-    const byLabel = Object.fromEntries(suggestions.map((s: any) => [s.label, s]));
-    expect(byLabel["state.greet"].kind).toBe(1); // Function via $prototype
-    expect(byLabel["state.handler"].kind).toBe(1); // Function via $handler
-    expect(byLabel["state.fetcher"].kind).toBe(9); // Property via other $prototype
-    expect(byLabel["state.plain"].kind).toBe(4); // Variable
-    expect(byLabel["state.greet"].insertText).toBe("state.greet");
-    expect(byLabel["state.greet"].range).toEqual({
+    const byLabel = suggestionsByLabel(provider, 7);
+    expect(byLabel["state.greet"]?.kind).toBe(1); // Function via $prototype
+    expect(byLabel["state.handler"]?.kind).toBe(1); // Function via $handler
+    expect(byLabel["state.fetcher"]?.kind).toBe(9); // Property via other $prototype
+    expect(byLabel["state.plain"]?.kind).toBe(4); // Variable
+    expect(byLabel["state.greet"]?.insertText).toBe("state.greet");
+    expect(byLabel["state.greet"]?.range).toEqual({
       endColumn: 4,
       endLineNumber: 7,
       startColumn: 1,
@@ -1233,41 +1299,40 @@ describe("registerFunctionCompletions", () => {
   test("appends blessed-global completions with catalog descriptions", async () => {
     view._completionRegistered = false;
     await registerFunctionCompletions();
-    const [, provider] = registerCompletionItemProvider.mock.calls.at(-1)! as any[];
-    const model = { getWordUntilPosition: () => ({ endColumn: 4, startColumn: 1 }) };
-    const { suggestions } = provider.provideCompletionItems(model, { lineNumber: 2 });
-    const byLabel = Object.fromEntries(suggestions.map((s: any) => [s.label, s]));
-    expect(byLabel["Math.max"].insertText).toBe("window.Math.max");
-    expect(byLabel["Math.max"].kind).toBe(1);
-    expect(byLabel["Math.max"].documentation).toContain("window#/Math/max");
-    expect(byLabel["JSON.parse"].insertText).toBe("window.JSON.parse");
+    const [, provider] = registerCompletionItemProvider.mock.calls.at(-1)!;
+    const byLabel = suggestionsByLabel(provider, 2);
+    expect(byLabel["Math.max"]?.insertText).toBe("window.Math.max");
+    expect(byLabel["Math.max"]?.kind).toBe(1);
+    expect(byLabel["Math.max"]?.documentation).toContain("window#/Math/max");
+    expect(byLabel["JSON.parse"]?.insertText).toBe("window.JSON.parse");
   });
 
   test("named formulas complete as functions with their description as documentation", async () => {
-    const tab = activeTab.value!;
-    (tab.doc.document as any).state.lineTotal = {
+    const { state } = activeTab.value!.doc.document;
+    if (!state) {
+      throw new Error("the fixture document declares state");
+    }
+    state.lineTotal = {
       $expression: { operator: "*", target: { $ref: "$args/a" }, value: 2 },
       description: "Multiplies by two.",
       parameters: ["a"],
     };
     view._completionRegistered = false;
     await registerFunctionCompletions();
-    const [, provider] = registerCompletionItemProvider.mock.calls.at(-1)! as any[];
-    const model = { getWordUntilPosition: () => ({ endColumn: 4, startColumn: 1 }) };
-    const { suggestions } = provider.provideCompletionItems(model, { lineNumber: 2 });
-    const byLabel = Object.fromEntries(suggestions.map((s: any) => [s.label, s]));
-    expect(byLabel["state.lineTotal"].kind).toBe(1);
-    expect(byLabel["state.lineTotal"].documentation).toBe("Multiplies by two.");
+    const [, provider] = registerCompletionItemProvider.mock.calls.at(-1)!;
+    const byLabel = suggestionsByLabel(provider, 2);
+    expect(byLabel["state.lineTotal"]?.kind).toBe(1);
+    expect(byLabel["state.lineTotal"]?.documentation).toBe("Multiplies by two.");
     // Plain signals stay undocumented variables
-    expect(byLabel["state.plain"].kind).toBe(4);
-    expect(byLabel["state.plain"].documentation).toBeUndefined();
+    expect(byLabel["state.plain"]?.kind).toBe(4);
+    expect(byLabel["state.plain"]?.documentation).toBeUndefined();
   });
 
   test("returns no suggestions without an active tab", async () => {
     // Register our own provider rather than borrowing one a previous test happened to leave behind.
     await registerFunctionCompletions();
     closeAllTabs();
-    const [, provider] = registerCompletionItemProvider.mock.calls.at(-1)! as any[];
+    const [, provider] = registerCompletionItemProvider.mock.calls.at(-1)!;
     const model = { getWordUntilPosition: () => ({ endColumn: 1, startColumn: 1 }) };
     expect(provider.provideCompletionItems(model, { lineNumber: 1 }).suggestions).toEqual([]);
   });

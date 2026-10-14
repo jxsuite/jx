@@ -36,6 +36,7 @@ import {
   shotDefinitionHashes,
   writeLock,
 } from "../check-image-lock";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { ShotContext } from "./lib/shot";
 import type { CaptureLock } from "../check-image-lock";
 
@@ -45,7 +46,10 @@ const { force, headed, manifestPath, only, reuseServer } = parseArgs(
   process.argv.slice(2),
   resolve(import.meta.dir, "manifest.json"),
 );
-const manifest = validateManifest(await Bun.file(manifestPath).json());
+/* The parsed file is kept beside its checked view: the lock helpers read a manifest as plain JSON,
+ * because the image-lock gate calls them on a file nothing has validated. */
+const manifestJson: JsonValue = await Bun.file(manifestPath).json();
+const manifest = validateManifest(manifestJson);
 
 const selected = manifest.shots.filter((shot) => only.size === 0 || only.has(shot.name));
 if (selected.length === 0) {
@@ -85,8 +89,8 @@ const lockPath = relative(repoRoot, resolve(import.meta.dir, "capture.lock.json"
 const manifestRel = relative(repoRoot, manifestPath);
 const lock: CaptureLock = readLock(lockPath) ?? emptyLock(manifestRel);
 lock.manifest = manifestRel;
-const definitions = shotDefinitionHashes(manifest);
-const producible = manifestImageNames(manifest);
+const definitions = shotDefinitionHashes(manifestJson);
+const producible = manifestImageNames(manifestJson);
 for (const path of Object.keys(lock.images)) {
   const name = path.slice(path.lastIndexOf("/") + 1).replace(/\.png$/, "");
   if (!producible.has(name)) {
@@ -118,8 +122,10 @@ try {
         repoRoot,
         serverUrl: server.url,
         studioPath,
-        ...(overlay ? { projectRoot: overlay.root } : {}),
       };
+      if (overlay) {
+        ctx.projectRoot = overlay.root;
+      }
       // The lock records the bytes that are ON DISK, read back after the shot: `writeIfChanged`
       // Legitimately keeps the committed PNG when the re-render is visually identical, and a lock
       // Built from the buffer the camera produced would then disagree with the file it names.

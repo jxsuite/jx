@@ -15,7 +15,10 @@
  * @docs framework/site/search
  */
 
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import MiniSearch from "minisearch";
+import type { SearchResult as MiniSearchResult } from "minisearch";
 import type { SearchDocument, SearchIndexEnvelope } from "./search-index.ts";
 
 /** One section hit inside a result group. */
@@ -129,7 +132,7 @@ const STORE_FIELDS = [
  * @returns {string} The tag, or `""` off a document
  */
 function pageLocale(): string {
-  return globalThis.document?.documentElement?.lang ?? "";
+  return typeof document === "undefined" ? "" : document.documentElement.lang;
 }
 
 /**
@@ -289,6 +292,10 @@ export function preload(indexUrl?: string): Promise<void> {
     if (!response.ok) {
       throw new Error(`search index fetch failed: ${response.status} ${state.indexUrl}`);
     }
+    /*
+     * SAFETY: `state.indexUrl` names the file `SearchIndex.emit` wrote at build time, whose content
+     * is `JSON.stringify` of a SearchIndexEnvelope; the client reads no other index.
+     */
     const envelope = (await response.json()) as SearchIndexEnvelope;
     const mini = new MiniSearch<SearchDocument>({
       fields: envelope.fields,
@@ -308,7 +315,7 @@ export function preload(indexUrl?: string): Promise<void> {
      */
     await mini.addAllAsync(envelope.documents, { chunkSize: INDEX_CHUNK_SIZE });
     state.mini = mini;
-  })().catch((error: unknown) => {
+  })().catch((error) => {
     state.loading = null;
     throw error;
   });
@@ -316,18 +323,19 @@ export function preload(indexUrl?: string): Promise<void> {
 }
 
 /** Raw MiniSearch hit with our stored fields and the terms it matched on. */
-interface RawHit {
+interface RawHit extends MiniSearchResult {
   id: string;
-  score: number;
-  terms: string[];
-  queryTerms: string[];
   collection: string;
   slug: string;
   url: string;
   title: string;
   description: string;
   heading: string;
-  text: string;
+  /**
+   * Optional because it is read defensively: stored fields are copied from the fetched index JSON,
+   * and an excerpt of a missing body is simply empty.
+   */
+  text?: string;
   locale?: string;
 }
 
@@ -361,6 +369,9 @@ function toResult(hit: RawHit): SearchResult {
  * `group: false` returns flat `SearchResult` rows — one per matching page or section, at most
  * `pageCap` from any one page.
  */
+export function query(q: string, opts: QueryOptions & { group: false }): SearchResult[];
+export function query(q: string, opts?: QueryOptions & { group?: true }): SearchResultGroup[];
+export function query(q: string, opts?: QueryOptions): SearchResultGroup[] | SearchResult[];
 export function query(q: string, opts: QueryOptions = {}): SearchResultGroup[] | SearchResult[] {
   const limit = opts.limit ?? 8;
   const group = opts.group ?? true;
@@ -378,7 +389,14 @@ export function query(q: string, opts: QueryOptions = {}): SearchResultGroup[] |
    * copy of the page they are already on — ranked first, because it matched the same words.
    */
   const want = opts.locale === undefined ? pageLocale() : (opts.locale ?? "");
-  const raw = (state.mini.search(text) as unknown as RawHit[]).filter((hit) =>
+  /*
+   * SAFETY: MiniSearch copies every name in STORE_FIELDS from the indexed document onto its hit,
+   * and every document came from the emitted envelope, whose SearchDocuments carry collection,
+   * slug, url, title, description and heading as strings (`locale` and, read defensively, `text`
+   * are optional in RawHit). MiniSearch types the hit's `id` as `any`; it is the document's own
+   * `id`, which SearchDocument declares a string.
+   */
+  const raw = (state.mini.search(text) as RawHit[]).filter((hit) =>
     localeAnswers(hit.locale, want),
   );
   if (!group) {
@@ -425,20 +443,37 @@ export function query(q: string, opts: QueryOptions = {}): SearchResultGroup[] |
 }
 
 /**
+ * The component state keys the `$src` conventions read and write. The two the author declares are
+ * document JSON, so each is honored only when it is a string.
+ */
+export interface SearchComponentState {
+  /** Index URL override for `preload`. */
+  searchIndexUrl?: JsonValue | undefined;
+  /** The query text; `runSearch` writes back the query it ran. */
+  searchQuery?: JsonValue | undefined;
+  /** Set true once the index is loaded. */
+  searchReady?: boolean;
+  /** The flat, highlighted rows of the last query. */
+  searchResults?: SearchResult[];
+  /** `searchResults.length`. */
+  searchCount?: number;
+  /** The active row index, reset to 0 by every query. */
+  searchActive?: number;
+}
+
+/**
  * State-convention init for `$src` component use: preload the index and flip `state.searchReady`;
  * re-runs the pending query once ready.
  */
-export function searchInit(componentState: Record<string, unknown>): boolean {
-  void preload(
-    typeof componentState.searchIndexUrl === "string" ? componentState.searchIndexUrl : undefined,
-  )
+export function searchInit(componentState: SearchComponentState): boolean {
+  void preload(isString(componentState.searchIndexUrl) ? componentState.searchIndexUrl : undefined)
     .then(() => {
       componentState.searchReady = true;
-      if (typeof componentState.searchQuery === "string" && componentState.searchQuery) {
+      if (isString(componentState.searchQuery) && componentState.searchQuery) {
         runSearch(componentState);
       }
     })
-    .catch((error: unknown) => console.warn("search client failed to load:", error));
+    .catch((error) => console.warn("search client failed to load:", error));
   return true;
 }
 
@@ -451,15 +486,13 @@ const UI_LIMIT = 20;
  * count as `state.searchCount`, and resets the active-row index.
  */
 export function runSearch(
-  componentState: Record<string, unknown>,
+  componentState: SearchComponentState,
   event?: { target?: { value?: unknown } | null },
 ): SearchResult[] {
-  const fromEvent =
-    event?.target && typeof event.target.value === "string" ? event.target.value : null;
-  const q =
-    fromEvent ?? (typeof componentState.searchQuery === "string" ? componentState.searchQuery : "");
+  const fromEvent = event?.target && isString(event.target.value) ? event.target.value : null;
+  const q = fromEvent ?? (isString(componentState.searchQuery) ? componentState.searchQuery : "");
   componentState.searchQuery = q;
-  const results = query(q, { group: false, limit: UI_LIMIT }) as SearchResult[];
+  const results = query(q, { group: false, limit: UI_LIMIT });
   componentState.searchResults = results;
   componentState.searchCount = results.length;
   componentState.searchActive = 0;

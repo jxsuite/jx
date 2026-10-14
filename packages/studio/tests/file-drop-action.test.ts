@@ -10,15 +10,48 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DropPreview, FileDropHit } from "../src/canvas/iframe-protocol";
 import type { UploadedAsset } from "../src/files/media-upload";
+import type { ComponentEntry } from "../src/files/components";
+import type { JxPath } from "../src/state";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
-type AnyRec = Record<string, any>;
+/** The registry fields `resolveFileDropTarget` reads. */
+type RegistryEntry = Pick<ComponentEntry, "props" | "tagName">;
+
+/** One recorded `applyDropInstruction` call. */
+interface DropCall {
+  instruction: { type: string };
+  srcData: { fragment: JxMutableNode; type: string };
+  tab: Tab | null;
+  targetPath: JxPath;
+}
+
+/** The stand-in transaction the mocked `transactDoc` hands its mutation callback. */
+interface FakeTransaction {
+  tab: Tab;
+}
+
+/** One recorded `mutateUpdateAttribute` call. */
+interface AttrCall {
+  attr: string;
+  path: JxPath;
+  t: FakeTransaction;
+  value: string;
+}
+
+/** One recorded `mutateUpdateProp` call. */
+interface PropCall {
+  path: JxPath;
+  prop: string;
+  t: FakeTransaction;
+  value: string;
+}
 
 // UploadAssets returns whatever the test queued, so applyFileDrop's branching is driven directly.
 let uploadResult: UploadedAsset[] = [];
-const uploadCalls: AnyRec[][] = [];
+const uploadCalls: File[][] = [];
 void mock.module("../src/files/media-upload", () => ({
-  uploadAssets: (files: AnyRec[]) => {
+  uploadAssets: (files: File[]) => {
     uploadCalls.push(files);
     return Promise.resolve(uploadResult);
   },
@@ -26,34 +59,40 @@ void mock.module("../src/files/media-upload", () => ({
 
 // The registry the component-prop branch consults. Mutated in place, never reassigned — mock.module
 // Snapshots the exported value, so a fresh array would not be seen by the module under test.
-const registry: AnyRec[] = [];
-const setRegistry = (...entries: AnyRec[]) => {
+const registry: RegistryEntry[] = [];
+const setRegistry = (...entries: RegistryEntry[]) => {
   registry.length = 0;
   registry.push(...entries);
 };
 void mock.module("../src/files/components", () => ({ componentRegistry: registry }));
 
-const dropCalls: AnyRec[] = [];
+const dropCalls: DropCall[] = [];
 void mock.module("../src/panels/dnd", () => ({
-  applyDropInstruction: (tab: AnyRec, instruction: AnyRec, srcData: AnyRec, targetPath: AnyRec) => {
+  applyDropInstruction: (
+    tab: Tab | null,
+    instruction: DropCall["instruction"],
+    srcData: DropCall["srcData"],
+    targetPath: JxPath,
+  ) => {
     dropCalls.push({ instruction, srcData, tab, targetPath });
   },
 }));
 
-const attrCalls: AnyRec[] = [];
-const propCalls: AnyRec[] = [];
+const attrCalls: AttrCall[] = [];
+const propCalls: PropCall[] = [];
 void mock.module("../src/tabs/transact", () => ({
-  transactDoc: (tab: AnyRec, fn: (t: AnyRec) => void) => fn({ tab }),
-  mutateUpdateAttribute: (t: AnyRec, path: AnyRec, attr: string, value: string) => {
+  transactDoc: (tab: Tab, fn: (t: FakeTransaction) => void) => fn({ tab }),
+  mutateUpdateAttribute: (t: FakeTransaction, path: JxPath, attr: string, value: string) => {
     attrCalls.push({ attr, path, t, value });
   },
-  mutateUpdateProp: (t: AnyRec, path: AnyRec, prop: string, value: string) => {
+  mutateUpdateProp: (t: FakeTransaction, path: JxPath, prop: string, value: string) => {
     propCalls.push({ path, prop, t, value });
   },
 }));
 
 const { applyFileDrop, elementForAsset, nthDropPath, resolveFileDropTarget } =
   await import("../src/editor/file-drop-action");
+const { createTab } = await import("../src/tabs/tab");
 
 const asset = (over: Partial<UploadedAsset> = {}): UploadedAsset => ({
   kind: "image",
@@ -77,7 +116,7 @@ const preview = (over: Partial<DropPreview> = {}): DropPreview => ({
   ...over,
 });
 
-const tab = { doc: { document: { children: [], tagName: "div" } } } as unknown as Tab;
+const tab = createTab({ document: { children: [], tagName: "div" }, id: "file-drop" });
 
 beforeEach(() => {
   uploadResult = [];

@@ -5,6 +5,7 @@
  * style.backgroundImage (url() references) - $media nested style objects with backgroundImage
  */
 
+import { isNestedStyle, isString } from "@jxsuite/schema/guards";
 import type { JxElement, JxStyle } from "@jxsuite/schema/types";
 import { SRCSET_SEPARATOR } from "./srcset.ts";
 
@@ -52,26 +53,25 @@ export function rewriteAssetUrls(
    * the importer would fetch one set of URLs and rewrite another — the attribute would be
    * reassembled around fragments nothing had downloaded.
    */
-  function rewriteSrcset(srcset: string): { srcset: string; collapsedTo: string | null } {
+  function rewriteSrcset(srcset: string) {
     const locals = new Set<string>();
     let unresolved = false;
 
-    const rewritten = srcset
-      .split(SRCSET_SEPARATOR)
-      .map((entry) => {
-        const parts = entry.trim().split(/\s+/);
-        const [url = ""] = parts;
-        const local = rewriteUrl(url);
-        if (local) {
-          count += 1;
-          parts[0] = local;
-          locals.add(local);
-        } else {
-          unresolved = true;
-        }
-        return parts.join(" ");
-      })
-      .join(", ");
+    const candidates: string[] = [];
+    for (const entry of srcset.split(SRCSET_SEPARATOR)) {
+      const parts = entry.trim().split(/\s+/);
+      const [url = ""] = parts;
+      const local = rewriteUrl(url);
+      if (local) {
+        count += 1;
+        parts[0] = local;
+        locals.add(local);
+      } else {
+        unresolved = true;
+      }
+      candidates.push(parts.join(" "));
+    }
+    const rewritten = candidates.join(", ");
 
     /* Every candidate now points at the ONE file the family kept, so the attribute has become a
        list of the same path repeated with different width descriptors — which lies to the browser
@@ -95,20 +95,20 @@ export function rewriteAssetUrls(
 
   function rewriteStyleObject(style: JxStyle): void {
     for (const [key, value] of Object.entries(style)) {
-      if (typeof value === "string" && value.includes("url(")) {
-        (style as Record<string, unknown>)[key] = rewriteCssUrls(value);
-      } else if (typeof value === "object" && value !== null && key.startsWith("@")) {
-        rewriteStyleObject(value as JxStyle);
+      if (isString(value) && value.includes("url(")) {
+        style[key] = rewriteCssUrls(value);
+      } else if (isNestedStyle(value) && key.startsWith("@")) {
+        rewriteStyleObject(value);
       }
     }
   }
 
   function walk(node: JxElement): void {
-    const attrs = node.attributes as Record<string, unknown> | undefined;
+    const attrs = node.attributes;
 
     if (attrs) {
       // Src attribute (img, video, audio, source, etc.)
-      if (typeof attrs.src === "string") {
+      if (isString(attrs.src)) {
         const rewritten = rewriteUrl(attrs.src);
         if (rewritten) {
           attrs.src = rewritten;
@@ -117,8 +117,8 @@ export function rewriteAssetUrls(
       }
 
       // Href on non-anchor elements (could be link icon, etc.)
-      if (typeof attrs.href === "string") {
-        const tag = (typeof node.tagName === "string" ? node.tagName : "").toLowerCase();
+      if (isString(attrs.href)) {
+        const tag = (isString(node.tagName) ? node.tagName : "").toLowerCase();
         if (tag !== "a") {
           const rewritten = rewriteUrl(attrs.href);
           if (rewritten) {
@@ -129,7 +129,7 @@ export function rewriteAssetUrls(
       }
 
       // Poster attribute (video)
-      if (typeof attrs.poster === "string") {
+      if (isString(attrs.poster)) {
         const rewritten = rewriteUrl(attrs.poster);
         if (rewritten) {
           attrs.poster = rewritten;
@@ -138,7 +138,7 @@ export function rewriteAssetUrls(
       }
 
       // Srcset attribute
-      if (typeof attrs.srcset === "string") {
+      if (isString(attrs.srcset)) {
         const result = rewriteSrcset(attrs.srcset);
         if (result.collapsedTo === null) {
           attrs.srcset = result.srcset;
@@ -161,7 +161,7 @@ export function rewriteAssetUrls(
     // Recurse
     if (Array.isArray(node.children)) {
       for (const child of node.children) {
-        if (typeof child !== "string") {
+        if (!isString(child)) {
           walk(child);
         }
       }

@@ -18,8 +18,16 @@ import { injectContext } from "../src/site/context-injection";
 import { resolvePrototypes } from "../src/site/prototype-resolver";
 import { loadProjectConfig } from "../src/site/site-loader";
 import { buildSite } from "../src/site/site-build";
+import { isNumber, isString } from "@jxsuite/schema/guards";
+import type { ProjectSections } from "../src/site/project-sections";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { ContentLoaderEntry, JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  ContentLoaderEntry,
+  JsonObject,
+  JxDocument,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
+import type { SiteRoute } from "@jxsuite/site/context";
 
 const TMP = resolve(import.meta.dir, "__test-content__");
 
@@ -28,21 +36,20 @@ function getProjectConfig() {
   return loadProjectConfig(TMP).config;
 }
 
-/** @param {string} relPath @param {string|object} content */
-function writeFile(relPath: string, content: string | object) {
+/** @param {string} relPath @param {string | JsonObject} content - Text, or JSON to serialize */
+function writeFile(relPath: string, content: string | JsonObject) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 let registry: ExtensionRegistry;
-let sections: Record<string, unknown>;
+let sections: ProjectSections;
 
 function contentMap(): Map<string, ContentLoaderEntry[]> {
+  /* SAFETY: the parser's Content.projectData answers the `content` section with a Map from each
+     declared content-type name to its loaded ContentLoaderEntry[], and loadProjectSections relays
+     that result unchanged (project-sections.ts). */
   return sections.content as Map<string, ContentLoaderEntry[]>;
 }
 
@@ -261,7 +268,7 @@ describe("loadProjectSections", () => {
     expect(hello.data.title).toBe("Hello World");
     expect(hello.data.pubDate).toBe("2024-01-15");
     expect(Array.isArray(hello.$children)).toBe(true);
-    expect(hello.$children!.some((n) => (n as JxElement).tagName === "h1")).toBe(true);
+    expect(hello.$children!.some((n) => !isString(n) && n.tagName === "h1")).toBe(true);
     expect(hello.body).toContain("# Hello World");
   });
 
@@ -279,15 +286,14 @@ describe("loadProjectSections", () => {
     const widget = products.find((e) => e.id === "WIDGET-1")!;
     expect(widget.data.name).toBe("Blue Widget");
     expect(widget.data.price).toBe(9.99); // Coerced to number
-    expect(typeof widget.data.price).toBe("number");
+    expect(isNumber(widget.data.price)).toBe(true);
   });
 
   it("resolves cross-type relationship refs during projectData", () => {
     const blog = contentMap().get("blog")!;
     const hello = blog.find((e) => e.id === "hello-world")!;
-    const author = hello.data.author as ContentLoaderEntry;
-    expect(typeof author).toBe("object");
-    expect(author.data.name).toBe("Jane Doe");
+    // The ref became the referenced entry itself, not its id.
+    expect(hello.data.author).toMatchObject({ data: { name: "Jane Doe" } });
   });
 
   it("skips sections whose key is absent from the project config", async () => {
@@ -401,7 +407,7 @@ describe("$paths expansion", () => {
 
 describe("$prototype resolution against _project sections", () => {
   it("resolves ContentCollection $prototype in state", async () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       state: {
         posts: {
           $prototype: "ContentCollection",
@@ -412,22 +418,23 @@ describe("$prototype resolution against _project sections", () => {
         },
       },
     };
-    const projectConfig = { name: "Test" };
-    const route = { _pathParams: {}, urlPattern: "/blog" };
+    const projectConfig: ProjectConfig = { name: "Test" };
+    const route: SiteRoute = { _pathParams: {}, urlPattern: "/blog" };
 
-    injectContext(doc as never, projectConfig, route as never, TMP);
-    await resolvePrototypes(doc as never, route, TMP, {
+    injectContext(doc, projectConfig, route, TMP);
+    await resolvePrototypes(doc, route, TMP, {
       config: projectConfig,
       sections,
     });
 
-    expect(Array.isArray(doc.state.posts)).toBe(true);
-    expect(doc.state.posts.length).toBe(2); // Non-drafts
-    expect(doc.state.posts[0].data.title).toBe("Second Post"); // Desc order
+    const posts = doc.state?.posts;
+    expect(posts).toBeArray();
+    expect(posts).toHaveLength(2); // Non-drafts
+    expect(posts).toHaveProperty([0, "data", "title"], "Second Post"); // Desc order
   });
 
   it("resolves ContentEntry $prototype with $params ref", async () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       state: {
         post: {
           $prototype: "ContentEntry",
@@ -437,26 +444,26 @@ describe("$prototype resolution against _project sections", () => {
         },
       },
     };
-    const projectConfig = { name: "Test" };
-    const route = {
+    const projectConfig: ProjectConfig = { name: "Test" };
+    const route: SiteRoute = {
       _pathParams: { slug: "hello-world" },
       urlPattern: "/blog/hello-world",
     };
 
-    injectContext(doc as never, projectConfig, route as never, TMP);
-    await resolvePrototypes(doc as never, route, TMP, {
+    injectContext(doc, projectConfig, route, TMP);
+    await resolvePrototypes(doc, route, TMP, {
       config: projectConfig,
       sections,
     });
 
-    expect(doc.state.post).not.toBeNull();
-    expect(doc.state.post.id).toBe("hello-world");
-    expect(doc.state.post.data.title).toBe("Hello World");
-    expect(Array.isArray(doc.state.post.$children)).toBe(true);
+    const post = doc.state?.post;
+    expect(post).not.toBeNull();
+    expect(post).toMatchObject({ data: { title: "Hello World" }, id: "hello-world" });
+    expect(post).toHaveProperty("$children", expect.any(Array));
   });
 
   it("returns null for missing ContentEntry", async () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       state: {
         post: {
           $prototype: "ContentEntry",
@@ -466,20 +473,20 @@ describe("$prototype resolution against _project sections", () => {
         },
       },
     };
-    const projectConfig = { name: "Test" };
-    const route = { _pathParams: {}, urlPattern: "/blog/nope" };
+    const projectConfig: ProjectConfig = { name: "Test" };
+    const route: SiteRoute = { _pathParams: {}, urlPattern: "/blog/nope" };
 
-    injectContext(doc as never, projectConfig, route as never, TMP);
-    await resolvePrototypes(doc as never, route, TMP, {
+    injectContext(doc, projectConfig, route, TMP);
+    await resolvePrototypes(doc, route, TMP, {
       config: projectConfig,
       sections,
     });
 
-    expect(doc.state.post).toBeNull();
+    expect(doc.state?.post).toBeNull();
   });
 
   it("returns empty array for missing content type", async () => {
-    const doc: Record<string, any> = {
+    const doc: JxDocument = {
       state: {
         items: {
           $prototype: "ContentCollection",
@@ -488,16 +495,16 @@ describe("$prototype resolution against _project sections", () => {
         },
       },
     };
-    const projectConfig = { name: "Test" };
-    const route = { _pathParams: {}, urlPattern: "/" };
+    const projectConfig: ProjectConfig = { name: "Test" };
+    const route: SiteRoute = { _pathParams: {}, urlPattern: "/" };
 
-    injectContext(doc as never, projectConfig, route as never, TMP);
-    await resolvePrototypes(doc as never, route, TMP, {
+    injectContext(doc, projectConfig, route, TMP);
+    await resolvePrototypes(doc, route, TMP, {
       config: projectConfig,
       sections,
     });
 
-    expect(doc.state.items).toEqual([]);
+    expect(doc.state?.items).toEqual([]);
   });
 });
 

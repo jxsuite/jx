@@ -2,10 +2,9 @@
 import { describe, expect, test } from "bun:test";
 
 import { WCAG_CRITERIA, findA11yDefects } from "../src/a11y";
-import type { JxElement } from "../types";
+import type { JxAttributeValue, JxElement } from "../types";
 
-const doc = (children: unknown[]): JxElement =>
-  ({ children, tagName: "div" }) as unknown as JxElement;
+const doc = (children: (JxElement | string)[]): JxElement => ({ children, tagName: "div" });
 
 const rules = (root: JxElement) => findA11yDefects(root).map((d) => d.rule);
 
@@ -78,7 +77,7 @@ describe("interactive-unnamed", () => {
             cases: { x: { attributes: { "aria-labelledby": "lbl" }, tagName: "span" } },
             tagName: "button",
           },
-        ] as unknown[]),
+        ]),
       ),
     ).toEqual([]);
     // A child with no label of its own is still no name, so the silence is earned, not blanket.
@@ -99,7 +98,7 @@ describe("interactive-unnamed", () => {
           // A child element that carries the name, found by the recursive walk.
           { children: [{ tagName: "span", textContent: "Go" }], tagName: "button" },
           // `children` that is not an array at all: a mapped array, whose rows the document decides.
-          { children: { $ref: "#/state/rows" }, tagName: "button" },
+          { children: { $prototype: "Array", items: { $ref: "#/state/rows" } }, tagName: "button" },
           // A `map` block, which is the same answer written the other way.
           { items: { $ref: "#/state/rows" }, map: { tagName: "span" }, tagName: "button" },
         ]),
@@ -134,7 +133,7 @@ describe("interactive-unnamed", () => {
             cases: { a: { tagName: "span", textContent: "A" } },
             tagName: "button",
           },
-        ] as unknown[]),
+        ]),
       ),
     ).toEqual([]);
   });
@@ -197,7 +196,7 @@ describe("interactive-unnamed", () => {
           },
         },
         tagName: "ul",
-      } as unknown as JxElement),
+      }),
     ).toEqual([]);
     // The flat form too, and a bound `for` alone is enough to make the pairing unreadable.
     expect(
@@ -270,12 +269,12 @@ describe("interactive-unnamed", () => {
       rules(
         doc([
           {
-            attributes: { alt: "Home", coords: "0,0,9,9", href: "/", shape: "rect" },
+            attributes: { alt: "Home", coords: "0,0,9,9", href: "/" },
             tagName: "area",
           },
           { attributes: { alt: "${state.alt}", href: "/a" }, tagName: "area" },
           { attributes: { "aria-label": "Shop", href: "/b" }, tagName: "area" },
-          { attributes: { coords: "0,0,9,9", shape: "rect" }, tagName: "area" },
+          { attributes: { coords: "0,0,9,9" }, tagName: "area" },
         ]),
       ),
     ).toEqual([]);
@@ -286,7 +285,7 @@ describe("interactive-unnamed", () => {
     expect(
       rules(
         doc([
-          { attributes: { coords: "0,0,9,9", href: "/", shape: "rect" }, tagName: "area" },
+          { attributes: { coords: "0,0,9,9", href: "/" }, tagName: "area" },
           { attributes: { alt: "", href: "/a" }, tagName: "area" },
         ]),
       ),
@@ -397,7 +396,7 @@ describe("aria-target-missing", () => {
             tabIndex: 0,
             tagName: "ul",
           },
-        ] as unknown[]),
+        ]),
       ),
     ).toEqual([]);
     expect(
@@ -476,9 +475,9 @@ describe("roles outside their containers", () => {
   });
 
   test("the root, a custom-element ancestor and a bound ancestor role are all context the lint cannot see", () => {
-    expect(
-      rules({ attributes: { role: "menuitem" }, tagName: "div", textContent: "x" } as JxElement),
-    ).toEqual([]);
+    expect(rules({ attributes: { role: "menuitem" }, tagName: "div", textContent: "x" })).toEqual(
+      [],
+    );
     expect(
       rules(
         doc([
@@ -497,6 +496,18 @@ describe("roles outside their containers", () => {
             children: [{ attributes: { role: "option" }, tagName: "div", textContent: "D" }],
             tagName: "div",
           },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a role named like an Object.prototype member needs no container", () => {
+    // The container table is a Map, so `constructor` or `__proto__` is a role with no container.
+    expect(
+      findA11yDefects(
+        doc([
+          { attributes: { role: "constructor" }, tagName: "div", textContent: "A" },
+          { attributes: { role: "__proto__" }, tagName: "div", textContent: "B" },
         ]),
       ),
     ).toEqual([]);
@@ -588,7 +599,7 @@ describe("roles outside their containers", () => {
             tagName: "div",
             textContent: "C",
           },
-        ] as unknown[]),
+        ]),
       ),
     ).toEqual([]);
     expect(
@@ -608,7 +619,7 @@ describe("roles outside their containers", () => {
 
 describe("tablist-none-selected", () => {
   test("a tablist whose tabs are none selected warns; a bound or a true selection is fine", () => {
-    const tabs = (selected: unknown) => ({
+    const tabs = (selected: JxAttributeValue): JxElement => ({
       attributes: { role: "tablist" },
       children: [
         {
@@ -765,7 +776,7 @@ describe("custom-element-in-select", () => {
             },
             tagName: "select",
           },
-        ] as unknown[]),
+        ]),
       ).map((d) => [d.rule, d.path]),
     ).toEqual([["custom-element-in-select", ["children", 0, "children", "map"]]]);
   });
@@ -778,7 +789,7 @@ describe("the walk", () => {
         { children: { $prototype: "Array", items: [], map: { tagName: "button" } }, tagName: "ul" },
         { $prototype: "Array", items: [], map: { tagName: "img" }, tagName: "div" },
         { $switch: "#/state/x", cases: { one: { tagName: "dialog" } }, tagName: "div" },
-      ] as unknown[]),
+      ]),
     );
     expect(found.map((d) => [d.rule, d.path])).toEqual([
       ["interactive-unnamed", ["children", 0, "children", "map"]],

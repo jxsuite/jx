@@ -197,8 +197,9 @@ describe("check-icons", () => {
       expect(said).toContain("packages/ui/components/");
       expect(said).toContain("manifest");
       expect(said).not.toContain("spectrum");
-      expect(logs.flat().join(" ")).toContain("74 kit tag(s)");
-      expect(logs.flat().join(" ")).toContain("11 panel key(s)");
+      const logged = logs.flat().join(" ");
+      expect(logged).toContain("74 kit tag(s)");
+      expect(logged).toContain("11 panel key(s)");
     });
   });
 });

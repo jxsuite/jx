@@ -9,6 +9,9 @@ import { join, resolve } from "node:path";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createDevServer } from "../src/server.ts";
 import { createCollabRegistry } from "../src/collab.ts";
+import type { CollabRegistry, CollabSocketData } from "../src/collab.ts";
+import type { ServerWebSocket } from "bun";
+import type { HostConnection } from "@jxsuite/collab/room";
 import { createWsCollabConnection } from "@jxsuite/collab/client";
 import { COLLAB_SUBPROTOCOL, negotiateCollab } from "@jxsuite/collab/negotiate";
 import type { WsCollabConnection } from "@jxsuite/collab/client";
@@ -17,7 +20,7 @@ import { sourceText, updateSourceText } from "@jxsuite/collab";
 const FIXTURES = resolve(import.meta.dir, "_collab_fixtures");
 const PAGE = "pages/index.md";
 
-let server: { port: number; stop: (force?: boolean) => void };
+let server: Awaited<ReturnType<typeof createDevServer>>;
 const connections: WsCollabConnection[] = [];
 
 function connect(): WsCollabConnection {
@@ -54,25 +57,57 @@ async function until(cond: () => boolean, timeoutMs = 5000): Promise<void> {
   }
 }
 
+/**
+ * A loopback socket for driving the registry's Bun websocket handlers directly: every frame the
+ * registry sends is handed to `onFrame`, and `data` is the per-socket state the handlers own.
+ */
+function loopbackSocket(onFrame: (frame: Uint8Array) => void) {
+  const data: CollabSocketData = { connection: null };
+  const socket = {
+    close: () => {},
+    data,
+    send: (frame: Uint8Array) => {
+      onFrame(frame);
+    },
+  };
+  /* SAFETY: the registry's open/message/close handlers (collab.ts) touch only `data`, `send` and
+     `close` on the socket, and this loopback provides all three; the rest of ServerWebSocket
+     (pub/sub, cork, remoteAddress, …) is never reached on these paths. */
+  return { data, ws: socket as ServerWebSocket<CollabSocketData> };
+}
+
+/** Run the registry's `open` handler for `ws` and return the host connection it attached. */
+function openHost(
+  registry: CollabRegistry,
+  socket: ReturnType<typeof loopbackSocket>,
+): HostConnection {
+  void registry.websocket.open?.(socket.ws);
+  const { connection } = socket.data;
+  if (connection === null) {
+    throw new Error("the registry's open handler attached no host connection");
+  }
+  return connection;
+}
+
 beforeAll(async () => {
   rmSync(FIXTURES, { force: true, recursive: true });
   mkdirSync(join(FIXTURES, "pages"), { recursive: true });
   writeFileSync(join(FIXTURES, "project.json"), JSON.stringify({ name: "collab-demo" }));
   writeFileSync(join(FIXTURES, PAGE), "# Hello\n");
-  server = (await createDevServer({
+  server = await createDevServer({
     builds: [],
     port: 0,
     root: FIXTURES,
     studio: true,
     watch: false,
-  })) as unknown as { port: number; stop: (force?: boolean) => void };
+  });
 });
 
 afterAll(() => {
   for (const connection of connections) {
     connection.destroy();
   }
-  server.stop(true);
+  void server.stop(true);
   rmSync(FIXTURES, { force: true, recursive: true });
 });
 
@@ -206,13 +241,13 @@ describe("watcher-driven resets", () => {
     rmSync(dir, { force: true, recursive: true });
     mkdirSync(join(dir, "pages"), { recursive: true });
     writeFileSync(join(dir, "pages/live.md"), "# Watched\n");
-    const watched = (await createDevServer({
+    const watched = await createDevServer({
       builds: [],
       port: 0,
       root: dir,
       studio: true,
       watch: true,
-    })) as unknown as { port: number; stop: (force?: boolean) => void };
+    });
     const connection = createWsCollabConnection({
       openTimeoutMs: 5000,
       url: `ws://localhost:${watched.port}/__studio/collab`,
@@ -233,7 +268,7 @@ describe("watcher-driven resets", () => {
       await until(() => resets === 1, 10_000);
     } finally {
       connection.destroy();
-      watched.stop(true);
+      void watched.stop(true);
       rmSync(dir, { force: true, recursive: true });
     }
   });
@@ -254,13 +289,13 @@ describe("renames reach the collaboration registry", () => {
     mkdirSync(join(dir, "pages"), { recursive: true });
     writeFileSync(join(dir, "project.json"), JSON.stringify({ name: "rename-demo" }));
     writeFileSync(join(dir, "pages/movable.md"), "# Before\n");
-    const renamed = (await createDevServer({
+    const renamed = await createDevServer({
       builds: [],
       port: 0,
       root: dir,
       studio: true,
       watch: false,
-    })) as unknown as { port: number; stop: (force?: boolean) => void };
+    });
     const connection = createWsCollabConnection({
       openTimeoutMs: 5000,
       url: `ws://localhost:${renamed.port}/__studio/collab`,
@@ -282,7 +317,7 @@ describe("renames reach the collaboration registry", () => {
       await until(() => resets === 1, 10_000);
 
       // The flush on shutdown must find no room for the old path, so the moved file stays moved.
-      renamed.stop(true);
+      void renamed.stop(true);
       await new Promise((resolveSleep) => {
         setTimeout(resolveSleep, 100);
       });
@@ -290,7 +325,7 @@ describe("renames reach the collaboration registry", () => {
       expect(existsSync(join(dir, "pages/movable.md"))).toBe(false);
     } finally {
       connection.destroy();
-      renamed.stop(true);
+      void renamed.stop(true);
       rmSync(dir, { force: true, recursive: true });
     }
   });
@@ -398,23 +433,15 @@ describe("registry external changes", () => {
 
     // Wire a loopback client through the registry's Bun-shaped handlers, capturing sent frames.
     const received: string[] = [];
-    const fakeWs = {
-      close: () => {},
-      data: { connection: null as unknown },
-      send: (data: Uint8Array) => {
-        try {
-          const frame = decodeFrame(new Uint8Array(data));
-          received.push(frame.type === "control" ? `control:${frame.message.type}` : frame.type);
-        } catch {
-          received.push("malformed");
-        }
-      },
-    };
-    void registry.websocket.open?.(fakeWs as never);
-    const hostConnection = fakeWs.data.connection as {
-      handleMessage: (d: Uint8Array) => void;
-      close: () => void;
-    };
+    const fakeWs = loopbackSocket((data) => {
+      try {
+        const frame = decodeFrame(new Uint8Array(data));
+        received.push(frame.type === "control" ? `control:${frame.message.type}` : frame.type);
+      } catch {
+        received.push("malformed");
+      }
+    });
+    const hostConnection = openHost(registry, fakeWs);
     expect(hostConnection).toBeTruthy();
 
     hostConnection.handleMessage(
@@ -449,25 +476,17 @@ describe("registry external changes", () => {
     const { decodeFrame, encodeFrame } = await import("@jxsuite/collab/envelope");
 
     const received: string[] = [];
-    const fakeWs = {
-      close: () => {},
-      data: { connection: null as unknown },
-      send: (data: Uint8Array) => {
-        try {
-          const frame = decodeFrame(new Uint8Array(data));
-          received.push(frame.type === "control" ? `control:${frame.message.type}` : frame.type);
-        } catch {
-          received.push("malformed");
-        }
-      },
-    };
+    const fakeWs = loopbackSocket((data) => {
+      try {
+        const frame = decodeFrame(new Uint8Array(data));
+        received.push(frame.type === "control" ? `control:${frame.message.type}` : frame.type);
+      } catch {
+        received.push("malformed");
+      }
+    });
     // A text frame is ignored outright — even before any connection state exists.
-    void registry.websocket.message?.(fakeWs as never, "not a binary frame");
-    void registry.websocket.open?.(fakeWs as never);
-    const hostConnection = fakeWs.data.connection as {
-      handleMessage: (d: Uint8Array) => void;
-      close: () => void;
-    };
+    void registry.websocket.message(fakeWs.ws, "not a binary frame");
+    const hostConnection = openHost(registry, fakeWs);
     hostConnection.handleMessage(
       encodeFrame({ message: { path: "doc.md", type: "open" }, type: "control" }),
     );
@@ -505,23 +524,15 @@ describe("registry external changes", () => {
     const { decodeFrame, encodeFrame } = await import("@jxsuite/collab/envelope");
 
     const received: string[] = [];
-    const fakeWs = {
-      close: () => {},
-      data: { connection: null as unknown },
-      send: (data: Uint8Array) => {
-        try {
-          const frame = decodeFrame(new Uint8Array(data));
-          received.push(frame.type === "control" ? `control:${frame.message.type}` : frame.type);
-        } catch {
-          received.push("malformed");
-        }
-      },
-    };
-    void registry.websocket.open?.(fakeWs as never);
-    const hostConnection = fakeWs.data.connection as {
-      handleMessage: (d: Uint8Array) => void;
-      close: () => void;
-    };
+    const fakeWs = loopbackSocket((data) => {
+      try {
+        const frame = decodeFrame(new Uint8Array(data));
+        received.push(frame.type === "control" ? `control:${frame.message.type}` : frame.type);
+      } catch {
+        received.push("malformed");
+      }
+    });
+    const hostConnection = openHost(registry, fakeWs);
     hostConnection.handleMessage(
       encodeFrame({ message: { path: "doc.md", type: "open" }, type: "control" }),
     );
@@ -530,15 +541,19 @@ describe("registry external changes", () => {
     // Capture the 30 s empty-room grace timer instead of waiting it out.
     const realSetTimeout = globalThis.setTimeout;
     let graceCb: (() => void) | null = null;
+    /* SAFETY: the stub forwards every call it does not capture to the real timer with the same
+       callback, delay and extra arguments, so callers see setTimeout's own behaviour; the only
+       difference is the 30 s grace timer, whose callback is the registry's zero-argument destroy
+       closure. `__promisify__` is never read while the stub is installed (restored in finally). */
     globalThis.setTimeout = ((cb: () => void, ms?: number, ...rest: unknown[]) => {
       if (ms === 30_000) {
         graceCb = cb;
         return realSetTimeout(() => {}, 0);
       }
-      return realSetTimeout(cb, ms as number, ...rest);
-    }) as unknown as typeof setTimeout;
+      return realSetTimeout(cb, ms, ...rest);
+    }) as typeof setTimeout;
     try {
-      void registry.websocket.close?.(fakeWs as never, 1000, "bye");
+      void registry.websocket.close?.(fakeWs.ws, 1000, "bye");
       await until(() => graceCb !== null);
     } finally {
       globalThis.setTimeout = realSetTimeout;
@@ -556,36 +571,30 @@ describe("registry external changes", () => {
     // Re-open and leave again, but this time let the (real) grace timer stay pending so that
     // Stop() has a live destroy timer to clear.
     let scheduled = false;
+    /* SAFETY: every call is forwarded to the real timer with the same callback, delay and extra
+       arguments, so the stub only observes; `__promisify__` is never read while it is installed. */
     globalThis.setTimeout = ((cb: () => void, ms?: number, ...rest: unknown[]) => {
       if (ms === 30_000) {
         scheduled = true;
       }
-      return realSetTimeout(cb, ms as number, ...rest);
-    }) as unknown as typeof setTimeout;
+      return realSetTimeout(cb, ms, ...rest);
+    }) as typeof setTimeout;
     try {
-      const fakeWs2 = {
-        close: () => {},
-        data: { connection: null as unknown },
-        send: (data: Uint8Array) => {
-          try {
-            const frame = decodeFrame(new Uint8Array(data));
-            const label = frame.type === "control" ? frame.message.type : frame.type;
-            received.push(`re:${label}`);
-          } catch {
-            received.push("re:malformed");
-          }
-        },
-      };
-      void registry.websocket.open?.(fakeWs2 as never);
-      const secondConnection = fakeWs2.data.connection as {
-        handleMessage: (d: Uint8Array) => void;
-        close: () => void;
-      };
+      const fakeWs2 = loopbackSocket((data) => {
+        try {
+          const frame = decodeFrame(new Uint8Array(data));
+          const label = frame.type === "control" ? frame.message.type : frame.type;
+          received.push(`re:${label}`);
+        } catch {
+          received.push("re:malformed");
+        }
+      });
+      const secondConnection = openHost(registry, fakeWs2);
       secondConnection.handleMessage(
         encodeFrame({ message: { path: "doc.md", type: "open" }, type: "control" }),
       );
       await until(() => received.includes("re:opened"));
-      void registry.websocket.close?.(fakeWs2 as never, 1000, "bye");
+      void registry.websocket.close?.(fakeWs2.ws, 1000, "bye");
       await until(() => scheduled);
     } finally {
       globalThis.setTimeout = realSetTimeout;

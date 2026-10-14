@@ -12,10 +12,17 @@
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { initShellRefs, rightPanel, updateUi } from "../src/store";
+import { initShellRefs, requireShellRef, rightPanel, updateUi } from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { INSPECTOR_TAB_IDS, setLayoutSelection, shell } from "../src/shell";
 import { INSPECTOR_TABS } from "../src/commands/defaults";
+
+import type { LayoutHit } from "../src/canvas/iframe-protocol";
+
+/** The shell's Inspector cell, which `initShellRefs()` found before these tests run. */
+function inspectorHost(): HTMLElement {
+  return requireShellRef(rightPanel, "right-panel");
+}
 
 const { inspectorTab, mount, render, setInspectorTab, unmount } =
   await import("../src/panels/right-panel");
@@ -33,23 +40,25 @@ function makeCtx() {
 
 /** The strip. */
 function tablist(): HTMLElement | null {
-  return rightPanel.querySelector<HTMLElement>('[role="tablist"]');
+  return inspectorHost().querySelector<HTMLElement>('[role="tablist"]');
 }
 
 /** The tabs, in strip order. */
 function tabs(): HTMLElement[] {
-  return [...rightPanel.querySelectorAll<HTMLElement>('[role="tab"]')];
+  return [...inspectorHost().querySelectorAll<HTMLElement>('[role="tab"]')];
 }
 
 /** The tab panels, in document order. */
 function panels(): HTMLElement[] {
-  return [...rightPanel.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
+  return [...inspectorHost().querySelectorAll<HTMLElement>('[role="tabpanel"]')];
 }
 
 /** The tab bodies that are showing. Exactly one, always. */
 function visibleBodies(): HTMLElement[] {
   const bodies: HTMLElement[] = [];
-  for (const panel of rightPanel.querySelectorAll<HTMLElement>('[role="tabpanel"]:not([hidden])')) {
+  for (const panel of inspectorHost().querySelectorAll<HTMLElement>(
+    '[role="tabpanel"]:not([hidden])',
+  )) {
     bodies.push(...panel.querySelectorAll<HTMLElement>('[part="panel-body"]'));
   }
   return bodies;
@@ -57,11 +66,11 @@ function visibleBodies(): HTMLElement[] {
 
 /** The header's two spans. */
 function headerTitle(): string {
-  return rightPanel.querySelector('[part="header-title"]')?.textContent ?? "";
+  return inspectorHost().querySelector('[part="header-title"]')?.textContent ?? "";
 }
 
 function headerTarget(): string {
-  return rightPanel.querySelector('[part="header-target"]')?.textContent?.trim() ?? "";
+  return inspectorHost().querySelector('[part="header-target"]')?.textContent.trim() ?? "";
 }
 
 /** Activate a tab the way a pointer does — the tab dispatches `select`, the strip answers. */
@@ -90,7 +99,7 @@ afterEach(() => {
 describe("the four tabs", () => {
   test("mount + render shows four text-labelled tabs and the Content body", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     expect(tablist()).not.toBeNull();
@@ -105,7 +114,7 @@ describe("the four tabs", () => {
 
   test("the strip is a named tablist and each tab is paired with a panel", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     /* The whole point of the conversion: `sp-tabs` announced a selected tab that controlled
@@ -116,7 +125,7 @@ describe("the four tabs", () => {
     expect(tabs()).toHaveLength(4);
     for (const tab of tabs()) {
       const panelId = tab.getAttribute("aria-controls") ?? "";
-      const panel = rightPanel.querySelector(`#${panelId}`);
+      const panel = inspectorHost().querySelector(`#${panelId}`);
       expect(panel?.getAttribute("role")).toBe("tabpanel");
       expect(panel?.getAttribute("aria-labelledby")).toBe(tab.id);
       expect(tab.id).not.toBe("");
@@ -125,7 +134,7 @@ describe("the four tabs", () => {
 
   test("exactly one panel is showing, and it is the one whose tab is selected", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     const showing = panels().filter((panel) => !panel.hasAttribute("hidden"));
@@ -151,10 +160,10 @@ describe("the four tabs", () => {
 
   test("every tab body is addressable as `inspector/tab:<id>`", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
-    const regions = [...rightPanel.querySelectorAll<HTMLElement>('[part="panel-body"]')].map(
+    const regions = [...inspectorHost().querySelectorAll<HTMLElement>('[part="panel-body"]')].map(
       (el) => el.dataset.jxRegion,
     );
     expect(regions).toEqual(INSPECTOR_TAB_IDS.map((id) => `inspector/tab:${id}`));
@@ -162,7 +171,7 @@ describe("the four tabs", () => {
 
   test("the Assistant tab's body is handed to its owner exactly once", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     render();
@@ -170,8 +179,8 @@ describe("the four tabs", () => {
     setInspectorTab("properties");
     await flush(4);
     expect(mountAssistant).toHaveBeenCalledTimes(1);
-    const [host] = mountAssistant.mock.calls[0] as [HTMLElement];
-    expect(host.dataset.jxRegion).toBe("inspector/tab:assistant");
+    const [host] = mountAssistant.mock.calls[0] ?? [];
+    expect(host?.dataset.jxRegion).toBe("inspector/tab:assistant");
   });
 
   test("a body host survives every repaint of the dock", async () => {
@@ -181,16 +190,16 @@ describe("the four tabs", () => {
        mechanism: the same element, before and after a projection that changes every other thing
        the dock draws. */
     const tab = resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
-    const before = rightPanel.querySelector('[data-jx-region="inspector/tab:assistant"]');
+    const before = inspectorHost().querySelector('[data-jx-region="inspector/tab:assistant"]');
     const marker = document.createElement("span");
     before!.append(marker);
     setInspectorTab("style");
     tab.session.selection = [["children", 0]];
     await flush(4);
-    const after = rightPanel.querySelector('[data-jx-region="inspector/tab:assistant"]');
+    const after = inspectorHost().querySelector('[data-jx-region="inspector/tab:assistant"]');
     expect(after).toBe(before);
     expect(marker.isConnected).toBe(true);
   });
@@ -198,7 +207,7 @@ describe("the four tabs", () => {
   test("routes to Logic and Style", async () => {
     resetWorkspaceWithTab();
     const ctx = makeCtx();
-    mount(ctx as never);
+    mount(ctx);
     for (const tabName of ["events", "style"]) {
       updateUi(activeTab.value, "rightTab", tabName);
       render();
@@ -210,7 +219,7 @@ describe("the four tabs", () => {
 
   test("an undeclared stored tab coerces to Content", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     updateUi(activeTab.value, "rightTab", "content");
     render();
     await flush(4);
@@ -220,7 +229,7 @@ describe("the four tabs", () => {
 
   test("activating a tab switches the dock, and re-activating it says nothing", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     clickTab("style");
@@ -235,7 +244,7 @@ describe("the four tabs", () => {
 
   test("an id the enum does not declare cannot select anything", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     /* The strip states a value and the flow decides what it means. Dispatched at the strip rather
@@ -251,7 +260,7 @@ describe("the header names its target", () => {
   test("with a selection it names the node", async () => {
     const tab = resetWorkspaceWithTab();
     tab.session.selection = [["children", 0]];
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     expect(headerTitle()).toBe("Content");
@@ -260,7 +269,7 @@ describe("the header names its target", () => {
 
   test("with no selection it names the document, and with no document says so", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     expect(headerTarget()).not.toBe("no document");
@@ -273,7 +282,7 @@ describe("the header names its target", () => {
 
   test("the header follows the selected tab's name", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     expect(headerTitle()).toBe("Content");
@@ -284,7 +293,7 @@ describe("the header names its target", () => {
 });
 
 describe("the layout selection", () => {
-  const headerHit = {
+  const headerHit: LayoutHit = {
     className: "site-header",
     layoutFile: "layouts/base.json",
     layoutPath: ["children", 0, "children", 0],
@@ -294,12 +303,12 @@ describe("the layout selection", () => {
 
   test("clicking layout chrome repaints the dock on its own, and Content answers", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
 
     // No renderOnly, no selection change — only the shell record the canvas host writes.
-    setLayoutSelection(headerHit as never);
+    setLayoutSelection(headerHit);
     await flush(4);
 
     const body = visibleBodies()[0]!;
@@ -307,28 +316,26 @@ describe("the layout selection", () => {
        key `inspector.setSection` uses — `label` is a property on the kit element rather than an
        attribute a selector can match, which is why this reads the section by key and then its
        heading. */
-    const layout = body.querySelector('[data-section="__layout"]') as
-      | (HTMLElement & { label?: string })
-      | null;
+    const layout = body.querySelector('[data-section="__layout"]');
     expect(layout).not.toBeNull();
-    expect(layout!.label).toBe("Layout Element");
+    expect(layout).toHaveProperty("label", "Layout Element");
     expect(body.textContent).toContain("<header>");
     expect(body.textContent).toContain("layouts/base.json");
   });
 
   test("the header names the layout element AND the file it came from", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
-    setLayoutSelection(headerHit as never);
+    setLayoutSelection(headerHit);
     await flush(4);
     expect(headerTarget()).toBe("<header> in layouts/base.json");
   });
 
   test("the inspector header names the BATCH when several elements are selected (§6.7)", async () => {
     const tab = resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     tab.session.selection = [["children", 0]];
@@ -341,10 +348,10 @@ describe("the layout selection", () => {
 
   test("releasing it puts the dock back on the document", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
-    setLayoutSelection(headerHit as never);
+    setLayoutSelection(headerHit);
     await flush(4);
     setLayoutSelection(null);
     await flush(4);
@@ -355,7 +362,7 @@ describe("the layout selection", () => {
 describe("with no document open", () => {
   test("the strip stays, and the selected tab teaches what IT needs", async () => {
     closeAllTabs();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     // The strip does NOT vanish: the Assistant works with no document, so the dock has to stay
@@ -370,7 +377,7 @@ describe("with no document open", () => {
     await flush(4);
     // Scoped to the tab's own container: every tab's document is in the DOM at once (they are
     // Shown and hidden rather than rebuilt), so an unscoped query finds whichever teaches first.
-    const styleBody = rightPanel.querySelector('[data-jx-region="inspector/tab:style"]')!;
+    const styleBody = inspectorHost().querySelector('[data-jx-region="inspector/tab:style"]')!;
     expect(styleBody.querySelector('[part="empty-message"]')?.textContent).toBe(
       "Open a page to style what you click.",
     );
@@ -378,7 +385,7 @@ describe("with no document open", () => {
 
   test("the selection falls back to the module's own field, and survives a tab opening", async () => {
     closeAllTabs();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     setInspectorTab("assistant");
     await flush(4);
     expect(inspectorTab()).toBe("assistant");
@@ -392,13 +399,13 @@ describe("with no document open", () => {
 
   test("the no-document state is replaced when a tab opens", async () => {
     closeAllTabs();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     resetWorkspaceWithTab();
     render();
     await flush(4);
-    expect(rightPanel.textContent).not.toContain("Open a page to inspect");
+    expect(inspectorHost().textContent).not.toContain("Open a page to inspect");
     expect(tablist()).not.toBeNull();
   });
 });
@@ -406,7 +413,7 @@ describe("with no document open", () => {
 describe("lifecycle", () => {
   test("unmount takes the document down; render after unmount is a no-op", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     render();
     await flush(4);
     expect(tablist()).not.toBeNull();
@@ -424,14 +431,14 @@ describe("lifecycle", () => {
 
   test("a remount leaves ONE dock, not two", async () => {
     resetWorkspaceWithTab();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     await flush(4);
     unmount();
-    mount(makeCtx() as never);
+    mount(makeCtx());
     await flush(4);
     // The document mount APPENDS, so the cell is cleared first — without that, every query below
     // Would silently pick whichever dock happened to be first.
-    expect(rightPanel.querySelectorAll('[role="tablist"]')).toHaveLength(1);
-    expect(rightPanel.querySelectorAll('[part="panel-body"]')).toHaveLength(4);
+    expect(inspectorHost().querySelectorAll('[role="tablist"]')).toHaveLength(1);
+    expect(inspectorHost().querySelectorAll('[part="panel-body"]')).toHaveLength(4);
   });
 });

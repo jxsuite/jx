@@ -15,7 +15,8 @@ import {
   setSkipAutoRequests,
   setSkipServerFunctions,
 } from "../src/runtime";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxPath, JxScope } from "../src/types.ts";
+import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 try {
   GlobalRegistrator.register();
@@ -28,11 +29,30 @@ const tick = () =>
     setTimeout(r, 0);
   });
 
+/** Install `respond` as `fetch`, keeping Bun's `preconnect` so the stub is a whole `fetch`. */
+function stubFetch(respond: (url: string, init?: RequestInit) => Promise<Response>) {
+  const { preconnect } = fetch;
+  const handler = mock((input: RequestInfo | URL, init?: RequestInit) =>
+    respond(String(input), init),
+  );
+  globalThis.fetch = Object.assign(handler, { preconnect });
+  return handler;
+}
+
 /** A fetch that refuses: every test below must resolve its documents without the network. */
-const noNetwork = () => mock(() => Promise.reject(new Error("no network")));
+const noNetwork = () => stubFetch(() => Promise.reject(new Error("no network")));
 
 let host: HTMLElement;
 let uid = 0;
+
+/** The element a mount rendered as `parent`'s first child; a Text root or no root is a regression. */
+function renderedRoot(parent: Element = host): HTMLElement {
+  const el = parent.firstElementChild;
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("the mount rendered no element root");
+  }
+  return el;
+}
 
 beforeEach(() => {
   host = document.createElement("div");
@@ -51,15 +71,15 @@ describe("mount — render, dispose, lifecycle", () => {
   test("renders into the target and returns the live scope", async () => {
     const m = await mount({ tagName: "p", textContent: "${state.n}", state: { n: 1 } }, host);
     expect(host.textContent).toBe("1");
-    expect(m.root).toBe(host.firstElementChild as HTMLElement);
+    expect(m.root).toBe(renderedRoot());
     m.scope.n = 2;
     await tick();
     expect(host.textContent).toBe("2");
   });
 
   test("dispose stops effects, removes the root, calls onUnmount once, and is idempotent", async () => {
-    const onMount = mock((_scope: unknown) => null);
-    const onUnmount = mock((_scope: unknown) => null);
+    const onMount = mock((_scope: JxScope) => null);
+    const onUnmount = mock((_scope: JxScope) => null);
     const m = await mount({ tagName: "p", textContent: "${state.n}", state: { n: 1 } }, host, {
       scope: { onMount, onUnmount },
     });
@@ -181,7 +201,7 @@ describe("mount — the host scope", () => {
 
   test("keys that are runtime vocabulary are refused", async () => {
     const doc: JxDocument = { tagName: "span" };
-    const refused = async (scope: Record<string, unknown>) => {
+    const refused = async (scope: JxScope) => {
       try {
         await mount(doc, host, { scope });
       } catch (error) {
@@ -195,22 +215,26 @@ describe("mount — the host scope", () => {
   });
 
   test("a host function in handler position receives (scope, event)", async () => {
-    const onPress = mock((_scope: unknown, _event: Event) => null);
+    const onPress = mock((_scope: JxScope, _event: Event) => null);
     const m = await mount(
       { tagName: "button", textContent: "go", onclick: { $ref: "#/state/onPress" } },
       host,
       { scope: { onPress } },
     );
-    (host.firstElementChild as HTMLButtonElement).click();
+    renderedRoot().click();
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(onPress.mock.calls[0]![0]).toBe(m.scope);
-    expect((onPress.mock.calls[0]![1] as Event).type).toBe("click");
+    expect(onPress.mock.calls[0]![1].type).toBe("click");
   });
 
   test("call hands a host method its arguments positionally, with its owner as this", async () => {
-    const commands = {
-      last: null as unknown,
-      run(id: string, extra: unknown) {
+    interface CommandHost {
+      last: [string, JsonValue] | null;
+      run: (id: string, extra: JsonValue) => void;
+    }
+    const commands: CommandHost = {
+      last: null,
+      run(id, extra) {
         this.last = [id, extra];
       },
     };
@@ -228,7 +252,7 @@ describe("mount — the host scope", () => {
       host,
       { scope: { commands } },
     );
-    (host.firstElementChild as HTMLButtonElement).click();
+    renderedRoot().click();
     expect(commands.last).toEqual(["file.save", { mode: "preview" }]);
   });
 
@@ -243,13 +267,13 @@ describe("mount — the host scope", () => {
       host,
       {
         scope: {
-          run(this: Record<string, unknown>, id: string) {
+          run(this: JxScope, id: string) {
             this.seen = id;
           },
         },
       },
     );
-    (host.firstElementChild as HTMLButtonElement).click();
+    renderedRoot().click();
     expect(m.scope.seen).toBe("x");
   });
 });
@@ -258,7 +282,7 @@ describe("mount — events out", () => {
   test("a parameterised body invoked through call dispatches from the mount root", async () => {
     const seen: { detail: unknown; target: EventTarget | null }[] = [];
     host.addEventListener("jx-notify", (e) => {
-      seen.push({ detail: (e as CustomEvent).detail, target: e.target });
+      seen.push({ detail: e instanceof CustomEvent ? e.detail : undefined, target: e.target });
     });
     const m = await mount(
       {
@@ -291,9 +315,9 @@ describe("mount — events out", () => {
   });
 
   test("a body run from an event dispatches from that event's currentTarget, not the root", async () => {
-    const targets: EventTarget[] = [];
+    const targets: (EventTarget | null)[] = [];
     host.addEventListener("jx-hit", (e) => {
-      targets.push(e.target as EventTarget);
+      targets.push(e.target);
     });
     await mount(
       {
@@ -341,25 +365,25 @@ describe("mount — per-mount context", () => {
   });
 
   test("skipAutoRequests is per mount and overrides the module setting either way", async () => {
-    const fetchMock = mock(() =>
-      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ a: 1 }) }),
-    );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const requested: string[] = [];
+    stubFetch((url) => {
+      requested.push(url);
+      return Promise.resolve(Response.json({ a: 1 }));
+    });
     const doc: JxDocument = {
       tagName: "div",
       state: { data: { $prototype: "Request", url: "https://example.test/x" } },
     };
     await mount(doc, host, { skipAutoRequests: true });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requested).toEqual([]);
 
     setSkipAutoRequests(true);
     await mount(doc, host, { skipAutoRequests: false });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requested).toEqual(["https://example.test/x"]);
   });
 
   test("a resolver serves an external $switch case with no network and no shared caching", async () => {
     const fetchMock = noNetwork();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
     const resolver = mock((url: string) =>
       url.endsWith("/views/home.json") ? { tagName: "p", textContent: "Home" } : undefined,
     );
@@ -379,18 +403,17 @@ describe("mount — per-mount context", () => {
     expect(resolver).toHaveBeenCalledWith("http://localhost/app/views/home.json");
     expect(fetchMock).not.toHaveBeenCalled();
     // The hit belonged to that mount: the shared path still has to fetch, and here cannot.
-    let shared: unknown = null;
+    let shared = "";
     try {
       await resolve("http://localhost/app/views/home.json");
     } catch (error) {
-      shared = error;
+      shared = String(error);
     }
-    expect(String(shared)).toContain("no network");
+    expect(shared).toContain("no network");
   });
 
   test("a resolver serves an $elements reference", async () => {
     const fetchMock = noNetwork();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
     const tag = `mount-el-${(uid += 1)}`;
     const m = await mount(
       { tagName: "div", $elements: [{ $ref: `./${tag}.json` }], children: [{ tagName: tag }] },
@@ -414,7 +437,6 @@ describe("mount — per-mount context", () => {
 describe("preloadDocument / preloadModule", () => {
   test("a preloaded document resolves by its URL without fetching", async () => {
     const fetchMock = noNetwork();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
     const doc: JxDocument = { tagName: "p", textContent: "preloaded" };
     preloadDocument("jx-test:/docs/pre.json", doc);
     expect(await resolve("jx-test:/docs/pre.json")).toBe(doc);
@@ -429,7 +451,7 @@ describe("preloadDocument / preloadModule", () => {
 
   test("a preloaded module serves a $src sidecar", async () => {
     preloadModule("jx-test:/behaviors.ts", {
-      greet(state: Record<string, unknown>, event: Event) {
+      greet(state: JxScope, event: Event) {
         state.greeted = event.type;
       },
     });
@@ -444,14 +466,14 @@ describe("preloadDocument / preloadModule", () => {
       },
       host,
     );
-    (host.firstElementChild as HTMLButtonElement).click();
+    renderedRoot().click();
     expect(m.scope.greeted).toBe("click");
   });
 });
 
 describe("preloadModule with a loader", () => {
   const sidecar = {
-    greet(state: Record<string, unknown>, event: Event) {
+    greet(state: JxScope, event: Event) {
       state.greeted = event.type;
     },
   };
@@ -479,8 +501,8 @@ describe("preloadModule with a loader", () => {
       mount(doc("jx-test:/lazy.ts"), second),
     ]);
     expect(loads).toBe(1);
-    (host.firstElementChild as HTMLButtonElement).click();
-    (second.firstElementChild as HTMLButtonElement).click();
+    renderedRoot().click();
+    renderedRoot(second).click();
     expect(a.scope.greeted).toBe("click");
     expect(b.scope.greeted).toBe("click");
     await mount(doc("jx-test:/lazy.ts"), second);
@@ -497,16 +519,16 @@ describe("preloadModule with a loader", () => {
       }
       return sidecar;
     });
-    let refusal: unknown = null;
+    let refusal = "";
     try {
       await mount(doc("jx-test:/flaky.ts"), host);
     } catch (error) {
-      refusal = error;
+      refusal = String(error);
     }
-    expect(String(refusal)).toContain("chunk dropped");
+    expect(refusal).toContain("chunk dropped");
     const m = await mount(doc("jx-test:/flaky.ts"), host);
     expect(attempts).toBe(2);
-    (host.firstElementChild as HTMLButtonElement).click();
+    renderedRoot().click();
     expect(m.scope.greeted).toBe("click");
 
     /* The eager form wins over a loader registered before it, and never runs it. */
@@ -526,12 +548,11 @@ describe("preloadModule with a loader", () => {
        proxy fallback would be a POST, and this fetch refuses one, so the value can only come from
        the loader. */
     const classDef = { $implementation: "./lazy-box.ts", title: "Box" };
-    const fetchMock = mock((url: string, init?: { method?: string }) =>
+    const fetchMock = stubFetch((url, init) =>
       init?.method === undefined && url === "http://jx-test.invalid/lazy-box.class.json"
-        ? Promise.resolve({ ok: true, json: () => Promise.resolve(classDef) })
+        ? Promise.resolve(Response.json(classDef))
         : Promise.reject(new Error("no network")),
     );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
     let loads = 0;
     preloadModule("http://jx-test.invalid/lazy-box.ts", async () => {
       loads += 1;
@@ -567,7 +588,6 @@ describe("preloadModule with a loader", () => {
     /* A server function the host did not register goes to the dev proxy, which would be a POST
        this fetch refuses, so a summed value proves the loader's namespace was awaited. */
     const fetchMock = noNetwork();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
     let loads = 0;
     preloadModule("jx-test:/server.ts", async () => {
       loads += 1;
@@ -600,7 +620,7 @@ describe("bindings skip an equal write", () => {
       { tagName: "div", textContent: "${state.n > 0 ? 'pos' : 'neg'}", state: { n: 1 } },
       host,
     );
-    const el = host.firstElementChild as HTMLElement;
+    const el = renderedRoot();
     const setter = mock((_v: string) => null);
     let current = "pos";
     Object.defineProperty(el, "textContent", {
@@ -634,5 +654,18 @@ describe("Jx() over mount()", () => {
     await Jx({ tagName: "div", $media: { "--md": "(min-width: 1px)" } }, host);
     const later = await buildScope({ tagName: "div" });
     expect(later.$media).toEqual({ "--md": "(min-width: 1px)" });
+  });
+
+  test("forwards onNodeCreated to the mount it creates", async () => {
+    const created: [string, JxPath][] = [];
+    await Jx({ children: [{ tagName: "span", textContent: "a" }], tagName: "section" }, host, {
+      onNodeCreated: (node, path) => {
+        created.push([node.nodeName, [...path]]);
+      },
+    });
+    expect(created).toEqual([
+      ["SECTION", []],
+      ["SPAN", ["children", 0]],
+    ]);
   });
 });

@@ -9,7 +9,7 @@
  * window carries its auth token there.
  */
 import { flush } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   bootFailureReport,
   bootFailureView,
@@ -17,9 +17,8 @@ import {
 } from "../src/surfaces/boot-failure";
 import { mountBootFailureTree } from "../src/shell/tree";
 import { APP_NAME, GIT_COMMIT, VERSION } from "../src/version";
-import type { LauncherSignal } from "../src/platform";
 
-const g = globalThis as unknown as { __jxLauncher?: LauncherSignal };
+const g = globalThis;
 const PAGE = { href: "views://studio/index.html" };
 
 const hosts: HTMLElement[] = [];
@@ -55,18 +54,18 @@ function stubClipboard(writeText: (text: string) => Promise<void>): void {
 }
 
 beforeEach(() => {
-  delete g.__jxLauncher;
+  Reflect.deleteProperty(g, "__jxLauncher");
 });
 
 afterEach(() => {
-  delete g.__jxLauncher;
+  Reflect.deleteProperty(g, "__jxLauncher");
   for (const host of hosts.splice(0)) {
     host.remove();
   }
   if (originalClipboard) {
     Object.defineProperty(globalThis.navigator, "clipboard", originalClipboard);
   } else {
-    delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+    Reflect.deleteProperty(globalThis.navigator, "clipboard");
   }
 });
 
@@ -166,8 +165,8 @@ describe("the boot-failure document", () => {
     expect(part(host, "lead")?.textContent).toContain("startup script never ran");
     expect(part(host, "facts")?.textContent).toContain("views://studio/index.html");
     expect(part(host, "detail")).toBeNull();
-    expect(part(host, "reload")?.textContent?.trim()).toBe("Reload");
-    expect(part(host, "copy")?.textContent?.trim()).toBe("Copy details");
+    expect(part(host, "reload")?.textContent.trim()).toBe("Reload");
+    expect(part(host, "copy")?.textContent.trim()).toBe("Copy details");
     // The window's handle, since the desktop window hides its title bar.
     expect(part(host, "drag-strip")?.classList.contains("electrobun-webkit-app-region-drag")).toBe(
       true,
@@ -181,19 +180,22 @@ describe("the boot-failure document", () => {
   });
 
   test("Reload reloads the page", async () => {
-    const reload = mock(() => {});
+    let reloads = 0;
+    const reload = () => {
+      reloads += 1;
+    };
     const original = Object.getOwnPropertyDescriptor(location, "reload");
     Object.defineProperty(location, "reload", { configurable: true, value: reload });
     try {
       const host = await draw({ kind: "declared" });
       control(part(host, "reload")).click();
       await flush();
-      expect(reload).toHaveBeenCalledTimes(1);
+      expect(reloads).toBe(1);
     } finally {
       if (original) {
         Object.defineProperty(location, "reload", original);
       } else {
-        delete (location as { reload?: unknown }).reload;
+        Reflect.deleteProperty(location, "reload");
       }
     }
   });
@@ -211,7 +213,7 @@ describe("the boot-failure document", () => {
     expect(written[0]).toBe(
       bootFailureReport(bootFailureView({ kind: "launcher", launcher: undefined }, PAGE)),
     );
-    expect(part(host, "copy")?.textContent?.trim()).toBe("Copied");
+    expect(part(host, "copy")?.textContent.trim()).toBe("Copied");
   });
 
   test("a refused clipboard write does not throw, and the button does not claim success", async () => {
@@ -219,7 +221,7 @@ describe("the boot-failure document", () => {
     const host = await draw({ kind: "declared" });
     control(part(host, "copy")).click();
     await flush();
-    expect(part(host, "copy")?.textContent?.trim()).toBe("Copy details");
+    expect(part(host, "copy")?.textContent.trim()).toBe("Copy details");
   });
 });
 
@@ -246,8 +248,8 @@ describe("mountBootFailureTree", () => {
     document.querySelector("#shell-root")?.remove();
     await mountBootFailureTree({ kind: "scheme", protocol: "views:" });
     await flush();
-    const root = document.body.querySelector("#shell-root")!;
-    hosts.push(root as HTMLElement);
+    const root = document.body.querySelector<HTMLElement>("#shell-root")!;
+    hosts.push(root);
     expect(root.querySelector('[part="lead"]')?.textContent).toContain("views: URL");
   });
 });

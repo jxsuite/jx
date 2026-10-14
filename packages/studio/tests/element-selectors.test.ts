@@ -3,16 +3,26 @@ import { describe, expect, test } from "bun:test";
 
 import { COMMON_SELECTORS } from "../src/store";
 import { selectorsForNode } from "../src/utils/element-selectors";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 
 /** The selectors an element gains beyond the global set. */
-function extras(node: unknown): string[] {
-  return selectorsForNode(node as JxMutableNode).filter((s) => !COMMON_SELECTORS.includes(s));
+function extras(node: JxMutableNode): string[] {
+  return selectorsForNode(node).filter((s) => !COMMON_SELECTORS.includes(s));
+}
+
+/**
+ * A node read straight off disk, before any schema validation: well-formed JSON whose members may
+ * break the `JxMutableNode` contract, which is exactly the input these robustness cases feed.
+ */
+function unvalidated(json: JsonObject): JxMutableNode {
+  /* SAFETY: callers pass deliberately schema-violating fixtures (a numeric tag, a non-tag
+     expression); the assertion is the point of the test, not an oversight. */
+  return json as JxMutableNode;
 }
 
 describe("selectorsForNode", () => {
   test("the common set always comes first, and in its own order", () => {
-    const out = selectorsForNode({ tagName: "p" } as JxMutableNode);
+    const out = selectorsForNode({ tagName: "p" });
     expect(out.slice(0, COMMON_SELECTORS.length)).toEqual([...COMMON_SELECTORS]);
   });
 
@@ -66,20 +76,21 @@ describe("selectorsForNode", () => {
           target: { $ref: "#/state/kind" },
         },
       },
-    };
+    } satisfies JxMutableNode;
     expect(extras(chosen)).toEqual([":visited", ":target"]);
     // An expression that is not a tag choice names no tag, so it earns no tag-specific selector.
     expect(
-      extras({
-        tagName: { $expression: { operator: "toUpperCase", target: { $ref: "#/state/t" } } },
-      }),
+      extras(
+        unvalidated({
+          tagName: { $expression: { operator: "toUpperCase", target: { $ref: "#/state/t" } } },
+        }),
+      ),
     ).toEqual([]);
   });
 
   test("no node at all still answers the common set", () => {
     expect(selectorsForNode(null)).toEqual([...COMMON_SELECTORS]);
-    expect(selectorsForNode({ tagName: 7 } as unknown as JxMutableNode)).toEqual([
-      ...COMMON_SELECTORS,
-    ]);
+    // A document on disk can carry a tag the schema forbids; the menu must survive reading one.
+    expect(selectorsForNode(unvalidated({ tagName: 7 }))).toEqual([...COMMON_SELECTORS]);
   });
 });

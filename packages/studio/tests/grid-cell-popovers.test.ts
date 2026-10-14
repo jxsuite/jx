@@ -9,8 +9,9 @@
  */
 import { flush, installMockPlatform, mountOverlayLayers, resetStudioState } from "./harness";
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { html, render as litRender } from "lit-html";
+import { html, render } from "lit-html";
 import { initLayers } from "../src/ui/layers";
+import type { StudioFormat } from "../src/format/format-host";
 import type { GridColumn } from "../src/grid/grid-source";
 
 /* The real media picker drags in caches/timers — a stub input keeps the contract observable. It is
@@ -23,15 +24,21 @@ void mock.module("../src/ui/media-picker.js", () => ({
     value: string,
     onCommit: (val: string) => void,
   ) =>
-    litRender(
+    render(
       html`<input
         data-testid="media"
         .value=${value}
-        @change=${(e: Event) => onCommit((e.target as HTMLInputElement).value)}
+        @change=${(e: Event) => onCommit(changedValue(e))}
       />`,
       host,
     ),
 }));
+
+/** The value a change on the stub's own `<input>` carries. */
+function changedValue(e: Event): string {
+  // SAFETY: the listener is bound on the stub's `<input>`, which has no children, so its target is it.
+  return (e.target as HTMLInputElement).value;
+}
 
 const { hasPopoverEditor, openCellValuePopover, referenceTargetType } =
   await import("../src/grid/cell-popovers");
@@ -42,7 +49,7 @@ beforeAll(() => {
   initLayers();
 });
 
-const MD_FORMAT = {
+const MD_FORMAT: StudioFormat = {
   capabilities: { parse: { identifier: "parse", timing: [] } },
   documentKinds: ["content"],
   exportTarget: false,
@@ -51,15 +58,15 @@ const MD_FORMAT = {
   name: "Markdown",
   remote: false,
   studio: null,
-} as never;
+};
 
-const col = (kind: GridColumn["kind"], schema?: GridColumn["schema"]): GridColumn => ({
-  editable: true,
-  field: "f",
-  kind,
-  title: "Field",
-  ...(schema ? { schema } : {}),
-});
+const col = (kind: GridColumn["kind"], schema?: GridColumn["schema"]): GridColumn => {
+  const column: GridColumn = { editable: true, field: "f", kind, title: "Field" };
+  if (schema) {
+    column.schema = schema;
+  }
+  return column;
+};
 
 /** The open panel, in the popover layer where every overlay of its kind lives. */
 const panel = () => document.querySelector<HTMLElement>('#layer-popover [part="cell-panel"]');
@@ -86,10 +93,8 @@ describe("popover editor selection", () => {
   });
 
   test("referenceTargetType parses #/content/<name> schema refs only", () => {
-    expect(referenceTargetType(col("reference", { $ref: "#/content/authors" } as never))).toBe(
-      "authors",
-    );
-    expect(referenceTargetType(col("reference", { $ref: "#/data/users" } as never))).toBeNull();
+    expect(referenceTargetType(col("reference", { $ref: "#/content/authors" }))).toBe("authors");
+    expect(referenceTargetType(col("reference", { $ref: "#/data/users" }))).toBeNull();
     expect(referenceTargetType(col("reference"))).toBeNull();
   });
 });
@@ -112,7 +117,7 @@ describe("openCellValuePopover — reference", () => {
     const commits: unknown[] = [];
     await openCellValuePopover({
       anchor: { bottom: 40, left: 10 },
-      column: col("reference", { $ref: "#/content/authors" } as never),
+      column: col("reference", { $ref: "#/content/authors" }),
       commit: (v) => commits.push(v),
       value: "jane",
     });
@@ -176,7 +181,11 @@ describe("openCellValuePopover — reference", () => {
     });
     await flush(3);
     const box = panel()!;
-    (part(box, "done")!.querySelector('[part="control"]') as HTMLElement).click();
+    const done = part(box, "done")?.querySelector('[part="control"]');
+    if (!(done instanceof HTMLElement)) {
+      throw new Error("the cell panel drew no Done control");
+    }
+    done.click();
     await flush(3);
     expect(panel()).toBeNull();
   });

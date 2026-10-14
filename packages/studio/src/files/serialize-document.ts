@@ -40,7 +40,7 @@ export async function serializeDocument(tab: Tab): Promise<string> {
   await loadFormats();
   const sourceFormat = formatByName(tab.doc.sourceFormat);
   if (sourceFormat?.capabilities.serialize) {
-    const fm = tab.doc.content?.frontmatter || {};
+    const fm = tab.doc.content.frontmatter;
     const doc = tab.doc.document;
     const fullDoc = { ...fm, ...doc, children: doc.children ?? [] };
     return formatSerialize(sourceFormat.name, fullDoc, { mode: "roundtrip" });
@@ -48,7 +48,7 @@ export async function serializeDocument(tab: Tab): Promise<string> {
   if (tab.doc.mode === "content") {
     const format = defaultContentFormat();
     if (format) {
-      const fm = tab.doc.content?.frontmatter ?? {};
+      const fm = tab.doc.content.frontmatter;
       const hasFrontmatter = Object.keys(fm).length > 0;
       const fullDoc = { ...fm, ...tab.doc.document };
       return formatSerialize(format.name, fullDoc, {

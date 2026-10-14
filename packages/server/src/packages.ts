@@ -8,42 +8,23 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { PackageInfo, PackageOpResult, PackageVersionInfo } from "@jxsuite/protocol";
+import type { JsonValue } from "@jxsuite/schema/types";
 
-export interface PackageInfo {
-  name: string;
-  version: string;
-  /** True when the dependency lives in `devDependencies` rather than `dependencies`. */
-  dev?: boolean;
-}
+/* The package rows and operation result are the Studio wire contract (`packages*` routes), declared
+   once in @jxsuite/protocol; re-exported so this module's public names stay. Every
+   registry-range dependency gets a `PackageVersionInfo` row, behind or not: deciding whether a row
+   is an upgrade needs a semver comparison against the range's base, and the caller, which has to
+   make that comparison anyway to tell an upgrade from a project deliberately pinned ahead, is where
+   it belongs. A backend that filtered here could only describe an up-to-date package as an
+   absence. */
+export type { PackageInfo, PackageOpResult, PackageVersionInfo } from "@jxsuite/protocol";
 
-/**
- * A dependency's pinned range beside the newest version published for it on the registry.
- *
- * Every registry-range dependency gets a row, behind or not. Deciding whether a row is an upgrade
- * needs a semver comparison against the range's base, and the caller — which has to make that
- * comparison anyway to tell an upgrade from a project deliberately pinned ahead — is where it
- * belongs. A backend that filtered here could only describe an up-to-date package as an absence.
- */
-export interface PackageVersionInfo {
-  name: string;
-  /** The version range pinned in package.json (e.g. "^0.19.0"). */
-  current: string;
-  /** The newest version published for this package on the registry. */
-  latest: string;
-  dev?: boolean;
-}
-
-/** Result of a package mutation that runs `bun install` (install / set-versions). */
-export interface PackageOpResult {
-  ok: boolean;
-  /** Combined stdout/stderr from the bun invocation, surfaced to the user on failure. */
-  log?: string;
-}
-
+/** The manifest members this module edits; every other member is written back unchanged. */
 interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
-  [key: string]: unknown;
+  [key: string]: JsonValue | undefined;
 }
 
 /** Minimal fetch signature (injectable for tests; the global `fetch` satisfies it). */
@@ -72,6 +53,9 @@ async function readPackageJson(root: string): Promise<PackageJson | null> {
     return null;
   }
   try {
+    /* SAFETY: package.json is the npm manifest `bun install` reads, an object whose
+       `dependencies`/`devDependencies` map package names to version-spec strings; text that is
+       not JSON throws into the catch below. */
     return JSON.parse(await readFile(pkgPath, "utf8")) as PackageJson;
   } catch {
     return null;
@@ -120,7 +104,11 @@ async function runBun(args: string[], cwd: string): Promise<PackageOpResult> {
     proc.exited,
   ]);
   const log = `${stdout}${stderr}`.trim();
-  return { ok: exitCode === 0, ...(log ? { log } : {}) };
+  const result: PackageOpResult = { ok: exitCode === 0 };
+  if (log) {
+    result.log = log;
+  }
+  return result;
 }
 
 /** Run `bun install` in the project root. */
@@ -165,6 +153,8 @@ export async function fetchLatestVersion(
     if (!res.ok) {
       return null;
     }
+    /* SAFETY: the registry's version endpoint answers that version's manifest, whose `version`
+       is a string; a body that is not JSON (or is `null`) throws into the catch, giving null. */
     const data = (await res.json()) as { version?: string };
     return data.version ?? null;
   } catch {
@@ -228,6 +218,7 @@ export async function setPackageVersions(
   }
   let pkg: PackageJson;
   try {
+    // SAFETY: same npm manifest contract as readPackageJson; unparseable text is caught below.
     pkg = JSON.parse(await readFile(pkgPath, "utf8")) as PackageJson;
   } catch (error) {
     return { log: `Unparseable package.json: ${String(error)}`, ok: false };
@@ -239,8 +230,7 @@ export async function setPackageVersions(
       pkg.dependencies[update.name] = update.version;
     } else {
       const bucket = update.dev ? "devDependencies" : "dependencies";
-      pkg[bucket] = { ...(pkg[bucket] as Record<string, string> | undefined) };
-      (pkg[bucket] as Record<string, string>)[update.name] = update.version;
+      pkg[bucket] = { ...pkg[bucket], [update.name]: update.version };
     }
   }
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");

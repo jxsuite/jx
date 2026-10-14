@@ -9,40 +9,48 @@ import { flush } from "./harness";
 import { afterAll, describe, expect, test } from "bun:test";
 import { mountResizeEdges } from "../src/resize-edges";
 
-interface Frame {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+import type { StudioPlatform } from "../src/types";
+import type { SerializableRect } from "../src/canvas/iframe-protocol";
+
+interface WindowControls {
+  getFrame: () => Promise<SerializableRect>;
+  setFrame: (x: number, y: number, w: number, h: number) => void;
 }
 
-const g = globalThis as unknown as {
-  __jxPlatform?: {
-    windowControls?: {
-      getFrame: () => Promise<Frame>;
-      setFrame: (x: number, y: number, w: number, h: number) => void;
-    };
-  };
-};
+/**
+ * A desktop shell's platform as the resize edges see it: `windowControls` is the desktop adapter's
+ * own addition, and none of the StudioPlatform members it shares need be present for this suite.
+ */
+interface DesktopShellPlatform extends Partial<StudioPlatform> {
+  windowControls: Partial<WindowControls>;
+}
+
+function installPlatform(platform: DesktopShellPlatform): void {
+  /* SAFETY: mountResizeEdges reads nothing from the platform except `windowControls`, which it
+     probes with `in` and validates with isResizeWindowControls before calling getFrame/setFrame. */
+  globalThis.__jxPlatform = platform as StudioPlatform;
+}
 
 const setFrameCalls: number[][] = [];
-let frame: Frame = { height: 600, width: 800, x: 10, y: 20 };
+let frame: SerializableRect = { height: 600, width: 800, x: 10, y: 20 };
 
 function installWindowControls() {
-  g.__jxPlatform = {
+  installPlatform({
     windowControls: {
       getFrame: async () => ({ ...frame }),
       setFrame: (x: number, y: number, w: number, h: number) => {
         setFrameCalls.push([x, y, w, h]);
       },
     },
-  };
+  });
 }
 
 function edgeEl(edge: string): HTMLElement {
   const el = document.querySelector(`#resize-edges .resize-edge.${edge}`);
-  expect(el).not.toBeNull();
-  return el as HTMLElement;
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`no mounted "${edge}" resize handle`);
+  }
+  return el;
 }
 
 /** Press on an edge handle, move the mouse, and return the last setFrame call. */
@@ -66,19 +74,19 @@ async function drag(edge: string, dx: number, dy: number): Promise<number[] | un
 }
 
 afterAll(() => {
-  delete g.__jxPlatform;
+  globalThis.__jxPlatform = undefined;
   document.querySelector("#resize-edges")?.remove();
 });
 
 describe("mountResizeEdges — guards", () => {
   test("does nothing without a platform windowControls", () => {
-    delete g.__jxPlatform;
+    globalThis.__jxPlatform = undefined;
     mountResizeEdges();
     expect(document.querySelector("#resize-edges")).toBeNull();
   });
 
   test("does nothing when windowControls lacks getFrame", () => {
-    g.__jxPlatform = { windowControls: {} as never };
+    installPlatform({ windowControls: {} });
     mountResizeEdges();
     expect(document.querySelector("#resize-edges")).toBeNull();
   });

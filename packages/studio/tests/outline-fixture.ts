@@ -19,6 +19,18 @@ import { detachOutline, mountOutlinePanel } from "../src/panels/layers-panel";
 import { initLayers } from "../src/ui/layers";
 import { view } from "../src/view";
 
+/**
+ * The first element under `root` that `selector` matches, or a failure naming the selector — the
+ * fixture's DOM is fixed, so a miss is a broken fixture or surface rather than a state to handle.
+ */
+function need(root: ParentNode, selector: string): HTMLElement {
+  const found = root.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`no element for ${selector}`);
+  }
+  return found;
+}
+
 /** What the last {@link mountOutline} was given, so a test can assert the Navigator was asked. */
 export interface OutlineMountLog {
   /** How many times the panel asked for drag-and-drop to be re-registered. */
@@ -46,7 +58,7 @@ export function outlineHost(scroller = false): HTMLElement {
   initLayers();
   view._layersCollapsed = new Set();
   view.dndCleanups = [];
-  return document.querySelector(".panel-body") as HTMLElement;
+  return need(document, ".panel-body");
 }
 
 /**
@@ -120,12 +132,12 @@ export function allRows(host: HTMLElement): HTMLElement[] {
 
 /** The tree element itself. */
 export function tree(host: HTMLElement): HTMLElement {
-  return host.querySelector('[part="tree"]') as HTMLElement;
+  return part(host, "tree");
 }
 
 /** What a row's badge or label says. */
-export function textOf(el: HTMLElement, part: string): string {
-  return el.querySelector(`[part="${part}"]`)?.textContent?.trim() ?? "";
+export function textOf(el: HTMLElement, name: string): string {
+  return el.querySelector(`[part="${name}"]`)?.textContent.trim() ?? "";
 }
 
 /**
@@ -136,16 +148,22 @@ export function textOf(el: HTMLElement, part: string): string {
  * either string.
  */
 export function rowActions(el: HTMLElement): Record<string, HTMLElement> {
-  const out: Record<string, HTMLElement> = {};
-  for (const button of el.querySelectorAll<HTMLElement>('[part="action"][data-command]')) {
-    out[button.dataset.command ?? ""] = button;
-  }
-  return out;
+  return Object.fromEntries(
+    [...el.querySelectorAll<HTMLElement>('[part="action"][data-command]')].map((button) => [
+      button.dataset.command ?? "",
+      button,
+    ]),
+  );
+}
+
+/** The first element inside `el` carrying `part="<name>"`, or a failure naming the part. */
+export function part(el: ParentNode, name: string): HTMLElement {
+  return need(el, `[part="${name}"]`);
 }
 
 /** The `<button part="control">` a kit action button puts the disabled state and the tooltip on. */
 export function control(button: HTMLElement): HTMLElement {
-  return button.querySelector('[part="control"]') as HTMLElement;
+  return part(button, "control");
 }
 
 /** Whether the row's button for `id` is present but refusing — ONE shape: disabled, not removed. */

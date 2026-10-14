@@ -19,6 +19,14 @@
 const STORAGE_KEY = "jx_github_token";
 
 /**
+ * The GitHub OAuth app every Jx sign-in authorizes against: the browser's device flow in
+ * `github-auth.ts`, and the desktop launcher's RFC 8252 loopback redirect
+ * (`packages/desktop/src/github-signin.ts`). Here, in the module with no UI dependency, because the
+ * launcher's main process imports it too.
+ */
+export const GITHUB_OAUTH_CLIENT_ID = "Ov23liYVlMFpgjOEPXJH";
+
+/**
  * The desktop launcher's RFC 8252 sign-in, when this build is running inside one.
  *
  * Launcher-only, like `updater` and `windowControls`, and reached the same way — a loopback
@@ -30,11 +38,27 @@ export interface NativeGithubAuth {
   status: () => Promise<{ stored: boolean }>;
 }
 
-export function nativeAuth(): NativeGithubAuth | null {
+/**
+ * Whether the registered platform object carries a launcher's `githubAuth` member.
+ *
+ * Presence is the whole test, as it always was: the member is written only by a launcher's adapter
+ * (`packages/desktop/src/platform.ts`), which installs a {@link NativeGithubAuth}, and a browser
+ * build has no member at all.
+ */
+function carriesNativeAuth(platform: unknown): platform is { githubAuth: NativeGithubAuth } {
   return (
-    (globalThis as unknown as { __jxPlatform?: { githubAuth?: NativeGithubAuth } }).__jxPlatform
-      ?.githubAuth ?? null
+    typeof platform === "object" &&
+    platform !== null &&
+    "githubAuth" in platform &&
+    platform.githubAuth != null
   );
+}
+
+export function nativeAuth(): NativeGithubAuth | null {
+  // `globalThis` as a plain object: its declared type knows nothing of the launcher's slot.
+  const host: object = globalThis;
+  const platform = "__jxPlatform" in host ? host.__jxPlatform : undefined;
+  return carriesNativeAuth(platform) ? platform.githubAuth : null;
 }
 
 /**

@@ -29,6 +29,8 @@ import { flush, installMockPlatform, key, pointer, resetStudioState } from "./ha
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { registerFormControl, resetSchemaForms } from "../src/ui/schema-form";
 import { projectState } from "../src/store";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 import type { MockPlatformState } from "./harness";
 import type { SettingsContribution } from "../src/settings/contributed-section";
 
@@ -40,8 +42,7 @@ void mock.module("../src/services/jx-validate.js", () => ({
   validateDoc: async () => [],
   validateProjectConfig: async () => {
     if (validatorResult instanceof Error) {
-      // eslint-disable-next-line no-throw-literal -- validatorResult IS an Error on this branch
-      throw validatorResult as Error;
+      throw validatorResult;
     }
     return validatorResult;
   },
@@ -70,10 +71,10 @@ async function settle(): Promise<void> {
 /** A node the section's own document draws, by the `part` it carries. */
 function part(root: ParentNode, name: string): HTMLElement {
   const el = root.querySelector(`[part="${name}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`no [part="${name}"] in the contributed section`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The native control a kit element wraps: a field's input, or a select's select. */
@@ -90,10 +91,10 @@ function control(el: Element): HTMLInputElement {
 /** One field of the schema form — its own island, addressed by the property it edits. */
 function field(root: ParentNode, prop: string): HTMLElement {
   const el = root.querySelector(`[data-prop="${prop}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`the form has no field for "${prop}"`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /**
@@ -104,7 +105,7 @@ function field(root: ParentNode, prop: string): HTMLElement {
  * wrong.
  */
 function fieldError(root: ParentNode, prop: string): string {
-  return field(root, prop).querySelector('[part="error-slot"]')?.textContent?.trim() ?? "";
+  return field(root, prop).querySelector('[part="error-slot"]')?.textContent.trim() ?? "";
 }
 
 /** Tick a checkbox the way a reader does. */
@@ -136,30 +137,49 @@ function shows(el: Element): string {
 
 /** The entry keys the left column is offering, in order. */
 function entryKeys(container: HTMLElement): string[] {
-  return [...container.querySelectorAll("[data-entry]")].map(
-    (el) => (el as HTMLElement).dataset.entry ?? "",
+  return [...container.querySelectorAll("[data-entry]")].flatMap((el) =>
+    el instanceof HTMLElement ? [el.dataset.entry ?? ""] : [],
   );
+}
+
+/** The left column's row for one entry key. */
+function entryRow(container: HTMLElement, name: string): HTMLElement {
+  const row = container.querySelector(`[data-entry="${name}"]`);
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`no entry row for "${name}"`);
+  }
+  return row;
 }
 
 /** Click one entry row and let the editor arrive. */
 async function selectEntry(container: HTMLElement, name: string): Promise<void> {
-  const row = container.querySelector(`[data-entry="${name}"]`);
-  if (!row) {
-    throw new Error(`no entry row for "${name}"`);
-  }
-  pointer(row, "click");
+  pointer(entryRow(container, name), "click");
   await settle();
 }
 
-function config(): Record<string, unknown> {
-  return projectState!.projectConfig as unknown as Record<string, unknown>;
+/** The project config the section is editing, as it stands in memory. */
+function config(): ProjectConfig {
+  const current = projectState?.projectConfig;
+  if (!current) {
+    throw new Error("this test runs without a project config");
+  }
+  return current;
+}
+
+/** The map layout's section value, `projectConfig.connections`, keyed by entry name. */
+function connections(): JsonObject {
+  const value = config().connections;
+  if (!isJsonObject(value)) {
+    throw new Error("projectConfig.connections is not an entry map");
+  }
+  return value;
 }
 
 /** Project.json writes captured by the mock platform. */
 function projectWrites(state: MockPlatformState): string[] {
-  return state.calls
-    .filter((c) => c[0] === "writeFile" && c[1] === "project.json")
-    .map((c) => c[2] as string);
+  return state.calls.flatMap((c) =>
+    c[0] === "writeFile" && c[1] === "project.json" && isString(c[2]) ? [c[2]] : [],
+  );
 }
 
 let platformState: MockPlatformState;
@@ -178,7 +198,7 @@ beforeEach(() => {
     projectConfig: {
       connections: { main: { provider: "d1" } },
       name: "site",
-    } as unknown,
+    },
   });
   container = document.createElement("div");
   document.body.append(container);
@@ -304,9 +324,7 @@ describe("map layout", () => {
   test("an entry row and the editor carry the region a shot names them by", async () => {
     renderContributedSection(container, mapContribution);
     await settle();
-    expect((container.querySelector('[data-entry="main"]') as HTMLElement).dataset.jxRegion).toBe(
-      "pane.primary/entry:main",
-    );
+    expect(entryRow(container, "main").dataset.jxRegion).toBe("pane.primary/entry:main");
     await selectEntry(container, "main");
     expect(part(container, "editor").dataset.jxRegion).toBe("pane.primary/editor");
   });
@@ -337,7 +355,7 @@ describe("map layout", () => {
     pointer(part(container, "new-create"), "click");
     await settle();
 
-    expect((config().connections as Record<string, unknown>)["my-db"]).toEqual({
+    expect(connections()["my-db"]).toEqual({
       label: "my-db connection",
       nested: { source: "./data/my-db" },
       provider: "d1",
@@ -358,13 +376,13 @@ describe("map layout", () => {
     await settle();
     key(control(nameField()), "Enter");
     await settle();
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["main"]);
+    expect(Object.keys(connections())).toEqual(["main"]);
 
     setAndFire(nameField(), "main", "input");
     await settle();
     key(control(nameField()), "Enter");
     await settle();
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["main"]);
+    expect(Object.keys(connections())).toEqual(["main"]);
 
     key(control(nameField()), "Escape");
     await settle();
@@ -376,10 +394,7 @@ describe("map layout", () => {
     await settle();
     key(control(nameField()), "Enter");
     await settle();
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual([
-      "main",
-      "backup-store",
-    ]);
+    expect(Object.keys(connections())).toEqual(["main", "backup-store"]);
   });
 
   test("the half-typed new-entry name survives a redraw that arrives mid-typing", async () => {
@@ -404,10 +419,7 @@ describe("map layout", () => {
 
     setAndFire(part(container, "entry-name"), "Primary DB");
     await settle();
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual([
-      "primary-db",
-      "beta",
-    ]);
+    expect(Object.keys(connections())).toEqual(["primary-db", "beta"]);
     expect(projectWrites(platformState)).toHaveLength(1);
     expect(entryKeys(container)).toEqual(["primary-db", "beta"]);
   });
@@ -427,7 +439,7 @@ describe("map layout", () => {
     await settle();
     expect(shows(part(container, "entry-name"))).toBe("alpha");
 
-    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["alpha", "beta"]);
+    expect(Object.keys(connections())).toEqual(["alpha", "beta"]);
     expect(projectWrites(platformState)).toHaveLength(0);
   });
 
@@ -682,7 +694,7 @@ describe("persistence failures", () => {
       writeFile: async () => {
         throw new Error("EROFS: read-only file system");
       },
-    } as never);
+    });
     renderContributedSection(container, formContribution);
     await settle();
     tick(part(field(container, "enabled"), "checkbox"), true);

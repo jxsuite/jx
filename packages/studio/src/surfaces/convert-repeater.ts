@@ -25,14 +25,13 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { selectValue } from "@jxsuite/ui/behaviors/textfield";
 import { whenReady } from "./dialog";
 import convertRepeaterDoc from "./convert-repeater.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("convert-repeater", convertRepeaterDoc as unknown as JxDocument);
+registerSurface("convert-repeater", convertRepeaterDoc);
 
 /**
  * The items-source row that is not a definition: pick it and the dialog asks for a name instead.
@@ -41,12 +40,6 @@ registerSurface("convert-repeater", convertRepeaterDoc as unknown as JxDocument)
  * something — but it is minted HERE, so there is one spelling of it rather than two.
  */
 export const CREATE_NEW_SOURCE = "__new__";
-
-/** One row of either picker. */
-export interface ConvertRepeaterOption {
-  value: string;
-  label: string;
-}
 
 /** What the flow knows. Every one of these may change while the dialog is up. */
 export interface ConvertRepeaterView {
@@ -97,9 +90,9 @@ export interface ConvertRepeaterSurfaceHandle {
 /** What the document discriminates on, and the rows it maps. Derived, never handed in. */
 interface ConvertRepeaterFlags {
   /** The source picker's rows: every array definition, then `Create new…`. */
-  sourceOptions: ConvertRepeaterOption[];
+  sourceOptions: SurfaceOption[];
   /** The filter and sort pickers' rows: `None`, then every function definition. */
-  functionOptions: ConvertRepeaterOption[];
+  functionOptions: SurfaceOption[];
   /** The chosen source is the sentinel, so the name field is drawn. */
   creating: boolean;
   /** There is at least one function to offer, so the two optional rows are drawn. */
@@ -108,8 +101,7 @@ interface ConvertRepeaterFlags {
   invalid: boolean;
 }
 
-interface ConvertRepeaterScope
-  extends Record<string, unknown>, ConvertRepeaterView, ConvertRepeaterFlags {
+interface ConvertRepeaterScope extends ConvertRepeaterView, ConvertRepeaterFlags {
   pickSource: (value: string) => void;
   setName: (value: string) => void;
   pickFilter: (value: string) => void;
@@ -163,8 +155,12 @@ export function openConvertRepeaterSurface(
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive({
+  const scope: ConvertRepeaterScope = reactive<ConvertRepeaterScope>({
     ...derive(options.view),
     closed: finish,
     confirm: () => {
@@ -191,7 +187,7 @@ export function openConvertRepeaterSurface(
       scope.newName = value;
       options.onName(value);
     },
-  }) as ConvertRepeaterScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
 
@@ -218,13 +214,15 @@ export function openConvertRepeaterSurface(
 
   const ready = mountSurface("convert-repeater", scope, slot).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `convert-repeater.json`'s root definition is a `jx-dialog` element, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -243,7 +241,7 @@ export function openConvertRepeaterSurface(
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

@@ -25,6 +25,7 @@ import {
   setCanvasAssetResolver,
   setSkipServerFunctions,
 } from "@jxsuite/runtime";
+import { isFunction } from "@jxsuite/schema/guards";
 import { assetContextFor, hostAssetDeclarations, resolveAssetRef } from "../canvas/asset-refs";
 import { assetVersionsSnapshot } from "../files/asset-versions";
 import { componentRegistry } from "../files/components";
@@ -74,12 +75,13 @@ export function createPreviewCache(limit: number = PREVIEW_CACHE_LIMIT): Preview
   const entries = new Map<string, HTMLElement>();
 
   function evict() {
-    // `size > limit` guarantees a first key, so the iterator result is never `done` here.
-    while (entries.size > limit) {
-      const oldest = entries.keys().next().value as string;
-      const stale = entries.get(oldest);
+    // Insertion order is LRU order, and deleting the entry being visited is safe mid-iteration.
+    for (const [oldest, stale] of entries) {
+      if (entries.size <= limit) {
+        break;
+      }
       entries.delete(oldest);
-      stale?.remove();
+      stale.remove();
     }
   }
 
@@ -127,8 +129,13 @@ export async function renderDocPreview(filePath: string): Promise<HTMLElement | 
     let document_: JxDocument;
     if (formatForPath(filePath)) {
       const parsed = await parseSourceForPath(filePath, content);
+      /* SAFETY: a format class's parser returns its file as a Jx element tree (the format contract),
+         and the split hands that same tree back as `document`; a tree renderNode cannot draw throws
+         into the catch below, which is "no preview". */
       document_ = parsed.document as JxDocument;
     } else {
+      /* SAFETY: a `.json` file in the Library is a project document by the project layout; malformed
+         JSON or a shape renderNode cannot draw throws into the catch below, which is "no preview". */
       document_ = JSON.parse(content) as JxDocument;
     }
     const scope = await buildScope(document_, {}, location.href);
@@ -166,9 +173,7 @@ export async function previewFor(
   let rendered: HTMLElement | null | undefined;
   try {
     const component = componentRegistry.find((c: ComponentEntry) => c.path === path);
-    rendered = component
-      ? ((await renderComponentPreview(component)) as HTMLElement | undefined)
-      : await renderDocPreview(path);
+    rendered = component ? await renderComponentPreview(component) : await renderDocPreview(path);
   } catch {
     return undefined;
   }
@@ -219,7 +224,7 @@ export interface PreviewObserver {
  * retained on that path, so there is nothing for the sweep to find.
  */
 export function createPreviewObserver(onVisible: (element: Element) => void): PreviewObserver {
-  if (typeof IntersectionObserver !== "function") {
+  if (!isFunction(globalThis.IntersectionObserver)) {
     return {
       destroy() {
         /* Nothing to disconnect. */

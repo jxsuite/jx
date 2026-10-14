@@ -10,15 +10,16 @@
  */
 
 import { updateWranglerConfig } from "@jxsuite/create/scaffold";
+import { isFunction } from "@jxsuite/schema/guards";
 import type { DeployConfig, ProjectConfig } from "@jxsuite/schema/types";
+import type { CfAccountSummary } from "../types";
 import { getPlatform } from "../platform";
 import { actIfRequired } from "../account/action-flow";
 import { updateSiteConfig } from "../site-context";
 
-export interface CfAccount {
-  id: string;
-  name: string;
-}
+/* A Cloudflare account the connected token can reach is the platform's `CfAccountSummary` row;
+   `CfAccount` stays this module's name for it. */
+export type { CfAccountSummary as CfAccount } from "../types";
 
 export interface PagesDeploymentInfo {
   id: string;
@@ -52,7 +53,7 @@ export function platformSupportsPublish(): boolean {
   // Publishing is not available yet. "Can this host publish?" has a truthful answer before the host
   // Exists, and it is no.
   try {
-    return typeof getPlatform().cfApi === "function";
+    return isFunction(getPlatform().cfApi);
   } catch {
     return false;
   }
@@ -69,6 +70,8 @@ async function cfApi<T>(path: string, init?: { method?: string; body?: unknown }
     throw new Error("This platform cannot reach the Cloudflare API");
   }
   try {
+    /* SAFETY: every adapter's cfApi resolves to the Cloudflare v4 envelope's `result`, unvalidated,
+       and each caller names the shape Cloudflare documents for the endpoint it calls. */
     return (await api(path, init)) as T;
   } catch (error) {
     void actIfRequired(error);
@@ -76,8 +79,8 @@ async function cfApi<T>(path: string, init?: { method?: string; body?: unknown }
   }
 }
 
-export async function listAccounts(): Promise<CfAccount[]> {
-  return cfApi<CfAccount[]>("/accounts");
+export async function listAccounts(): Promise<CfAccountSummary[]> {
+  return cfApi<CfAccountSummary[]>("/accounts");
 }
 
 interface PagesProjectWire {
@@ -104,16 +107,19 @@ export async function getPagesProject(
  * with an install hint.
  */
 export async function createPagesProject(opts: ConnectOptions): Promise<PagesProjectWire> {
+  const buildConfig: PagesBuildConfigWire = {
+    build_command: "bunx jx build",
+    destination_dir: "dist",
+  };
+  if (opts.rootDir) {
+    buildConfig.root_dir = opts.rootDir;
+  }
   return cfApi<PagesProjectWire>(`/accounts/${opts.accountId}/pages/projects`, {
     method: "POST",
     body: {
       name: opts.projectName,
       production_branch: opts.productionBranch,
-      build_config: {
-        build_command: "bunx jx build",
-        destination_dir: "dist",
-        ...(opts.rootDir ? { root_dir: opts.rootDir } : {}),
-      },
+      build_config: buildConfig,
       source: {
         type: "github",
         config: {
@@ -125,6 +131,13 @@ export async function createPagesProject(opts: ConnectOptions): Promise<PagesPro
       },
     },
   });
+}
+
+/** The `build_config` Cloudflare stores on a GitHub-connected Pages project. */
+interface PagesBuildConfigWire {
+  build_command: string;
+  destination_dir: string;
+  root_dir?: string;
 }
 
 interface DeploymentWire {
@@ -205,8 +218,10 @@ export async function connectDeploy(
     provider: "cloudflare-pages",
     accountId: opts.accountId,
     projectName: opts.projectName,
-    ...(project.subdomain ? { productionUrl: `https://${project.subdomain}` } : {}),
   };
+  if (project.subdomain) {
+    deploy.productionUrl = `https://${project.subdomain}`;
+  }
   await writeDeployConfig(config, deploy);
   return deploy;
 }

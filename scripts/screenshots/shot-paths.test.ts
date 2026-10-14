@@ -16,10 +16,9 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { validateManifest } from "./lib/types.ts";
+import { DEFAULT_MANIFEST, validateManifest } from "./lib/types.ts";
 
 const WORKFLOW = ".github/workflows/screenshots.yml";
-const MANIFEST = "scripts/screenshots/manifest.json";
 
 /** Covered by the `scripts/screenshots/**` entry, so never derived into an entry of their own. */
 const PIPELINE_PREFIX = "scripts/screenshots/";
@@ -40,8 +39,11 @@ interface Workflow {
   on: { pull_request: { paths: string[] } };
 }
 
+/* SAFETY: screenshots.yml is a committed workflow whose `on.pull_request.paths` list is the filter
+ * this suite exists to check; if that shape moved, reading or filtering `committed` throws, so the
+ * suite fails rather than passing on an empty list. */
 const workflow = Bun.YAML.parse(await Bun.file(WORKFLOW).text()) as Workflow;
-const manifest = validateManifest(await Bun.file(MANIFEST).json());
+const manifest = validateManifest(await Bun.file(DEFAULT_MANIFEST).json());
 const committed = workflow.on.pull_request.paths;
 
 describe("screenshots.yml paths", () => {

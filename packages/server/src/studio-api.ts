@@ -40,8 +40,9 @@ import {
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ClassJsonDef } from "./types.ts";
-import type { DesignOptions } from "@jxsuite/create/generate";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { DesignOptions, ProjectOptions } from "@jxsuite/create/generate";
+import type { JsonObject, JsonPrimitive, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { problem } from "./problem.ts";
 
 /** Normalise a path to forward slashes (Windows `path` module returns backslashes). */
@@ -55,13 +56,13 @@ const fwd = (p: string) => p.replaceAll("\\", "/");
 const expandTilde = (p: string) =>
   p.startsWith("~") ? join(process.env.HOME || process.env.USERPROFILE || "", p.slice(1)) : p;
 
+/** The `package.json` members these routes read. */
 interface PackageJson {
   name?: string;
-  workspaces?: unknown;
+  workspaces?: JsonValue;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   customElements?: string;
-  [key: string]: unknown;
 }
 
 /** A custom-element-manifest declaration (subset consumed here). */
@@ -69,17 +70,17 @@ interface CemDeclaration {
   customElement?: boolean;
   tagName?: string;
   description?: string;
-  cssProperties?: unknown[];
-  events?: unknown[];
-  slots?: unknown[];
-  members?: { kind?: string; privacy?: string; [key: string]: unknown }[];
+  cssProperties?: JsonValue[];
+  events?: JsonValue[];
+  slots?: JsonValue[];
+  /** Relayed verbatim once filtered on `kind` and `privacy`. */
+  members?: JsonObject[];
   attributes?: {
     name?: string;
-    default?: unknown;
+    default?: JsonValue;
     description?: string;
     type?: { text?: string };
   }[];
-  [key: string]: unknown;
 }
 
 interface CemModule {
@@ -89,15 +90,6 @@ interface CemModule {
 
 interface Cem {
   modules?: CemModule[];
-}
-
-/** A parsed Jx component document (subset consumed by component discovery). */
-interface ComponentDoc {
-  $id?: string;
-  tagName?: string;
-  $elements?: unknown[];
-  state?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 // ─── Extension registry (per project root, invalidated on project.json change) ──
@@ -117,6 +109,8 @@ async function getExtensionRegistry(projectRoot: string): Promise<ExtensionRegis
   let projectConfig: ProjectConfig | undefined;
   try {
     mtime = statSync(projectJsonPath).mtimeMs;
+    /* SAFETY: buildProjectExtensionRegistry reads only `projectConfig?.extensions` and validates
+       that list itself; every other ProjectConfig member is optional and unread on this path. */
     projectConfig = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
   } catch {
     projectConfig = undefined;
@@ -206,16 +200,6 @@ export function isOwnedProjectDir(dir: string): boolean {
   return existsSync(resolve(dir, "project.json"));
 }
 
-const statusMap: Record<string, string> = {
-  A: "A",
-  C: "C",
-  D: "D",
-  M: "M",
-  R: "R",
-  T: "T",
-  U: "U",
-};
-
 /**
  * Parse raw `git status --porcelain=v2 --branch` output into structured data.
  *
@@ -262,18 +246,19 @@ export function parseGitStatus(out: string) {
       } else {
         filePath = parts.slice(8).join(" ");
       }
+      // Porcelain v2 XY codes (A, C, D, M, R, T, U, ...) are reported verbatim; "." means unchanged.
       if (stagedCode !== ".") {
         files.push({
           path: filePath,
           staged: true,
-          status: statusMap[stagedCode] || stagedCode,
+          status: stagedCode,
         });
       }
       if (unstagedCode !== ".") {
         files.push({
           path: filePath,
           staged: false,
-          status: statusMap[unstagedCode] || unstagedCode,
+          status: unstagedCode,
         });
       }
     } else if (line.startsWith("? ")) {
@@ -282,6 +267,33 @@ export function parseGitStatus(out: string) {
   }
 
   return { ahead, behind, branch, files };
+}
+
+/** An imported plugin module, or its default export, read by export name. */
+interface PluginModule {
+  readonly [exportName: string]: PluginExport;
+}
+
+/** A function a plugin module exports: the plugin class, whose static `schema` the studio renders. */
+interface PluginClass extends PluginModule {
+  (...args: never[]): void;
+}
+
+/**
+ * What schema discovery can meet under an export name, spelled out by kind. Only a function is used
+ * (as the plugin class); an object is searched one level, as a default export; every other kind of
+ * value is a miss.
+ */
+type PluginExport = PluginClass | PluginModule | JsonPrimitive | bigint | symbol | undefined;
+
+/** Whether an export is a function, and so a candidate plugin class. */
+function isPluginClass(value: PluginExport): value is PluginClass {
+  return isFunction(value);
+}
+
+/** The body of `POST /__studio/git/push`; an absent or unparsable body means a plain push. */
+interface PushBody {
+  setUpstream?: boolean;
 }
 
 /** Host hooks for the routes that reach outside the server root (project creation). */
@@ -357,6 +369,27 @@ function byPathOrder<T extends { path: string }>(entries: T[]): T[] {
   return entries.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
+/**
+ * A git command that exited non-zero, carrying both output streams (git splits failures across
+ * them).
+ */
+class GitCommandError extends Error {
+  readonly stderr: string;
+  readonly stdout: string;
+
+  constructor(message: string, stderr: string, stdout: string) {
+    super(message);
+    this.name = "GitCommandError";
+    this.stderr = stderr;
+    this.stdout = stdout;
+  }
+}
+
+/** True when a failed filesystem call failed because the path does not exist (`ENOENT`). */
+function isNotFound(cause: unknown): boolean {
+  return isNonNullObject(cause) && "code" in cause && cause.code === "ENOENT";
+}
+
 export async function handleStudioApi(
   req: Request,
   url: URL,
@@ -375,6 +408,9 @@ export async function handleStudioApi(
   // Project metadata
   if (path === "/__studio/project" && req.method === "GET") {
     try {
+      /* SAFETY: only `name` and `workspaces` are read, each behind a `??` fallback; a file whose
+         JSON is not an object yields undefined members (or throws on null) and answers the same
+         fallback shape as the catch below. */
       const pkg = JSON.parse(await readFile(resolve(root, "package.json"), "utf8")) as PackageJson;
       return Response.json({
         name: pkg.name ?? basename(root),
@@ -419,9 +455,14 @@ export async function handleStudioApi(
       let isSiteProject = false;
       let projectConfig: ProjectConfig | null = null;
       try {
-        const raw = JSON.parse(await readFile(resolve(absDir, "project.json"), "utf8")) as unknown;
-        if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+        // SAFETY: JSON.parse without a reviver only ever produces JSON values.
+        const raw = JSON.parse(
+          await readFile(resolve(absDir, "project.json"), "utf8"),
+        ) as JsonValue;
+        if (isJsonObject(raw)) {
           isSiteProject = true;
+          /* SAFETY: `raw` is a JSON object and every ProjectConfig member is optional; the config
+             is only relayed to the client here, never interpreted. */
           projectConfig = raw as ProjectConfig;
         }
       } catch {}
@@ -462,6 +503,8 @@ export async function handleStudioApi(
       while (dir) {
         const candidate = resolve(dir, "project.json");
         if (existsSync(candidate)) {
+          /* SAFETY: the config is relayed to the client verbatim and not interpreted here, so its
+             member types are the client's to check; malformed JSON throws into the catch below. */
           const config = JSON.parse(readFileSync(candidate, "utf8")) as ProjectConfig;
           const relPath = fwd(dir);
           const fileRelPath = fwd(relative(dir, absFile));
@@ -595,9 +638,12 @@ export async function handleStudioApi(
         }
         const fp = resolve(root, match);
         try {
-          const raw = JSON.parse(await readFile(fp, "utf8")) as unknown;
-          if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+          // SAFETY: JSON.parse without a reviver only ever produces JSON values.
+          const raw = JSON.parse(await readFile(fp, "utf8")) as JsonValue;
+          if (isJsonObject(raw)) {
             const projectDir = fwd(dirname(fp));
+            /* SAFETY: `raw` is a JSON object and every ProjectConfig member is optional; the site
+               list only relays the config to the client. */
             sites.push({ config: raw as ProjectConfig, path: projectDir });
           }
         } catch {}
@@ -611,6 +657,12 @@ export async function handleStudioApi(
   // Create a new project
   if (path === "/__studio/create-project" && req.method === "POST") {
     try {
+      /* SAFETY: trust boundary. The only client is Studio's New Project modal, which sends these
+         members with these types. `name`, `directory` and `destination` are checked below before
+         any filesystem use, and `template` goes through isTemplateId. `description`, `url`,
+         `adapter`, `starter` and `design` are relayed to generateProject unchecked (a falsy
+         `adapter` is dropped so the static default applies), and it writes them into the scaffold
+         as given. */
       const body = (await req.json()) as {
         name?: string;
         description?: string;
@@ -661,16 +713,29 @@ export async function handleStudioApi(
       const destPath = resolve(destination.parent, directory);
 
       const { generateProject } = await import("@jxsuite/create/generate");
-      await generateProject(destPath, {
-        name,
-        ...(adapter !== undefined ? { adapter } : {}),
-        ...(description !== undefined ? { description } : {}),
-        ...(siteUrl !== undefined ? { url: siteUrl } : {}),
-        ...(starter !== undefined ? { starter } : {}),
-        ...(template !== undefined && isTemplateId(template) ? { template } : {}),
-        ...(design !== undefined ? { design } : {}),
-      });
+      const projectOptions: ProjectOptions = { name };
+      if (adapter) {
+        projectOptions.adapter = adapter;
+      }
+      if (description !== undefined) {
+        projectOptions.description = description;
+      }
+      if (siteUrl !== undefined) {
+        projectOptions.url = siteUrl;
+      }
+      if (starter !== undefined) {
+        projectOptions.starter = starter;
+      }
+      if (template !== undefined && isTemplateId(template)) {
+        projectOptions.template = template;
+      }
+      if (design !== undefined) {
+        projectOptions.design = design;
+      }
+      await generateProject(destPath, projectOptions);
 
+      /* SAFETY: generateProject just wrote this project.json from its own template, so it is a
+         project config; it is relayed to the client, not interpreted here. */
       const config = JSON.parse(
         await readFile(resolve(destPath, "project.json"), "utf8"),
       ) as ProjectConfig;
@@ -784,16 +849,20 @@ export async function handleStudioApi(
         }
         const fp = resolve(scanRoot, match);
         try {
-          let content: ComponentDoc;
+          let content: JsonValue;
           if (match.endsWith(".json")) {
-            content = JSON.parse(await readFile(fp, "utf8")) as ComponentDoc;
+            // SAFETY: JSON.parse without a reviver only ever produces JSON values.
+            content = JSON.parse(await readFile(fp, "utf8")) as JsonValue;
           } else {
             const entry = registry.byExtension(extname(match), "parse");
             if (!entry) {
               continue;
             }
             const source = await readFile(fp, "utf8");
-            content = (await entry.call("parse", source)) as ComponentDoc;
+            const parsed = await entry.call("parse", source);
+            /* Only a document object can declare a component, and componentMetaFrom answers null
+               for anything else, so loaded entries reach it as null rather than as a document. */
+            content = isJsonObject(parsed) ? parsed : null;
           }
           /* The metadata rules live in @jxsuite/schema/component-meta because THREE backends need
              the same answer — this one, the desktop session, and now the cloud adapter, which can
@@ -811,6 +880,9 @@ export async function handleStudioApi(
       try {
         const projectPkgPath = resolve(scanRoot, "package.json");
         if (existsSync(projectPkgPath)) {
+          /* SAFETY: only the keys of the dependency maps are used, each as a package name that must
+             resolve to node_modules/<name>/package.json before anything else is read, so a name
+             that does not is skipped; a throw skips this whole scan. */
           const pkg = JSON.parse(await readFile(projectPkgPath, "utf8")) as PackageJson;
           const deps = { ...pkg.dependencies, ...pkg.devDependencies };
           for (const name of Object.keys(deps)) {
@@ -836,6 +908,8 @@ export async function handleStudioApi(
               if (!actualPath) {
                 continue;
               }
+              /* SAFETY: `customElements` is the one member read; npm defines it as the manifest
+                 path, and a non-string value makes resolve() throw into this package's catch. */
               const depPkg = JSON.parse(await readFile(actualPath, "utf8")) as PackageJson;
               if (!depPkg.customElements) {
                 continue;
@@ -844,6 +918,9 @@ export async function handleStudioApi(
               if (!existsSync(cemPath)) {
                 continue;
               }
+              /* SAFETY: the package names this file as its custom-elements manifest, and every
+                 member read below has a fallback; a manifest of another shape either throws into
+                 this package's catch or contributes no declarations. */
               const cem = JSON.parse(await readFile(cemPath, "utf8")) as Cem;
               for (const mod of cem.modules || []) {
                 for (const decl of mod.declarations || []) {
@@ -912,12 +989,9 @@ export async function handleStudioApi(
       // First would mean every asset 404s for as long as the build takes.
       const result = await buildSite(dir, { clean: false, verbose: false });
       const preview = startSitePreview(dir);
-      return Response.json({
-        errors: result.errors,
-        files: result.files,
-        routes: result.routes,
-        ...(preview ? { url: preview.origin } : {}),
-      });
+      const built = { errors: result.errors, files: result.files, routes: result.routes };
+      // `url` follows the build fields, and only when a preview origin exists.
+      return Response.json(preview ? { ...built, url: preview.origin } : built);
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -943,6 +1017,8 @@ export async function handleStudioApi(
     }
     let body: { route?: string };
     try {
+      /* SAFETY: `route` is the only member read, and only when truthy; it is relayed verbatim in
+         the preview tab's `navigate` event, so nothing here depends on its runtime type. */
       body = (await req.json()) as { route?: string };
     } catch {
       return problem("invalidRequest", "Invalid JSON body");
@@ -976,19 +1052,21 @@ export async function handleStudioApi(
     const dir = activeProjectRoot ?? root;
     let body: { path?: string; contents?: string };
     try {
+      /* SAFETY: both members are re-checked with isString below before either reaches the
+         overlay store. */
       body = (await req.json()) as { path?: string; contents?: string };
     } catch {
       return problem("invalidRequest", "Invalid JSON body");
     }
     if (req.method === "POST") {
-      if (typeof body.path !== "string" || typeof body.contents !== "string") {
+      if (!isString(body.path) || !isString(body.contents)) {
         return problem("invalidRequest", "Missing path or contents");
       }
       setLivePreviewOverlay(dir, body.path, body.contents);
       return new Response(null, { status: 204 });
     }
     if (req.method === "DELETE") {
-      clearLivePreviewOverlay(dir, typeof body.path === "string" ? body.path : undefined);
+      clearLivePreviewOverlay(dir, isString(body.path) ? body.path : undefined);
       return new Response(null, { status: 204 });
     }
   }
@@ -1004,6 +1082,8 @@ export async function handleStudioApi(
       if (!existsSync(pkgPath)) {
         return Response.json([]);
       }
+      /* SAFETY: npm and bun write `dependencies` / `devDependencies` as name-to-range string maps,
+         which is all this route reads; a package.json that is not JSON throws into the catch. */
       const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as PackageJson;
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
       const packages: {
@@ -1025,6 +1105,8 @@ export async function handleStudioApi(
           continue;
         }
         try {
+          /* SAFETY: `customElements` is the one member read, and it is relayed verbatim or tested
+             for truthiness; malformed JSON skips the package in the catch. */
           const depPkg = JSON.parse(await readFile(actualPath, "utf8")) as PackageJson;
           packages.push({
             customElementsPath: depPkg.customElements || null,
@@ -1060,6 +1142,8 @@ export async function handleStudioApi(
       if (!actualPath) {
         return Response.json({ cem: null });
       }
+      /* SAFETY: `customElements` is the one member read; npm defines it as the manifest path, and
+         a non-string value makes resolve() throw into the catch below. */
       const depPkg = JSON.parse(await readFile(actualPath, "utf8")) as PackageJson;
       if (!depPkg.customElements) {
         return Response.json({ cem: null });
@@ -1068,7 +1152,9 @@ export async function handleStudioApi(
       if (!existsSync(cemPath)) {
         return Response.json({ cem: null });
       }
-      const cem = JSON.parse(await readFile(cemPath, "utf8")) as Cem;
+      /* SAFETY: JSON.parse without a reviver only ever produces JSON values, and the manifest is
+         relayed verbatim, so it needs decoding no further than that. */
+      const cem = JSON.parse(await readFile(cemPath, "utf8")) as JsonValue;
       return Response.json({ cem });
     } catch (error) {
       return problem("internalError", errorMessage(error));
@@ -1078,9 +1164,12 @@ export async function handleStudioApi(
   // Add an npm package
   if (path === "/__studio/packages/add" && req.method === "POST") {
     try {
+      /* SAFETY: `name` reaches argv, so it is re-checked with isString below; `dir` is only
+         path-resolved and `dev` only tested for truthiness, and a wrongly typed `dir` throws in
+         isAbsolute inside this try and answers 500. */
       const body = (await req.json()) as { name?: string; dir?: string; dev?: boolean };
       const { name } = body;
-      if (!name || typeof name !== "string") {
+      if (!name || !isString(name)) {
         return problem("invalidRequest", "Missing name");
       }
       const dir = body.dir || activeProjectRoot;
@@ -1108,9 +1197,11 @@ export async function handleStudioApi(
   // Remove an npm package
   if (path === "/__studio/packages/remove" && req.method === "POST") {
     try {
+      /* SAFETY: `name` reaches argv, so it is re-checked with isString below; a wrongly typed
+         `dir` throws in isAbsolute inside this try and answers 500. */
       const body = (await req.json()) as { name?: string; dir?: string };
       const { name } = body;
-      if (!name || typeof name !== "string") {
+      if (!name || !isString(name)) {
         return problem("invalidRequest", "Missing name");
       }
       const dir = body.dir || activeProjectRoot;
@@ -1134,6 +1225,8 @@ export async function handleStudioApi(
   // Install all dependencies (bun install)
   if (path === "/__studio/packages/install" && req.method === "POST") {
     try {
+      /* SAFETY: `dir` is the only member read and is only path-resolved; a wrongly typed `dir`
+         throws in isAbsolute inside this try and answers 500. */
       const body = (await req.json().catch(() => ({}))) as { dir?: string };
       const dir = body.dir || activeProjectRoot || root;
       const scanRoot = isAbsolute(dir) ? dir : resolve(root, dir);
@@ -1164,6 +1257,9 @@ export async function handleStudioApi(
   // Set version ranges for one or more packages, then reinstall
   if (path === "/__studio/packages/set-versions" && req.method === "POST") {
     try {
+      /* SAFETY: `updates` is checked to be an array below and each entry is Studio's own
+         `{ name, version, dev }` triple from the versions panel; a wrongly typed `dir` throws in
+         isAbsolute inside this try and answers 500. */
       const body = (await req.json()) as {
         dir?: string;
         updates?: { name: string; version: string; dev?: boolean }[];
@@ -1200,7 +1296,7 @@ export async function handleStudioApi(
         { headers: { "Cache-Control": "public, max-age=5" } },
       );
     } catch (error) {
-      return (error as NodeJS.ErrnoException).code === "ENOENT"
+      return isNotFound(error)
         ? problem("notFound", "Not found")
         : problem("internalError", errorMessage(error));
     }
@@ -1292,7 +1388,7 @@ export async function handleStudioApi(
       await unlink(abs);
       return Response.json({ ok: true, path: fwd(relative(root, abs)) });
     } catch (error) {
-      return (error as NodeJS.ErrnoException).code === "ENOENT"
+      return isNotFound(error)
         ? problem("notFound", "Not found")
         : problem("internalError", errorMessage(error));
     }
@@ -1302,6 +1398,8 @@ export async function handleStudioApi(
   if (path === "/__studio/file/rename" && req.method === "POST") {
     let body: { from?: string; to?: string };
     try {
+      /* SAFETY: both members are truthiness-checked below and then path-resolved, where a
+         non-string throws before any filesystem call is made. */
       body = (await req.json()) as { from?: string; to?: string };
     } catch {
       return problem("invalidRequest", "Invalid JSON");
@@ -1386,6 +1484,8 @@ export async function handleStudioApi(
   if (path === "/__studio/locate" && req.method === "POST") {
     let body: { name?: string };
     try {
+      /* SAFETY: `name` is truthiness-checked below and then interpolated into a glob pattern, so
+         a non-string value is stringified the same way a template literal always would. */
       body = (await req.json()) as { name?: string };
     } catch {
       return problem("invalidRequest", "Invalid JSON");
@@ -1405,13 +1505,13 @@ export async function handleStudioApi(
         }
         matches.push(fwd(match));
       }
-      if (matches.length === 0) {
+      const [first] = matches;
+      if (first === undefined) {
         return Response.json({ path: null });
       }
-      return Response.json({
-        path: matches[0],
-        ...(matches.length > 1 ? { alternatives: matches } : {}),
-      });
+      return Response.json(
+        matches.length > 1 ? { path: first, alternatives: matches } : { path: first },
+      );
     } catch (error) {
       return problem("internalError", errorMessage(error));
     }
@@ -1433,8 +1533,11 @@ export async function handleStudioApi(
     if (!cfToken) {
       return problem("unauthorized", "Missing X-CF-Token header");
     }
-    let payload: { path?: string; method?: string; body?: unknown };
+    let payload: { path?: string; method?: string; body?: JsonValue };
     try {
+      /* SAFETY: `path` is matched against CF_PROXY_ALLOWLIST before use, `method` goes to fetch,
+         which converts and validates it per the Fetch standard, and `body` is re-serialized with
+         JSON.stringify, so it only ever needs to be the JSON value it was parsed as. */
       payload = (await req.json()) as typeof payload;
     } catch {
       return problem("invalidRequest", "Invalid JSON body");
@@ -1444,14 +1547,16 @@ export async function handleStudioApi(
       return problem("forbidden", `Path not allowed: ${apiPath}`);
     }
     const method = payload.method ?? "GET";
-    const upstream = await fetch(`https://api.cloudflare.com/client/v4${apiPath}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${cfToken}`,
-        ...(payload.body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(payload.body === undefined ? {} : { body: JSON.stringify(payload.body) }),
-    });
+    const authorization = `Bearer ${cfToken}`;
+    const init: RequestInit =
+      payload.body === undefined
+        ? { method, headers: { Authorization: authorization } }
+        : {
+            method,
+            headers: { Authorization: authorization, "Content-Type": "application/json" },
+            body: JSON.stringify(payload.body),
+          };
+    const upstream = await fetch(`https://api.cloudflare.com/client/v4${apiPath}`, init);
     return new Response(upstream.body, {
       headers: { "Content-Type": upstream.headers.get("Content-Type") ?? "application/json" },
       status: upstream.status,
@@ -1462,12 +1567,15 @@ export async function handleStudioApi(
   // Dispatches parse/serialize through the project's format registry by import name.
   if (path === "/__studio/format" && req.method === "POST") {
     try {
+      /* SAFETY: `format` and `action` are checked below (`action` against the two capability
+         names), and `source`, `doc` and `options` are handed to the format's own parse/serialize,
+         which owns their validation; any throw answers 500 from this try. */
       const body = (await req.json()) as {
         format?: string;
         action?: string;
         source?: string;
-        doc?: Record<string, unknown>;
-        options?: Record<string, unknown>;
+        doc?: JsonObject;
+        options?: JsonObject;
         dir?: string;
       };
       const { format, action, source, doc, options } = body;
@@ -1608,6 +1716,8 @@ export async function handleStudioApi(
     if (moduleAbsPath.endsWith(".class.json")) {
       try {
         const content = readFileSync(moduleAbsPath, "utf8");
+        /* SAFETY: every ClassJsonDef member is optional and extractStudioSchema guards or relays
+           each one it reads; a non-object file throws into the catch below or yields no members. */
         const classDef = JSON.parse(content) as ClassJsonDef;
         return Response.json({
           schema: extractStudioSchema(classDef, moduleAbsPath),
@@ -1626,6 +1736,8 @@ export async function handleStudioApi(
     if (existsSync(classJsonPath)) {
       try {
         const content = readFileSync(classJsonPath, "utf8");
+        /* SAFETY: every ClassJsonDef member is optional and extractStudioSchema guards or relays
+           each one it reads; a malformed file throws and falls through to the module import. */
         const classDef = JSON.parse(content) as ClassJsonDef;
         return Response.json({
           schema: extractStudioSchema(classDef, classJsonPath),
@@ -1637,18 +1749,20 @@ export async function handleStudioApi(
 
     // Fallback: import JS module (backwards compat for classes without .class.json)
     try {
-      const mod = (await import(moduleAbsPath)) as {
-        default?: Record<string, unknown>;
-        [key: string]: unknown;
-      };
-      const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
-      if (typeof ExportedClass !== "function") {
+      /* SAFETY: import() only ever resolves to a module namespace object, and PluginExport names
+         every kind of value (primitive, function, object) a string-keyed member can hold. */
+      const mod = (await import(moduleAbsPath)) as PluginModule;
+      const fallback = mod.default;
+      const ExportedClass =
+        mod[exportName] ??
+        (isNonNullObject(fallback) || isPluginClass(fallback) ? fallback[exportName] : undefined);
+      if (!isPluginClass(ExportedClass)) {
         return Response.json({
           error: `Export "${exportName}" not found`,
           schema: null,
         });
       }
-      return Response.json({ schema: (ExportedClass as { schema?: unknown }).schema ?? null });
+      return Response.json({ schema: ExportedClass.schema ?? null });
     } catch (error) {
       return Response.json({
         error: errorMessage(error),
@@ -1680,10 +1794,11 @@ export async function handleStudioApi(
          * one failure this API publishes a shape for into a contentless message, and the 409 the
          * route table promises could never be produced.
          */
-        throw Object.assign(new Error(stderr || stdout || `git exited with ${exitCode}`), {
+        throw new GitCommandError(
+          stderr || stdout || `git exited with ${exitCode}`,
           stderr,
           stdout,
-        });
+        );
       }
       return stdout;
     };
@@ -1727,6 +1842,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "add-remote" && req.method === "POST") {
+        /* SAFETY: both members are truthiness-checked below and reach git as their own argv
+           entries with no shell; Bun.spawn stringifies a non-string entry, so a wrong type can only
+           become a literal remote name or URL, which git validates and refuses or records. */
         const { name, url: remoteUrl } = (await req.json()) as {
           name?: string;
           url?: string;
@@ -1770,6 +1888,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "stage" && req.method === "POST") {
+        /* SAFETY: `files` is checked to be a non-empty array below; each entry is screened with
+           `.includes("..")` (an entry without that method throws inside this try) and reaches git
+           after `--`, where it can only be read as a pathspec. */
         const { files } = (await req.json()) as { files?: string[] };
         if (!Array.isArray(files) || files.length === 0) {
           return problem("invalidRequest", "Missing files");
@@ -1784,6 +1905,8 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "unstage" && req.method === "POST") {
+        /* SAFETY: `files` is checked to be a non-empty array below, and its entries reach git
+           after `--`, so they can only ever be read as pathspecs. */
         const { files } = (await req.json()) as { files?: string[] };
         if (!Array.isArray(files) || files.length === 0) {
           return problem("invalidRequest", "Missing files");
@@ -1793,8 +1916,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "commit" && req.method === "POST") {
+        // SAFETY: `message` is re-checked with isString below before it reaches argv.
         const { message } = (await req.json()) as { message?: string };
-        if (!message || typeof message !== "string") {
+        if (!message || !isString(message)) {
           return problem("invalidRequest", "Missing message");
         }
         const statusOut = await runGit(["status", "--porcelain"]);
@@ -1808,9 +1932,10 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "push" && req.method === "POST") {
-        let body: { setUpstream?: boolean } = {};
+        let body: PushBody = {};
         try {
-          body = (await req.json()) as { setUpstream?: boolean };
+          // SAFETY: `setUpstream` is the only member read, and only for truthiness.
+          body = (await req.json()) as PushBody;
         } catch {}
         const { setUpstream } = body;
         if (setUpstream) {
@@ -1835,8 +1960,10 @@ export async function handleStudioApi(
         try {
           await runGit(["pull"]);
         } catch (error) {
-          const output = error as { stdout?: string; stderr?: string };
-          const conflicts = conflictingPaths(`${output.stdout ?? ""}\n${output.stderr ?? ""}`);
+          const conflicts =
+            error instanceof GitCommandError
+              ? conflictingPaths(`${error.stdout}\n${error.stderr}`)
+              : [];
           if (conflicts.length === 0) {
             throw error;
           }
@@ -1855,8 +1982,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "checkout" && req.method === "POST") {
+        // SAFETY: `branch` is re-checked with isString below before it reaches argv.
         const { branch } = (await req.json()) as { branch?: string };
-        if (!branch || typeof branch !== "string") {
+        if (!branch || !isString(branch)) {
           return problem("invalidRequest", "Missing branch");
         }
         await runGit(["checkout", branch]);
@@ -1864,8 +1992,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "create-branch" && req.method === "POST") {
+        // SAFETY: `name` is re-checked with isString below before it reaches argv.
         const { name } = (await req.json()) as { name?: string };
-        if (!name || typeof name !== "string") {
+        if (!name || !isString(name)) {
           return problem("invalidRequest", "Missing name");
         }
         await runGit(["checkout", "-b", name]);
@@ -1904,6 +2033,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "discard" && req.method === "POST") {
+        /* SAFETY: `files` is checked to be a non-empty array below; each entry is screened with
+           `.includes("..")` (an entry without that method throws inside this try) and reaches git
+           after `--`, where it can only be read as a pathspec. */
         const { files } = (await req.json()) as { files?: string[] };
         if (!Array.isArray(files) || files.length === 0) {
           return problem("invalidRequest", "Missing files");
@@ -1918,8 +2050,9 @@ export async function handleStudioApi(
       }
 
       if (gitCmd === "clone" && req.method === "POST") {
+        // SAFETY: `url` is re-checked with isString below before it reaches argv.
         const { url: repoUrl } = (await req.json()) as { url?: string };
-        if (!repoUrl || typeof repoUrl !== "string") {
+        if (!repoUrl || !isString(repoUrl)) {
           return problem("invalidRequest", "Missing url");
         }
         const repoName = basename(repoUrl.replace(/\.git$/, ""));
@@ -1944,6 +2077,17 @@ export async function handleStudioApi(
   return null;
 }
 
+/** The flat form-rendering schema the studio's renderSchemaFields() consumes. */
+interface StudioSchema {
+  description: string | undefined;
+  properties: Record<string, JsonObject>;
+  required: string[];
+  returns?: JsonValue;
+  format?: JsonValue;
+  $studio?: JsonValue;
+  capabilities?: Record<string, { identifier: string; timing: string[] }>;
+}
+
 /**
  * Extract a studio-friendly schema from a .class.json definition. Transforms $defs.parameters and
  * $defs.fields into the flat { description, properties, required } shape that renderSchemaFields()
@@ -1951,19 +2095,18 @@ export async function handleStudioApi(
  *
  * @param {ClassJsonDef} classDef
  * @param {string} classJsonPath
- * @returns {{
- *   description: string | undefined;
- *   properties: Record<string, Record<string, unknown>>;
- *   required: string[];
- * }}
  */
-function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string) {
+function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string): StudioSchema {
   // If extends.$ref points to a parent, recursively merge
   let parentSchema = null;
-  if (classDef.extends && typeof classDef.extends === "object" && classDef.extends.$ref) {
+  // `?.$ref` is undefined for a non-object `extends`, so a primitive never reaches resolve().
+  if (classDef.extends?.$ref) {
     try {
       const parentPath = resolve(dirname(classJsonPath), classDef.extends.$ref);
       const parentContent = readFileSync(parentPath, "utf8");
+      /* SAFETY: every ClassJsonDef member is optional and each one read here is either guarded
+         (isNonNullObject on `type`, truthiness elsewhere) or relayed verbatim; a non-object file
+         throws into the catch below or yields no members. */
       const parentDef = JSON.parse(parentContent) as ClassJsonDef;
       parentSchema = extractStudioSchema(parentDef, parentPath);
     } catch {
@@ -1973,7 +2116,7 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string) {
 
   const params = classDef.$defs?.parameters ?? {};
   const fields = classDef.$defs?.fields ?? {};
-  const properties: Record<string, Record<string, unknown>> = {};
+  const properties: Record<string, JsonObject> = {};
   const required: string[] = [];
 
   // Start with parent properties (child overrides)
@@ -1987,8 +2130,8 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string) {
   // Build properties from parameters (constructor config surface)
   for (const [key, param] of Object.entries(params)) {
     const id = param.identifier ?? key;
-    const prop: Record<string, unknown> = {};
-    if (param.type && typeof param.type === "object") {
+    const prop: JsonObject = {};
+    if (isNonNullObject(param.type)) {
       Object.assign(prop, param.type);
     }
     if (param.description) {
@@ -2012,8 +2155,8 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string) {
       continue;
     }
     const id = field.identifier ?? key;
-    const prop: Record<string, unknown> = {};
-    if (field.type && typeof field.type === "object") {
+    const prop: JsonObject = {};
+    if (isNonNullObject(field.type)) {
       Object.assign(prop, field.type);
     }
     if (field.description) {
@@ -2045,13 +2188,9 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string) {
 
   // Surface format-extension metadata: the format block, studio hints, and a
   // Capability summary ({ parse: { timing }, serialize: { timing }, ... }).
-  const def = classDef as Record<string, unknown>;
   const capabilityRoles = new Set(["parse", "serialize", "discover", "load"]);
   const capabilities: Record<string, { identifier: string; timing: string[] }> = {};
-  const methods = (classDef.$defs?.methods ?? {}) as Record<
-    string,
-    { role?: string; identifier?: string; timing?: string[] }
-  >;
+  const methods = classDef.$defs?.methods ?? {};
   for (const [key, method] of Object.entries(methods)) {
     if (method.role && capabilityRoles.has(method.role)) {
       capabilities[method.role] = {
@@ -2061,13 +2200,23 @@ function extractStudioSchema(classDef: ClassJsonDef, classJsonPath: string) {
     }
   }
 
-  return {
+  // Optional members are added in this order, which is the key order the studio receives.
+  const schema: StudioSchema = {
     description: classDef.description ?? classDef.title,
     properties,
     required: [...requiredSet],
-    ...(resolveMethod?.returns ? { returns: resolveMethod.returns } : {}),
-    ...(def.format ? { format: def.format } : {}),
-    ...(def.$studio ? { $studio: def.$studio } : {}),
-    ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
   };
+  if (resolveMethod?.returns) {
+    schema.returns = resolveMethod.returns;
+  }
+  if (classDef.format) {
+    schema.format = classDef.format;
+  }
+  if (classDef.$studio) {
+    schema.$studio = classDef.$studio;
+  }
+  if (Object.keys(capabilities).length > 0) {
+    schema.capabilities = capabilities;
+  }
+  return schema;
 }

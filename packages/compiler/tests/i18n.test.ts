@@ -12,8 +12,10 @@ import {
 import { resolveI18n as schemaResolveI18n } from "@jxsuite/schema/locale";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
-const project = (i18n?: ProjectConfig["i18n"]): ProjectConfig =>
-  ({ name: "Test", ...(i18n === undefined ? {} : { i18n }) }) as ProjectConfig;
+const project = (i18n: NonNullable<ProjectConfig["i18n"]>): ProjectConfig => ({
+  i18n,
+  name: "Test",
+});
 
 describe("resolveI18n", () => {
   /*

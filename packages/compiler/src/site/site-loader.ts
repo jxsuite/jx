@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import type { ImageConfig, ProjectConfig } from "@jxsuite/schema/types";
+import type { ImageConfig, JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
 import { errorMessage, parseProjectConfig } from "@jxsuite/schema/parse";
 import { resolve } from "node:path";
 
@@ -24,9 +24,10 @@ export interface ResolvedProjectConfig extends ProjectConfig {
     adapter?: string;
     outDir: string;
     format: string;
-    trailingSlash: string;
+    /** `null` when project.json writes it so explicitly: the merge below keeps an author's null. */
+    trailingSlash: string | null;
     provider?: string | null;
-    [key: string]: unknown;
+    [key: string]: JxDocumentValue | undefined;
   };
 }
 
@@ -92,6 +93,8 @@ export function loadProjectConfig(projectRoot: string) {
     build: { ...DEFAULTS.build, ...raw.build },
     defaults: { ...DEFAULTS.defaults, ...raw.defaults },
     images: { ...DEFAULTS.images, ...raw.images },
+    // An explicit JSON `null` url means no site URL, which every consumer reads as "".
+    url: raw.url ?? DEFAULTS.url,
   };
 
   // Preserve arrays and objects that shouldn't be shallow-merged

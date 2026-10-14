@@ -40,6 +40,8 @@
 import { Glob } from "bun";
 import { readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { toPosixPath } from "./lib/posix-path";
 import { PUBLISHED_EXTRAS, STUDIO_ASSETS, STUDIO_STYLESHEETS } from "../src/hosting/layout";
 
@@ -103,27 +105,34 @@ export function filesCovers(patterns: readonly string[], path: string): boolean 
  * and `src` or `styles` listed whole are the source, not a build.
  */
 export function publishedMaps(patterns: readonly string[]): Problem[] {
-  return patterns
-    .filter((pattern) => {
-      const p = pattern.replace(/^\.?\//, "").replace(/\/$/, "");
-      if (p.endsWith(".map")) {
-        return true;
-      }
-      if (p !== "dist" && !p.startsWith("dist/")) {
-        return false;
-      }
-      const glob = p.includes("*");
-      const last = p.slice(p.lastIndexOf("/") + 1);
-      if (!glob && last.includes(".")) {
-        return false;
-      }
-      const dir = glob ? p.slice(0, p.lastIndexOf("/")) : p;
-      return filesCovers([pattern], `${dir}/probe.js.map`);
-    })
-    .map((pattern) => ({
-      detail: `"${pattern}" publishes the source maps beside it — list the .js files instead, as dist/chunks/*.js does, because a files entry cannot subtract`,
-      rule: "maps",
-    }));
+  return patterns.flatMap((pattern) =>
+    publishesMaps(pattern)
+      ? [
+          {
+            detail: `"${pattern}" publishes the source maps beside it — list the .js files instead, as dist/chunks/*.js does, because a files entry cannot subtract`,
+            rule: "maps",
+          },
+        ]
+      : [],
+  );
+}
+
+/** Whether one `files` entry would publish a source map from `dist/`; see {@link publishedMaps}. */
+function publishesMaps(pattern: string): boolean {
+  const p = pattern.replace(/^\.?\//, "").replace(/\/$/, "");
+  if (p.endsWith(".map")) {
+    return true;
+  }
+  if (p !== "dist" && !p.startsWith("dist/")) {
+    return false;
+  }
+  const glob = p.includes("*");
+  const last = p.slice(p.lastIndexOf("/") + 1);
+  if (!glob && last.includes(".")) {
+    return false;
+  }
+  const dir = glob ? p.slice(0, p.lastIndexOf("/")) : p;
+  return filesCovers([pattern], `${dir}/probe.js.map`);
 }
 
 /** Source with comments removed, so prose that quotes an import is not read as one. */
@@ -135,8 +144,8 @@ function code(source: string): string {
 export function escapingImports(sources: Record<string, string>): string[] {
   const out = new Set<string>();
   for (const [file, source] of Object.entries(sources)) {
-    for (const m of code(source).matchAll(/from\s+"(\.\.[^"]*)"|import\s+"(\.\.[^"]*)"/g)) {
-      const spec = m[1] ?? m[2]!;
+    for (const m of code(source).matchAll(/(?:from|import)\s+"(\.\.[^"]*)"/g)) {
+      const spec = m[1]!;
       const resolved = posix.normalize(posix.join(posix.dirname(`src/${file}`), spec));
       if (!resolved.startsWith("src/") && !resolved.startsWith("..")) {
         out.add(resolved);
@@ -148,18 +157,18 @@ export function escapingImports(sources: Record<string, string>): string[] {
 
 export function publishGaps(patterns: readonly string[], escaping: readonly string[]): Problem[] {
   const needed = [...STUDIO_ASSETS.map((a) => a.path), ...PUBLISHED_EXTRAS, ...escaping];
-  return needed
-    .filter((path) => !filesCovers(patterns, path))
-    .map((path) => ({
-      detail: `${path} is needed but no "files" pattern covers it`,
-      rule: "files",
-    }));
+  return needed.flatMap((path) =>
+    filesCovers(patterns, path)
+      ? []
+      : [{ detail: `${path} is needed but no "files" pattern covers it`, rule: "files" }],
+  );
 }
 
-export function backendDependencies(pkg: Record<string, unknown>): Problem[] {
+export function backendDependencies(pkg: JsonObject): Problem[] {
   const problems: Problem[] = [];
   for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
-    const deps = (pkg[field] ?? {}) as Record<string, string>;
+    const value = pkg[field];
+    const deps = isJsonObject(value) ? value : {};
     for (const name of BACKEND_PACKAGES) {
       if (name in deps) {
         problems.push({
@@ -204,7 +213,12 @@ export function nodeImports(sources: Record<string, string>): Problem[] {
   return problems;
 }
 
-function readSources(dir: string): Record<string, string> {
+/** Whether a package.json member is a list of strings, the only shape `files` takes. */
+function isStringList(value: JsonValue | undefined): value is string[] {
+  return Array.isArray(value) && value.every((entry) => isString(entry));
+}
+
+function readSources(dir: string) {
   const out: Record<string, string> = {};
   for (const rawRel of new Glob("**/*.ts").scanSync(dir)) {
     const rel = toPosixPath(rawRel);
@@ -214,16 +228,15 @@ function readSources(dir: string): Record<string, string> {
 }
 
 export function analyze(root = PKG_DIR): Problem[] {
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Record<
-    string,
-    unknown
-  >;
+  // SAFETY: a package.json is a JSON object: npm, bun and every workspace tool refuse anything else.
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as JsonObject;
+  const files = isStringList(pkg.files) ? pkg.files : [];
   const sources = readSources(join(root, "src"));
   const sheets = [...new Glob("styles/*.css").scanSync(root)].map((f) => toPosixPath(f)).toSorted();
   return [
     ...stylesheetDrift(sheets),
-    ...publishGaps((pkg.files ?? []) as string[], escapingImports(sources)),
-    ...publishedMaps((pkg.files ?? []) as string[]),
+    ...publishGaps(files, escapingImports(sources)),
+    ...publishedMaps(files),
     ...backendDependencies(pkg),
     ...backendImports(sources),
     ...nodeImports(sources),

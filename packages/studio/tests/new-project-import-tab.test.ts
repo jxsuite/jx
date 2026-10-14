@@ -31,7 +31,12 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { resetModelCache } from "../src/services/ai-models";
 import type { ImportTabCtx } from "../src/new-project/import-tab";
-import type { ImportProgressEvent } from "../src/types";
+import type {
+  AiModelsResponse,
+  ImportProgressEvent,
+  ImportSiteOptions,
+  StudioPlatform,
+} from "../src/types";
 
 const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { breakpointPolicyFromForm, handoffImport, importBriefFor, importButtonLabel } =
@@ -42,29 +47,49 @@ const { initLayers } = await import("../src/ui/layers");
 mountOverlayLayers(document.body);
 initLayers();
 
-/** The native control the kit draws inside one of the wizard's fields. */
-function control(part: string): HTMLInputElement {
-  return npPart(part)?.querySelector('[part="input"], [part="control"]') as HTMLInputElement;
+/**
+ * The native control the kit draws inside one of the wizard's fields: the `<input>` of a text or
+ * number field, the `<textarea>` of a multi-line one, or the `<select>` of a picker.
+ */
+function control(part: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
+  const el = npPart(part)?.querySelector('[part="input"], [part="control"]');
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLSelectElement ||
+    el instanceof HTMLTextAreaElement
+  ) {
+    return el;
+  }
+  throw new Error(`no native control in the "${part}" field`);
+}
+
+/** The single-line `<input>` a text or number field draws. */
+function inputOf(part: string): HTMLInputElement {
+  const el = control(part);
+  if (!(el instanceof HTMLInputElement)) {
+    throw new Error(`the "${part}" field draws a <${el.localName}>, not an <input>`);
+  }
+  return el;
 }
 
 /** The Import source step's Site URL field. */
 function urlField(): HTMLInputElement {
-  return control("url");
+  return inputOf("url");
 }
 
 /** The Project Name field's inline validation message. */
 function nameError(): string {
-  return npPart("name-failure")?.textContent?.trim() ?? "";
+  return npPart("name-failure")?.textContent.trim() ?? "";
 }
 
 /** The inline error rendered under the destination fields. */
 function inlineError(): string {
-  return npPart("destination-failure")?.textContent?.trim() ?? "";
+  return npPart("destination-failure")?.textContent.trim() ?? "";
 }
 
 /** The Import step's own refusal, which is about the URL rather than about the destination. */
 function importError(): string {
-  return npPart("import-failure")?.textContent?.trim() ?? "";
+  return npPart("import-failure")?.textContent.trim() ?? "";
 }
 
 /** Set a control's value and fire the `change` a picker or number field commits on. */
@@ -74,11 +99,24 @@ function commit(part: string, value: string): void {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-/** Flip one of the step's switches. */
+/** Flip one of the step's switches: its checkbox changes, and the `change` bubbles from it. */
 function flip(part: string, on: boolean): void {
+  const box = npPart(part)?.querySelector('[part="input"]');
+  if (!(box instanceof HTMLInputElement)) {
+    throw new Error(`no switch checkbox in the "${part}" field`);
+  }
+  box.checked = on;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Type into a multi-line field the way a reader does: the value, then the `input` it fires. */
+function typeInto(part: string, value: string): void {
   const el = control(part);
-  el.checked = on;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  if (!(el instanceof HTMLTextAreaElement)) {
+    throw new Error(`the "${part}" field draws a <${el.localName}>, not a <textarea>`);
+  }
+  el.value = value;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /**
@@ -102,11 +140,14 @@ function directCtx(resolveDestination: ImportTabCtx["resolveDestination"]) {
   return { counter, ctx };
 }
 
+/** What a finished run resolves `importSite` with. */
+type ImportSiteResult = Awaited<ReturnType<NonNullable<StudioPlatform["importSite"]>>>;
+
 interface CapturedImport {
-  opts: Record<string, unknown>;
+  opts: ImportSiteOptions;
   onProgress: (evt: ImportProgressEvent) => void;
   signal: AbortSignal | undefined;
-  resolve: (v: unknown) => void;
+  resolve: (result: ImportSiteResult) => void;
   reject: (e: Error) => void;
 }
 
@@ -114,15 +155,11 @@ let captured: CapturedImport | null = null;
 
 function importPlatform() {
   return installMockPlatform({
-    importSite: ((
-      opts: Record<string, unknown>,
-      onProgress: (evt: ImportProgressEvent) => void,
-      signal?: AbortSignal,
-    ) =>
-      new Promise((resolve, reject) => {
+    importSite: (opts, onProgress, signal) =>
+      new Promise<ImportSiteResult>((resolve, reject) => {
         captured = { onProgress, opts, reject, resolve, signal };
         signal?.addEventListener("abort", () => reject(new Error("aborted")));
-      })) as never,
+      }),
   });
 }
 
@@ -164,14 +201,20 @@ async function reachParams(
   return opened;
 }
 
+/** What the AI proxy's probe says about credentials the backend holds itself. */
+type ProxyCredentials = Required<Pick<AiModelsResponse, "configured" | "managed">>;
+
 /* The credentials gate probes the AI proxy for backend-held credentials; default it to a plain
    BYOK-only backend, and let managed/env-keyed tests override. */
-let proxyState: { configured: boolean; managed: boolean } = { configured: false, managed: false };
+let proxyState: ProxyCredentials = { configured: false, managed: false };
 /* What the proxy lists. Empty by default — the model picker still offers the current model, which
    it prepends — and set by the one test that needs a SECOND model to choose. */
 let proxyModels: { id: string }[] = [];
-(globalThis as Record<string, unknown>).fetch = async () =>
-  Response.json({ models: proxyModels, ...proxyState }, { status: 200 });
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  async () => Response.json({ models: proxyModels, ...proxyState }, { status: 200 }),
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 beforeEach(() => {
   clearPendingImportBrief();
@@ -340,7 +383,7 @@ describe("Import — the brief the form hands over", () => {
     commit("depth", "2");
     commit("max-pages", "50");
     flip("ai-naming", false);
-    npType(control("import-prompt"), "Modernise the typography");
+    typeInto("import-prompt", "Modernise the typography");
     await flush();
 
     npPress("Confirm");
@@ -498,9 +541,10 @@ describe("Import — the model picker", () => {
     npPress("Back");
     // The catalogue has to have landed before there is a second row to pick.
     await flush(6);
-    const picker = npPart("model-island")!.querySelector(
-      '[part="model-picker"] [part="control"]',
-    ) as HTMLSelectElement;
+    const picker = npPart("model-island")!.querySelector('[part="model-picker"] [part="control"]');
+    if (!(picker instanceof HTMLSelectElement)) {
+      throw new Error("the model picker draws no <select>");
+    }
     picker.value = "o3-import";
     picker.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
@@ -619,7 +663,7 @@ describe("Import — how many breakpoints the project keeps", () => {
     commit("bp-mode", "explicit");
     await flush(2);
     expect(npPart("bp-widths")).toBeTruthy();
-    npType(control("bp-widths"), " 640 , 1024,1440 ");
+    npType(inputOf("bp-widths"), " 640 , 1024,1440 ");
     commit("bp-rounding", "up");
 
     expect(breakpointPolicyFromForm()).toEqual({
@@ -635,7 +679,7 @@ describe("Import — how many breakpoints the project keeps", () => {
     await reachSource();
     commit("bp-mode", "explicit");
     await flush(2);
-    npType(control("bp-widths"), "six hundred");
+    npType(inputOf("bp-widths"), "six hundred");
     expect(breakpointPolicyFromForm()).toEqual({ count: 3, mode: "limit", rounding: "nearest" });
   });
 

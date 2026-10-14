@@ -20,10 +20,18 @@ import {
 import type { ElementsEntry } from "../src/files/elements";
 import type { ComponentEntry } from "../src/files/components";
 
-const npm = (pkg: string, modulePath?: string): ComponentEntry =>
-  ({ package: pkg, source: "npm", tagName: "x-a", ...(modulePath ? { modulePath } : {}) }) as never;
+const npm = (pkg: string, modulePath?: string): ComponentEntry => {
+  const entry: ComponentEntry = { package: pkg, source: "npm", tagName: "x-a" };
+  if (modulePath) {
+    entry.modulePath = modulePath;
+  }
+  return entry;
+};
 
-const local = (path: string): ComponentEntry => ({ path, tagName: "x-card" }) as never;
+const local = (path: string): ComponentEntry => ({ path, tagName: "x-card" });
+
+/** A component with neither a package nor a path: nameable in `$elements` by neither rule. */
+const ghost: ComponentEntry = { tagName: "x-ghost" };
 
 describe("how a component is named in $elements", () => {
   test("an npm component by its cherry-picked subpath, or its bare package", () => {
@@ -39,7 +47,7 @@ describe("how a component is named in $elements", () => {
   });
 
   test("a component nameable neither way yields nothing to write", () => {
-    expect(elementsEntryFor({ tagName: "x-ghost" } as never, null)).toBeNull();
+    expect(elementsEntryFor(ghost, null)).toBeNull();
   });
 });
 
@@ -64,9 +72,7 @@ describe("already imported?", () => {
   });
 
   test("a component nameable neither way is never 'already imported'", () => {
-    expect(
-      hasElement(["@acme/ui", { $ref: "a.json" }], { tagName: "x-ghost" } as never, null),
-    ).toBe(false);
+    expect(hasElement(["@acme/ui", { $ref: "a.json" }], ghost, null)).toBe(false);
   });
 
   test("`./a.json` and `a.json` are the same file", () => {
@@ -97,9 +103,7 @@ describe("enableElement", () => {
   });
 
   test("a component that cannot be named leaves the list alone", () => {
-    expect(enableElement(["@acme/ui"], { tagName: "x-ghost" } as never, null)).toEqual([
-      "@acme/ui",
-    ]);
+    expect(enableElement(["@acme/ui"], ghost, null)).toEqual(["@acme/ui"]);
   });
 
   test("it never mutates the list it is given", () => {

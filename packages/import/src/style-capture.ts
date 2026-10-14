@@ -256,6 +256,9 @@ export async function captureStyles(page: ImportPage): Promise<StyleCaptureResul
             }
             collectMediaRules(rule.cssRules);
           } else if ("cssRules" in rule) {
+            /* SAFETY: every CSSOM rule interface that has a `cssRules` member (the grouping rules,
+               CSSKeyframesRule, and a nesting CSSStyleRule) types it as a CSSRuleList, which is the
+               only member read here. */
             collectMediaRules((rule as CSSGroupingRule).cssRules);
           }
         }
@@ -285,6 +288,8 @@ export async function captureStyles(page: ImportPage): Promise<StyleCaptureResul
           }
           if ("cssRules" in rule) {
             try {
+              /* SAFETY: every CSSOM rule interface that has a `cssRules` member types it as a
+                 CSSRuleList, which is the only member read here. */
               collectCustomProps((rule as CSSGroupingRule).cssRules);
             } catch {
               /* Skip */

@@ -10,6 +10,7 @@
 
 import { mkdirSync, writeFileSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const DEFAULT_RUNS_DIR = join(import.meta.dir, "runs");
 
@@ -21,7 +22,7 @@ interface TrialResult {
   rounds: number;
   toolCalls: number;
   loopError: string | null;
-  finalDoc: object;
+  finalDoc: JsonValue;
   transcript: object[];
   /** The provider's summed counts (`TrialUsage`). Optional: a result written before it had none. */
   usage?: {
@@ -88,11 +89,21 @@ function previousRunDir(runsDir: string): string | null {
   return latest === undefined ? null : join(runsDir, latest);
 }
 
+/** A task as results.json records it: {@link stripTrialsForJson}'s compact form. */
+type StoredTask = ReturnType<typeof stripTrialsForJson>;
+
+/** What a written run hands back to the CLI: where it went, its summary, and what regressed. */
+export interface WrittenRun {
+  outDir: string;
+  summary: ReturnType<typeof summarize>;
+  regressed: string[];
+}
+
 /** `stamp` is a timestamp the CLI passes in. `runsDir` overrides the output root (used by tests). */
 export function writeRun(
   taskResults: TaskResult[],
   { stamp, runsDir = DEFAULT_RUNS_DIR }: { stamp: string; runsDir?: string },
-): { outDir: string; summary: ReturnType<typeof summarize>; regressed: string[] } {
+): WrittenRun {
   const prevDir = previousRunDir(runsDir);
   const outDir = join(runsDir, stamp);
   mkdirSync(join(outDir, "transcripts"), { recursive: true });
@@ -130,15 +141,17 @@ export function writeRun(
 
   // Regression diff: which tasks passed (pass@k) before but fail now.
   const regressed: string[] = [];
-  let prevByTask: Record<string, TaskResult> = {};
+  let prevByTask = new Map<string, StoredTask>();
   if (prevDir && existsSync(join(prevDir, "results.json"))) {
+    /* SAFETY: a run directory's results.json is written only by writeRun below, whose `tasks` are
+       stripTrialsForJson's output; `tasks` stays optional for a file from before it was recorded. */
     const prev = JSON.parse(readFileSync(join(prevDir, "results.json"), "utf8")) as {
-      tasks?: TaskResult[];
+      tasks?: StoredTask[];
     };
-    prevByTask = Object.fromEntries((prev.tasks ?? []).map((t) => [t.id, t]));
+    prevByTask = new Map((prev.tasks ?? []).map((t) => [t.id, t]));
     for (const task of taskResults) {
-      const before = prevByTask[task.id];
-      if (before && before.passAtK && !task.passAtK) {
+      const before = prevByTask.get(task.id);
+      if (before?.passAtK && !task.passAtK) {
         regressed.push(task.id);
       }
     }
@@ -170,15 +183,17 @@ function stripTrialsForJson(task: TaskResult) {
     passAtK: task.passAtK,
     passHatK: task.passHatK,
     passRate: task.passRate,
-    trials: task.trials.map((t) => ({
-      pass: t.pass,
-      rounds: t.rounds,
-      toolCalls: t.toolCalls,
-      loopError: t.loopError,
-      ...(t.usage ? { usage: t.usage } : {}),
-      renderErrors: t.render.errors,
-      schemaErrors: t.schema.errors,
-    })),
+    trials: task.trials.map((t) => {
+      // Key order is the file's order: `usage`, when a trial has it, sits between the two groups.
+      const head = {
+        pass: t.pass,
+        rounds: t.rounds,
+        toolCalls: t.toolCalls,
+        loopError: t.loopError,
+      };
+      const tail = { renderErrors: t.render.errors, schemaErrors: t.schema.errors };
+      return t.usage ? { ...head, usage: t.usage, ...tail } : { ...head, ...tail };
+    }),
   };
 }
 
@@ -193,7 +208,7 @@ function renderReport({
   summary: ReturnType<typeof summarize>;
   regressed: string[];
   taskResults: TaskResult[];
-  prevByTask: Record<string, TaskResult>;
+  prevByTask: Map<string, StoredTask>;
 }): string {
   const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
   const { usage } = summary;
@@ -204,8 +219,8 @@ function renderReport({
     `(${usage.cacheRatio === null ? "n/a" : pct(usage.cacheRatio)} cache hit) · ` +
     `${usage.outputTokens} out over ${usage.requests} reporting request(s)`;
   const rows = taskResults.map((t) => {
-    const before = prevByTask[t.id];
-    const delta = before == null ? "—" : signDelta(t.passRate - before.passRate);
+    const before = prevByTask.get(t.id);
+    const delta = before === undefined ? "—" : signDelta(t.passRate - before.passRate);
     return `| ${t.id} | ${t.passAtK ? "✅" : "❌"} | ${t.passHatK ? "✅" : "❌"} | ${pct(t.passRate)} | ${delta} | ${t.tags.join(", ")} |`;
   });
   return [

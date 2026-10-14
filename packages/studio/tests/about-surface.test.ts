@@ -86,7 +86,10 @@ describe("openAboutSurface", () => {
     const detached = document.createElement("div");
     const handle = open(detached);
     await flush(3);
-    const element = handle.host.firstElementChild as HTMLElement;
+    const element = handle.host.firstElementChild;
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("the mount put no element into its host");
+    }
     expect(element.tagName.toLowerCase()).toBe("jx-dialog");
     expect(mountsOf("about")).toHaveLength(1);
     /* The document is all there — its rows are the element's own children. What is missing is the

@@ -39,38 +39,52 @@ import {
 import { evaluateExpression, evaluateOperand, isMutating } from "./expression.ts";
 import { readPath } from "./pointer.ts";
 import type {
-  DynamicClass,
   JxContext,
   JxEventHandler,
+  JxHostScope,
   JxMount,
   JxMountOptions,
   JxPath,
   JxRenderOptions,
+  JxRowContext,
   JxScope,
+  JxScopeFunction,
+  JxScopeValue,
 } from "./types.ts";
 import {
   bodyReturnsValue,
   hasStructuredBody,
+  isBoolean,
   isExpressionDef,
+  isFunction,
   isFunctionDef,
   isJsonObject,
   isMappedArray,
   isNamedFormulaDef,
+  isNestedStyle,
+  isNonNullObject,
+  isNumber,
   isPrivateStateKey,
   isPrototypeDef,
   isRef as isRefValue,
   isServerFnDef,
+  isString,
   isTagExpression,
   isTemplateString,
   paramNames,
 } from "@jxsuite/schema/guards";
+import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { formatSrcset, parseSrcset } from "@jxsuite/schema/asset-paths";
 import { runStatements } from "./statements.ts";
 import { readCookie, serializeCookie } from "./cookie.ts";
 import type {
+  CemParameter,
+  JsonValue,
   JxAttributeValue,
+  JxClassCtorDef,
   JxClassDef,
   JxDocument,
+  JxDocumentValue,
   JxElement,
   JxFunctionDef,
   JxHeadEntry,
@@ -106,8 +120,8 @@ let _schemaVersionWarned = false;
  * runtime supports. A relative or non-hosted `$schema` (local dev schema paths) is ignored. This is
  * a diagnostic only — there is no document-format migration story yet (see spec §3.2 / §21.4).
  */
-function checkSchemaVersion($schema: unknown): void {
-  if (_schemaVersionWarned || typeof $schema !== "string") {
+function checkSchemaVersion($schema: JxDocumentValue | undefined): void {
+  if (_schemaVersionWarned || !isString($schema)) {
     return;
   }
   const match = $schema.match(/\/schema\/v(\d+)\b/);
@@ -127,7 +141,7 @@ export async function Jx(
 ) {
   const base = options?.base
     ? new URL(options.base, location.href).href
-    : typeof source === "string"
+    : isString(source)
       ? new URL(source, location.href).href
       : location.href;
   const doc = await resolve(source);
@@ -139,18 +153,52 @@ export async function Jx(
     _rootMedia = doc.$media;
   }
 
-  const mounted = await mount(doc, target, {
-    base,
-    ...(options?.onNodeCreated ? { onNodeCreated: options.onNodeCreated } : {}),
-    ...(options?.signal ? { signal: options.signal } : {}),
-  });
+  const mountOptions: JxMountOptions = { base };
+  if (options?.onNodeCreated) {
+    mountOptions.onNodeCreated = options.onNodeCreated;
+  }
+  if (options?.signal) {
+    mountOptions.signal = options.signal;
+  }
+  const mounted = await mount(doc, target, mountOptions);
   return mounted.scope;
+}
+
+/**
+ * A lifecycle hook a document's state supplies (`onMount`, `onUnmount`, `onAdopted`) as the runtime
+ * calls it: with the scope, plus the host element for a defined element's `onMount`.
+ */
+type ScopeHook = (scope: JxScope, host?: HTMLElement) => void;
+
+/**
+ * Whether a scope member can be called as a {@link ScopeHook}. Being a function is the whole
+ * contract: JavaScript checks neither the arguments a call passes nor what it returns, so every
+ * function accepts this call, and the runtime discards whatever it returns.
+ */
+function isScopeHook(value: unknown): value is ScopeHook {
+  return isFunction(value);
 }
 
 /** Host-scope keys the runtime owns: `$media`, `$map`, the `$`-locals and `#`-private entries. */
 const HOST_SCOPE_RESERVED = /^[$#]/;
 
-function assertHostScope(scope: Record<string, unknown>): void {
+/**
+ * A host's scope as the runtime merges it: the host's own record, typed as the {@link JxScope} it
+ * joins.
+ *
+ * @param {S} scope - The host's scope, held to `JxScopeValue` member by member by its type
+ * @returns {JxScope}
+ */
+function hostScopeOf<S extends JxHostScope<S>>(scope: S): JxScope {
+  /* SAFETY: `JxHostScope<S>` has already held every member of `S` to `JxScopeValue`, recursively
+     through arrays, records and function results. What TypeScript cannot conclude from that is an
+     index signature, which an interface never has implicitly, so a host's own interface is not
+     assignable to `JxScope` however its members are typed. Nothing is copied or converted: this is
+     the host's record, read by member name like every other scope. */
+  return scope as JxScope;
+}
+
+function assertHostScope(scope: JxScope): void {
   for (const key of Object.keys(scope)) {
     if (HOST_SCOPE_RESERVED.test(key)) {
       throw new TypeError(
@@ -176,26 +224,28 @@ function assertHostScope(scope: Record<string, unknown>): void {
  * @returns {Promise<JxMount>}
  * @docs extending/embedding/runtime-host
  */
-export async function mount(
+export async function mount<S extends JxHostScope<S> = JxScope>(
   doc: JxDocument,
   target: ParentNode,
-  options: JxMountOptions = {},
+  options: JxMountOptions<S> = {},
 ): Promise<JxMount> {
-  const hostScope = options.scope ?? {};
+  const hostScope: JxScope = options.scope ? hostScopeOf(options.scope) : {};
   assertHostScope(hostScope);
   const base = options.base ? new URL(options.base, location.href).href : location.href;
   const ctx: JxContext = {
     base,
     media: options.media ?? doc.$media ?? null,
     root: null,
-    ...(options.resolver ? { resolver: options.resolver } : {}),
-    ...(options.skipServerFunctions === undefined
-      ? {}
-      : { skipServerFunctions: options.skipServerFunctions }),
-    ...(options.skipAutoRequests === undefined
-      ? {}
-      : { skipAutoRequests: options.skipAutoRequests }),
   };
+  if (options.resolver) {
+    ctx.resolver = options.resolver;
+  }
+  if (options.skipServerFunctions !== undefined) {
+    ctx.skipServerFunctions = options.skipServerFunctions;
+  }
+  if (options.skipAutoRequests !== undefined) {
+    ctx.skipAutoRequests = options.skipAutoRequests;
+  }
   checkSchemaVersion(doc.$schema);
 
   // Register custom elements declared in $elements (depth-first)
@@ -219,8 +269,10 @@ export async function mount(
       }
       options.onNodeCreated?.(el, path, def, state);
     },
-    ...(options.onNodeMoved ? { onNodeMoved: options.onNodeMoved } : {}),
   };
+  if (options.onNodeMoved) {
+    renderOptions.onNodeMoved = options.onNodeMoved;
+  }
   const { result: root, stop } = runScoped(() => renderNode(doc, scope, renderOptions));
   ctx.root = root;
 
@@ -233,8 +285,9 @@ export async function mount(
     disposed = true;
     options.signal?.removeEventListener("abort", dispose);
     stop();
-    if (mounted && typeof scope.onUnmount === "function") {
-      (scope.onUnmount as (s: JxScope) => unknown)(scope);
+    // Called as a method, so a hook that reads `this` sees the scope, as it always has.
+    if (mounted && isScopeHook(scope.onUnmount)) {
+      scope.onUnmount(scope);
     }
     root.remove();
   };
@@ -246,8 +299,8 @@ export async function mount(
     options.signal?.addEventListener("abort", dispose, { once: true });
     target.append(root);
     mounted = true;
-    if (typeof scope.onMount === "function") {
-      (scope.onMount as (s: JxScope) => unknown)(scope);
+    if (isScopeHook(scope.onMount)) {
+      scope.onMount(scope);
     }
   }
   return { scope, root, elements, dispose };
@@ -279,8 +332,20 @@ export function preloadDocument(url: string, doc: JxDocument): void {
   }
 }
 
+/**
+ * A response's Content-Type, or `""` when it carries no headers at all. A response we have no
+ * EVIDENCE about is one we proceed with rather than guess. Every real `Response` has headers; a
+ * host's or a test's `fetch` stand-in may not, which is what the parameter type admits.
+ *
+ * @param res The response, or a stand-in for one
+ * @returns {string}
+ */
+function responseContentType(res: Partial<Pick<Response, "headers">>): string {
+  return res.headers?.get("Content-Type") ?? "";
+}
+
 export async function resolve(source: string | JxDocument, ctx?: JxContext): Promise<JxDocument> {
-  if (typeof source !== "string") {
+  if (!isString(source)) {
     return source;
   }
   // A mount's resolver answers for THIS mount and its hit never enters the shared cache.
@@ -305,16 +370,16 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
      * Checked on the content type rather than by sniffing the body: a host that says `text/html`
      * has told us plainly, and saying so costs nothing.
      */
-    // Optional-chained: a response that carries no headers at all is one we have no EVIDENCE
-    // About, and guessing is worse than proceeding. Every real `Response` has them.
-    const contentType = res.headers?.get("Content-Type") ?? "";
+    const contentType = responseContentType(res);
     if (contentType.includes("text/html")) {
       throw new Error(
         `Jx: ${source} returned HTML, not a document — the host answered a missing file with its ` +
           `app shell (a single-page fallback), so this path is not served.`,
       );
     }
-    // Trust boundary: fetched sources are Jx documents by contract.
+    /* SAFETY: trust boundary. `resolve` fetches only URLs that name a Jx document (a `Jx()` source,
+       an `$elements` entry, a `$switch` case), and the host answered 2xx with a non-HTML body, so
+       the JSON is that document; the runtime does not schema-validate documents by design. */
     return (await res.json()) as JxDocument;
   });
   _resolveCache.set(source, p);
@@ -378,11 +443,6 @@ function resolveProxyPath(path: string): string {
   return _resolveToken ? `${path}?token=${encodeURIComponent(_resolveToken)}` : path;
 }
 
-/** @deprecated No longer needed — ContentCollection/ContentEntry resolve via generic class path */
-export function setSkipContentResolution(_v: boolean) {
-  // No-op retained for API compatibility
-}
-
 /**
  * Observe runtime-created reactive values: runs `fn` immediately inside a reactive effect and
  * re-runs it whenever a tracked value changes; returns a disposer. Dep tracking in @vue/reactivity
@@ -401,6 +461,12 @@ export function observeScope(fn: () => void): () => void {
   return () => scope.stop();
 }
 
+/** What {@link runScoped} hands back: the callback's result, and the disposer for its effects. */
+export interface ScopedRun<T> {
+  result: T;
+  stop: () => void;
+}
+
 /**
  * Run `fn` inside a detached reactive scope of THIS module's reactivity instance, returning its
  * result plus a disposer that stops every effect `fn` created. Callers that render via
@@ -410,11 +476,13 @@ export function observeScope(fn: () => void): () => void {
  * its stop() silently leaks every binding effect of the superseded render.
  *
  * @param {() => T} fn - Work that may create reactive effects (typically a renderNode call).
- * @returns {{ result: T; stop: () => void }} The callback result and the scope disposer.
+ * @returns {ScopedRun<T>} The callback result and the scope disposer.
  */
-export function runScoped<T>(fn: () => T): { result: T; stop: () => void } {
+export function runScoped<T>(fn: () => T): ScopedRun<T> {
   const scope = effectScope(true);
   try {
+    /* SAFETY: `run` answers undefined only for a scope that was already stopped, and this one was
+       created on the line above, so it is active and `run` returns what `fn` returned. */
     const result = scope.run(fn) as T;
     return { result, stop: () => scope.stop() };
   } catch (error) {
@@ -438,14 +506,14 @@ export function setCanvasViewportTranspose(on: boolean) {
 }
 
 const VIEWPORT_UNIT_RE = /(-?\d*\.?\d+)(?:s|l|d)?v(h|w|min|max|i|b)\b/gi;
-const VIEWPORT_UNIT_MAP: Record<string, string> = {
-  b: "cqb",
-  h: "cqh",
-  i: "cqi",
-  max: "cqmax",
-  min: "cqmin",
-  w: "cqw",
-};
+const VIEWPORT_UNIT_MAP = new Map([
+  ["b", "cqb"],
+  ["h", "cqh"],
+  ["i", "cqi"],
+  ["max", "cqmax"],
+  ["min", "cqmin"],
+  ["w", "cqw"],
+]);
 
 /**
  * Transpose CSS viewport units → container-query units in a value string, but only when the
@@ -458,7 +526,8 @@ export function transposeCanvasUnits(value: string): string {
   }
   return value.replace(
     VIEWPORT_UNIT_RE,
-    (_m, num: string, dim: string) => `${num}${VIEWPORT_UNIT_MAP[dim.toLowerCase()] ?? `cq${dim}`}`,
+    (_m, num: string, dim: string) =>
+      `${num}${VIEWPORT_UNIT_MAP.get(dim.toLowerCase()) ?? `cq${dim}`}`,
   );
 }
 
@@ -657,15 +726,15 @@ function canvasAssetValue(tagName: string, key: string, value: string): string {
   const name = key.toLowerCase();
   if (SRCSET_KEYS.has(name)) {
     const candidates = parseSrcset(value);
-    let changed = false;
     const next = candidates.map((candidate) => {
       const resolved = _canvasAssetResolver?.(candidate.url, name) ?? null;
       if (resolved === null || resolved === candidate.url) {
         return candidate;
       }
-      changed = true;
       return { descriptor: candidate.descriptor, url: resolved };
     });
+    // A rewritten candidate is a new object, so identity says whether anything changed.
+    const changed = next.some((candidate, index) => candidate !== candidates[index]);
     return changed ? formatSrcset(next) : value;
   }
   if (!isAssetKey(tagName, name)) {
@@ -727,18 +796,22 @@ export function setStampPropBindings(on: boolean) {
 const PURE_STATE_TEMPLATE = /^\s*\$\{\s*state\.(\w+)\s*\}\s*$/;
 
 /** The state key of an invertible `textContent` binding, or null (mixed template, deep path). */
-function boundPropKey(key: string, val: unknown, state: JxScope): string | null {
+function boundPropKey(
+  key: string,
+  val: JxDocumentValue | undefined,
+  state: JxScope,
+): string | null {
   if (!_stampPropBindings || key !== "textContent") {
     return null;
   }
   let sub: string | null = null;
-  if (isRefObj(val)) {
+  if (isRefValue(val)) {
     if (!val.$ref.startsWith("#/state/")) {
       return null;
     }
     const rest = val.$ref.slice("#/state/".length);
     sub = rest && !rest.includes("/") ? rest : null;
-  } else if (typeof val === "string") {
+  } else if (isString(val)) {
     sub = PURE_STATE_TEMPLATE.exec(val)?.[1] ?? null;
   }
   if (!sub) {
@@ -748,11 +821,11 @@ function boundPropKey(key: string, val: unknown, state: JxScope): string | null 
   // In the raw scope (auto-unwrapped by the reactive proxy), and function/object entries (handlers,
   // $prototype instances) are not prop-overridable either — an instance $props write against any of
   // Them would clobber the definition's behavior, so their bindings are never marked editable.
-  const stored = (toRaw(state) as Record<string, unknown>)[sub];
-  if (isRef(stored) || typeof stored === "function") {
+  const stored = toRaw(state)[sub];
+  if (isRef(stored) || isFunction(stored)) {
     return null;
   }
-  if (typeof stored === "object" && stored !== null) {
+  if (isNonNullObject(stored)) {
     return null;
   }
   return sub;
@@ -790,7 +863,7 @@ export async function buildScope(
         configurable: true,
         enumerable: true,
         get: () => parentScope[key],
-        set: (value: unknown) => {
+        set: (value: JxScopeValue) => {
           parentScope[key] = value;
         },
       });
@@ -819,7 +892,7 @@ export async function buildScope(
   // First pass: collect naked values, expanded defaults, plain objects
   for (const [key, def] of Object.entries(defs)) {
     // 1. String value
-    if (typeof def === "string") {
+    if (isString(def)) {
       if (!def.includes("${")) {
         raw[key] = def;
       } // Shape 1: naked string
@@ -827,7 +900,7 @@ export async function buildScope(
     }
 
     // 2. Number, boolean, null
-    if (typeof def === "number" || typeof def === "boolean" || def === null) {
+    if (isNumber(def) || isBoolean(def) || def === null) {
       raw[key] = def;
       continue;
     }
@@ -839,7 +912,7 @@ export async function buildScope(
     }
 
     // 4. Object
-    if (typeof def === "object") {
+    if (isNonNullObject(def)) {
       if (def.$prototype) {
         continue;
       } // Handled in later passes
@@ -865,7 +938,7 @@ export async function buildScope(
 
   // Second pass: template strings → computed
   for (const [key, def] of Object.entries(defs)) {
-    if (typeof def === "string" && def.includes("${")) {
+    if (isString(def) && def.includes("${")) {
       state[key] = computed(() => evaluateTemplate(def, state));
     }
   }
@@ -876,21 +949,9 @@ export async function buildScope(
       const node = def.$expression;
       if (isNamedFormulaDef(def)) {
         // A named formula: callable with positional args mapped onto its declared parameters.
-        const params = def.parameters as (string | { name?: string; default?: unknown })[];
-        state[key] = (...argValues: unknown[]) => {
-          const args: Record<string, unknown> = {};
-          for (const [i, p] of params.entries()) {
-            const name = typeof p === "string" ? p : (p?.name ?? "");
-            if (!name) {
-              continue;
-            }
-            args[name] =
-              argValues[i] === undefined && typeof p === "object" && p !== null && "default" in p
-                ? p.default
-                : argValues[i];
-          }
-          return evaluateExpression(node, state, null, { args });
-        };
+        const params = def.parameters;
+        state[key] = (...argValues: JxScopeValue[]) =>
+          evaluateExpression(node, state, null, { args: bindPositionalArgs(params, argValues) });
       } else if (isMutating(node.operator)) {
         const handler: JxEventHandler = (s, event) => evaluateExpression(node, s, event);
         state[key] = handler;
@@ -907,23 +968,16 @@ export async function buildScope(
       // $args names (invoked via the call operator); without → an event handler.
       const { body } = def;
       if (Array.isArray(def.parameters) && def.parameters.length > 0) {
-        const params = def.parameters as (string | { name?: string; default?: unknown })[];
-        state[key] = (...argValues: unknown[]) => {
-          const args: Record<string, unknown> = {};
-          for (const [i, p] of params.entries()) {
-            const name = typeof p === "string" ? p : (p?.name ?? "");
-            if (!name) {
-              continue;
-            }
-            args[name] =
-              argValues[i] === undefined && typeof p === "object" && p !== null && "default" in p
-                ? p.default
-                : argValues[i];
-          }
-          return runStatements(body, state, null, { args, target: dispatchRoot });
-        };
+        const params = def.parameters;
+        state[key] = (...argValues: JxScopeValue[]) =>
+          runStatements(body, state, null, {
+            args: bindPositionalArgs(params, argValues),
+            target: dispatchRoot,
+          });
       } else {
-        const handler: JxEventHandler = (s, event) => {
+        /* The event is optional in fact: a `call` operator or a host invokes a handler with the
+           scope alone, and the body then runs with no event rather than an undefined one. */
+        const handler = (s: JxScope, event?: Event | null): void => {
           void runStatements(body, s, event ?? null, { target: dispatchRoot });
         };
         state[key] = handler;
@@ -961,13 +1015,41 @@ export async function buildScope(
 }
 
 /**
+ * Map a call's positional arguments onto a definition's declared parameter names, as `$args/<name>`
+ * refs read them. A parameter given as an object supplies its `default` for a position the call
+ * left undefined. Parameters come from a document that is not schema-validated at runtime, so an
+ * entry that names nothing (null, or an object without a `name`) binds nothing.
+ *
+ * @param parameters The declared parameters, in call order
+ * @param argValues The values the call passed, in the same order
+ * @returns {JxScope} Name to value, for the body's `$args` refs
+ */
+function bindPositionalArgs(
+  parameters: readonly (string | CemParameter | null)[],
+  argValues: readonly JxScopeValue[],
+): JxScope {
+  const args: JxScope = {};
+  for (const [i, p] of parameters.entries()) {
+    const name = isString(p) ? p : (p?.name ?? "");
+    if (!name) {
+      continue;
+    }
+    args[name] =
+      argValues[i] === undefined && p !== null && !isString(p) && "default" in p
+        ? p.default
+        : argValues[i];
+  }
+  return args;
+}
+
+/**
  * Check whether an object contains any JSON Schema keywords. Used to discriminate Shape 2b (pure
  * type definition) from Shape 1 (naked object).
  *
- * @param {JxScope} obj
+ * @param obj A state entry object, as the document wrote it
  * @returns {boolean}
  */
-function hasSchemaKeywords(obj: object) {
+function hasSchemaKeywords(obj: Readonly<Record<string, JxDocumentValue | undefined>>) {
   for (const k of Object.keys(obj)) {
     if (SCHEMA_KEYWORDS.has(k)) {
       return true;
@@ -986,14 +1068,38 @@ export { hasSchemaKeywords };
  * @returns {string}
  */
 function evaluateTemplate(str: string, state: JxScope): string {
-  const $map = state?.$map as { item?: unknown; index?: number } | undefined;
-  const fn = new Function("state", "$map", "item", "index", `return \`${str}\``) as (
-    state: JxScope,
-    $map: unknown,
-    item: unknown,
-    index: number | undefined,
-  ) => string;
+  const $map = rowContext(state);
+  /* SAFETY: `new Function` compiles exactly these four named parameters, and its body returns a
+     template literal, so every call answers a string (or throws, which the caller sees). */
+  const fn = new Function(
+    "state",
+    "$map",
+    "item",
+    "index",
+    `return \`${str}\``,
+  ) as TemplateFn<string>;
   return fn(state, $map, $map?.item, $map?.index);
+}
+
+/** A compiled template: the scope, the row context, and that context's item and index. */
+type TemplateFn<R> = (
+  state: JxScope,
+  $map: JxRowContext | undefined,
+  item: JxRowContext["item"],
+  index: JxRowContext["index"] | undefined,
+) => R;
+
+/**
+ * The row context a scope carries, or undefined outside a mapped row.
+ *
+ * @param {JxScope} state
+ * @returns {JxRowContext | undefined}
+ */
+function rowContext(state: JxScope): JxRowContext | undefined {
+  /* SAFETY: `$map` is runtime vocabulary. A host scope may not supply it (`assertHostScope`), a
+     node never binds it as a `$`-local (it is in RESERVED_KEYS), and the one writer is
+     `renderMappedArrayInto`, which binds the `{ index, item }` row record; elsewhere it is absent. */
+  return state.$map as JxRowContext | undefined;
 }
 
 /**
@@ -1045,39 +1151,74 @@ export function isSingleExpression(str: string): boolean {
  *
  * @param {string} str - Template source
  * @param {JxScope} state - Reactive scope
- * @returns {unknown} The expression's value, or the interpolated string
+ * @returns {JxScopeValue} The expression's value, or the interpolated string
  */
-function evaluateAttrTemplate(str: string, state: JxScope): unknown {
+function evaluateAttrTemplate(str: string, state: JxScope): JxScopeValue {
   if (!isSingleExpression(str)) {
     return evaluateTemplate(str, state);
   }
-  const $map = state?.$map as { item?: unknown; index?: number } | undefined;
-  const fn = new Function("state", "$map", "item", "index", `return (${str.slice(2, -1)})`) as (
-    state: JxScope,
-    $map: unknown,
-    item: unknown,
-    index: number | undefined,
-  ) => unknown;
+  const $map = rowContext(state);
+  /* SAFETY: `new Function` compiles exactly these four named parameters; the body returns one
+     expression's value, which is whatever the scope it reads holds, so it is typed as a scope
+     member and narrowed by the attribute writer. */
+  const fn = new Function(
+    "state",
+    "$map",
+    "item",
+    "index",
+    `return (${str.slice(2, -1)})`,
+  ) as TemplateFn<JxScopeValue>;
   return fn(state, $map, $map?.item, $map?.index);
 }
 
 // ─── Step 2b: Function resolution (Shape 4) ─────────────────────────────────
 
-/** Shape of a dynamically imported module: named exports plus an optional default. */
-type ImportedModule = Record<string, unknown> & { default?: Record<string, unknown> };
+/**
+ * A module namespace as the runtime reads it: exports looked up by name, then under `default` (the
+ * shape a CommonJS module takes when imported). An export is whatever the module exported, so each
+ * lookup checks what it found before using it.
+ */
+interface ImportedModule {
+  readonly [exportName: string]: JxScopeValue;
+  readonly default?: ImportedModule;
+}
 
-/** Minimal contract an externally-imported resolver class may implement. */
-interface ExternalClassInstance {
-  value?: unknown;
-  resolve?: () => unknown;
-  subscribe?: (cb: (newVal: unknown) => void) => void;
+/**
+ * Import a module namespace by specifier.
+ *
+ * Not `async`: the import's own promise is handed back, so awaiting this costs exactly the ticks
+ * awaiting `import()` did, and scope construction keeps its order against its siblings'.
+ *
+ * @param {string} specifier
+ * @returns {Promise<ImportedModule>}
+ */
+function importModule(specifier: string): Promise<ImportedModule> {
+  /* SAFETY: trust boundary — a module exports whatever it exports. `import()` resolves to the
+     module namespace object, whose keys are its export names, and every export is typed as the scope
+     member it becomes: the runtime uses one only after `isFunction` has accepted it (a Function
+     entry's `$src`, a server function, a `$implementation` class) or after testing it for
+     presence, and both tests are defined for any value a module can export. `default` is only ever
+     read through optional property access. */
+  return import(specifier) as Promise<ImportedModule>;
+}
+
+/**
+ * An external class's instance as the runtime uses it (spec.md §12.3): a record read by member
+ * name, three members of which are its contract with the runtime — a `value`, a `resolve()` that
+ * produces one (possibly a promise), and a `subscribe()` that pushes later ones. Each is optional
+ * and checked before it is used.
+ */
+interface ExternalClassInstance extends JxScope {
+  value?: JxScopeValue;
+  resolve?: () => JxScopeValue | Promise<JxScopeValue>;
+  subscribe?: (callback: (value: JxScopeValue) => void) => void;
 }
 
 /** Module cache for $src imports (shared with external class resolution). */
 const _moduleCache = new Map<string, ImportedModule>();
 
 /** A module the host will import on first use, keyed as the document spells its `$src`. */
-type ModuleLoader = () => Promise<Record<string, unknown>>;
+type ModuleLoader = () => Promise<ImportedModule>;
 
 /**
  * Lazy registrations: a loader until it runs, then the in-flight load, so two entries resolving the
@@ -1109,21 +1250,18 @@ const _hostSeeded = new Set<string>();
  * specifier not registered here, the runtime calls the host's `/__jx_server__` proxy instead.
  *
  * @param {string} specifier - The `$src` value as written in the document
- * @param {Record<string, unknown> | (() => Promise<Record<string, unknown>>)} mod - The imported
- *   module namespace, or a loader that imports it on first use
+ * @param {ImportedModule | ModuleLoader} mod - The imported module namespace, or a loader that
+ *   imports it on first use
  */
-export function preloadModule(
-  specifier: string,
-  mod: Record<string, unknown> | ModuleLoader,
-): void {
+export function preloadModule(specifier: string, mod: ImportedModule | ModuleLoader): void {
   _hostSeeded.add(specifier);
-  if (typeof mod === "function") {
+  if (isFunction(mod)) {
     _moduleCache.delete(specifier);
     _moduleLoaders.set(specifier, mod);
     return;
   }
   _moduleLoaders.delete(specifier);
-  _moduleCache.set(specifier, mod as ImportedModule);
+  _moduleCache.set(specifier, mod);
 }
 
 /**
@@ -1148,27 +1286,36 @@ function seededModule(src: string): ImportedModule | Promise<ImportedModule> | u
   if (!pending) {
     return undefined;
   }
-  if (typeof pending !== "function") {
+  if (!isFunction(pending)) {
     return pending;
   }
-  /* `Promise.resolve` so a thenable from a host's loader is still a Promise the call sites can
-     tell from a namespace. */
-  const load = Promise.resolve(pending()).then(
-    (mod) => {
-      _moduleCache.set(src, mod as ImportedModule);
+  /* Started here, outside the async body, so a loader that throws synchronously still throws to
+     the caller. The async body turns a thenable from a host's loader into a Promise the call sites
+     can tell from a namespace. */
+  const started = pending();
+  const load = (async () => {
+    try {
+      const mod = await started;
+      _moduleCache.set(src, mod);
       _moduleLoaders.delete(src);
-      return mod as ImportedModule;
-    },
-    (error: unknown) => {
+      return mod;
+    } catch (error) {
       /* A failed load — a chunk the network dropped — puts the loader back, so the next document to
          name the specifier tries again rather than inheriting this rejection for good. */
       _moduleLoaders.set(src, pending);
       throw error;
-    },
-  );
+    }
+  })();
   _moduleLoaders.set(src, load);
   return load;
 }
+
+/**
+ * A Function entry's implementation as the runtime calls it — a compiled `body` or a `$src` export
+ * — with the scope as its first argument. JavaScript checks none of the arguments, and what the
+ * call returns is bound into the scope like any other member.
+ */
+type ScopeFunction = (...args: JxScopeValue[]) => JxScopeValue;
 
 /**
  * Resolve a $prototype: "Function" entry into a function or computed.
@@ -1180,7 +1327,7 @@ function seededModule(src: string): ImportedModule | Promise<ImportedModule> | u
  * @param {JxScope} state - Reactive scope proxy
  * @param {string} key - Def key name
  * @param {string} [base] - Base URL for resolving $src imports
- * @returns {Promise<unknown>}
+ * @returns {Promise<JxScopeValue>}
  */
 async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, base?: string) {
   if (def.body && def.$src) {
@@ -1196,11 +1343,13 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
     return noop;
   }
 
-  let fn: ((...args: unknown[]) => unknown) | undefined;
+  let fn: ScopeFunction;
 
-  if (typeof def.body === "string") {
+  if (isString(def.body)) {
     const params = resolveParamNames(def);
-    fn = new Function(...params, def.body) as (...args: unknown[]) => unknown;
+    /* SAFETY: `new Function` returns an ordinary function of the named parameters, `state` first.
+       A call never checks its arguments, and what the body returns is one more scope member. */
+    fn = new Function(...params, def.body) as ScopeFunction;
     Object.defineProperty(fn, "name", {
       configurable: true,
       value: def.name ?? key,
@@ -1222,20 +1371,22 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
       if (base) {
         const resolvedSrc = new URL(src, base).href;
         try {
-          mod = (await import(resolvedSrc)) as ImportedModule;
+          mod = await importModule(resolvedSrc);
         } catch {
-          mod = (await import(src)) as ImportedModule;
+          mod = await importModule(src);
         }
       } else {
-        mod = (await import(src)) as ImportedModule;
+        mod = await importModule(src);
       }
       _moduleCache.set(src, mod);
     }
     const candidate = mod[exportName] ?? mod.default?.[exportName];
-    if (typeof candidate !== "function") {
+    if (!isFunction(candidate)) {
       throw new TypeError(`Jx: export "${exportName}" not found or not a function in "${src}"`);
     }
-    fn = candidate as (...args: unknown[]) => unknown;
+    /* SAFETY: the guard proved a function, and a function accepts any call: the runtime passes the
+       scope first, as a Function entry's contract says, and binds the result as a scope member. */
+    fn = candidate as ScopeFunction;
   }
 
   // Detect computed: body contains a return statement, or $src function introspection.
@@ -1243,11 +1394,9 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
   const hasParams = (def.parameters ?? def.arguments ?? []).length > 0;
   let isComputed = false;
   if (!hasParams) {
-    if (typeof def.body === "string") {
-      isComputed = bodyReturnsValue(def.body);
-    } else if (fn) {
-      isComputed = fn.length <= 1 && bodyReturnsValue(fn.toString());
-    }
+    isComputed = isString(def.body)
+      ? bodyReturnsValue(def.body)
+      : fn.length <= 1 && bodyReturnsValue(fn.toString());
   }
   if (isComputed) {
     return computed(() => fn(state));
@@ -1312,6 +1461,57 @@ export const RESERVED_KEYS = new Set([
 ]);
 
 /**
+ * A child scope: reads fall through to `parent`, writes land on the child.
+ *
+ * @param {JxScope} parent
+ * @returns {JxScope}
+ */
+function inheritScope(parent: JxScope): JxScope {
+  /* SAFETY: `Object.create` is typed `any`, but what it returns is a plain object whose prototype
+     is `parent`, so it is keyed by string exactly as the scope it extends is. */
+  return Object.create(parent) as JxScope;
+}
+
+/**
+ * The named breakpoints a scope carries, or none.
+ *
+ * @param {JxScope} state
+ * @returns {Record<string, string>}
+ */
+function scopeMedia(state: JxScope): Record<string, string> {
+  /* SAFETY: `$media` is runtime vocabulary a host scope may not supply (`assertHostScope`); the one
+     writer is `buildScope`, which stores a document's or the mount's `$media` map, a record of
+     breakpoint name to media query. */
+  return (state["$media"] as Record<string, string> | undefined) ?? {};
+}
+
+/**
+ * An element as the property bag a Jx key writes into, `el[key] = value`. Reading or writing a key
+ * the element does not define is an ordinary expando, as it is in JavaScript.
+ */
+type ElementProperties = HTMLElement & Record<string, JxScopeValue>;
+
+/**
+ * View an element as its property bag.
+ *
+ * @param {HTMLElement} el
+ * @returns {ElementProperties}
+ */
+function elementProperties(el: HTMLElement): ElementProperties {
+  /* SAFETY: every element is an ordinary extensible object, so any string key can be read (a
+     missing one is undefined) and written; the added index signature claims nothing more. */
+  return el as ElementProperties;
+}
+
+/**
+ * Whether a scope member can be called as an event handler, `(scope, event)`. Being a function is
+ * the whole contract, for the reason {@link isScopeHook} gives.
+ */
+function isEventHandler(value: unknown): value is JxEventHandler {
+  return isFunction(value);
+}
+
+/**
  * Recursively render a Jx element definition into a DOM element.
  *
  * @param {JxElement | string | number | boolean} def
@@ -1356,9 +1556,9 @@ export function renderNode(
   const path = options?._path ?? [];
 
   // Text node children: bare strings/numbers/booleans produce DOM Text nodes
-  if (typeof def === "string" || typeof def === "number" || typeof def === "boolean") {
+  if (isString(def) || isNumber(def) || isBoolean(def)) {
     const textNode = document.createTextNode(String(def));
-    if (typeof def === "string" && isTemplateString(def)) {
+    if (isTemplateString(def)) {
       effect(() => {
         textNode.textContent = evaluateTemplate(def, state);
       });
@@ -1371,9 +1571,9 @@ export function renderNode(
   for (const [key, val] of Object.entries(def)) {
     if (key.startsWith("$") && !RESERVED_KEYS.has(key)) {
       if (localState === state) {
-        localState = Object.create(state) as JxScope;
+        localState = inheritScope(state);
       }
-      localState[key] = isRefObj(val) ? resolveRef(val.$ref, state) : val;
+      localState[key] = isRefValue(val) ? resolveRef(val.$ref, state) : val;
     }
   }
 
@@ -1383,7 +1583,7 @@ export function renderNode(
    * the supported mechanism is $elements + a custom-element tag (see spec §13).
    */
   if ("$ref" in def && !def.tagName) {
-    const refTarget = String((def as { $ref?: unknown }).$ref ?? "");
+    const refTarget = String(def.$ref ?? "");
     if (!warnedRefChildren.has(refTarget)) {
       warnedRefChildren.add(refTarget);
       console.warn(
@@ -1436,13 +1636,12 @@ export function renderNode(
    * DESCENDANTS are HTML, so the element and its children carry different namespaces.
    */
   const childNs = tagName === "foreignObject" ? null : ns;
-  /*
-   * A namespaced node comes back as Element; every apply* helper below is typed for HTMLElement
-   * and touches only members both share (style, dataset, setAttribute, append).
-   */
-  const el = (ns
-    ? document.createElementNS(ns, tagName)
-    : document.createElement(tagName)) as unknown as HTMLElement;
+  /* SAFETY: a namespaced node is an Element, not an HTMLElement, but every apply* helper below
+     touches only members SVG and MathML elements share with HTML ones (style, dataset,
+     setAttribute, append), and `bindProperty` writes `className` as an attribute on them. */
+  const el = ns
+    ? (document.createElementNS(ns, tagName) as HTMLElement)
+    : document.createElement(tagName);
 
   if (options?.onNodeCreated) {
     options.onNodeCreated(el, path, def, localState);
@@ -1455,12 +1654,7 @@ export function renderNode(
   if (def.style && tagName.includes("-")) {
     callSiteStyles.set(el, def.style);
   }
-  applyStyle(
-    el,
-    def.style ?? {},
-    (localState["$media"] as Record<string, string>) ?? {},
-    localState,
-  );
+  applyStyle(el, def.style ?? {}, scopeMedia(localState), localState);
   applyAttributes(el, def.attributes ?? {}, localState);
 
   const kids = def.children;
@@ -1528,18 +1722,22 @@ function applyProperties(el: HTMLElement, def: JxElement, state: JxScope) {
  *
  * @param {HTMLElement} el
  * @param {string} key The `on`-prefixed key
- * @param {unknown} val
+ * @param {JxDocumentValue | undefined} val
  * @param {JxScope} state
  * @returns {boolean} Whether a listener was attached
  */
-function bindHandler(el: HTMLElement, key: string, val: unknown, state: JxScope): boolean {
+function bindHandler(
+  el: HTMLElement,
+  key: string,
+  val: JxDocumentValue | undefined,
+  state: JxScope,
+): boolean {
   const type = key.slice(2);
   const scope = state;
-  if (isRefObj(val)) {
+  if (isRefValue(val)) {
     const handler = resolveRef(val.$ref, state);
-    if (typeof handler === "function") {
-      const handlerFn = handler as (s: JxScope, e: Event) => unknown;
-      el.addEventListener(type, (e) => handlerFn(scope, e));
+    if (isEventHandler(handler)) {
+      el.addEventListener(type, (e) => handler(scope, e));
     }
     return true;
   }
@@ -1550,9 +1748,11 @@ function bindHandler(el: HTMLElement, key: string, val: unknown, state: JxScope)
     });
     return true;
   }
-  if (isFunctionDef(val) && typeof val.body === "string") {
+  if (isFunctionDef(val) && isString(val.body)) {
     const params = resolveParamNames(val);
-    const fn = new Function(...params, val.body) as (s: JxScope, e: Event) => unknown;
+    /* SAFETY: `new Function` returns an ordinary function of the named parameters, `state` first;
+       the listener calls it with the scope and the event, and discards what it returns. */
+    const fn = new Function(...params, val.body) as JxEventHandler;
     el.addEventListener(type, (e) => fn(scope, e));
     return true;
   }
@@ -1585,11 +1785,16 @@ function bindDefinitionHandlers(host: HTMLElement, def: JxElement, state: JxScop
 /**
  * @param {HTMLElement} el
  * @param {string} key
- * @param {unknown} val
+ * @param {JxDocumentValue | undefined} val
  * @param {JxScope} state
  */
-function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope) {
-  const target = el as unknown as Record<string, unknown>;
+function bindProperty(
+  el: HTMLElement,
+  key: string,
+  val: JxDocumentValue | undefined,
+  state: JxScope,
+) {
+  const target = elementProperties(el);
   const boundProp = boundPropKey(key, val, state);
   if (boundProp) {
     el.dataset.jxBoundProp = boundProp;
@@ -1597,15 +1802,16 @@ function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope
   /* An `<img>` in a document says `{"tagName": "img", "src": "/hero.jpg"}`, so `src` arrives HERE
      as a top-level key and is written as a DOM PROPERTY — `attributes: { src }` is the rarer
      spelling. Both are the same reference and both need the same resolution. */
-  const asAsset = (resolved: unknown): unknown =>
-    typeof resolved === "string" ? canvasAssetValue(el.tagName, key, resolved) : resolved;
+  const asAsset = (resolved: JxScopeValue): JxScopeValue =>
+    isString(resolved) ? canvasAssetValue(el.tagName, key, resolved) : resolved;
   /*
    * `className` on an SVGElement is a read-only SVGAnimatedString, so assigning it throws in the
    * strict mode an ES module always runs under. It is the most common Jx element property, so the
    * attribute form is the only one that works on both.
    */
-  const write = (resolved: unknown): void => {
-    const node = el as unknown as Element;
+  const write = (resolved: JxScopeValue): void => {
+    // Widened to Element: a namespaced node is typed HTMLElement here but is not one at runtime.
+    const node: Element = el;
     if (key === "className" && !(node instanceof HTMLElement)) {
       node.setAttribute("class", resolved == null ? "" : String(resolved));
       return;
@@ -1619,9 +1825,11 @@ function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope
     }
     target[key] = resolved;
   };
-  if (isRefObj(val)) {
-    const refVal = val as { $ref: string };
+  if (isRefValue(val)) {
+    const refVal = val;
     if (key === "id") {
+      /* SAFETY: the `id` setter is a WebIDL DOMString attribute, which converts whatever it is
+         given to a string itself; the cast only lets the bound value reach that conversion. */
       target[key] = resolveRef(refVal.$ref, state) as string;
       return;
     }
@@ -1633,8 +1841,9 @@ function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope
 
   // Universal ${} reactivity — template strings in element properties
   if (isTemplateString(val)) {
+    const template = val;
     effect(() => {
-      write(asAsset(evaluateTemplate(val as string, state)));
+      write(asAsset(evaluateTemplate(template, state)));
     });
     return;
   }
@@ -1808,7 +2017,7 @@ function textSink(tag: HTMLStyleElement): StyleSink {
       write();
     },
     text() {
-      return tag.textContent ?? "";
+      return tag.textContent;
     },
   };
 }
@@ -1824,9 +2033,10 @@ function textSink(tag: HTMLStyleElement): StyleSink {
  * @returns {StyleSink}
  */
 function openSink(doc: Document): StyleSink {
-  const view = doc.defaultView as (Window & { CSSStyleSheet?: typeof CSSStyleSheet }) | null;
+  // A window without constructable stylesheets (an older engine, a test DOM) lacks the global.
+  const view: (Window & { CSSStyleSheet?: typeof CSSStyleSheet }) | null = doc.defaultView;
   const SheetConstructor = view?.CSSStyleSheet;
-  if (typeof SheetConstructor === "function" && Array.isArray(doc.adoptedStyleSheets)) {
+  if (isFunction(SheetConstructor) && Array.isArray(doc.adoptedStyleSheets)) {
     try {
       const sheet = new SheetConstructor();
       doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
@@ -1839,8 +2049,19 @@ function openSink(doc: Document): StyleSink {
   }
   const tag = doc.createElement("style");
   tag.dataset.jxSheet = "";
-  (doc.head ?? doc.documentElement).append(tag);
+  (documentHead(doc) ?? doc.documentElement).append(tag);
   return tag.sheet ? cssomSink(tag.sheet, () => tag.remove()) : textSink(tag);
+}
+
+/**
+ * A document's `<head>`, or null when it has none. HTML defines `document.head` as nullable (a
+ * document whose root element has no `head` child), though the DOM typings declare it non-null.
+ *
+ * @param {Document} doc
+ * @returns {HTMLHeadElement | null}
+ */
+function documentHead(doc: Document): HTMLHeadElement | null {
+  return doc.head;
 }
 
 /** One interned rule set: the rules as written, and how many elements point at them. */
@@ -2104,7 +2325,7 @@ function declaresDisplay(style: JxStyle | undefined): boolean {
      `@media` block as "the author supplied one", so the element stayed `inline` at rest and
      became a block on hover — a live trap rather than a subtlety. An author who wants the
      platform's own default writes `display: revert` in the base block, which this sees. */
-  return Boolean(style) && typeof style === "object" && "display" in style;
+  return isNonNullObject(style) && "display" in style;
 }
 
 /**
@@ -2129,19 +2350,20 @@ function mergeStyle(base: JxStyle, over: JxStyle | undefined): JxStyle {
   if (!over) {
     return base;
   }
-  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-  for (const [key, value] of Object.entries(over as Record<string, unknown>)) {
+  const out: JxStyle = { ...base };
+  for (const [key, value] of Object.entries(over)) {
     const prior = out[key];
+    /* A block merges into whatever object the definition holds there. A repeated-block list is
+       spread to its index keys first, which is what spreading it as a style object always did. */
     out[key] =
-      prior !== null &&
-      typeof prior === "object" &&
-      value !== null &&
-      typeof value === "object" &&
-      !Array.isArray(value)
-        ? mergeStyle(prior as JxStyle, value as JxStyle)
+      isNestedStyle(value) && isNonNullObject(prior)
+        ? mergeStyle(
+            Array.isArray(prior) ? Object.fromEntries(Object.entries(prior)) : prior,
+            value,
+          )
         : value;
   }
-  return out as JxStyle;
+  return out;
 }
 
 /**
@@ -2212,7 +2434,7 @@ function applyStyleInto(
   live: boolean,
 ) {
   releaseElementStyles(el);
-  const doc = el.ownerDocument ?? document;
+  const doc = el.ownerDocument;
   const sheetState = sheetStateFor(doc);
 
   /* One gate for the whole call, so every recursion answers alike. Off in production and in
@@ -2318,7 +2540,7 @@ function applyStyleInto(
     scope.run(() => {
       for (const { name, value } of sources) {
         effect(() => {
-          const resolved = isRefObj(value)
+          const resolved = isRefValue(value)
             ? resolveRef(value.$ref, state)
             : evaluateTemplate(value, state);
           el.style.setProperty(name, canvasStyleValue(String(resolved ?? "")));
@@ -2411,7 +2633,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
     const attr = canvasAttrName(el, k);
     /* Inside the effects, not before them. A `$ref` or `${…}` value is not a string until the
        effect runs — which is exactly why the document walk this replaced could never see it. */
-    const write = (resolved: unknown) => {
+    const write = (resolved: JxScopeValue) => {
       if (resolved === null || resolved === undefined) {
         /* Nothing is an attribute the element does not have. A binding that resolves to `null`
            has to take the attribute WITH it, for the same reason a `false` does below — and an
@@ -2419,7 +2641,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
         el.removeAttribute(attr);
         return;
       }
-      if (typeof resolved === "boolean") {
+      if (isBoolean(resolved)) {
         const text = booleanAttrValue(attr, resolved);
         /* `removeAttribute`, not `setAttribute(attr, "false")`. A binding that flips back has to
            take the attribute WITH it: the element is being re-used, so anything left behind is the
@@ -2434,7 +2656,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
       }
       el.setAttribute(attr, canvasAssetValue(el.tagName, k, String(resolved)));
     };
-    if (isRefObj(v)) {
+    if (isRefValue(v)) {
       effect(() => write(resolveRef(v.$ref, state)));
     } else if (isTemplateString(v)) {
       effect(() => write(evaluateAttrTemplate(v, state)));
@@ -2483,7 +2705,7 @@ function renderMappedArrayInto(
   const anchor = document.createComment("jx-array");
   parentEl.append(anchor);
   const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef, key: keyRef } = arrayDef;
-  const keyPointer = isRefObj(keyRef) ? keyRef.$ref : null;
+  const keyPointer = isRefValue(keyRef) ? keyRef.$ref : null;
   /* The instantiation chain the list belongs to (spec.md §16.9), for the same reason
      {@link renderSwitch} keeps one: a row that arrives with new data is inserted from an effect
      re-run, and the instance it holds must connect under the chain of the definition that drew
@@ -2506,9 +2728,13 @@ function renderMappedArrayInto(
     row.node.remove();
   };
 
-  const createRow = (key: unknown, item: unknown, index: number): MappedRow => {
+  const createRow = (
+    key: MappedRow["key"],
+    item: MappedRow["map"]["item"],
+    index: number,
+  ): MappedRow => {
     const map = shallowReactive({ index, item });
-    const child = Object.create(state) as JxScope;
+    const child = inheritScope(state);
     child.$map = map;
     // The flat aliases stay readable by legacy readers, and follow the reactive context.
     Object.defineProperty(child, "$map/item", { enumerable: true, get: () => map.item });
@@ -2519,8 +2745,8 @@ function renderMappedArrayInto(
     return { key, map, node, scope };
   };
 
-  const reconcile = (list: unknown[], keys: unknown[]): void => {
-    const previous = new Map<unknown, MappedRow>();
+  const reconcile = (list: readonly JxScopeValue[], keys: readonly MappedRow["key"][]): void => {
+    const previous = new Map<MappedRow["key"], MappedRow>();
     for (const row of rows) {
       previous.set(row.key, row);
     }
@@ -2563,24 +2789,30 @@ function renderMappedArrayInto(
   };
 
   const update = (): void => {
-    let items: unknown = isRefObj(itemsSrc) ? resolveRef(itemsSrc.$ref, state) : itemsSrc;
-    if (Array.isArray(items) && isRefObj(filterRef)) {
+    let items: JxScopeValue = isRefValue(itemsSrc) ? resolveRef(itemsSrc.$ref, state) : itemsSrc;
+    if (Array.isArray(items) && isRefValue(filterRef)) {
       const fn = resolveRef(filterRef.$ref, state);
-      if (typeof fn === "function") {
-        items = items.filter(fn as (v: unknown) => boolean);
+      if (isFunction(fn)) {
+        /* SAFETY: the guard proved a function, and a function accepts any call: `Array#filter`
+           passes each item (with its index and the list) and reads only the result's truthiness. */
+        items = items.filter(fn as (item: MappedRow["map"]["item"]) => boolean);
       }
     }
-    if (Array.isArray(items) && isRefObj(sortRef)) {
+    if (Array.isArray(items) && isRefValue(sortRef)) {
       const fn = resolveRef(sortRef.$ref, state);
-      if (typeof fn === "function") {
-        items = [...(items as unknown[])].toSorted(fn as (a: unknown, b: unknown) => number);
+      if (isFunction(fn)) {
+        /* SAFETY: the guard proved a function, and a function accepts any call: `toSorted` passes
+           two items and orders by the sign of the number the comparator returns. */
+        const compare = fn as (a: MappedRow["map"]["item"], b: MappedRow["map"]["item"]) => number;
+        const unsorted: readonly JxScopeValue[] = items;
+        items = [...unsorted].toSorted(compare);
       }
     }
-    const list = Array.isArray(items) && mapDef ? (items as unknown[]) : [];
+    const list: readonly JxScopeValue[] = Array.isArray(items) && mapDef ? items : [];
 
     // Keys are read HERE, tracked, so a key that changes reconciles the list.
     const keys = list.map((item, index) => mappedRowKey(keyPointer, item, index, warnOnce));
-    const seen = new Set<unknown>();
+    const seen = new Set<MappedRow["key"]>();
     for (let i = 0; i < keys.length; i++) {
       if (seen.has(keys[i])) {
         warnOnce(
@@ -2634,9 +2866,9 @@ function renderMappedArrayInto(
 
 /** A rendered row of a mapped array. */
 interface MappedRow {
-  key: unknown;
+  key: JxScopeValue;
   /** The row's `$map` context; `item` and `index` are written in place when the row is reused. */
-  map: { index: number; item: unknown };
+  map: JxRowContext;
   node: HTMLElement | Text;
   scope: EffectScope;
 }
@@ -2648,10 +2880,10 @@ interface MappedRow {
  */
 function mappedRowKey(
   pointer: string | null,
-  item: unknown,
+  item: MappedRow["map"]["item"],
   index: number,
   warnOnce: (message: string) => void,
-): unknown {
+): MappedRow["key"] {
   if (pointer === null) {
     return index;
   }
@@ -2677,12 +2909,12 @@ function mappedRowKey(
  * schema already held to the tag-name pattern — the property that lets the compiler enumerate the
  * candidates and lets `createElement` be called without a second thought here.
  *
- * @param {unknown} tagName The element's declared tag.
+ * @param {TagNameSlot} tagName The element's declared tag.
  * @param {JxScope} scope The state the discriminant reads.
  * @returns {string} A literal tag name; `"div"` when nothing is declared.
  */
-export function resolveTagName(tagName: unknown, scope: JxScope): string {
-  if (typeof tagName === "string") {
+export function resolveTagName(tagName: TagNameSlot, scope: JxScope): string {
+  if (isString(tagName)) {
     return tagName;
   }
   if (!isTagExpression(tagName)) {
@@ -2720,7 +2952,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
   }
 
   applyProperties(container, def, state);
-  applyStyle(container, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
+  applyStyle(container, def.style ?? {}, scopeMedia(state), state);
   applyAttributes(container, def.attributes ?? {}, state);
   /* Every case renders in a detached scope of its own, stopped before the next case renders and
      when the container's own scope stops. A generation counter names the case a pending external
@@ -2739,7 +2971,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
   };
 
   effect(() => {
-    if (!isRefObj(def.$switch)) {
+    if (!isRefValue(def.$switch)) {
       retire();
       container.replaceChildren();
       generation += 1;
@@ -2766,7 +2998,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
     live = scope;
     const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
 
-    if (isRefObj(caseDef)) {
+    if (isRefValue(caseDef)) {
       // External $ref — fetch and render asynchronously, against the mount's base so a bundled
       // Document need not live at the page URL.
       const { href } = new URL(caseDef.$ref, options?._ctx?.base ?? location.href);
@@ -2784,7 +3016,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
             scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
           );
         })
-        .catch((error: unknown) =>
+        .catch((error) =>
           console.error("Jx $switch: failed to load external case", caseDef.$ref, error),
         );
       return;
@@ -2810,6 +3042,15 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
 // ─── Prototype namespaces (Shape 5) ──────────────────────────────────────────
 
 /**
+ * `ref()`, for a value that is one scope member: the same function, under a signature that says so.
+ *
+ * `ref`'s own return type unwraps its argument's type recursively, and over the recursive
+ * `JxScopeValue` union (an array of scope values holds scope values) that unwrapping never
+ * terminates (TS2589). The value goes in as it is, so the ref is typed as holding a scope member.
+ */
+const scopeRef: (value: JxScopeValue) => Ref<JxScopeValue> = ref;
+
+/**
  * Resolve a $prototype definition into a value for the reactive scope.
  *
  * Returns a ref() for async/persistent entries (Request, Storage, Cookie, IndexedDB), or a plain
@@ -2819,7 +3060,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
  * @param {JxScope} state - Reactive scope proxy
  * @param {string} key - Def key (for diagnostics)
  * @param {string} [base] - Base URL for resolving $src imports
- * @returns {Promise<unknown>}
+ * @returns {Promise<JxScopeValue>}
  */
 export async function resolvePrototype(
   def: JxPrototypeDef,
@@ -2835,7 +3076,7 @@ export async function resolvePrototype(
 
   switch (def.$prototype) {
     case "Request": {
-      const s: Ref<unknown> = ref(null);
+      const s: Ref<JxScopeValue> = ref(null);
       const debounceMs = def.debounce ?? 0;
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -2865,14 +3106,14 @@ export async function resolvePrototype(
               signal: controller.signal,
               ...(def.headers && { headers: def.headers }),
               ...(def.body && {
-                body: typeof def.body === "object" ? JSON.stringify(def.body) : def.body,
+                body: isNonNullObject(def.body) ? JSON.stringify(def.body) : def.body,
               }),
             })
-              .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+              .then((r): Promise<JsonValue> => (r.ok ? r.json() : Promise.reject(r.statusText)))
               .then((d) => {
                 s.value = d;
               })
-              .catch((error: unknown) => {
+              .catch((error) => {
                 if (!(error instanceof Error && error.name === "AbortError")) {
                   s.value = { error: String(error) };
                 }
@@ -2894,8 +3135,11 @@ export async function resolvePrototype(
         const p: Record<string, string> = {};
         for (const [k, v] of Object.entries(def)) {
           if (k !== "$prototype") {
+            /* SAFETY: the record goes straight to `URLSearchParams`, whose WebIDL record<USVString,
+               USVString> conversion stringifies every value itself; a bound number or boolean
+               reaches that conversion exactly as it always has. */
             p[k] = (
-              isRefObj(v)
+              isRefValue(v)
                 ? resolveRef(v.$ref, state)
                 : isTemplateString(v)
                   ? evaluateTemplate(v, state)
@@ -2911,14 +3155,16 @@ export async function resolvePrototype(
     case "SessionStorage": {
       const store = def.$prototype === "LocalStorage" ? localStorage : sessionStorage;
       const k = def.key ?? key;
-      let init: unknown;
+      let init: JxScopeValue;
       try {
         const s = store.getItem(k);
-        init = s !== null ? (JSON.parse(s) as unknown) : (def.default ?? null);
+        /* SAFETY: `JSON.parse` answers the JSON value the stored text encodes, or throws, which the
+           catch below answers with the entry's default. */
+        init = s !== null ? (JSON.parse(s) as JsonValue) : (def.default ?? null);
       } catch {
         init = def.default ?? null;
       }
-      const storageState: Ref<unknown> = ref(init);
+      const storageState = scopeRef(init);
       // Persist on change
       effect(() => {
         const v = storageState.value;
@@ -2937,28 +3183,33 @@ export async function resolvePrototype(
 
     case "Cookie": {
       const name = def.name ?? key;
-      const read = () => {
+      const read = (): JsonValue => {
         const raw = readCookie(document.cookie, name);
         if (raw === null) {
           return null;
         }
         try {
-          return JSON.parse(decodeURIComponent(raw));
+          /* SAFETY: `JSON.parse` answers the JSON value the cookie encodes, or throws, which the
+             catch below answers with the raw text. */
+          return JSON.parse(decodeURIComponent(raw)) as JsonValue;
         } catch {
           return raw;
         }
       };
-      const cookieState: Ref<unknown> = ref(read() ?? def.default ?? null);
+      const cookieState = scopeRef(read() ?? def.default ?? null);
       // Persist on change
       effect(() => {
+        /* SAFETY: the store is seeded with JSON (`read` parses it, `default` is JSON) and holds
+           what the page writes back; `serializeCookie` reads it only through `JSON.stringify`,
+           which is defined for any value and keeps exactly the JSON a cookie can carry. */
         // oxlint-disable-next-line unicorn/no-document-cookie -- the Cookie $prototype IS the cookie store binding
-        document.cookie = serializeCookie(name, cookieState.value, def);
+        document.cookie = serializeCookie(name, cookieState.value as JsonValue, def);
       });
       return cookieState;
     }
 
     case "IndexedDB": {
-      const idbState: Ref<unknown> = ref(null);
+      const idbState: Ref<JxScopeValue> = ref(null);
       const {
         database,
         store,
@@ -2972,6 +3223,7 @@ export async function resolvePrototype(
       }
       const req = indexedDB.open(database, version);
       req.addEventListener("upgradeneeded", (e) => {
+        // SAFETY: an open request's events are dispatched at the request itself.
         const db: IDBDatabase = (e.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(store)) {
           const os = db.createObjectStore(store, { autoIncrement, keyPath });
@@ -2981,6 +3233,7 @@ export async function resolvePrototype(
         }
       });
       req.addEventListener("success", (e) => {
+        // SAFETY: an open request's events are dispatched at the request itself.
         const db: IDBDatabase = (e.target as IDBOpenDBRequest).result;
         idbState.value = {
           database,
@@ -3008,14 +3261,19 @@ export async function resolvePrototype(
     case "FormData": {
       const fd = new FormData();
       for (const [k, v] of Object.entries(def.fields ?? {})) {
+        /* SAFETY: `append(name, value)` converts a non-Blob value to a USVString itself, so a JSON
+           number or boolean field reaches that conversion exactly as it always has. */
         fd.append(k, v as string);
       }
       return fd;
     }
 
     case "Blob": {
-      return new Blob((def.parts as BlobPart[]) ?? [], {
-        type: typeof def.type === "string" ? def.type : "text/plain",
+      /* SAFETY: a Blob entry's `parts` is the BlobPart list its document declares; anything else
+         reaches the Blob constructor, whose own WebIDL sequence check refuses it as before. */
+      const parts = def.parts as BlobPart[] | null | undefined;
+      return new Blob(parts ?? [], {
+        type: isString(def.type) ? def.type : "text/plain",
       });
     }
 
@@ -3049,13 +3307,35 @@ const EXTERNAL_RESERVED = new Set([
 ]);
 
 /**
+ * The config an external class is constructed with: the entry's own keys, minus the runtime's.
+ *
+ * @param {JxPrototypeDef} def
+ * @returns {JxScope}
+ */
+function externalConfig(def: JxPrototypeDef): JxScope {
+  const config: JxScope = {};
+  for (const [k, v] of Object.entries(def)) {
+    if (!EXTERNAL_RESERVED.has(k)) {
+      config[k] = v;
+    }
+  }
+  return config;
+}
+
+/**
+ * A class an external module exports, as the runtime uses it: a function, which is what `typeof`
+ * says of every class, constructed with the entry's config.
+ */
+type ExternalClass = JxScopeFunction & (new (config: JxScope) => ExternalClassInstance);
+
+/**
  * Resolve an external class prototype via $src.
  *
  * @param {JxPrototypeDef} def
  * @param {JxScope} state
  * @param {string} key
  * @param {string} [base]
- * @returns {Promise<unknown>}
+ * @returns {Promise<Ref<JxScopeValue>>}
  */
 async function resolveExternalPrototype(
   def: JxPrototypeDef,
@@ -3080,13 +3360,18 @@ async function resolveExternalPrototype(
  * Import a JS module and instantiate a class from it. Internal helper used by resolveClassJson for
  * $implementation.
  *
- * @param {JxScope} def - Original state entry (for config extraction)
+ * @param {JxPrototypeDef} def - Original state entry (for config extraction)
  * @param {string} src - JS module URL to import
  * @param {string} exportName - Export name to look up
  * @param {string} [base] - Base URL for resolution
- * @returns {Promise<unknown>}
+ * @returns {Promise<Ref<JxScopeValue>>}
  */
-async function importAndInstantiate(def: JxScope, src: string, exportName: string, base?: string) {
+async function importAndInstantiate(
+  def: JxPrototypeDef,
+  src: string,
+  exportName: string,
+  base?: string,
+) {
   let mod: ImportedModule;
   const seeded = seededModule(src);
   if (seeded instanceof Promise) {
@@ -3095,11 +3380,11 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
     mod = seeded;
   } else {
     try {
-      mod = (await import(src)) as ImportedModule;
+      mod = await importModule(src);
     } catch {
       if (base) {
         const resolvedSrc = new URL(src, base).href;
-        mod = (await import(resolvedSrc)) as ImportedModule;
+        mod = await importModule(resolvedSrc);
       } else {
         throw new Error(`Failed to import "${src}"`);
       }
@@ -3111,33 +3396,27 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
   if (!ExportedClass) {
     throw new Error(`Jx: export "${exportName}" not found in "${src}"`);
   }
-  if (typeof ExportedClass !== "function") {
+  if (!isFunction(ExportedClass)) {
     throw new TypeError(`Jx: "${exportName}" from "${src}" is not a class`);
   }
 
-  const config: JxScope = {};
-  for (const [k, v] of Object.entries(def)) {
-    if (!EXTERNAL_RESERVED.has(k)) {
-      config[k] = v;
-    }
-  }
+  /* SAFETY: trust boundary — the external class contract, spec.md §12.3. A `$implementation`
+     module's export is written as a class constructed with the entry's config; `isFunction` is all
+     that can be checked before `new`, and a function that is not constructible throws its own
+     TypeError there, as it always has. The instance is read only through `ExternalClassInstance`'s
+     optional members, each checked before it is used, and the one it offers is the entry's value. */
+  const instance = new (ExportedClass as ExternalClass)(externalConfig(def));
 
-  const Ctor = ExportedClass as new (config: JxScope) => ExternalClassInstance;
-  const instance = new Ctor(config);
-
-  let value: unknown;
-  if (typeof instance.resolve === "function") {
-    value = await instance.resolve();
-  } else if ("value" in instance) {
-    ({ value } = instance);
-  } else {
-    value = instance;
-  }
+  const value = isFunction(instance.resolve)
+    ? await instance.resolve()
+    : "value" in instance
+      ? instance.value
+      : instance;
 
   // Always wrap in ref for reactivity with external classes
-  const s: Ref<unknown> = ref(value);
-  if (typeof instance.subscribe === "function") {
-    instance.subscribe((newVal: unknown) => {
+  const s = scopeRef(value);
+  if (isFunction(instance.subscribe)) {
+    instance.subscribe((newVal) => {
       s.value = newVal;
     });
   }
@@ -3155,7 +3434,7 @@ async function importAndInstantiate(def: JxScope, src: string, exportName: strin
  * @param {JxScope} state
  * @param {string} key
  * @param {string} [base]
- * @returns {Promise<unknown>}
+ * @returns {Promise<Ref<JxScopeValue>>}
  */
 async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string, base?: string) {
   const src = def.$src!;
@@ -3179,7 +3458,9 @@ async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
-    // Trust boundary: fetched .class.json sources are class definitions by contract.
+    /* SAFETY: trust boundary. Only a `$src` ending in `.class.json` reaches this fetch
+       (`resolveExternalPrototype` refuses anything else), and a 2xx answer for one is a class
+       definition document; the runtime does not schema-validate documents by design. */
     classDef = (await res.json()) as JxClassDef;
   } catch {
     // Fall back to dev proxy (server will handle .class.json resolution)
@@ -3206,27 +3487,21 @@ async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string
 
   // Self-contained: construct class dynamically from schema
   const DynClass = classFromSchema(classDef);
-  const config: JxScope = {};
-  for (const [k, v] of Object.entries(def)) {
-    if (!EXTERNAL_RESERVED.has(k)) {
-      config[k] = v;
-    }
-  }
-  const instance = new DynClass(config) as ExternalClassInstance;
+  /* SAFETY: every member of ExternalClassInstance is optional, and each is checked below before it
+     is used, so any constructed object satisfies it; a schema class that defines `resolve`,
+     `value` or `subscribe` methods or fields is the shape it names. */
+  const instance = new DynClass(externalConfig(def)) as ExternalClassInstance;
 
-  let value: unknown;
-  if (typeof instance.resolve === "function") {
-    value = await instance.resolve();
-  } else if ("value" in instance) {
-    ({ value } = instance);
-  } else {
-    value = instance;
-  }
+  const value = isFunction(instance.resolve)
+    ? await instance.resolve()
+    : "value" in instance
+      ? instance.value
+      : instance;
 
   // Always wrap in ref for reactivity
-  const s: Ref<unknown> = ref(value);
-  if (typeof instance.subscribe === "function") {
-    instance.subscribe((newVal: unknown) => {
+  const s = scopeRef(value);
+  if (isFunction(instance.subscribe)) {
+    instance.subscribe((newVal) => {
       s.value = newVal;
     });
   }
@@ -3234,43 +3509,59 @@ async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string
 }
 
 /**
+ * Whether a class document's `$defs.constructor` is its own constructor definition, rather than the
+ * `Object.prototype.constructor` function every object parsed from JSON inherits.
+ *
+ * @param rawCtor What `$defs.constructor` reads as
+ */
+function isCtorDef(
+  rawCtor: NonNullable<JxClassDef["$defs"]>["constructor"],
+): rawCtor is JxClassCtorDef {
+  return isNonNullObject(rawCtor);
+}
+
+/**
  * Dynamically construct a class from a .class.json schema definition. Browser-side: maps private
  * fields to _-prefixed public fields.
  *
  * @param {import("@jxsuite/schema/types").JxClassDef} classDef
- * @returns {DynamicClass}
+ * @returns {typeof DynClass} A class whose instances hold the schema's fields by name
  */
 function classFromSchema(classDef: JxClassDef) {
   const fields = classDef.$defs?.fields ?? {};
   // JSON objects inherit Object.prototype.constructor — only an own object value counts.
   const rawCtor = classDef.$defs?.constructor;
-  const ctor = typeof rawCtor === "object" ? rawCtor : undefined;
+  const ctor = isCtorDef(rawCtor) ? rawCtor : undefined;
   const methods = classDef.$defs?.methods ?? {};
 
   // oxlint-disable-next-line typescript/no-extraneous-class -- methods are attached to the prototype dynamically below
   class DynClass {
-    constructor(config: Record<string, unknown> = {}) {
+    /** Static methods, attached by name below. */
+    static [member: string]: JxScopeValue;
+    /** An instance holds its fields, and reaches its methods, by the names the schema gives. */
+    [member: string]: JxScopeValue;
+
+    constructor(config: JxScope = {}) {
       for (const [key, typedField] of Object.entries(fields)) {
         const id = typedField.identifier ?? key;
         const propName = typedField.access === "private" ? `_${id}` : id;
         if (config[id] !== undefined) {
-          (this as Record<string, unknown>)[propName] = config[id];
+          this[propName] = config[id];
         } else if (typedField.initializer !== undefined) {
-          (this as Record<string, unknown>)[propName] = typedField.initializer;
+          this[propName] = typedField.initializer;
         } else if (typedField.default !== undefined) {
-          (this as Record<string, unknown>)[propName] = structuredClone(typedField.default);
+          this[propName] = structuredClone(typedField.default);
         } else {
-          (this as Record<string, unknown>)[propName] = null;
+          this[propName] = null;
         }
       }
       if (ctor?.body) {
         const bodyStr = Array.isArray(ctor.body) ? ctor.body.join("\n") : ctor.body;
-        (
-          new Function("config", bodyStr) as (
-            this: unknown,
-            config: Record<string, unknown>,
-          ) => void
-        ).call(this, config);
+        /* SAFETY: `new Function` returns an ordinary function of the one named parameter; `call`
+           runs it with the instance under construction as `this`, which is the constructor
+           body's contract. */
+        const init = new Function("config", bodyStr) as (this: DynClass, config: JxScope) => void;
+        init.call(this, config);
       }
     }
   }
@@ -3279,10 +3570,11 @@ function classFromSchema(classDef: JxClassDef) {
     const name = typedMethod.identifier ?? key;
     const params = (typedMethod.parameters ?? []).map((p) => {
       if (p.$ref) {
-        return p.$ref.split("/").pop() as string;
+        // `split` always yields at least one segment, so `pop` always finds one.
+        return p.$ref.split("/").pop() ?? "";
       }
       const n = p.identifier ?? p.name;
-      return typeof n === "string" ? n : "arg";
+      return isString(n) ? n : "arg";
     });
     const bodyStr = Array.isArray(typedMethod.body)
       ? typedMethod.body.join("\n")
@@ -3291,22 +3583,28 @@ function classFromSchema(classDef: JxClassDef) {
     if (typedMethod.role === "accessor") {
       const descriptor: PropertyDescriptor = {};
       if (typedMethod.getter) {
-        descriptor.get = new Function(typedMethod.getter.body ?? "") as () => unknown;
+        /* SAFETY: `new Function` returns an ordinary function; as a getter it is called with no
+           arguments and the instance as `this`, and what it returns is the property's value. */
+        descriptor.get = new Function(typedMethod.getter.body ?? "") as () => JxScopeValue;
       }
       if (typedMethod.setter) {
         const sp = (typedMethod.setter.parameters ?? []).map(
           (p) => p.$ref?.split("/").pop() ?? "v",
         );
-        descriptor.set = new Function(...sp, typedMethod.setter.body ?? "") as (v: unknown) => void;
+        /* SAFETY: `new Function` returns an ordinary function of the named parameters; as a setter
+           it receives the assigned value as its one argument, and its return is discarded. */
+        descriptor.set = new Function(...sp, typedMethod.setter.body ?? "") as (
+          v: JxScopeValue,
+        ) => void;
       }
       Object.defineProperty(DynClass.prototype, name, {
         ...descriptor,
         configurable: true,
       });
     } else if (typedMethod.scope === "static") {
-      (DynClass as unknown as DynamicClass)[name] = new Function(...params, bodyStr);
+      DynClass[name] = new Function(...params, bodyStr);
     } else {
-      (DynClass as unknown as DynamicClass).prototype[name] = new Function(...params, bodyStr);
+      DynClass.prototype[name] = new Function(...params, bodyStr);
     }
   }
 
@@ -3314,8 +3612,7 @@ function classFromSchema(classDef: JxClassDef) {
     configurable: true,
     value: classDef.title,
   });
-  const dynCtor = DynClass as unknown as DynamicClass;
-  return dynCtor;
+  return DynClass;
 }
 
 /**
@@ -3327,17 +3624,12 @@ function classFromSchema(classDef: JxClassDef) {
  * @param {JxScope} state
  * @param {string} key
  * @param {string} [base]
- * @returns {Promise<unknown>}
+ * @returns {Promise<Ref<JxScopeValue>>}
  */
 async function resolveViaDevProxy(def: JxPrototypeDef, state: JxScope, key: string, base?: string) {
-  const config: JxScope = {};
-  for (const [k, v] of Object.entries(def)) {
-    if (!EXTERNAL_RESERVED.has(k)) {
-      config[k] = v;
-    }
-  }
+  const config = externalConfig(def);
 
-  const hasTemplates = Object.values(config).some((v: unknown) => isTemplateString(v));
+  const hasTemplates = Object.values(config).some((v) => isTemplateString(v));
 
   /** @param {JxScope} resolvedConfig */
   const doResolve = (resolvedConfig: JxScope) =>
@@ -3351,15 +3643,16 @@ async function resolveViaDevProxy(def: JxPrototypeDef, state: JxScope, key: stri
       }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
-    }).then((r) => {
+    }).then((r): Promise<JsonValue> => {
       if (!r.ok) {
         throw new Error(`Jx dev proxy ${r.status} for "${key}"`);
       }
+      // The dev proxy answers with the resolved value serialized as JSON.
       return r.json();
     });
 
   // Always wrap in ref for reactivity
-  const s: Ref<unknown> = ref(null);
+  const s: Ref<JxScopeValue> = ref(null);
   if (hasTemplates) {
     effect(() => {
       const resolvedConfig: JxScope = {};
@@ -3367,17 +3660,17 @@ async function resolveViaDevProxy(def: JxPrototypeDef, state: JxScope, key: stri
         resolvedConfig[k] = isTemplateString(v) ? evaluateTemplate(v, state) : v;
       }
       doResolve(resolvedConfig)
-        .then((value: unknown) => {
+        .then((value) => {
           s.value = value;
         })
-        .catch((error: unknown) => console.error("Jx dev proxy:", error));
+        .catch((error) => console.error("Jx dev proxy:", error));
     });
   } else {
     doResolve(config)
-      .then((value: unknown) => {
+      .then((value) => {
         s.value = value;
       })
-      .catch((error: unknown) => console.error("Jx dev proxy:", error));
+      .catch((error) => console.error("Jx dev proxy:", error));
   }
   return s;
 }
@@ -3393,15 +3686,15 @@ async function resolveViaDevProxy(def: JxPrototypeDef, state: JxScope, key: stri
  * write started it. The proxy and a host-registered module share it, so a reactive entry's calls
  * are ordered and reported the same way on either path.
  *
- * @param {Ref<unknown>} s - The entry's value
- * @param {(args: JxScope) => unknown} invoke - One call, with resolved arguments: it may return a
- *   value or a promise, or throw
+ * @param {Ref<JxScopeValue>} s - The entry's value
+ * @param {ServerCall} invoke - One call, with resolved arguments: it may return a value or a
+ *   promise, or throw
  * @param {string} label - The `console.error` prefix a failed call is reported under
  * @returns {(args: JxScope) => void} Starts a call
  */
 function latestServerCall(
-  s: Ref<unknown>,
-  invoke: (args: JxScope) => unknown,
+  s: Ref<JxScopeValue>,
+  invoke: ServerCall,
   label: string,
 ): (args: JxScope) => void {
   let seq = 0;
@@ -3410,21 +3703,28 @@ function latestServerCall(
     const n = seq;
     /* The executor runs before the constructor returns, so the call still starts synchronously,
        and a throw inside it rejects this promise instead of escaping to the caller. */
-    new Promise<unknown>((settle) => {
+    new Promise<JsonValue>((settle) => {
       settle(invoke(args));
     })
-      .then((result: unknown) => {
+      .then((result) => {
         if (n === seq) {
           s.value = result;
         }
       })
-      .catch((error: unknown) => {
+      .catch((error) => {
         if (n === seq) {
           console.error(label, error);
         }
       });
   };
 }
+
+/**
+ * One call of a `timing: "server"` function, with its resolved arguments. Its answer is JSON, or a
+ * promise of JSON: on the proxy path the answer crosses the wire as JSON, and a host-registered
+ * module honours the same contract so the two paths are interchangeable.
+ */
+type ServerCall = (args: JxScope) => JsonValue | Promise<JsonValue>;
 
 /**
  * Resolve a timing: "server" entry. The runtime never imports a server module itself: every call is
@@ -3438,7 +3738,7 @@ function latestServerCall(
  * @param {JxScope} state
  * @param {string} key
  * @param {string} [base]
- * @returns {Promise<unknown>}
+ * @returns {Promise<Ref<JxScopeValue>>}
  */
 async function resolveServerFunction(
   def: JxServerFnDef,
@@ -3461,23 +3761,26 @@ async function resolveServerFunction(
   if (!candidate) {
     throw new Error(`Jx: export "${exportName}" not found in "${src}" for "${key}"`);
   }
-  if (typeof candidate !== "function") {
+  if (!isFunction(candidate)) {
     throw new TypeError(`Jx: "${exportName}" from "${src}" is not a function`);
   }
-  const fn = candidate as (args: JxScope) => unknown;
+  /* SAFETY: the guard proved a function, and a function accepts any call. A `timing: "server"`
+     export is written to be called through the proxy, which hands it one arguments object and
+     sends its answer back as JSON, so that is the contract it is held to in process too. */
+  const fn = candidate as ServerCall;
 
   const rawArgs = def.arguments ?? {};
-  const hasReactiveArg = Object.values(rawArgs).some((v: unknown) => isRefObj(v));
+  const hasReactiveArg = Object.values(rawArgs).some((v) => isRefValue(v));
   const resolveArgs = () => {
     const args: JxScope = {};
     for (const [k, v] of Object.entries(rawArgs)) {
-      args[k] = isRefObj(v) ? resolveRef(v.$ref, state) : v;
+      args[k] = isRefValue(v) ? resolveRef(v.$ref, state) : v;
     }
     return args;
   };
 
   // Always wrap in ref for reactivity
-  const s: Ref<unknown> = ref(null);
+  const s: Ref<JxScopeValue> = ref(null);
   if (hasReactiveArg) {
     const call = latestServerCall(s, fn, "Jx server function:");
     effect(() => {
@@ -3499,25 +3802,25 @@ async function resolveServerFunction(
  * the entry's last value and logs, and the answer to a superseded call is dropped, so a slow answer
  * to an earlier call can never overwrite a later one (`latestServerCall`).
  *
- * @param {JxScope} def
+ * @param {JxServerFnDef} def
  * @param {JxScope} state
  * @param {string} key
  * @param {string} [base]
- * @returns {Promise<unknown>}
+ * @returns {Promise<Ref<JxScopeValue>>}
  */
 async function resolveServerFunctionViaProxy(
-  def: JxScope,
+  def: JxServerFnDef,
   state: JxScope,
   key: string,
   base?: string,
 ) {
   const rawArgs = def.arguments ?? {};
-  const hasReactiveArg = Object.values(rawArgs).some((v: unknown) => isRefObj(v));
+  const hasReactiveArg = Object.values(rawArgs).some((v) => isRefValue(v));
 
   const resolveArgs = () => {
     const args: JxScope = {};
     for (const [k, v] of Object.entries(rawArgs)) {
-      args[k] = isRefObj(v) ? resolveRef((v as { $ref: string }).$ref, state) : v;
+      args[k] = isRefValue(v) ? resolveRef(v.$ref, state) : v;
     }
     return args;
   };
@@ -3533,15 +3836,16 @@ async function resolveServerFunctionViaProxy(
       }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
-    }).then((r) => {
+    }).then((r): Promise<JsonValue> => {
       if (!r.ok) {
         throw new Error(`Jx server proxy ${r.status} for "${key}"`);
       }
+      // The proxy answers with the function's result serialized as JSON.
       return r.json();
     });
 
   // Always wrap in ref for reactivity
-  const s: Ref<unknown> = ref(null);
+  const s: Ref<JxScopeValue> = ref(null);
   const call = latestServerCall(s, doResolve, "Jx server proxy:");
   if (hasReactiveArg) {
     effect(() => {
@@ -3563,10 +3867,11 @@ async function resolveServerFunctionViaProxy(
  *
  * @param {string} ref
  * @param {JxScope} state - Reactive scope proxy (or child scope)
- * @returns {unknown}
+ * @returns {JxScopeValue}
  */
 export function resolveRef(refPath: string, state: JxScope) {
-  if (typeof refPath !== "string") {
+  // A `$ref` read from a document is not schema-validated, so a non-string one passes through.
+  if (!isString(refPath)) {
     return refPath;
   }
   if (refPath.startsWith("$map/") || refPath.startsWith("#/$map/")) {
@@ -3575,9 +3880,11 @@ export function resolveRef(refPath: string, state: JxScope) {
        rendered ZERO rows with no warning. */
     const parts = (refPath.startsWith("#/") ? refPath.slice(2) : refPath).split("/");
     const [, key] = parts; // "item" or "index"
-    const map = state.$map as Record<string, unknown> | undefined;
+    /* SAFETY: `$map` holds only the row record `renderMappedArrayInto` binds (see `rowContext`), an
+       ordinary object read here by whichever member the ref names. */
+    const map = state.$map as Record<string, JxScopeValue> | undefined;
     const base = map?.[key!] ?? state[`$map/${key}`];
-    return parts.length > 2 ? getPath(base, parts.slice(2).join("/")) : base;
+    return parts.length > 2 ? readPath(base, parts.slice(2).join("/")) : base;
   }
   if (refPath.startsWith("#/state/")) {
     // One call, not a hand-split leading token: slicing at the first `/` skipped unescaping it, so
@@ -3592,10 +3899,10 @@ export function resolveRef(refPath: string, state: JxScope) {
     return readPath(state, refPath.slice("parent#/".length));
   }
   if (refPath.startsWith("window#/")) {
-    return getPath(globalThis.window, refPath.slice("window#/".length));
+    return readPath(globalThis.window, refPath.slice("window#/".length));
   }
   if (refPath.startsWith("document#/")) {
-    return getPath(globalThis.document, refPath.slice("document#/".length));
+    return readPath(globalThis.document, refPath.slice("document#/".length));
   }
   return readPath(state, refPath) ?? null;
 }
@@ -3606,30 +3913,10 @@ export function resolveRef(refPath: string, state: JxScope) {
  * Check if v is a Vue ref (including computed).
  *
  * @param {unknown} v
- * @returns {boolean}
+ * @returns {v is Ref<unknown>}
  */
-export function isSignal(v: unknown) {
+export function isSignal(v: unknown): v is Ref<unknown> {
   return isRef(v);
-}
-
-/**
- * @param {unknown} v
- * @returns {v is import("@jxsuite/schema/types").JxRef}
- */
-function isRefObj(v: unknown): v is JxRef {
-  return isRefValue(v);
-}
-
-/**
- * Walk a path off a value. Delegates to the one tokenizer (`pointer.ts`) — this used to split on
- * `/[./]/`, which no other path in the codebase agreed with.
- *
- * @param {unknown} obj
- * @param {string} path
- * @returns {unknown}
- */
-function getPath(obj: unknown, path: string) {
-  return readPath(obj, path);
 }
 
 /**
@@ -3651,40 +3938,39 @@ function absorbAttribute(
   state: JxScope,
   name: string,
   value: string | null,
-  defaults?: ReadonlyMap<string, unknown>,
+  defaults?: ReadonlyMap<string, JxScopeValue>,
 ): void {
   const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
   const current = state[camelKey];
-  if (typeof current === "boolean") {
+  if (isBoolean(current)) {
     // Presence IS the value for a boolean, so a removal is already spelled by the same rule.
     state[camelKey] = value !== null && value !== "false";
     return;
   }
   if (value === null) {
     const declared = defaults?.get(camelKey);
-    state[camelKey] = declared === undefined ? (typeof current === "number" ? 0 : "") : declared;
+    state[camelKey] = declared === undefined ? (isNumber(current) ? 0 : "") : declared;
     return;
   }
-  state[camelKey] = typeof current === "number" ? Number(value) : value;
+  state[camelKey] = isNumber(current) ? Number(value) : value;
 }
 
 /**
  * The declared default of every state entry that has one, by state key.
  *
  * @param def The element definition
- * @returns {Map<string, unknown>} Key → default
+ * @returns {Map<string, JxScopeValue>} Key → default
  */
-function declaredDefaults(def: JxElement): Map<string, unknown> {
-  const out = new Map<string, unknown>();
+function declaredDefaults(def: JxElement): Map<string, JxScopeValue> {
+  const out = new Map<string, JxScopeValue>();
   for (const [key, entry] of Object.entries(def.state ?? {})) {
-    if (entry !== null && typeof entry === "object") {
-      const obj = entry as Record<string, unknown>;
-      if ("default" in obj) {
-        out.set(key, obj["default"]);
+    if (isNonNullObject(entry)) {
+      if ("default" in entry) {
+        out.set(key, entry.default);
         continue;
       }
       // A computed entry has no default: its value is produced, and a removal leaves it alone.
-      if (COMPUTED_STATE_KEYS.some((marker) => marker in obj)) {
+      if (COMPUTED_STATE_KEYS.some((marker) => marker in entry)) {
         continue;
       }
     }
@@ -3772,12 +4058,12 @@ export function _resetPrivatePropWarnings(): void {
  * @returns {JxScope}
  */
 function mergeProps(def: JxElement, parentState: JxScope): JxScope {
-  const child = Object.create(parentState) as JxScope;
+  const child = inheritScope(parentState);
   for (const [k, v] of Object.entries(def.$props ?? {})) {
     if (refusePrivateProp(k, "$props")) {
       continue;
     }
-    child[k] = isRefObj(v) ? resolveRef(v.$ref, parentState) : v;
+    child[k] = isRefValue(v) ? resolveRef(v.$ref, parentState) : v;
   }
   return child;
 }
@@ -3818,12 +4104,12 @@ export type { CssBuildOptions, CssKeyframeBlock, CssRule, CssRuleTarget } from "
  * custom property survives it: `--fooBar` and `--foo-bar` are two different properties, and
  * kebab-casing one renames it out from under the `var()` that reads it.
  *
- * @param {Record<string, unknown> | object} rules
+ * @param {JxStyle} rules
  * @returns {string}
  */
-export function toCSSText(rules: Record<string, unknown> | object) {
+export function toCSSText(rules: JxStyle) {
   return Object.entries(rules)
-    .filter(([k, v]) => !isNestedSelectorKey(k) && (v === null || typeof v !== "object"))
+    .filter(([k, v]) => !isNestedSelectorKey(k) && !isNonNullObject(v))
     .map(([p, v]) => `${cssPropertyName(p)}: ${canvasStyleValue(String(v))}`)
     .join("; ");
 }
@@ -3891,9 +4177,9 @@ export async function redefineElement(doc: JxDocument, baseUrl?: string): Promis
  * before `buildScope`, and re-set it every render so a stale map from a previous document cannot
  * leak.
  *
- * @param {Record<string, string>} map
+ * @param {Record<string, string> | null} [map] - Absent or null clears it
  */
-export function setRootMedia(map: Record<string, string>): void {
+export function setRootMedia(map?: Record<string, string> | null): void {
   _rootMedia = map ?? {};
 }
 
@@ -3911,7 +4197,7 @@ async function registerElements(
 ) {
   for (const entry of elements) {
     // Bare string: npm package side-effect import (registers custom elements)
-    if (typeof entry === "string") {
+    if (isString(entry)) {
       try {
         // Bare specifiers need a URL path for the browser; the dev server resolves
         // /node_modules/<pkg> to the package entry point via exports/module/main.
@@ -3923,7 +4209,7 @@ async function registerElements(
       }
       continue;
     }
-    if (!isRefObj(entry)) {
+    if (!isRefValue(entry)) {
       continue;
     }
     const { href } = new URL(entry.$ref, base);
@@ -3951,7 +4237,7 @@ async function registerElements(
  * @param {import("@jxsuite/schema/types").JxHeadEntry[]} entries
  * @param {string} _base - Document base URL for resolving relative paths
  */
-function injectHead(entries: JxHeadEntry[], _base: string) {
+function injectHead(entries: readonly (JxHeadEntry | null | undefined)[], _base: string) {
   for (const entry of entries) {
     if (!entry || !entry.tagName) {
       continue;
@@ -3961,7 +4247,7 @@ function injectHead(entries: JxHeadEntry[], _base: string) {
     // Resolve href/src: bare npm specifiers -> /node_modules/ path
     for (const key of ["href", "src"] as const) {
       const v = attrs[key];
-      if (typeof v !== "string" || v === "") {
+      if (!isString(v) || v === "") {
         continue;
       }
       if (!v.startsWith("/") && !v.startsWith(".") && !v.startsWith("http")) {
@@ -3987,10 +4273,9 @@ function injectHead(entries: JxHeadEntry[], _base: string) {
     if (entry.textContent) {
       // An object is a structured data block (JSON-LD, site-architecture.md §8.5). The compiler
       // Serializes it the same way, so the interpreted page and the built page agree.
-      el.textContent =
-        typeof entry.textContent === "object"
-          ? JSON.stringify(entry.textContent, null, 2)
-          : entry.textContent;
+      el.textContent = isNonNullObject(entry.textContent)
+        ? JSON.stringify(entry.textContent, null, 2)
+        : entry.textContent;
     }
     document.head.append(el);
   }
@@ -3999,18 +4284,18 @@ function injectHead(entries: JxHeadEntry[], _base: string) {
 // ─── Instantiation chain (spec.md §16.9) ─────────────────────────────────────
 
 /**
- * How deep component nesting may go before an instance refuses to render.
+ * How deep component nesting may go before an instance refuses to render, and before the compiler
+ * (`@jxsuite/compiler`, `shared.ts`, which imports this export) refuses to continue a build.
  *
- * The same number the compiler holds in `MAX_COMPONENT_NESTING` (`@jxsuite/compiler`, `shared.ts`),
- * and for the same reason: the cycle check in {@link extendInstancePath} catches a definition that
- * renders ITSELF — same tag, same props — which is the only shape that can never terminate, while a
- * self-reference whose props change at every level is data-driven recursion that a `$switch` may or
- * may not bottom out. The seen-set cannot tell those apart, so this cap is what turns a forgotten
- * stop into a diagnostic instead of a page that never settles. It is written twice because the
- * compiler depends on the runtime and not the other way round, and the runtime's browser bundle
- * cannot reach into the build tool; spec.md §16.9 is the one statement both are held to, and the
- * compiler's `nesting-cap-agreement.test.ts` asserts its copy against this export, so the two
- * numbers cannot part without a red test in the workspace that owns the copy.
+ * The cycle check in {@link extendInstancePath} catches a definition that renders ITSELF — same tag,
+ * same props — which is the only shape that can never terminate, while a self-reference whose props
+ * change at every level (`depth: "${state.depth + 1}"`) is data-driven recursion that a `$switch`
+ * may or may not bottom out. The seen-set cannot tell those apart, so this cap is what turns a
+ * forgotten stop into a diagnostic instead of a page that never settles or a build that overflows
+ * its stack. Thirty-two is far beyond any component library's real depth and far below the call
+ * stack's. It lives here because the compiler depends on the runtime and not the other way round,
+ * so one declaration serves both sides of spec.md §16.9: a page that builds is a page that
+ * renders.
  */
 export const MAX_COMPONENT_NESTING = 32;
 
@@ -4018,7 +4303,7 @@ export const MAX_COMPONENT_NESTING = 32;
 interface InstanceFrame {
   tag: string;
   /** Every value the instance supplied that its definition's state read (§16.9). */
-  props: Record<string, unknown>;
+  props: JxScope;
 }
 
 /**
@@ -4119,11 +4404,11 @@ function reexpand(path: InstancePath): InstancePath {
  * ended. Inside plain data the comparison IS the JSON form, so a member JSON cannot see (a
  * function, a `Map` two levels down) is not seen here either; §16.9 says so.
  *
- * @param {unknown} a
- * @param {unknown} b
+ * @param {JxScopeValue} a
+ * @param {JxScopeValue} b
  * @returns {boolean}
  */
-function samePropValue(a: unknown, b: unknown): boolean {
+function samePropValue(a: JxScopeValue, b: JxScopeValue): boolean {
   if (Object.is(a, b)) {
     return true;
   }
@@ -4140,11 +4425,11 @@ function samePropValue(a: unknown, b: unknown): boolean {
 /**
  * Whether a value is an array or a plain object — the shapes whose JSON form is the whole value.
  *
- * @param {unknown} value
- * @returns {value is object}
+ * @param {JxScopeValue} value
+ * @returns {boolean}
  */
-function isPlainData(value: unknown): value is object {
-  if (typeof value !== "object" || value === null) {
+function isPlainData(value: JxScopeValue): boolean {
+  if (!isNonNullObject(value)) {
     return false;
   }
   const raw: unknown = toRaw(value);
@@ -4220,18 +4505,18 @@ const _definedSources = new Set<string>();
 
 export async function defineElement(source: string | JxDocument, baseUrl?: string) {
   let base = baseUrl;
-  let doc = source;
-  if (typeof source === "string") {
+  let source_: JxDocument;
+  if (isString(source)) {
     base = new URL(source, base ?? location.href).href;
     if (_definedSources.has(base)) {
       return;
     }
     _definedSources.add(base);
-    doc = await resolve(source);
+    source_ = await resolve(source);
+  } else {
+    source_ = source;
   }
   base ??= location.href;
-
-  const source_: JxDocument = doc as JxDocument;
 
   const { tagName } = source_;
   if (!tagName || !tagName.includes("-")) {
@@ -4284,7 +4569,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
          the same values render the same thing, forever. Only a value the definition's state READS
          is recorded — a `$props` key no state entry declares changes nothing about the render, so
          a definition that "varies" one at each level is still rendering itself. */
-      const supplied: Record<string, unknown> = {};
+      const supplied: JxScope = {};
 
       // The definition as it stands NOW — a redefinition since this class was made is honoured.
       const live = _elementDefs.get(tagName) ?? { base: initialBase, doc: initialDef };
@@ -4312,8 +4597,13 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       const propsAttr = this.dataset.jxProps;
       if (propsAttr) {
         try {
-          const props = JSON.parse(propsAttr) as Record<string, unknown>;
-          for (const [key, val] of Object.entries(props)) {
+          /* SAFETY: `JSON.parse` answers the JSON value the attribute encodes, or throws, which the
+             catch below ignores as it always has. */
+          const props = JSON.parse(propsAttr) as JsonValue;
+          /* The site build writes an object. An array or string payload still yields its index
+             keys, and a number, boolean or null yields none, as `Object.entries` always gave. */
+          const entries = isNonNullObject(props) || isString(props) ? Object.entries(props) : [];
+          for (const [key, val] of entries) {
             if (refusePrivateProp(key, "data-jx-props")) {
               continue;
             }
@@ -4351,13 +4641,10 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         if (isPrivateStateKey(key)) {
           continue;
         }
-        if (
-          key in this &&
-          (this as Record<string, unknown>)[key] !== undefined &&
-          instanceSupplies(this, key)
-        ) {
-          state[key] = (this as Record<string, unknown>)[key];
-          supplied[key] = (this as Record<string, unknown>)[key];
+        const own = elementProperties(this);
+        if (key in this && own[key] !== undefined && instanceSupplies(this, key)) {
+          state[key] = own[key];
+          supplied[key] = own[key];
         }
       }
 
@@ -4413,7 +4700,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
           Object.defineProperty(this, key, {
             configurable: true,
             get: () => state[key],
-            set: (v: unknown) => {
+            set: (v: JxScopeValue) => {
               state[key] = v;
             },
           });
@@ -4432,14 +4719,16 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
          without one. At (0,1,0) a consumer's rule, a cascade layer or a parent's descendant rule
          all win normally, and the definition's own `display` still wins because it is written into
          the same rule after this. */
-      const defStyle = declaresDisplay(def.style) ? def.style : { display: "block", ...def.style };
+      const ownStyle = def.style;
+      const defStyle =
+        ownStyle && declaresDisplay(ownStyle) ? ownStyle : { display: "block", ...ownStyle };
       /* Definition first, call site second, so the call site wins at equal specificity by source
          order — the promise §9.2 already makes for base-before-nested. Merged into ONE call
          because each `applyStyle` releases what the last one interned. */
-      const hostStyle = mergeStyle(defStyle as JxStyle, callSiteStyles.get(this));
+      const hostStyle = mergeStyle(defStyle, callSiteStyles.get(this));
 
       // Render template into light DOM (once, not in effect — inner effects handle reactivity)
-      applyStyle(this, hostStyle, (state["$media"] as Record<string, string>) ?? {}, state);
+      applyStyle(this, hostStyle, scopeMedia(state), state);
       applyAttributes(this, def.attributes ?? {}, state);
       bindDefinitionHandlers(this, def, state);
 
@@ -4478,20 +4767,23 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
          catching it with a root handler purely to learn `currentTarget`. The host is what the
          callback needed; the event round trip was the workaround. */
       const { onMount } = state;
-      if (typeof onMount === "function") {
-        queueMicrotask(() => (onMount as (s: JxScope, host: HTMLElement) => unknown)(state, this));
+      if (isScopeHook(onMount)) {
+        queueMicrotask(() => onMount(state, this));
       }
     }
 
     disconnectedCallback() {
-      if (typeof this._state?.onUnmount === "function") {
-        (this._state.onUnmount as (s: JxScope) => unknown)(this._state);
+      // Called as a method, so a hook that reads `this` sees the scope.
+      const state = this._state;
+      if (state && isScopeHook(state.onUnmount)) {
+        state.onUnmount(state);
       }
     }
 
     adoptedCallback() {
-      if (typeof this._state?.onAdopted === "function") {
-        (this._state.onAdopted as (s: JxScope) => unknown)(this._state);
+      const state = this._state;
+      if (state && isScopeHook(state.onAdopted)) {
+        state.onAdopted(state);
       }
     }
 
@@ -4543,11 +4835,12 @@ function renderCustomElementWithProps(
        element is an asset reference authored at the USAGE site, so it belongs to the document that
        wrote it — a media prop the component forwards into its own `<img>` is resolved separately,
        inside the component's render, against the same context. */
-    const write = (resolved: unknown): void => {
-      (el as unknown as Record<string, unknown>)[key] =
-        typeof resolved === "string" ? canvasAssetValue(el.tagName, key, resolved) : resolved;
+    const write = (resolved: JxScopeValue): void => {
+      elementProperties(el)[key] = isString(resolved)
+        ? canvasAssetValue(el.tagName, key, resolved)
+        : resolved;
     };
-    if (isRefObj(val)) {
+    if (isRefValue(val)) {
       const refVal = val;
       write(resolveRef(refVal.$ref, state));
       // Reactive forwarding: re-set the property when the source changes
@@ -4571,7 +4864,7 @@ function renderCustomElementWithProps(
   if (def.style) {
     callSiteStyles.set(el, def.style);
   }
-  applyStyle(el, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
+  applyStyle(el, def.style ?? {}, scopeMedia(state), state);
   applyAttributes(el, def.attributes ?? {}, state);
   /* And its ordinary properties and handlers — `id`, `hidden`, `className`, an `onselect` — exactly
      as an ordinary element gets them. A custom element used in a document is still an element in
@@ -4596,6 +4889,17 @@ function renderCustomElementWithProps(
 }
 
 /**
+ * Whether a node is an element, by its `nodeType` (which, unlike `instanceof`, holds across
+ * realms).
+ *
+ * @param {Node} node
+ * @returns {node is Element}
+ */
+function isElementNode(node: Node): node is Element {
+  return node.nodeType === Node.ELEMENT_NODE;
+}
+
+/**
  * Light DOM slot distribution.
  *
  * @param {HTMLElement} host
@@ -4616,12 +4920,14 @@ function distributeSlots(host: HTMLElement, slottedChildren: ChildNode[]) {
   const unnamed: ChildNode[] = [];
 
   for (const child of slottedChildren) {
-    if (child.nodeType === Node.ELEMENT_NODE && (child as Element).getAttribute("slot")) {
-      const name = (child as Element).getAttribute("slot");
-      if (!named.has(name)) {
-        named.set(name, []);
+    if (isElementNode(child) && child.getAttribute("slot")) {
+      const name = child.getAttribute("slot");
+      let group = named.get(name);
+      if (!group) {
+        group = [];
+        named.set(name, group);
       }
-      (named.get(name) as ChildNode[]).push(child);
+      group.push(child);
     } else {
       unnamed.push(child);
     }

@@ -15,6 +15,7 @@
 import { flush, installMockPlatform, pointer } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { CfAccountSummary, CfConnectOutcome } from "../src/types";
 
 /**
@@ -45,10 +46,15 @@ const CONNECTED: CfConnectOutcome = {
 let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async () =>
   Response.json({ models: [] }, { status: 200 });
 const fetchCalls: string[] = [];
-(globalThis as Record<string, unknown>).fetch = (url: string, init?: RequestInit) => {
-  fetchCalls.push(url);
-  return fetchImpl(url, init);
-};
+// Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+globalThis.fetch = Object.assign(
+  (resource: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(resource);
+    fetchCalls.push(url);
+    return fetchImpl(url, init);
+  },
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 /** Every container this file has attached, so one test's DOM never outlives it. */
 const containers: HTMLElement[] = [];
@@ -85,12 +91,16 @@ function part(container: HTMLElement, name: string) {
 
 /** The kit button's host — what carries `data-variant` and the label. */
 function connectButton(container: HTMLElement) {
-  return container.querySelector('[part="connect"]') as HTMLElement | null;
+  return container.querySelector<HTMLElement>('[part="connect"]');
 }
 
 /** The native control inside it: what a reader presses, and what carries `disabled`. */
 function connectControl(container: HTMLElement) {
-  return container.querySelector('[part="connect"] [part="control"]') as HTMLElement;
+  const control = container.querySelector('[part="connect"] [part="control"]');
+  if (!control) {
+    throw new Error("the offer renders no connect control");
+  }
+  return control;
 }
 
 /** Put the proxy into managed-but-unconfigured — the state that warrants the offer. */
@@ -355,7 +365,7 @@ describe("connect", () => {
       );
     pointer(connectControl(container), "click");
     await flush(6);
-    expect(connectButton(container)?.textContent?.trim()).toBe("Choose Cloudflare account");
+    expect(connectButton(container)?.textContent.trim()).toBe("Choose Cloudflare account");
 
     pickerResult = { id: "acc-picked", name: "Picked" };
     fetchImpl = async () =>
@@ -386,7 +396,7 @@ describe("connect", () => {
       );
     pointer(connectControl(container), "click");
     await flush(6);
-    expect(connectButton(container)?.textContent?.trim()).toBe("Choose Cloudflare account");
+    expect(connectButton(container)?.textContent.trim()).toBe("Choose Cloudflare account");
 
     fetchImpl = async () =>
       Response.json(
@@ -396,7 +406,7 @@ describe("connect", () => {
     await fetchAvailableModels({ force: true });
     render(mc.render(), container);
     await flush(2);
-    expect(connectButton(container)?.textContent?.trim()).toBe("Reconnect Cloudflare");
+    expect(connectButton(container)?.textContent.trim()).toBe("Reconnect Cloudflare");
 
     fetchImpl = async () =>
       Response.json(
@@ -406,7 +416,7 @@ describe("connect", () => {
     await fetchAvailableModels({ force: true });
     render(mc.render(), container);
     await flush(2);
-    expect(connectButton(container)?.textContent?.trim()).toBe("Connect Cloudflare");
+    expect(connectButton(container)?.textContent.trim()).toBe("Connect Cloudflare");
     pointer(connectControl(container), "click");
     await flush(6);
     expect(cfConnect).toHaveBeenCalledTimes(2); // The OAuth flow, not the picker
@@ -481,7 +491,7 @@ describe("ensureProbe", () => {
  */
 describe("the recommendation, and its two moods", () => {
   /** Answer the probe exactly as the backend now does for a given state. */
-  function probeAnswers(body: Record<string, unknown>) {
+  function probeAnswers(body: JsonObject) {
     fetchImpl = async () => Response.json(body, { status: 200 });
   }
 
@@ -502,7 +512,7 @@ describe("the recommendation, and its two moods", () => {
     const { container, mc } = await renderFresh();
     expect(mc.canOffer()).toBe(true);
     const button = connectButton(container);
-    expect(button?.textContent?.trim()).toBe("Connect Cloudflare");
+    expect(button?.textContent.trim()).toBe("Connect Cloudflare");
     /* Accent is what makes it read as the recommendation rather than one of two equal choices. The
        kit reflects the variant it was given as `data-variant`, which is also what its own style
        block is keyed on — so this is the attribute that decides how the button paints. */
@@ -515,7 +525,7 @@ describe("the recommendation, and its two moods", () => {
   test("a lapsed grant is asked to RECONNECT, and told why", async () => {
     probeAnswers({ code: "cf_reconnect_required", configured: false, managed: true, models: [] });
     const { container } = await renderFresh();
-    expect(connectButton(container)?.textContent?.trim()).toBe("Reconnect Cloudflare");
+    expect(connectButton(container)?.textContent.trim()).toBe("Reconnect Cloudflare");
     expect(part(container, "intro")?.textContent).toContain("expired");
   });
 
@@ -525,7 +535,7 @@ describe("the recommendation, and its two moods", () => {
     probeAnswers({ code: "cf_account_required", configured: false, managed: true, models: [] });
     const { container, mc } = await renderFresh();
     expect(mc.canOffer()).toBe(true);
-    expect(connectButton(container)?.textContent?.trim()).toBe("Choose Cloudflare account");
+    expect(connectButton(container)?.textContent.trim()).toBe("Choose Cloudflare account");
     expect(part(container, "intro")?.textContent).toContain("no account is chosen yet");
   });
 
@@ -573,7 +583,7 @@ describe("the recommendation, and its two moods", () => {
     // Older backends, and the dev server. No reason given is not an error state.
     probeAnswers({ configured: false, managed: true, models: [] });
     const { container } = await renderFresh();
-    expect(connectButton(container)?.textContent?.trim()).toBe("Connect Cloudflare");
+    expect(connectButton(container)?.textContent.trim()).toBe("Connect Cloudflare");
   });
 
   test("a probe that fails outright leaves the option hidden — the shape of the outage", async () => {

@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
 /**
  * Inline-format.js — Inline formatting engine for contenteditable editing
  *
@@ -21,6 +22,25 @@ const FORMAT_TAGS = new Set([
   "sup",
   "span",
 ]);
+
+/** Whether `node` is an element. Decided by node type, so it holds for a node of any realm. */
+function isElementNode(node: Node): node is Element {
+  return node.nodeType === Node.ELEMENT_NODE;
+}
+
+/** Whether `node` is a text node (`CDATASection` has its own node type and is excluded). */
+function isTextNode(node: Node): node is Text {
+  return node.nodeType === Node.TEXT_NODE;
+}
+
+/** One edge-whitespace move {@link liftEdgeWhitespace} applies after its scan. */
+interface EdgeWhitespaceLift {
+  type: "lift-leading" | "lift-trailing";
+  el: Element;
+  /** The wrapper's first (leading) or last (trailing) child, whose edge whitespace moves out. */
+  text: Text;
+  ws: string;
+}
 
 /**
  * Check whether `tag` is currently active on both ends of the selection. Walks from anchor and
@@ -59,10 +79,7 @@ export function isTagActiveInSelection(tag: string, editableRoot: HTMLElement | 
   const hasTag = (node: Node | null) => {
     let current = node;
     while (current && current !== editableRoot) {
-      if (
-        current.nodeType === Node.ELEMENT_NODE &&
-        (current as Element).tagName.toLowerCase() === tag
-      ) {
+      if (isElementNode(current) && current.tagName.toLowerCase() === tag) {
         return true;
       }
       current = current.parentNode;
@@ -121,20 +138,11 @@ export function toggleInlineFormat(tag: string, editableRoot: HTMLElement | null
  */
 function findIntersectingElements(tag: string, range: Range, root: HTMLElement) {
   const matches: Element[] = [];
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
-    /**
-     * @param {Node} node
-     * @returns {number}
-     */
-    acceptNode(node: Node) {
-      if ((node as Element).tagName.toLowerCase() === tag && range.intersectsNode(node)) {
-        return NodeFilter.FILTER_ACCEPT;
-      }
-      return NodeFilter.FILTER_SKIP;
-    },
-  });
-  while (walker.nextNode()) {
-    matches.push(walker.currentNode as Element);
+  // Every descendant element, in document order: the same set a SHOW_ELEMENT tree walk visits.
+  for (const el of root.querySelectorAll("*")) {
+    if (el.tagName.toLowerCase() === tag && range.intersectsNode(el)) {
+      matches.push(el);
+    }
   }
   return matches;
 }
@@ -343,21 +351,19 @@ export function normalizeInlineContent(root: HTMLElement | null) {
  */
 function mergeAdjacentSiblings(root: HTMLElement) {
   let changed = false;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   const toMerge: [Element, Element][] = [];
 
   // Collect pairs first to avoid mutation during walk
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
+  for (const el of root.querySelectorAll("*")) {
     const next = el.nextSibling;
     if (
       next &&
-      next.nodeType === Node.ELEMENT_NODE &&
-      (next as Element).tagName === el.tagName &&
+      isElementNode(next) &&
+      next.tagName === el.tagName &&
       FORMAT_TAGS.has(el.tagName.toLowerCase()) &&
-      attributesMatch(el, next as Element)
+      attributesMatch(el, next)
     ) {
-      toMerge.push([el, next as Element]);
+      toMerge.push([el, next]);
     }
   }
 
@@ -383,27 +389,31 @@ function mergeAdjacentSiblings(root: HTMLElement) {
  */
 function collapseRedundantNesting(root: HTMLElement) {
   let changed = false;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   const toCollapse: Element[] = [];
 
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
+  for (const el of root.querySelectorAll("*")) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
     // Check if only child is an element with the same tag
+    const only = el.firstChild;
     if (
       el.childNodes.length === 1 &&
-      el.firstChild !== null &&
-      el.firstChild.nodeType === Node.ELEMENT_NODE &&
-      (el.firstChild as Element).tagName === el.tagName
+      only !== null &&
+      isElementNode(only) &&
+      only.tagName === el.tagName
     ) {
       toCollapse.push(el);
     }
   }
 
   for (const el of toCollapse) {
-    const inner = el.firstChild as Element;
+    const inner = el.firstChild;
+    if (inner === null) {
+      /* Three or more nested identical wrappers: collapsing the outer pair moved this wrapper's only
+         child out, leaving it empty. That has always failed here, and is kept rather than changed. */
+      throw new TypeError("collapseRedundantNesting: an earlier collapse emptied this wrapper");
+    }
     // Replace outer with inner's children
     while (inner.firstChild) {
       inner.before(inner.firstChild);
@@ -422,11 +432,9 @@ function collapseRedundantNesting(root: HTMLElement) {
  */
 function removeEmptyInlines(root: HTMLElement) {
   let changed = false;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   const toRemove: Element[] = [];
 
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
+  for (const el of root.querySelectorAll("*")) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -451,12 +459,9 @@ function removeEmptyInlines(root: HTMLElement) {
  */
 function liftEdgeWhitespace(root: HTMLElement) {
   let changed = false;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  /** @type {{ type: string; el: Element; ws: string }[]} */
-  const ops = [];
+  const ops: EdgeWhitespaceLift[] = [];
 
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
+  for (const el of root.querySelectorAll("*")) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -465,36 +470,36 @@ function liftEdgeWhitespace(root: HTMLElement) {
     }
 
     const first = el.firstChild;
-    if (first && first.nodeType === Node.TEXT_NODE) {
-      const text = first.textContent ?? "";
+    if (first && isTextNode(first)) {
+      const text = first.textContent;
       const m = text.match(/^(\s+)/);
       if (m && text.length > m[1]!.length) {
-        ops.push({ el, type: "lift-leading", ws: m[1]! });
+        ops.push({ el, text: first, type: "lift-leading", ws: m[1]! });
       }
     }
 
     const last = el.lastChild;
-    if (last && last.nodeType === Node.TEXT_NODE && last !== first) {
-      const text = last.textContent ?? "";
+    if (last && isTextNode(last) && last !== first) {
+      const text = last.textContent;
       const m = text.match(/(\s+)$/);
       if (m && text.length > m[1]!.length) {
-        ops.push({ el, type: "lift-trailing", ws: m[1]! });
+        ops.push({ el, text: last, type: "lift-trailing", ws: m[1]! });
       }
     }
   }
 
+  /* Each recorded text node is still its wrapper's edge child when its move runs: a move only edits
+     a text node's data and inserts a sibling OUTSIDE its own wrapper, and a wrapper whose edge child
+     is an element (the only place a nested move could insert) never recorded a move on that edge. */
   for (const op of ops) {
     if (op.type === "lift-leading") {
-      const firstChild = op.el.firstChild as Text;
-      firstChild.textContent = (firstChild.textContent ?? "").slice(op.ws.length);
+      op.text.textContent = op.text.textContent.slice(op.ws.length);
       op.el.parentNode?.insertBefore(document.createTextNode(op.ws), op.el);
-      changed = true;
-    } else if (op.type === "lift-trailing") {
-      const lastChild = op.el.lastChild as Text;
-      lastChild.textContent = (lastChild.textContent ?? "").slice(0, -op.ws.length);
+    } else {
+      op.text.textContent = op.text.textContent.slice(0, -op.ws.length);
       op.el.parentNode?.insertBefore(document.createTextNode(op.ws), op.el.nextSibling);
-      changed = true;
     }
+    changed = true;
   }
   return changed;
 }
@@ -508,11 +513,9 @@ function liftEdgeWhitespace(root: HTMLElement) {
  */
 function unwrapBareSpans(root: HTMLElement) {
   let changed = false;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   const toUnwrap: Element[] = [];
 
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
+  for (const el of root.querySelectorAll("*")) {
     if (el.tagName.toLowerCase() !== "span") {
       continue;
     }

@@ -16,6 +16,7 @@ import {
   removeAwarenessStates,
 } from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
+import { isString } from "@jxsuite/schema/guards";
 import { decodeFrame, encodeFrame } from "./envelope.ts";
 import type { CollabFrame, ControlMessage } from "./envelope.ts";
 import type { CollabIdentity } from "./provider.ts";
@@ -42,7 +43,7 @@ export interface CollabHostOptions {
 interface Room {
   doc: Y.Doc;
   epoch: number;
-  subscribers: Set<HostConnection>;
+  subscribers: Set<InternalConnection>;
   ready: Promise<void>;
   /** The source text as of the last persist (seed or markPersisted) — the room-dirty baseline. */
   baseline: string;
@@ -53,6 +54,17 @@ interface Room {
 export interface HostConnection {
   handleMessage: (data: Uint8Array) => void;
   close: () => void;
+}
+
+/** The host's own view of a connection: the embedder only ever sees the {@link HostConnection}. */
+interface InternalConnection extends HostConnection {
+  socket: RoomSocket;
+  identity: CollabIdentity;
+  subscribed: Set<string>;
+  /** Awareness clientIDs this socket controls (removed on close). */
+  controlledIds: Set<number>;
+  warnedReadOnly: boolean;
+  closed: boolean;
 }
 
 export interface CollabHost {
@@ -87,16 +99,6 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
   // The host's own (empty) local state must not leak into rosters.
   awareness.setLocalState(null);
 
-  interface InternalConnection extends HostConnection {
-    socket: RoomSocket;
-    identity: CollabIdentity;
-    subscribed: Set<string>;
-    /** Awareness clientIDs this socket controls (removed on close). */
-    controlledIds: Set<number>;
-    warnedReadOnly: boolean;
-    closed: boolean;
-  }
-
   const send = (conn: InternalConnection, frame: CollabFrame) => {
     try {
       conn.socket.send(encodeFrame(frame));
@@ -111,8 +113,7 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
 
   const broadcastToRoom = (room: Room, frame: CollabFrame, except?: InternalConnection) => {
     const data = encodeFrame(frame);
-    for (const subscriber of room.subscribers) {
-      const target = subscriber as InternalConnection;
+    for (const target of room.subscribers) {
       if (target !== except && !target.closed) {
         try {
           target.socket.send(data);
@@ -150,7 +151,9 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
         sourceText(doc).insert(0, source);
       }, "seed");
     })();
-    doc.on("update", (update: Uint8Array, origin: unknown) => {
+    /* A room doc is written only here: the "seed" transaction above, and the sync-protocol reads in
+       `handleDocSync`, which tag the update with the connection it came from. */
+    doc.on("update", (update: Uint8Array, origin: InternalConnection | string) => {
       const current = rooms.get(path);
       if (!current || current.doc !== doc) {
         return;
@@ -160,7 +163,8 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
       broadcastToRoom(
         current,
         { body: encoding.toUint8Array(body), epoch: current.epoch, path, type: "doc-sync" },
-        origin instanceof Object && "socket" in origin ? (origin as InternalConnection) : undefined,
+        // The sender already has the update, so it is the one subscriber the relay skips.
+        isString(origin) ? undefined : origin,
       );
       options.onSourceChange?.(path);
       // Room-level dirty: broadcast on transition so every peer's Save affordance stays in sync.
@@ -379,14 +383,19 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
         warnedReadOnly: false,
       };
       connections.add(conn);
-      sendControl(conn, {
+      const hello: Extract<ControlMessage, { type: "hello" }> = {
         color: identity.color,
         login: identity.login,
         permission: identity.permission,
         type: "hello",
-        ...(identity.name === undefined ? {} : { name: identity.name }),
-        ...(identity.avatarUrl === undefined ? {} : { avatarUrl: identity.avatarUrl }),
-      });
+      };
+      if (identity.name !== undefined) {
+        hello.name = identity.name;
+      }
+      if (identity.avatarUrl !== undefined) {
+        hello.avatarUrl = identity.avatarUrl;
+      }
+      sendControl(conn, hello);
       // Late joiners receive the current presence roster immediately.
       const states = awareness.getStates();
       if (states.size > 0) {
@@ -447,7 +456,7 @@ export function createCollabHost(options: CollabHostOptions): CollabHost {
         type: "control",
       });
       for (const subscriber of room.subscribers) {
-        (subscriber as InternalConnection).subscribed.delete(path);
+        subscriber.subscribed.delete(path);
       }
       room.doc.destroy();
       rooms.delete(path);

@@ -174,8 +174,8 @@ describe("MEDIA_TYPE_BY_EXTENSION", () => {
 
   // RFC 9512 §5: `text/yaml` and friends are the pre-registration spellings. This must not be one.
   test("yaml is application/yaml, not the deprecated text/yaml", () => {
-    expect(mediaTypeEssence(MEDIA_TYPE_BY_EXTENSION[".yaml"] ?? null)).toBe("application/yaml");
-    expect(mediaTypeEssence(MEDIA_TYPE_BY_EXTENSION[".yml"] ?? null)).toBe("application/yaml");
+    expect(mediaTypeEssence(MEDIA_TYPE_BY_EXTENSION[".yaml"])).toBe("application/yaml");
+    expect(mediaTypeEssence(MEDIA_TYPE_BY_EXTENSION[".yml"])).toBe("application/yaml");
   });
 
   test("every entry is a well-formed media type", () => {

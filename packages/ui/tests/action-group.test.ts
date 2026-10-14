@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 import { buildStyleRules } from "@jxsuite/runtime/css";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
-import type { JxElement, JxStyle } from "@jxsuite/schema/types";
+import { isFunctionDef, isNodeObject } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
 
 import {
   focusItem,
@@ -45,19 +46,51 @@ type JxActionButton = HTMLElement & {
 };
 
 /** Every rule the element's own style block emits, under a stand-in scope handle. */
-const sheet = (): string[] =>
-  buildStyleRules(documents["jx-action-group"]!.style as JxStyle, { scope: "S" }).map(
-    (rule) => rule.text,
-  );
+const sheet = (): string[] => {
+  const { style } = documents["jx-action-group"];
+  if (!style) {
+    throw new Error("jx-action-group declares no style block");
+  }
+  return buildStyleRules(style, { scope: "S" }).map((rule) => rule.text);
+};
 
-const page = JSON.parse(
-  readFileSync(resolve(import.meta.dir, "../stylebook/jx-action-group.json"), "utf8"),
-) as JxElement;
+/** The stylebook page for this element, read off disk and checked to be a document object. */
+function readPage(): JxElement {
+  const parsed: unknown = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../stylebook/jx-action-group.json"), "utf8"),
+  );
+  if (!isNodeObject(parsed)) {
+    throw new TypeError("stylebook/jx-action-group.json is not a document object");
+  }
+  return parsed;
+}
+
+const page = readPage();
+
+/** A node's element children: text children dropped, and a repeater read as having none. */
+function elementChildren(node: JxElement): JxElement[] {
+  return Array.isArray(node.children) ? node.children.filter((child) => isNodeObject(child)) : [];
+}
 
 /** Every node in a document tree, so a gate cannot be dodged by nesting one level deeper. */
 function walk(node: JxElement): JxElement[] {
-  const kids = (node.children ?? []) as JxElement[];
-  return [node, ...kids.flatMap((child) => walk(child))];
+  return [node, ...elementChildren(node).flatMap((child) => walk(child))];
+}
+
+/** A fresh, unattached `jx-action-button`, typed with the state its document declares. */
+function createActionButton(): JxActionButton {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-action-button` from its document before any
+     test runs, so `createElement` constructs that class synchronously, and the class exposes every
+     declared state entry (each JxActionButton member) as a property. */
+  return document.createElement("jx-action-button") as JxActionButton;
+}
+
+/** A fresh, unattached `jx-action-group`, typed with the state its document declares. */
+function createActionGroup(): JxActionGroup {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-action-group` from its document before any
+     test runs, so `createElement` constructs that class synchronously, and the class exposes every
+     declared state entry (each JxActionGroup member) as a property. */
+  return document.createElement("jx-action-group") as JxActionGroup;
 }
 
 beforeAll(async () => {
@@ -70,7 +103,7 @@ afterEach(() => {
 
 /** A fresh child: `"label"`, `"label!"` disabled, `"label*"` selected, `"label#"` checked=true. */
 function makeItem(label: string): JxActionButton {
-  const button = document.createElement("jx-action-button") as JxActionButton;
+  const button = createActionButton();
   button.setAttribute("label", label.replace(/[!*#]$/u, ""));
   button.setAttribute("icon", "plus");
   if (label.endsWith("!")) {
@@ -87,7 +120,7 @@ function makeItem(label: string): JxActionButton {
 
 /** A group whose children are described by {@link makeItem}'s spelling. */
 function build(attrs: Record<string, string>, labels: string[]): JxActionGroup {
-  const el = document.createElement("jx-action-group") as JxActionGroup;
+  const el = createActionGroup();
   for (const [k, v] of Object.entries(attrs)) {
     el.setAttribute(k, v);
   }
@@ -183,7 +216,7 @@ describe("jx-action-group", () => {
     );
     expect(singles.length).toBeGreaterThanOrEqual(1);
     for (const node of singles) {
-      for (const child of (node.children ?? []) as JxElement[]) {
+      for (const child of elementChildren(node)) {
         expect(child.$props?.["checked"], JSON.stringify(child.$props)).toBeString();
       }
     }
@@ -269,7 +302,7 @@ describe("jx-action-group", () => {
     const el = await group({ label: "Align", selects: "single" }, ["A#", "B", "C"]);
     const clicked: string[] = [];
     el.addEventListener("click", (e) => {
-      const button = (e.target as Element).closest("jx-action-button");
+      const button = e.target instanceof Element ? e.target.closest("jx-action-button") : null;
       clicked.push(button?.getAttribute("label") ?? "?");
     });
     press(el, "ArrowRight");
@@ -369,9 +402,7 @@ describe("jx-action-group", () => {
     expect(() => onGroupReady({}, settled)).not.toThrow();
     const stray = document.createElement("div");
     document.body.append(stray);
-    stray.addEventListener("keydown", (e) =>
-      onGroupKeydown({ orientation: "horizontal" }, e as KeyboardEvent),
-    );
+    stray.addEventListener("keydown", (e) => onGroupKeydown({ orientation: "horizontal" }, e));
     stray.addEventListener("jx-ready", (e) => onGroupReady({}, e));
     stray.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }));
     stray.dispatchEvent(new CustomEvent("jx-ready", { bubbles: true }));
@@ -476,33 +507,34 @@ describe("jx-action-group", () => {
        slot is replaced by what it matched — so the trap is answered by the DOM rather than by
        reading the definition. The HOST is the flex row, and the definition still authors exactly
        one internal node with no style of its own, so a second one cannot arrive unnoticed. */
-    const style = documents["jx-action-group"]!.style as Record<string, unknown>;
-    expect(style["display"]).toBe("inline-flex");
+    expect(documents["jx-action-group"].style?.["display"]).toBe("inline-flex");
     const el = await group({ label: "Tools" }, ["A", "B"]);
     expect([...el.children].map((child) => child.localName)).toEqual([
       "jx-action-button",
       "jx-action-button",
     ]);
     expect(buttons(el).every((button) => button.parentElement === el)).toBe(true);
-    const children = documents["jx-action-group"]!.children as JxElement[];
-    expect(children).toHaveLength(1);
-    expect(children[0]!.tagName).toBe("slot");
-    expect(children[0]!.style).toBeUndefined();
+    // Exactly one child of any kind, and that one an element: the `slot`.
+    expect(documents["jx-action-group"].children).toHaveLength(1);
+    const [slot] = elementChildren(documents["jx-action-group"]);
+    expect(slot!.tagName).toBe("slot");
+    expect(slot!.style).toBeUndefined();
   });
 
   test("the group owns no selection and emits no event of its own", () => {
     /* Two contracts were possible and only one survives contact with the call sites: every real
        one keeps the selected value in the host. A group-level `change` would be a second,
        disagreeing answer about what just happened. */
-    const doc = documents["jx-action-group"]!;
+    const doc = documents["jx-action-group"];
     expect(doc.state?.["selects"]).toBeDefined();
-    expect(Object.keys(doc.state ?? {})).not.toContain("selected");
-    expect(Object.keys(doc.state ?? {})).not.toContain("value");
+    const stateKeys = Object.keys(doc.state ?? {});
+    expect(stateKeys).not.toContain("selected");
+    expect(stateKeys).not.toContain("value");
     const emitted = JSON.stringify(doc).match(/"dispatchEvent":"[^"]+"/gu) ?? [];
     expect(emitted).toEqual(['"dispatchEvent":"jx-ready"']);
     // And no size, quiet or emphasized: the child owns those, and a second copy would fight it.
     for (const forwarded of ["size", "quiet", "emphasized"]) {
-      expect(Object.keys(doc.state ?? {}), forwarded).not.toContain(forwarded);
+      expect(stateKeys, forwarded).not.toContain(forwarded);
     }
   });
 
@@ -513,7 +545,7 @@ describe("jx-action-group", () => {
        deeper than the last one was both uncounted and unchecked while this stayed green. */
     const unnamed = await group({}, ["A", "B"]);
     expect(unnamed.hasAttribute("aria-label")).toBe(false);
-    expect(findA11yDefects(documents["jx-action-group"]! as JxElement)).toEqual([]);
+    expect(findA11yDefects(documents["jx-action-group"])).toEqual([]);
     const groups = walk(page).filter((child) => child.tagName === "jx-action-group");
     expect(groups.length).toBeGreaterThanOrEqual(4);
     for (const node of groups) {
@@ -528,19 +560,18 @@ describe("jx-action-group", () => {
        `null` by construction and every `event#/…` in the body reads `undefined`. It is silent:
        no lint, no typecheck, no schema rule, and a page whose whole point is a live value just
        prints "undefined". This page carried exactly that, and so did two others. */
-    for (const [key, entry] of Object.entries((page.state ?? {}) as Record<string, unknown>)) {
-      const fn = entry as { $prototype?: string; parameters?: unknown[]; body?: unknown };
-      if (fn?.$prototype !== "Function" || !fn.body) {
+    for (const [key, entry] of Object.entries(page.state ?? {})) {
+      if (!isFunctionDef(entry) || !entry.body) {
         continue;
       }
-      if (JSON.stringify(fn.body).includes("event#/")) {
-        expect(fn.parameters, key).toBeUndefined();
+      if (JSON.stringify(entry.body).includes("event#/")) {
+        expect(entry.parameters, key).toBeUndefined();
       }
     }
   });
 
   test("the element and a consumer document both pass the kit's lints", () => {
-    const doc = documents["jx-action-group"]! as JxElement;
+    const doc = documents["jx-action-group"];
     const scope = { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS };
     expect(findA11yDefects(doc)).toEqual([]);
     expect(findPopoverDefects(doc, scope)).toEqual([]);
@@ -590,7 +621,7 @@ describe("a compact group draws the segmented control itself", () => {
 
   /** A small TEXT member, the shape Studio's switches take: no glyph, a span for the words. */
   function textItem(label: string, attrs: Record<string, string> = {}): JxActionButton {
-    const button = document.createElement("jx-action-button") as JxActionButton;
+    const button = createActionButton();
     button.setAttribute("label", label);
     button.setAttribute("size", "sm");
     for (const [k, v] of Object.entries(attrs)) {
@@ -610,7 +641,7 @@ describe("a compact group draws the segmented control itself", () => {
   }
 
   const freshGroup = (attrs: Record<string, string>): JxActionGroup => {
-    const el = document.createElement("jx-action-group") as JxActionGroup;
+    const el = createActionGroup();
     for (const [k, v] of Object.entries(attrs)) {
       el.setAttribute(k, v);
     }
@@ -696,7 +727,7 @@ describe("a compact group draws the segmented control itself", () => {
        and --jx-space-3, the widest Style panel row having overflowed its 256px column at the
        latter, so it is a literal rather than a token and the number is the claim. */
     const el = freshGroup({ label: "Display" });
-    const glyph = document.createElement("jx-action-button") as JxActionButton;
+    const glyph = createActionButton();
     glyph.setAttribute("label", "Row");
     glyph.setAttribute("icon", "plus");
     glyph.setAttribute("size", "sm");
@@ -718,7 +749,7 @@ describe("a compact group draws the segmented control itself", () => {
        icon segment: 22px to 26px and back for the length of the verb, moving every segment after
        it. The host reflects data-no-icon from `icon` instead, which says what the rule means. */
     const el = freshGroup({ label: "Verbs" });
-    const glyph = document.createElement("jx-action-button") as JxActionButton;
+    const glyph = createActionButton();
     glyph.setAttribute("label", "Fetch");
     glyph.setAttribute("icon", "plus");
     glyph.setAttribute("size", "sm");

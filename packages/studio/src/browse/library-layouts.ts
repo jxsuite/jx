@@ -128,7 +128,7 @@ export function cellText(file: LibraryFile, field: string): string {
 }
 
 /** Row-shaped access for a caller holding grid cells rather than the typed record. */
-export function cellTextOf(value: GridCellValue): string {
+export function cellTextOf(value: GridCellValue | undefined): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
@@ -172,6 +172,12 @@ function nameRow(file: LibraryFile): LibraryRow {
 
 // ─── Calendar ────────────────────────────────────────────────────────────────
 
+/** The calendar layout: its day sections, and the sentence naming the older days it left out. */
+export interface CalendarView {
+  groups: LibraryGroup[];
+  truncated: string;
+}
+
 /**
  * Calendar: one section per day, newest first, plus an explicit account of what it did not place.
  *
@@ -181,10 +187,7 @@ function nameRow(file: LibraryFile): LibraryRow {
  *
  * @returns The day sections, and the sentence naming the older days it did not draw.
  */
-export function calendarView(files: readonly LibraryFile[]): {
-  groups: LibraryGroup[];
-  truncated: string;
-} {
+export function calendarView(files: readonly LibraryFile[]): CalendarView {
   const { days, undated } = groupByDate(files);
   const shown = days.slice(0, CALENDAR_DAY_LIMIT);
   const hiddenDays = days.length - shown.length;

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { isString } from "@jxsuite/schema/guards";
 import { createProjectSession } from "../src/project-session";
 import type { ProjectSession } from "../src/project-session";
 
@@ -100,20 +101,23 @@ describe("data surface delegation", () => {
     expect(applied.applied).toBe(true);
 
     const inserted = await session.dataInsertRow({ table: "notes", values: { body: "hello" } });
-    expect(typeof inserted.row.id).toBe("string");
+    const { id } = inserted.row;
+    if (!isString(id)) {
+      throw new Error(`inserted row id should be a string, got ${JSON.stringify(id)}`);
+    }
 
     const page = await session.dataRows({ table: "notes" });
     expect(page.total).toBe(1);
     expect(page.columns.find((c) => c.name === "id")?.pk).toBe(true);
 
     const updated = await session.dataUpdateRow({
-      pk: inserted.row.id as string,
+      pk: id,
       set: { body: "edited" },
       table: "notes",
     });
     expect(updated.row.body).toBe("edited");
 
-    expect(await session.dataDeleteRow({ pk: inserted.row.id as string, table: "notes" })).toEqual({
+    expect(await session.dataDeleteRow({ pk: id, table: "notes" })).toEqual({
       ok: true,
     });
     const after = await session.dataRows({ table: "notes" });

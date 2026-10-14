@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fakeChannelPair, postMessageChannel } from "../src/canvas/iframe-channel";
+import type { CanvasEnvelope } from "../src/canvas/iframe-channel";
 
 interface P2I {
   kind: "render";
@@ -85,9 +86,10 @@ function makeFakeSource() {
   return {
     addEventListener: (_t: "message", l: (e: MessageEvent) => void) => listeners.add(l),
     count: () => listeners.size,
-    dispatch: (e: { origin: string; data: unknown }) => {
+    dispatch: (init: { origin: string; data: unknown }) => {
+      const event = new MessageEvent("message", init);
       for (const l of listeners) {
-        l(e as MessageEvent);
+        l(event);
       }
     },
     removeEventListener: (_t: "message", l: (e: MessageEvent) => void) => listeners.delete(l),
@@ -95,9 +97,10 @@ function makeFakeSource() {
 }
 
 function makePostMessageChannel(opts: { acceptOrigin?: string } = {}) {
-  const posted: { message: unknown; targetOrigin: string }[] = [];
+  const posted: { message: CanvasEnvelope<P2I>; targetOrigin: string }[] = [];
   const target = {
-    postMessage: (message: unknown, targetOrigin: string) => posted.push({ message, targetOrigin }),
+    postMessage: (message: CanvasEnvelope<P2I>, targetOrigin: string) =>
+      posted.push({ message, targetOrigin }),
   };
   const source = makeFakeSource();
   const channel = postMessageChannel<P2I, I2P>({

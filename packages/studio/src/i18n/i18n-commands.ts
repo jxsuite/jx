@@ -47,7 +47,6 @@ import {
 } from "../commands/command-args";
 import type { CommandArgValues } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import type { Tab } from "../tabs/tab";
 
 /** The tags a translation verb may be asked for — the project's declared locales, read live. */
 function declaredLocales(): string[] {
@@ -98,7 +97,7 @@ function addressedDocument(commandId: string, args: CommandArgValues): string {
     }
     return path;
   }
-  const tab = paneId === undefined ? (activeTab.value as Tab | null) : tabOfPane(paneId);
+  const tab = paneId === undefined ? activeTab.value : tabOfPane(paneId);
   if (!tab) {
     throw new RangeError(
       paneId === undefined

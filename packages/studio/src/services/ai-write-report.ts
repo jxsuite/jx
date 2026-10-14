@@ -2,26 +2,27 @@
  * Ai-write-report.ts — what the model is told after a document write, whoever made it.
  *
  * Extracted from `ai-tools.ts`'s `applyAndValidate`, which used to own both halves of a document
- * tool: the transaction and the verdict on it. The verdict is the half every document write needs
- * — the seven hand-registered tree tools AND every command the assistant runs through
+ * tool: the transaction and the verdict on it. The verdict is the half every document write needs —
+ * the seven hand-registered tree tools AND every command the assistant runs through
  * `services/ai-command-tools.ts` — so it lives here, in two functions the caller brackets its write
  * with:
  *
- * 1. {@link snapshotBeforeWrite} reads the document's schema errors and render state BEFORE the
- *    write, because the loop's signal (specs/ai.md §3.1) is "what did this edit newly introduce",
- *    not "is the document valid": a page that was already broken must not make every subsequent
- *    edit read as the culprit.
+ * 1. {@link snapshotBeforeWrite} reads the document's schema errors and render state BEFORE the write,
+ *    because the loop's signal (specs/ai.md §3.1) is "what did this edit newly introduce", not "is
+ *    the document valid": a page that was already broken must not make every subsequent edit read
+ *    as the culprit.
  * 2. {@link reportDocumentWrite} compares AFTER the write, translating each new schema error into a
- *    fix hint the model can act on, running the render check only when rendering worked before,
- *    and appending the soft token-discipline hints to a success.
+ *    fix hint the model can act on, running the render check only when rendering worked before, and
+ *    appending the soft token-discipline hints to a success.
  *
- * The change stays applied either way (optimistic apply + undo, specs/ai.md §3.1); reporting the errors lets
- * the agent loop self-correct on the next round.
+ * The change stays applied either way (optimistic apply + undo, specs/ai.md §3.1); reporting the
+ * errors lets the agent loop self-correct on the next round.
  *
  * @license MIT
  */
 
 import type { ToolResult } from "@jxsuite/ai/tools";
+import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
 import { toRaw } from "../reactivity";
 import type { Tab } from "../tabs/tab";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
@@ -29,12 +30,19 @@ import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 /** A render probe's answer: rendered, or the message it threw. */
 export type RenderVerdict = { ok: true } | { ok: false; error: string };
 
+/**
+ * A document as the validator and the render probe receive it: the live tree of an open tab, or the
+ * JSON a tool was handed (a `create_page` argument, a parsed `write_file` body) before anything has
+ * said it is a document. Judging that is what the two of them are for.
+ */
+export type CandidateDocument = JxMutableNode | JsonValue;
+
 /** What a write reporter needs. Every member is what `registerAiTools` already takes by injection. */
 export interface WriteReportDeps {
   /** Schema errors for a document, as raw ajv sentences. */
-  validate: (doc: unknown) => Promise<string[]>;
+  validate: (doc: CandidateDocument) => Promise<string[]>;
   /** The detached-DOM render probe, when the host has one. */
-  renderCheck?: ((doc: unknown) => Promise<RenderVerdict>) | undefined;
+  renderCheck?: ((doc: CandidateDocument) => Promise<RenderVerdict>) | undefined;
   /** The project's design tokens, read per call so a project opened mid-session contributes. */
   getProjectStyle?: (() => Record<string, string> | undefined) | undefined;
 }

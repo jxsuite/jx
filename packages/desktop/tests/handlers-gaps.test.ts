@@ -4,8 +4,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CapabilityInfo, ExtensionCapability } from "@jxsuite/schema/format-registry";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import type { ComponentMeta } from "../src/rpc-schema";
 import type { StudioSchema } from "../src/handlers";
+import { expectStudioSchema } from "./_studio-schema";
 
 void mock.module("electrobun/main", () => ({
   BrowserWindow: class {},
@@ -15,7 +17,8 @@ void mock.module("electrobun/main", () => ({
 
 // ─── Format-host mock ────────────────────────────────────────────────────────
 
-const entryCall = mock(async (..._args: unknown[]): Promise<unknown> => ({ parsed: true }));
+// A capability method answers with a parsed document or serialized text, both JSON values.
+const entryCall = mock(async (..._args: unknown[]): Promise<JsonValue> => ({ parsed: true }));
 
 /* Shapes here mirror the real FormatRegistry entry: `capabilities` is a
    Partial<Record<ExtensionCapability, CapabilityInfo>> map keyed by capability, and `documentKinds`
@@ -26,7 +29,7 @@ const fakeCapabilities: Partial<Record<ExtensionCapability, CapabilityInfo>> = {
   serialize: { identifier: "serialize", timing: ["compiler", "server"] },
 };
 
-const fakeEntry: Record<string, unknown> = {
+const fakeEntry = {
   call: entryCall,
   capabilities: fakeCapabilities,
   documentKinds: ["content"],
@@ -46,7 +49,7 @@ const fakeFormats = {
 // The extension registry wraps the formats view (project-session dispatches through .formats).
 const fakeRegistry = { extensions: [], formats: fakeFormats };
 
-const mockBuildRegistry = mock(async (_root: string, _config: unknown) => fakeRegistry);
+const mockBuildRegistry = mock(async (_root: string, _config?: ProjectConfig) => fakeRegistry);
 
 const fakeExtensionsPayload = [
   {
@@ -64,14 +67,12 @@ const fakeExtensionsPayload = [
   },
 ];
 
-const mockBuildPayload = mock((_registry: unknown) => fakeExtensionsPayload);
+// The session hands the payload builder whatever the registry builder answered: `fakeRegistry`.
+const mockBuildPayload = mock((_registry: typeof fakeRegistry) => fakeExtensionsPayload);
 
 void mock.module("@jxsuite/compiler/format-host", () => ({
   buildExtensionsPayload: mockBuildPayload,
   buildProjectExtensionRegistry: mockBuildRegistry,
-  /* The live preview parses non-JSON pages through this, and a module mock replaces the WHOLE
-     module — so omitting it makes every import of `@jxsuite/server/live-preview` fail to link. */
-  buildProjectFormatRegistry: mock(() => Promise.resolve({ byExtension: () => null })),
 }));
 
 const fakeBundles = {
@@ -88,7 +89,7 @@ void mock.module("@jxsuite/compiler/schema-command", () => ({
 // ─── Resolve-proxy mock ──────────────────────────────────────────────────────
 
 const mockHandleResolve = mock(
-  async (_req: Request, _root: string, _x: unknown) =>
+  async (_req: Request, _root: string, _activeProjectRoot: string | null) =>
     new Response('{"resolved":true}', { status: 200 }),
 );
 const mockHandleServerFunction = mock(
@@ -175,9 +176,12 @@ describe("listFormats", () => {
   test("caches the registry per project root", async () => {
     setup();
     try {
-      await listFormats();
-      await listFormats();
+      const first = await listFormats();
+      const second = await listFormats();
+      expect(second).toEqual(first);
       expect(mockBuildRegistry).toHaveBeenCalledTimes(1);
+      // No project.json in the fixture, so the one build saw no config.
+      expect(mockBuildRegistry).toHaveBeenCalledWith(FIXTURES, undefined);
     } finally {
       cleanup();
     }
@@ -189,7 +193,10 @@ describe("listFormats", () => {
       await listFormats();
       setProjectRoot(FIXTURES);
       await listFormats();
-      expect(mockBuildRegistry).toHaveBeenCalledTimes(2);
+      expect(mockBuildRegistry.mock.calls).toEqual([
+        [FIXTURES, undefined],
+        [FIXTURES, undefined],
+      ]);
     } finally {
       cleanup();
     }
@@ -241,7 +248,7 @@ describe("listExtensionCatalog", () => {
   test("builds the catalogue for the bound project root", async () => {
     setup();
     try {
-      const catalog = (await listExtensionCatalog()) as { name: string }[];
+      const catalog = await listExtensionCatalog();
       expect(catalog[0]?.name).toBe("@jxsuite/feed");
       expect(mockBuildCatalog).toHaveBeenCalledWith(FIXTURES);
     } finally {
@@ -527,13 +534,14 @@ describe("discoverComponents prop edge cases", () => {
       const names = rich.props!.map((p) => p.name);
       expect(names).not.toContain("broken");
 
-      const body = rich.props!.find((p) => p.name === "body") as Record<string, unknown>;
-      expect(body.format).toBe("markdown");
-      expect(body.type).toBe("string");
+      const body = rich.props!.find((p) => p.name === "body");
+      expect(body?.format).toBe("markdown");
+      expect(body?.type).toBe("string");
 
-      const untyped = rich.props!.find((p) => p.name === "untyped") as Record<string, unknown>;
-      expect(untyped.type).toBeUndefined();
-      expect(untyped.default).toBe(1);
+      const untyped = rich.props!.find((p) => p.name === "untyped");
+      expect(untyped).toBeDefined();
+      expect(untyped?.type).toBeUndefined();
+      expect(untyped?.default).toBe(1);
     } finally {
       cleanup();
     }
@@ -585,7 +593,8 @@ describe("fetchPluginSchema schema extraction extras", () => {
         }),
       );
 
-      const schema = (await fetchPluginSchema({ src: "./Fancy.class.json" })) as StudioSchema;
+      const schema = await fetchPluginSchema({ src: "./Fancy.class.json" });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
 
       // Parameter examples + format
@@ -621,7 +630,8 @@ describe("fetchPluginSchema schema extraction extras", () => {
         join(FIXTURES, "Titled.class.json"),
         JSON.stringify({ $defs: { parameters: {} }, title: "Titled Thing" }),
       );
-      const schema = (await fetchPluginSchema({ src: "./Titled.class.json" })) as StudioSchema;
+      const schema = await fetchPluginSchema({ src: "./Titled.class.json" });
+      expectStudioSchema(schema);
       expect(schema.description).toBe("Titled Thing");
     } finally {
       cleanup();
@@ -647,6 +657,8 @@ describe("fetchPluginSchema schema extraction extras", () => {
         `class Widget { static schema = { type: "object", properties: {} }; }
 export default { Widget };`,
       );
+      /* SAFETY: a module export answers with its class's static `schema`, and Widget's above is
+         `{ type, properties }`, the StudioSchema members this test reads. */
       const schema = (await fetchPluginSchema({
         prototype: "Widget",
         src: "./ns.ts",
@@ -661,11 +673,12 @@ export default { Widget };`,
   test("resolves a bare specifier through the project's require", async () => {
     setup();
     try {
-      const schema = (await fetchPluginSchema({
+      const schema = await fetchPluginSchema({
         src: "@jxsuite/parser/Markdown.class.json",
-      })) as StudioSchema;
+      });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
-      expect(typeof schema.properties).toBe("object");
+      expect(schema.properties).toBeInstanceOf(Object);
     } finally {
       cleanup();
     }
@@ -676,11 +689,12 @@ export default { Widget };`,
     const tmpRoot = mkdtempSync(join(tmpdir(), "jx-gaps-"));
     setProjectRoot(tmpRoot);
     try {
-      const schema = (await fetchPluginSchema({
+      const schema = await fetchPluginSchema({
         src: "@jxsuite/parser/Markdown.class.json",
-      })) as StudioSchema;
+      });
+      expectStudioSchema(schema);
       expect(schema).not.toBeNull();
-      expect(typeof schema.properties).toBe("object");
+      expect(schema.properties).toBeInstanceOf(Object);
     } finally {
       rmSync(tmpRoot, { force: true, recursive: true });
       setProjectRoot(null);

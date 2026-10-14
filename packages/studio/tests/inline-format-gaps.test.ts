@@ -17,7 +17,7 @@ function mount(html: string) {
 function selectContents(root: HTMLElement) {
   const range = document.createRange();
   range.selectNodeContents(root);
-  const sel = window.getSelection() as Selection;
+  const sel = window.getSelection()!;
   sel.removeAllRanges();
   sel.addRange(range);
   return range;
@@ -36,7 +36,7 @@ describe("isTagActiveInSelection — selection outside the editable root", () =>
 
     const range = document.createRange();
     range.selectNodeContents(outside);
-    const sel = window.getSelection() as Selection;
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
 
@@ -47,7 +47,7 @@ describe("isTagActiveInSelection — selection outside the editable root", () =>
 describe("toggleInlineFormat — no active range", () => {
   test("does nothing when the selection has no ranges", () => {
     const root = mount("hello");
-    const sel = window.getSelection() as Selection;
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     toggleInlineFormat("strong", root);
     expect(root.querySelectorAll("strong").length).toBe(0);
@@ -97,12 +97,12 @@ describe("wrapRangeInTag — whitespace handling", () => {
 describe("findIntersectingElements — skips non-matching tags", () => {
   test("unwraps only the matching tag among mixed siblings", () => {
     const root = mount("<strong>bold</strong><em>ital</em>");
-    const strong = root.querySelector("strong") as HTMLElement;
-    const em = root.querySelector("em") as HTMLElement;
+    const strong = root.querySelector("strong")!;
+    const em = root.querySelector("em")!;
     const range = document.createRange();
-    range.setStart(strong.firstChild as Node, 0);
-    range.setEnd(em.firstChild as Node, 4);
-    const sel = window.getSelection() as Selection;
+    range.setStart(strong.firstChild!, 0);
+    range.setEnd(em.firstChild!, 4);
+    const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
 
@@ -117,11 +117,11 @@ describe("normalizeInlineContent — lift edge whitespace", () => {
   test("lifts leading and trailing whitespace out of a format element", () => {
     const root = mount("<strong>  lead <em>x</em> trail  </strong>");
     normalizeInlineContent(root);
-    const strong = root.querySelector("strong") as HTMLElement;
+    const strong = root.querySelector("strong");
     expect(strong).not.toBeNull();
     // Inner edges no longer carry whitespace (it was lifted outside the element).
-    expect(strong.firstChild?.textContent?.startsWith(" ")).toBe(false);
-    expect(strong.lastChild?.textContent?.endsWith(" ")).toBe(false);
+    expect(strong?.firstChild?.textContent?.startsWith(" ")).toBe(false);
+    expect(strong?.lastChild?.textContent?.endsWith(" ")).toBe(false);
     // Text content is preserved overall.
     expect(root.textContent).toContain("lead");
     expect(root.textContent).toContain("trail");

@@ -5,8 +5,8 @@
  * the turn and runs the import as a tool call. This holds what the form gathered for the one turn
  * that consumes it.
  *
- * **Module state, and deliberately NOT a copy of `agent-seed.ts`.** That one uses localStorage keyed
- * by project root because the project it seeds opens in a NEW WINDOW, and the key is the
+ * **Module state, and deliberately NOT a copy of `agent-seed.ts`.** That one uses localStorage
+ * keyed by project root because the project it seeds opens in a NEW WINDOW, and the key is the
  * cross-window channel. Neither half of that applies here: the project does not exist yet at
  * hand-off time, so there is no root to key on, and the assistant taking the turn is in this window
  * — `import_site` is `no-project` tiered precisely because it runs before there is a project. A
@@ -17,6 +17,12 @@
  */
 
 import type { ImportBreakpointPolicy } from "../types";
+
+/**
+ * The deepest crawl the import pipeline accepts: the bound `packages/server/src/import-api.ts`
+ * clamps to, which both the wizard's depth field and `import_site` honour.
+ */
+export const MAX_IMPORT_DEPTH = 5;
 
 /** What the wizard gathered, as the tool needs it. */
 export interface ImportBrief {

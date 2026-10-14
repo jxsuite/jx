@@ -13,26 +13,35 @@ import { Sqlite } from "./sqlite.ts";
 import { Supabase } from "./supabase.ts";
 import type { Dialect } from "kysely";
 import type { SqlDialectKind } from "./columns.ts";
-import type { ConnectorProvider } from "./provider-utils.ts";
+import type { ConnectorProvider, HostEnv } from "./provider-utils.ts";
 import type { ConnectionDef } from "./types.ts";
 
-export type { ConnectorProvider } from "./provider-utils.ts";
+export type {
+  ConnectorProvider,
+  HostEnv,
+  HostEnvValue,
+  HyperdriveBinding,
+} from "./provider-utils.ts";
 export { tablesForConnection } from "./provider-utils.ts";
 export { D1 } from "./d1.ts";
 export { Sqlite } from "./sqlite.ts";
 export { Supabase } from "./supabase.ts";
 
 /** First-party providers keyed by their `connector.provider` id. */
-export const PROVIDERS: Record<string, ConnectorProvider> = {
+export const PROVIDERS = {
   d1: D1,
   sqlite: Sqlite,
   supabase: Supabase,
-};
+} satisfies Record<string, ConnectorProvider>;
+
+/** True when `id` names one of the first-party providers (own keys only, never prototype members). */
+function isFirstPartyProvider(id: string): id is keyof typeof PROVIDERS {
+  return Object.hasOwn(PROVIDERS, id);
+}
 
 /** The `connections`-bearing slice of a project config. */
 export interface ConnectionsConfig {
   connections?: Record<string, ConnectionDef>;
-  [key: string]: unknown;
 }
 
 /**
@@ -40,20 +49,22 @@ export interface ConnectionsConfig {
  *
  * @param {string} connectionName - Key of the project.json `connections` section
  * @param {ConnectionsConfig} projectConfig - The (partial) project config
- * @param {Record<string, unknown>} env - Host environment (bindings + env vars)
+ * @param {HostEnv} env - Host environment (bindings + env vars)
  * @returns {Promise<{ dialect: Dialect; type: SqlDialectKind }>}
  */
 export async function resolveDialect(
   connectionName: string,
   projectConfig: ConnectionsConfig,
-  env: Record<string, unknown>,
+  env: HostEnv,
 ): Promise<{ dialect: Dialect; type: SqlDialectKind }> {
   const connections = projectConfig.connections ?? {};
   const connection = connections[connectionName];
   if (!connection) {
     throw new Error(`Unknown connection "${connectionName}" (no such connections entry)`);
   }
-  const provider = PROVIDERS[connection.provider];
+  const provider = isFirstPartyProvider(connection.provider)
+    ? PROVIDERS[connection.provider]
+    : undefined;
   if (!provider) {
     throw new Error(
       `Connection "${connectionName}" names unknown provider "${connection.provider}" ` +

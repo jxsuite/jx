@@ -10,5 +10,7 @@ coveragePathIgnorePatterns = [
   "../../extensions/**",
   "../../scripts/**",
   "../markup/**",
+  # headings.ts now narrows through @jxsuite/schema/guards, so the same rule covers schema's files.
+  "../schema/**",
 ]
 coverageThreshold = { lines = 0.99, functions = 0.99 }

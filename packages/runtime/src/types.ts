@@ -1,17 +1,101 @@
 /// <reference lib="dom" />
-import type { JxDocument, JxElement, JxPath } from "@jxsuite/schema/types";
+import type { JxDocument, JxDocumentValue, JxElement, JxPath } from "@jxsuite/schema/types";
+import type { Ref } from "@vue/reactivity";
 
 export type { JxPath } from "@jxsuite/schema/types";
 
 /**
- * The live reactive scope: a prototype-chained object whose keys are user-defined state names.
- * Values are runtime JS values (signals, functions, JSON data) and must be narrowed at use — this
- * alias marks the dynamic boundary by name.
+ * What one member of a {@link JxScope} holds: every kind of value the runtime puts into a scope or
+ * hands to a document's code.
+ *
+ * - A document's own values (`JxDocumentValue`): JSON, and the typed shapes a naked `state` entry, a
+ *   `$`-local or a literal `$props` value copies in (spec.md §5.3).
+ * - `undefined`, for a member or an argument that is absent.
+ * - Arrays and records of scope values: reactive objects, host records, `$props`, and the instance an
+ *   external class constructs (spec.md §12.3), every one of them read by member name.
+ * - Functions ({@link JxScopeFunction}): handlers, formulas, `$src` exports, server-function proxies
+ *   and a host's own functions.
+ * - Refs: the computed and data-source entries the reactive proxy unwraps on read.
+ * - The `$map` context a mapped row renders under ({@link JxRowContext}).
+ * - DOM objects: event targets (nodes, the window, the document) and events, which `window#/`,
+ *   `document#/` and `event#/` references read.
+ * - The platform objects a `$prototype` entry resolves to (spec.md §11.2): `Map`, `Set`, `FormData`,
+ *   `Blob`, and the `IDBObjectStore` an `IndexedDB` entry's `getStore()` yields.
+ * - A promise of any of those: a computed entry over an `async` function settles later.
+ *
+ * Narrow it with the guards in `@jxsuite/schema/guards`, which work on the union.
  */
-export type JxScope = Record<string, unknown>;
+export type JxScopeValue = JxSettledValue | Promise<JxSettledValue>;
+
+/**
+ * A scope member that is not a promise: what a {@link JxScopeValue} settles to. A promise never
+ * fulfils with another promise, which is what lets an `await` on a scope member end.
+ */
+export type JxSettledValue =
+  | JxDocumentValue
+  | undefined
+  | JxScopeValue[]
+  | readonly JxScopeValue[]
+  | JxScope
+  | JxScopeFunction
+  | Ref<JxScopeValue>
+  | JxRowContext
+  | EventTarget
+  | Event
+  | ReadonlyMap<JxScopeValue, JxScopeValue>
+  | ReadonlySet<JxScopeValue>
+  | FormData
+  | Blob
+  | IDBObjectStore;
+
+/**
+ * The live reactive scope (spec.md §15): a prototype-chained record of state entries, `$props`, a
+ * host's members and the runtime's `$` vocabulary, each read and written by name.
+ */
+export interface JxScope {
+  [name: string]: JxScopeValue;
+}
+
+/**
+ * A function a scope holds, as the scope sees it: a handler, a formula, a `$src` export, a
+ * server-function proxy or a host's own function. JavaScript checks neither the arguments a call
+ * passes nor what it returns, so this is every function; a call site narrows it to the signature it
+ * calls with, and a result it reads is a scope member by the contract of whatever stored the
+ * function (a computed entry, a formula, a server call).
+ */
+export type JxScopeFunction = (...args: never[]) => void;
+
+/**
+ * The `$map` context a mapped row renders under (spec.md §10.2): the row's item, and its index in
+ * the list. Both are written in place when the row is reused.
+ */
+export interface JxRowContext {
+  index: number;
+  item: JxScopeValue;
+}
+
+/**
+ * A value a host hands the runtime, held to {@link JxScopeValue} member by member.
+ *
+ * A host declares its scope with interfaces, and TypeScript gives an interface no implicit index
+ * signature, so a host's record is never assignable to {@link JxScope}, however its members are
+ * typed. This walks the declared type instead: a scope value stays as it is, a `bigint` or a
+ * `symbol` is refused (neither is a scope value), a function is held to what it returns, and
+ * anything else — an array, a record — is held member by member.
+ */
+export type JxHostValue<T> = T extends JxScopeValue
+  ? T
+  : T extends bigint | symbol
+    ? never
+    : T extends (...args: infer A) => infer R
+      ? (...args: A) => JxHostValue<R>
+      : { [K in keyof T]: JxHostValue<T[K]> };
+
+/** A host's scope, held to {@link JxScopeValue} member by member (see {@link JxHostValue}). */
+export type JxHostScope<S> = { [K in keyof S]: JxHostValue<S[K]> };
 
 /** An event handler stored in the scope: `(scope, event) => void`. */
-export type JxEventHandler = (scope: JxScope, event: Event) => unknown;
+export type JxEventHandler = (scope: JxScope, event: Event) => void;
 
 /**
  * A host-supplied document source consulted before the network. Returning `undefined` means "not
@@ -42,14 +126,17 @@ export interface JxContext {
   skipAutoRequests?: boolean;
 }
 
-/** Options for {@link mount}: the host's half of the embedding contract (specs/embedding.md). */
-export interface JxMountOptions {
+/**
+ * Options for {@link mount}: the host's half of the embedding contract (specs/embedding.md). `S` is
+ * the host's own scope type, which `mount` holds to {@link JxHostScope}.
+ */
+export interface JxMountOptions<S = JxScope> {
   /**
    * Host members merged into the document's scope before its own `state` is built: reactive
    * records, refs, computeds and plain functions. A document `state` entry of the same name wins.
    * Keys beginning with `$` or `#` are runtime vocabulary and are refused.
    */
-  scope?: Record<string, unknown>;
+  scope?: S;
   base?: string;
   media?: Record<string, string>;
   resolver?: DocumentResolver;
@@ -112,8 +199,22 @@ export interface JxRenderOptions {
   onNodeMoved?: (node: HTMLElement | Text, path: JxPath) => void;
 }
 
+/**
+ * A method body compiled by `new Function` from a `.class.json` method definition. Only document
+ * code calls it, so its arguments and result are opaque to TypeScript.
+ */
+export type DynamicMethod = (...args: never[]) => void;
+
+/** The prototype of a {@link DynamicClass}: instance methods attached by name. */
+export type DynamicPrototype = Record<string, DynamicMethod>;
+
+/**
+ * A class built at runtime from a `.class.json` definition. Its static side carries the static
+ * methods attached by name beside the prototype; an instance holds the constructor `config` values
+ * under its field names.
+ */
 export interface DynamicClass {
-  new (config?: Record<string, unknown>): Record<string, unknown>;
-  [key: string]: unknown;
-  prototype: Record<string, unknown>;
+  new (config?: JxScope): JxScope;
+  [member: string]: DynamicMethod | DynamicPrototype;
+  prototype: DynamicPrototype;
 }

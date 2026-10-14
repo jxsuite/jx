@@ -14,7 +14,7 @@ import {
 } from "../src/columns";
 import type { TableDef } from "../src/types";
 
-const TABLES: Record<string, TableDef> = {
+const TABLES = {
   comments: {
     connection: "main",
     ownerField: "user_id",
@@ -57,7 +57,7 @@ const TABLES: Record<string, TableDef> = {
       type: "object",
     },
   },
-};
+} satisfies Record<string, TableDef>;
 
 describe("parseRefPointer", () => {
   test("parses section/name pointers and rejects everything else", () => {

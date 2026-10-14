@@ -35,18 +35,19 @@ describe("toolSuccess / toolError", () => {
 
 describe("createToolDefinition", () => {
   it("applies default strict=true and llmStrict=false", () => {
+    const execute = () => toolSuccess(null);
     const def = createToolDefinition({
       name: "noop",
       description: "does nothing",
       parameters: { type: "object", properties: {} },
-      execute: () => toolSuccess(null),
+      execute,
     });
 
     expect(def.name).toBe("noop");
     expect(def.description).toBe("does nothing");
     expect(def.strict).toBe(true);
     expect(def.llmStrict).toBe(false);
-    expect(typeof def.execute).toBe("function");
+    expect(def.execute).toBe(execute);
   });
 
   it("honors explicit strict and llmStrict overrides", () => {
@@ -78,7 +79,7 @@ describe("ToolRegistry registration", () => {
 
   it("warns and overwrites when re-registering the same name", () => {
     const registry = createToolRegistry();
-    const warn = mock((..._args: unknown[]) => {});
+    const warn = mock((_message: string) => {});
     const original = console.warn;
     console.warn = warn;
     try {
@@ -89,15 +90,13 @@ describe("ToolRegistry registration", () => {
     }
 
     expect(warn).toHaveBeenCalledTimes(1);
-    const message = warn.mock.calls[0]![0] as string;
-    expect(message).toContain("dup");
-    expect(message).toContain("re-registered");
+    expect(warn).toHaveBeenCalledWith('Tool "dup" is being re-registered.');
     expect(registry.list().length).toBe(1);
   });
 
   it("does not warn for distinct tool names", () => {
     const registry = createToolRegistry();
-    const warn = mock((..._args: unknown[]) => {});
+    const warn = mock((_message: string) => {});
     const original = console.warn;
     console.warn = warn;
     try {
@@ -161,6 +160,8 @@ describe("ToolRegistry.listForLLM", () => {
       }),
     );
 
+    /* SAFETY: listForLLM maps every registered definition to `{ type: "function", function: {
+       name, description, parameters, strict? } }`; its declared `object[]` is only wider. */
     const tools = registry.listForLLM() as {
       type: string;
       function: { name: string; description: string; parameters: object; strict?: boolean };

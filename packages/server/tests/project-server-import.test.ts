@@ -6,17 +6,20 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { ImportProgressEvent, ImportSiteOptions } from "@jxsuite/import/run";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 interface CapturedCall {
-  options: Record<string, unknown>;
-  onProgress: ((e: Record<string, unknown>) => void) | undefined;
+  options: ImportSiteOptions;
+  onProgress: ((e: ImportProgressEvent) => void) | undefined;
 }
 
 const importCalls: CapturedCall[] = [];
 const importSite = mock(
-  (options: Record<string, unknown>, onProgress?: (e: Record<string, unknown>) => void) => {
+  (options: ImportSiteOptions, onProgress?: (e: ImportProgressEvent) => void) => {
     importCalls.push({ options, onProgress });
-    const outDir = options.outDir as string;
+    const { outDir } = options;
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "project.json"), JSON.stringify({ name: "Cloned" }));
     onProgress?.({ phase: "emit", message: "Wrote 1 file" });
@@ -67,7 +70,21 @@ afterAll(() => {
   rmSync(ROOT, { force: true, recursive: true });
 });
 
-function importRequest(base: string, token: string | null, body?: unknown) {
+/** Decodes an NDJSON import stream, failing the test on any line that is not a JSON object. */
+function parseStreamLines(text: string): JsonObject[] {
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const value: unknown = JSON.parse(line);
+      if (!isJsonObject(value)) {
+        throw new Error(`Expected an NDJSON object line, got ${line}`);
+      }
+      return value;
+    });
+}
+
+function importRequest(base: string, token: string | null, body?: JsonObject) {
   const url = token
     ? `${base}/__studio__/import-site?token=${encodeURIComponent(token)}`
     : `${base}/__studio__/import-site`;
@@ -122,12 +139,9 @@ describe("project-server import-site route", () => {
     expect(res.headers.get("Content-Type")).toBe("application/x-ndjson");
 
     const text = await res.text();
-    const lines = text
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => JSON.parse(l) as Record<string, unknown>);
-    expect(lines.at(-1)?.type).toBe("done");
-    expect(lines.at(-1)?.root).toBe(dest);
+    const done = parseStreamLines(text).at(-1);
+    expect(done?.type).toBe("done");
+    expect(done?.root).toBe(dest);
 
     // The launcher's Chromium binary is threaded through to the pipeline.
     const opts = importCalls.at(-1)!.options;
@@ -141,7 +155,7 @@ describe("project-server import-site route", () => {
       directory: "relative/dest",
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("absolute");
+    const body: unknown = await res.json();
+    expect(body).toMatchObject({ error: expect.stringContaining("absolute") });
   });
 });

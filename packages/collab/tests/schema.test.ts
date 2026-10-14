@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import {
   applyTextEdit,
@@ -28,6 +29,16 @@ const SAMPLE: JxMutableNode = {
   state: { count: { default: 0 } },
   tagName: "div",
 };
+
+/** Fail the test unless `value` is a `ctor` instance, narrowing it for the assertions that follow. */
+function assertInstance<T>(
+  value: unknown,
+  ctor: abstract new (...args: never[]) => T,
+): asserts value is T {
+  if (!(value instanceof ctor)) {
+    throw new TypeError(`expected a ${ctor.name} instance`);
+  }
+}
 
 function seeded(doc: JxMutableNode = SAMPLE): Y.Doc {
   const ydoc = new Y.Doc();
@@ -63,11 +74,16 @@ describe("seedStructure / yDocToJson", () => {
     const ydoc = seeded();
     const won = seedStructure(ydoc, { tagName: "other" });
     expect(won).toBe(false);
-    expect((yDocToJson(ydoc) as { tagName?: string }).tagName).toBe("div");
+    expect(yDocToJson(ydoc).tagName).toBe("div");
   });
 
   test("undefined-valued keys are dropped, not stored", () => {
-    const ydoc = seeded({ tagName: "div", textContent: undefined } as unknown as JxMutableNode);
+    const doc: JxMutableNode = { tagName: "div" };
+    /* An in-memory edit can leave a declared key present but undefined, which the
+       exactOptionalPropertyTypes-checked literal cannot spell; an own enumerable property is what
+       Object.entries (and so the seeder) sees either way. */
+    Object.defineProperty(doc, "textContent", { enumerable: true, value: undefined });
+    const ydoc = seeded(doc);
     expect("textContent" in yDocToJson(ydoc)).toBe(false);
   });
 
@@ -81,7 +97,7 @@ describe("seedStructure / yDocToJson", () => {
     Y.applyUpdate(a, Y.encodeStateAsUpdate(b));
     expect(yDocToJson(a)).toEqual(SAMPLE);
     expect(yDocToJson(b)).toEqual(yDocToJson(a));
-    const { children } = yDocToJson(a) as { children: unknown[] };
+    const { children } = yDocToJson(a);
     expect(children).toHaveLength(3);
   });
 });
@@ -91,17 +107,18 @@ describe("resolveYPath", () => {
     const ydoc = seeded();
     expect(resolveYPath(ydoc, [])).toBe(structureMap(ydoc));
     const h1 = resolveYPath(ydoc, ["children", 0]);
-    expect(h1).toBeInstanceOf(Y.Map);
+    assertInstance(h1, Y.Map);
     // Text is a Y.Text, not an opaque string — that is what makes concurrent typing merge per
     // Character instead of whole-value last-writer-wins.
-    const title = (h1 as Y.Map<unknown>).get("textContent");
-    expect(title).toBeInstanceOf(Y.Text);
-    expect((title as Y.Text).toString()).toBe("Title");
+    const title = h1.get("textContent");
+    assertInstance(title, Y.Text);
+    expect(title.toString()).toBe("Title");
     const loose = resolveYPath(ydoc, ["children", 1]);
-    expect(loose).toBeInstanceOf(Y.Text);
-    expect((loose as Y.Text).toString()).toBe("loose text");
+    assertInstance(loose, Y.Text);
+    expect(loose.toString()).toBe("loose text");
     const deep = resolveYPath(ydoc, ["children", 2, "children", 0, "textContent"]);
-    expect((deep as Y.Text).toString()).toBe("deep");
+    assertInstance(deep, Y.Text);
+    expect(deep.toString()).toBe("deep");
     expect(resolveYPath(ydoc, ["children"])).toBeInstanceOf(Y.Array);
   });
 
@@ -161,7 +178,7 @@ describe("updateSourceText", () => {
         if (delta.delete !== undefined) {
           deleted += delta.delete;
         }
-        if (typeof delta.insert === "string") {
+        if (isString(delta.insert)) {
           inserted += delta.insert;
         }
       }

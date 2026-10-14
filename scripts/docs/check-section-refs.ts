@@ -29,9 +29,9 @@ import { NUMBERED_HEADING } from "./lib/spec-status.ts";
 const ROOT = resolve(import.meta.dir, "../..");
 
 /** Workspaces whose bare `§` has a home spec. Grows one workspace at a time, each made true first. */
-export const HOME_SPECS: Readonly<Record<string, string>> = {
+export const HOME_SPECS = {
   "packages/studio": "studio.md",
-};
+} as const satisfies Readonly<Record<string, string>>;
 
 /** Build outputs and history: their bytes are written by a generator or by release-please. */
 const SKIP = [

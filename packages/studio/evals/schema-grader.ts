@@ -8,13 +8,14 @@
  * @license MIT
  */
 
+import type { JsonValue } from "@jxsuite/schema/types";
 import { validateDoc } from "../src/services/jx-validate";
 
 /**
- * @param {unknown} doc
+ * @param {JsonValue} doc
  * @returns {Promise<{ pass: boolean; errors: string[] }>}
  */
-export async function schemaGrader(doc: unknown) {
+export async function schemaGrader(doc: JsonValue) {
   const errors = await validateDoc(doc);
   return { pass: errors.length === 0, errors };
 }

@@ -14,19 +14,24 @@
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
+import type { GitPanelDeps } from "../src/panels/git-panel";
+import type { OpenMenuOptions } from "../src/surfaces/menu";
+import type { PromptDialogOptions } from "../src/ui/layers";
+import type { GitDiffState, ProjectState } from "../src/types";
+import type { ShellGit } from "../src/shell";
 
 // ─── Controllable module state (captured by mock.module factories) ───────────
 
 let mockPlatform: any;
-const activeTabRef: { value: any } = { value: { session: { ui: {} } } };
+const activeTabRef = { value: { session: { ui: {} } } };
 let calls: [string, ...unknown[]][] = [];
 let statusMessages: string[] = [];
 let confirmCalls: string[] = [];
 let confirmResult = true;
-let publishCalls: unknown[] = [];
-let promptCalls: { headline: string; opts: Record<string, any> }[] = [];
+let publishCalls: { projectName: string }[] = [];
+let promptCalls: { headline: string; opts: PromptDialogOptions }[] = [];
 let promptResult: string | null = null;
-let menuCalls: Record<string, any>[] = [];
+let menuCalls: OpenMenuOptions[] = [];
 
 void mock.module("../src/platform.js", () => ({
   getPlatform: () => mockPlatform,
@@ -90,7 +95,7 @@ void mock.module("../src/ui/layers.js", () => ({
   showDialog: () => Promise.resolve(null),
   // The prompt dialog's own rendering/validation is covered in tests/ui-layers-gaps.test.ts; here
   // Only the options the panel passes and how it handles the resolved value matter.
-  showPromptDialog: async (headline: string, opts: Record<string, any> = {}) => {
+  showPromptDialog: async (headline: string, opts: PromptDialogOptions = {}) => {
     promptCalls.push({ headline, opts });
     return promptResult;
   },
@@ -99,7 +104,7 @@ void mock.module("../src/ui/layers.js", () => ({
 /* The kit menu is the split button's dropdown now, so what this file tests is the ROW the panel
    hands it — the menu's own popover, focus and dismissal belong to `tests/surfaces-menu.test.ts`. */
 void mock.module("../src/surfaces/menu.js", () => ({
-  openMenu: (options: Record<string, any>) => {
+  openMenu: (options: OpenMenuOptions) => {
     menuCalls.push(options);
     return { close: () => {}, host: document.createElement("div"), ready: Promise.resolve() };
   },
@@ -110,7 +115,7 @@ void mock.module("../src/services/notify.js", () =>
 );
 
 void mock.module("../src/github/github-publish.js", () => ({
-  createGithubRepository: async (opts: unknown) => {
+  createGithubRepository: async (opts: { projectName: string }) => {
     publishCalls.push(opts);
     return true;
   },
@@ -129,7 +134,7 @@ void mock.module("../src/packages/pull-package-sync.js", () => ({
   },
 }));
 
-const { setProjectState } = (await import("../src/state.js")) as any;
+const { setProjectState } = await import("../src/state.js");
 const { resetProjectShell, shell } = await import("../src/shell.js");
 const {
   cleanupGitPanel,
@@ -141,7 +146,7 @@ const {
 } = await import("../src/panels/git-panel.js");
 
 // Source control is project state now; `shell.git` is where the panel reads and writes it.
-const git = shell.git as unknown as Record<string, any>;
+const { git } = shell;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -200,7 +205,15 @@ function freshPlatform(): any {
   };
 }
 
-function seedRepoUi(overrides: Record<string, unknown> = {}) {
+/** Install a project carrying only the fields given. */
+function openProject(fields: Partial<ProjectState>): void {
+  /* SAFETY: the panel reads exactly two things from projectState: whether one is open (its
+     no-project guard) and `name`, with a `"my-project"` fallback, for the GitHub repository it
+     offers to create. Nothing these tests reach reads a root, a config or a directory listing. */
+  setProjectState(fields as ProjectState);
+}
+
+function seedRepoUi(overrides: Partial<ShellGit> = {}) {
   git.branches = { branches: ["main", "dev"], current: "main" };
   git.status = baseStatus();
   Object.assign(git, overrides);
@@ -212,7 +225,7 @@ function seedRepoUi(overrides: Record<string, unknown> = {}) {
  * The host mirrors what `left-panel.ts` paints — a `.panel-body` whose `.panel-content` is the node
  * the document goes into — because that is the one line of the seam this panel owns.
  */
-async function draw(deps: Record<string, unknown> = {}): Promise<HTMLElement> {
+async function draw(deps: GitPanelDeps = {}): Promise<HTMLElement> {
   const body = document.createElement("div");
   body.className = "panel-body";
   const content = document.createElement("div");
@@ -273,12 +286,20 @@ function rowAction(panel: HTMLElement, path: string, action: string) {
 
 /** The commit field's own control — a textarea, because the field is multiline. */
 function commitInput(panel: HTMLElement): HTMLTextAreaElement {
-  return panel.querySelector('[part="commit-input"] [part="input"]') as HTMLTextAreaElement;
+  const input = panel.querySelector('[part="commit-input"] [part="input"]');
+  if (!(input instanceof HTMLTextAreaElement)) {
+    throw new Error("the commit field drew no textarea");
+  }
+  return input;
 }
 
 /** The branch picker's own `<select>`, which is what the reader touches. */
 function branchControl(panel: HTMLElement): HTMLSelectElement {
-  return panel.querySelector('[part="branch-picker"] [part="control"]') as HTMLSelectElement;
+  const control = panel.querySelector('[part="branch-picker"] [part="control"]');
+  if (!(control instanceof HTMLSelectElement)) {
+    throw new Error("the branch picker drew no <select>");
+  }
+  return control;
 }
 
 beforeEach(() => {
@@ -301,7 +322,7 @@ beforeEach(() => {
   mockPlatform = freshPlatform();
   pullSyncCalls = 0;
   pullSyncImpl = async () => {};
-  setProjectState({ name: "proj" });
+  openProject({ name: "proj" });
 });
 
 afterEach(() => {
@@ -313,12 +334,13 @@ afterEach(() => {
 describe("refreshGitStatus", () => {
   test("populates status and branches, clears loading", async () => {
     await refreshGitStatus();
-    expect(git.status.branch).toBe("main");
+    expect(git.status?.branch).toBe("main");
     expect(git.branches).toEqual({ branches: ["main", "dev"], current: "main" });
     expect(git.loading).toBe(false);
     expect(git.error).toBeNull();
-    expect(callNames()).toContain("gitStatus");
-    expect(callNames()).toContain("gitBranches");
+    const names = callNames();
+    expect(names).toContain("gitStatus");
+    expect(names).toContain("gitBranches");
   });
 
   test("records error message on failure", async () => {
@@ -350,7 +372,7 @@ describe("refreshGitStatus", () => {
       throw new Error("not a git repository");
     });
     await refreshGitStatus();
-    expect(git.status.isRepo).toBe(false);
+    expect(git.status?.isRepo).toBe(false);
     expect(git.error).toBeNull();
   });
 
@@ -359,7 +381,7 @@ describe("refreshGitStatus", () => {
       throw new Error("branches boom");
     });
     await refreshGitStatus();
-    expect(git.status.isRepo).toBe(true);
+    expect(git.status?.isRepo).toBe(true);
     expect(String(git.error)).toContain("branches boom");
   });
 });
@@ -383,8 +405,8 @@ describe("cloneRepository", () => {
     expect(headline).toBe("Clone Git Repository");
     expect(opts.confirmLabel).toBe("Clone");
     expect(opts.placeholder).toBe("https://github.com/user/repo.git");
-    expect(opts.validate("")).toBe("Enter a repository URL.");
-    expect(opts.validate("https://github.com/u/r.git")).toBe("");
+    expect(opts.validate?.("", "")).toBe("Enter a repository URL.");
+    expect(opts.validate?.("https://github.com/u/r.git", "")).toBe("");
   });
 
   test("a confirmed URL clones and opens the project", async () => {
@@ -439,7 +461,7 @@ describe("panel bootstrap", () => {
     const panel = await draw();
     await flush();
     expect(callNames()).toContain("gitStatus");
-    expect(git.status.isRepo).toBe(true);
+    expect(git.status?.isRepo).toBe(true);
     // And the finished read reaches the document with no repaint from anywhere else.
     expect(part(panel, "sync-label")).toBeTruthy();
   });
@@ -471,8 +493,9 @@ describe("panel bootstrap", () => {
     const panel = await draw();
     click(part(panel, "init"));
     await flush();
-    expect(callNames()).toContain("gitInit");
-    expect(callNames()).toContain("gitStatus");
+    const names = callNames();
+    expect(names).toContain("gitInit");
+    expect(names).toContain("gitStatus");
     expect(statusMessages).toContain("Initializing repository…");
     expect(statusMessages).toContain("Repository initialized.");
   });
@@ -486,9 +509,8 @@ describe("panel bootstrap", () => {
   });
 
   test("the no-remote sync bar's publish falls back to a default project name", async () => {
-    setProjectState({});
-    seedRepoUi();
-    git.status.remotes = [];
+    openProject({});
+    seedRepoUi({ status: { ...baseStatus(), remotes: [] } });
     const panel = await draw();
     click(part(panel, "create-repository"));
     await flush();
@@ -503,8 +525,7 @@ describe("panel bootstrap", () => {
   });
 
   test("an empty file list teaches what lands in the changes tab", async () => {
-    seedRepoUi();
-    git.status.files = [];
+    seedRepoUi({ status: baseStatus([]) });
     const panel = await draw();
     expect(panel.textContent).toContain("Nothing to commit.");
     expect(part(panel, "stage-all")).toBeNull();
@@ -611,8 +632,8 @@ describe("branch selector", () => {
     expect(headline).toBe("New Branch");
     expect(opts.confirmLabel).toBe("Create");
     expect(opts.message).toContain("main");
-    expect(opts.validate("  ")).toBe("Enter a branch name.");
-    expect(opts.validate("feat-x")).toBe("");
+    expect(opts.validate?.("  ", "")).toBe("Enter a branch name.");
+    expect(opts.validate?.("feat-x", "")).toBe("");
     expect(calls).toContainEqual(["gitCreateBranch", "feat-x"]);
   });
 
@@ -694,8 +715,9 @@ describe("commit form", () => {
     click(part(panel, "commit-button"));
     await flush();
     expect(calls).toContainEqual(["gitCommit", "sync msg"]);
-    expect(callNames()).toContain("gitPush");
-    expect(callNames()).toContain("gitStatus");
+    const names = callNames();
+    expect(names).toContain("gitPush");
+    expect(names).toContain("gitStatus");
     expect(git.commitMessage).toBe("");
   });
 
@@ -704,8 +726,9 @@ describe("commit form", () => {
     const panel = await draw();
     click(part(panel, "commit-button"));
     await flush();
-    expect(callNames()).not.toContain("gitCommit");
-    expect(callNames()).not.toContain("gitPush");
+    const names = callNames();
+    expect(names).not.toContain("gitCommit");
+    expect(names).not.toContain("gitPush");
   });
 
   test("commit and sync records the error when the push fails", async () => {
@@ -767,13 +790,14 @@ describe("commit form", () => {
     expect(menuCalls).toHaveLength(1);
     const options = menuCalls[0]!;
     expect(options.region).toBe("git-commit");
-    expect(options.rows.map((row: any) => row.title)).toEqual(["Commit (don't sync)"]);
+    expect(options.rows.map((row) => row.title)).toEqual(["Commit (don't sync)"]);
     // The button that opened it is the popover's invoker, so a mousedown on it is not a dismissal.
     expect(options.opener).toBe(part(panel, "commit-menu"));
-    expect(typeof options.place).toBe("function");
-    expect(options.place(new DOMRect(0, 0, 120, 40))).toEqual(expect.any(Object));
+    const { place } = options;
+    expect(place).toBeInstanceOf(Function);
+    expect(place?.(new DOMRect(0, 0, 120, 40))).toEqual(expect.any(Object));
 
-    options.rows[0].run();
+    options.rows[0]?.run?.();
     await flush();
     expect(calls).toContainEqual(["gitCommit", "menu msg"]);
     expect(callNames()).not.toContain("gitPush");
@@ -790,13 +814,13 @@ describe("file rows", () => {
   test("clicking a modified .json file loads a diff and switches canvas mode", async () => {
     seedRepoUi();
     const modes: string[] = [];
-    const diffs: any[] = [];
+    const diffs: (GitDiffState | null)[] = [];
     const panel = await draw({
       // The mode is written on the tab the COMPARISON is in, which is the tab keyed by the clicked
       // File's path. It used to be `activeTab.value` — so clicking one file flipped whatever
       // Document happened to be focused into git-diff and drew the other file's comparison on it.
-      setCanvasMode: (_tab: unknown, m: string) => modes.push(m),
-      setGitDiffState: (s: any) => diffs.push(s),
+      setCanvasMode: (_tab, m) => modes.push(m),
+      setGitDiffState: (s) => diffs.push(s),
     });
     openFile(panel, "src/page.json");
     await flush();
@@ -820,8 +844,8 @@ describe("file rows", () => {
     openFile(panel, "src/new.json");
     await flush();
     expect(callNames()).not.toContain("gitShow");
-    expect(git.diffState.originalContent).toBe("");
-    expect(git.diffState.fileStatus).toBe("A");
+    expect(git.diffState?.originalContent).toBe("");
+    expect(git.diffState?.fileStatus).toBe("A");
   });
 
   test("diff state is stored even without canvas-mode context", async () => {
@@ -829,7 +853,7 @@ describe("file rows", () => {
     const panel = await draw({});
     openFile(panel, "src/page.json");
     await flush();
-    expect(git.diffState.filePath).toBe("src/page.json");
+    expect(git.diffState?.filePath).toBe("src/page.json");
   });
 
   test("a deleted file compares its last committed version against nothing", async () => {
@@ -842,8 +866,8 @@ describe("file rows", () => {
     expect(calls).toContainEqual(["gitShow", { path: "src/gone.json", ref: "HEAD" }]);
     // Never `readFile` on a path that is gone — it would throw.
     expect(callNames()).not.toContain("readFile");
-    expect(git.diffState.currentContent).toBe("");
-    expect(git.diffState.originalContent).toBe("ORIGINAL");
+    expect(git.diffState?.currentContent).toBe("");
+    expect(git.diffState?.originalContent).toBe("ORIGINAL");
   });
 
   test("a media file is refused with a sentence rather than ignored", async () => {
@@ -853,8 +877,9 @@ describe("file rows", () => {
     const panel = await draw({});
     openFile(panel, "assets/logo.png");
     await flush();
-    expect(callNames()).not.toContain("gitShow");
-    expect(callNames()).not.toContain("readFile");
+    const names = callNames();
+    expect(names).not.toContain("gitShow");
+    expect(names).not.toContain("readFile");
     expect(String(git.error)).toContain("media");
     expect(openedComparisons).not.toContain("assets/logo.png");
   });
@@ -881,8 +906,9 @@ describe("file rows", () => {
     const panel = await draw({});
     openFile(panel, "src/page.json");
     await flush();
-    expect(String(git.error)).toContain("Failed to load diff");
-    expect(String(git.error)).toContain("read fail");
+    const error = String(git.error);
+    expect(error).toContain("Failed to load diff");
+    expect(error).toContain("read fail");
     expect(git.loading).toBe(false);
   });
 
@@ -1077,11 +1103,16 @@ describe("poll timer", () => {
     const realSetInterval = globalThis.setInterval;
     let pollCb: (() => void) | null = null;
     let pollMs = 0;
-    (globalThis as any).setInterval = (fn: () => void, ms: number) => {
+    const fakeSetInterval = (fn: () => void, ms: number) => {
       pollCb = fn;
       pollMs = ms;
       return 123_456;
     };
+    /* SAFETY: the panel arms its poll as `setInterval(() => {…}, POLL_MS)`, a function handler and
+       a delay, and only ever hands the handle back to `clearInterval`, so a fake that records the
+       two arguments and returns an inert numeric id serves every use. The real one is restored in
+       the `finally` below. */
+    globalThis.setInterval = fakeSetInterval as typeof setInterval;
     try {
       seedRepoUi();
       await draw();
@@ -1125,7 +1156,11 @@ describe("poll timer", () => {
     seedRepoUi();
     const panel = await draw();
     const root = panel.querySelector('[part="git-panel"]');
-    mountGitPanel(panel.closest(".panel-body") as HTMLElement, {});
+    const host = panel.closest(".panel-body");
+    if (!(host instanceof HTMLElement)) {
+      throw new Error("draw() mounts the panel inside a .panel-body host");
+    }
+    mountGitPanel(host, {});
     await flush(4);
     expect(panel.querySelector('[part="git-panel"]')).toBe(root!);
   });

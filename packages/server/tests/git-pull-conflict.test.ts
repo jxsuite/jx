@@ -68,16 +68,23 @@ afterAll(() => {
   rmSync(base, { force: true, recursive: true });
 });
 
+/** The RFC 9457 body a failed pull answers with; only the conflict problem carries `conflicts`. */
+interface PullProblem {
+  type: string;
+  detail: string;
+  conflicts?: string[];
+}
+
 describe("POST /__studio/git/pull with conflicting changes", () => {
   test("answers the documented 409, naming every conflicting file", async () => {
     const res = await pull();
     expect(res.status).toBe(409);
     expect(res.headers.get("content-type")).toBe("application/problem+json");
 
-    const body = (await res.json()) as { conflicts: string[]; detail: string; type: string };
+    const body: PullProblem = await res.json();
     expect(body.type).toBe("https://jxsuite.com/problems/conflict");
     // The paths are the only part of this a user can act on.
-    expect(body.conflicts.toSorted()).toEqual(["other.txt", "shared.txt"]);
+    expect(body.conflicts?.toSorted()).toEqual(["other.txt", "shared.txt"]);
     expect(body.detail).toContain("2 file(s)");
   });
 
@@ -98,7 +105,7 @@ describe("POST /__studio/git/pull with conflicting changes", () => {
     const url = "http://localhost/__studio/git/pull";
     const res = await handleStudioApi(new Request(url, { method: "POST" }), new URL(url), orphan);
     expect(res!.status).toBe(500);
-    const body = (await res!.json()) as { detail: string; type: string };
+    const body: PullProblem = await res!.json();
     expect(body.type).toBe("https://jxsuite.com/problems/internal-error");
     // And the message is not empty, which is the other half of the old defect.
     expect(body.detail.trim()).not.toBe("");
@@ -130,7 +137,7 @@ describe("POST /__studio/git/pull with nothing in the way", () => {
     const url = "http://localhost/__studio/git/pull";
     const res = await handleStudioApi(new Request(url, { method: "POST" }), new URL(url), clone);
     expect(res!.status).toBe(200);
-    const body = (await res!.json()) as { ok: boolean };
+    const body: { ok: boolean } = await res!.json();
     expect(body.ok).toBe(true);
 
     rmSync(cleanBase, { force: true, recursive: true });

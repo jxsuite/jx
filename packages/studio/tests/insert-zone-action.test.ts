@@ -8,14 +8,34 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { InsertZone } from "../src/canvas/iframe-protocol";
+import type { SlashCommand } from "../src/editor/inline-edit";
+import type { SlashMenuCallbacks } from "../src/editor/slash-menu";
+import type { JxPath } from "../src/state";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
-type AnyRec = Record<string, any>;
+/** The one part of a Tab the handler's transaction writes: the session selection. */
+interface FakeTab {
+  session: { selection?: JxPath[] | null };
+}
+
+/** The reactive ref the handler reads its tab from. */
+interface FakeActiveTab {
+  value: FakeTab;
+}
+
+/** The arguments the handler hands `mutateInsertNode`, as recorded by its spy. */
+interface InsertCall {
+  def: JxMutableNode;
+  index: number;
+  parentPath: JxPath;
+  t: FakeTab;
+}
 
 // Capture the opts passed to showSlashMenu so we can invoke its onSelect.
-let capturedAnchor: AnyRec | null = null;
-let capturedOpts: AnyRec | null = null;
+let capturedAnchor: HTMLElement | null = null;
+let capturedOpts: SlashMenuCallbacks | null = null;
 void mock.module("../src/editor/slash-menu", () => ({
-  showSlashMenu: (anchorEl: AnyRec, _filter: string, opts: AnyRec) => {
+  showSlashMenu: (anchorEl: HTMLElement, _filter: string, opts: SlashMenuCallbacks) => {
     capturedAnchor = anchorEl;
     capturedOpts = opts;
   },
@@ -31,26 +51,38 @@ void mock.module("../src/panels/shared", () => ({
 }));
 
 // The transactDoc mock builds a fake t and runs the mutation fn against it; mutateInsertNode is a spy.
-let lastT: AnyRec | null = null;
-let lastTab: AnyRec | null = null;
-const insertCalls: AnyRec[] = [];
+let lastT: FakeTab | null = null;
+let lastTab: FakeTab | null = null;
+const insertCalls: InsertCall[] = [];
 void mock.module("../src/tabs/transact", () => ({
-  transactDoc: (tab: AnyRec, fn: (t: AnyRec) => void) => {
+  transactDoc: (tab: FakeTab, fn: (t: FakeTab) => void) => {
     lastTab = tab;
-    const t: AnyRec = { session: { selection: null } };
+    const t: FakeTab = { session: { selection: null } };
     lastT = t;
     fn(t);
   },
-  mutateInsertNode: (t: AnyRec, parentPath: AnyRec, index: number, def: AnyRec) => {
+  mutateInsertNode: (t: FakeTab, parentPath: JxPath, index: number, def: JxMutableNode) => {
     insertCalls.push({ def, index, parentPath, t });
   },
 }));
 
 // The activeTab mock is the reactive ref the handler reads.
-const activeTab: AnyRec = { value: { session: {} } };
+const activeTab: FakeActiveTab = { value: { session: {} } };
 void mock.module("../src/workspace/workspace", () => ({ activeTab }));
 
 const { runInsertZoneAction } = await import("../src/editor/insert-zone-action");
+
+/**
+ * An anchor for the "+" button. `showSlashMenu` is mocked, so the handler only forwards this object
+ * and the test compares it by identity; nothing reads it as an element.
+ */
+function anchorStub(): HTMLElement {
+  /* SAFETY: the only consumer is the mocked showSlashMenu above, which stores the reference for
+     an identity check and never touches an HTMLElement member (this file runs without a DOM). */
+  return {} as HTMLElement;
+}
+
+const paragraph: SlashCommand = { description: "", label: "Paragraph", tag: "p" };
 
 const zone: InsertZone = {
   edge: "top",
@@ -70,19 +102,18 @@ beforeEach(() => {
 
 describe("runInsertZoneAction", () => {
   test("opens the slash menu anchored to the button with showFilter:true", () => {
-    const btn = {} as unknown as HTMLElement;
+    const btn = anchorStub();
     runInsertZoneAction(btn, zone);
 
     expect(capturedAnchor).toBe(btn);
     expect(capturedOpts!.showFilter).toBe(true);
-    expect(typeof capturedOpts!.onSelect).toBe("function");
+    expect(capturedOpts!.onSelect).toBeInstanceOf(Function);
   });
 
   test("onSelect inserts the chosen tag's def and selects the new node's path", () => {
-    const btn = {} as unknown as HTMLElement;
-    runInsertZoneAction(btn, zone);
+    runInsertZoneAction(anchorStub(), zone);
 
-    capturedOpts!.onSelect({ tag: "p" });
+    capturedOpts!.onSelect(paragraph);
 
     // The chosen tag was resolved through defaultDef.
     expect(defaultDefCalls).toEqual(["p"]);
@@ -93,7 +124,7 @@ describe("runInsertZoneAction", () => {
     // The insert got (t, insertParentPath, index, def).
     expect(insertCalls.length).toBe(1);
     const call = insertCalls[0]!;
-    expect(call.t).toBe(lastT);
+    expect(lastT).toBe(call.t);
     expect(call.parentPath).toEqual(zone.insertParentPath);
     expect(call.index).toBe(zone.index);
     expect(call.def).toEqual({ tagName: "p" });

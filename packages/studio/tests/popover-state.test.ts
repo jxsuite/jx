@@ -3,7 +3,29 @@ import { describe, expect, mock, test } from "bun:test";
 
 import { ancestorPopoverPath, popoverPathFor } from "../src/canvas/popover-path";
 import { reactive, shallowRef } from "../src/reactivity";
+import type { JxPath } from "../src/state";
+import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+
+/** The members of a `Tab` that popover-path.ts, popover-state.ts and dialog-state.ts reach. */
+interface PopoverTabFields {
+  /** Optional, because one test is about a tab whose document is missing. */
+  doc: { document?: JxMutableNode };
+  id: string;
+  session: {
+    selection: JxPath[];
+    ui: { openDialog: JxPath | null; openPopover: JxPath | null };
+  };
+}
+
+/** Pass a popover-shaped double where the modules under test expect a whole `Tab`. */
+function asTab(fields: PopoverTabFields): Tab {
+  /* SAFETY: the modules under test read only `doc.document` (popover-path.ts already widens it to
+     `JxMutableNode | undefined`), `session.selection` and `session.ui.openPopover`/`openDialog`,
+     writing the last two through store.ts's `updateSession`, which merges into `session.ui`. The
+     doubled iframe-host takes the tab without reading it, so no other Tab member is reached. */
+  return fields as Tab;
+}
 
 /**
  * The tab the standing reveal watch observes.
@@ -12,10 +34,10 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
  * calling `reconcileOpenPopover` directly) need a tab they can put there. Held here because
  * `mock.module` is evaluated once for the file.
  */
-const activeTab = shallowRef<unknown>(null);
+const activeTab = shallowRef<Tab | null>(null);
 
 /** A document whose only child is a popover holding a link. */
-const DOC = {
+const DOC: JxMutableNode = {
   children: [
     { attributes: { id: "trigger", popovertarget: "menu" }, tagName: "button" },
     {
@@ -25,7 +47,7 @@ const DOC = {
     },
   ],
   tagName: "div",
-} as unknown as JxMutableNode;
+};
 
 describe("ancestorPopoverPath", () => {
   test("a popover is its own answer", () => {
@@ -42,7 +64,7 @@ describe("ancestorPopoverPath", () => {
   });
 
   test("it walks prefixes, so a `map` or `cases` hop needs no special case", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       children: [
         {
           $switch: "#/state/x",
@@ -67,7 +89,7 @@ describe("ancestorPopoverPath", () => {
         },
       ],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     expect(ancestorPopoverPath(doc, ["children", 0, "cases", "one", "children", 0])).toEqual([
       "children",
       0,
@@ -82,11 +104,11 @@ describe("ancestorPopoverPath", () => {
   });
 
   test("the NEAREST popover wins when they nest", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       attributes: { popover: "auto" },
       children: [{ attributes: { popover: "auto" }, children: [{ tagName: "p" }], tagName: "nav" }],
       tagName: "nav",
-    } as unknown as JxMutableNode;
+    };
     expect(ancestorPopoverPath(doc, ["children", 0, "children", 0])).toEqual(["children", 0]);
   });
 
@@ -102,8 +124,12 @@ describe("ancestorPopoverPath", () => {
 
 describe("popoverPathFor", () => {
   /** A tab-shaped double carrying the document and a selection. */
-  function tabWith(selection: (string | number)[][]) {
-    return { doc: { document: DOC }, id: "t1", session: { selection, ui: {} } } as never;
+  function tabWith(selection: JxPath[]): Tab {
+    return asTab({
+      doc: { document: DOC },
+      id: "t1",
+      session: { selection, ui: { openDialog: null, openPopover: null } },
+    });
   }
 
   test("popoverPathFor takes an explicit path at its word, but checks it", () => {
@@ -120,7 +146,11 @@ describe("popoverPathFor", () => {
   });
 
   test("a tab with no document answers null", () => {
-    const tab = { doc: {}, id: "t", session: { selection: [], ui: {} } } as never;
+    const tab = asTab({
+      doc: {},
+      id: "t",
+      session: { selection: [], ui: { openDialog: null, openPopover: null } },
+    });
     expect(popoverPathFor(tab)).toBeNull();
   });
 });
@@ -133,18 +163,18 @@ describe("the reveal rule", () => {
    * at module scope, and a real one would try to post into frames that do not exist here.
    */
   async function loadWithDoubles() {
-    const posted: { path: unknown }[] = [];
-    const postedDialogs: { path: unknown }[] = [];
-    const revealed: unknown[] = [];
+    const posted: { path: JxPath | null }[] = [];
+    const postedDialogs: { path: JxPath | null }[] = [];
+    const revealed: JxPath[] = [];
     // `void`: mock.module returns a promise, and the type-aware lint rule wants it acknowledged.
     void mock.module("../src/canvas/iframe-host", () => ({
-      postDialogOpen: (_tab: unknown, path: unknown) => {
+      postDialogOpen: (_tab: Tab, path: JxPath | null) => {
         postedDialogs.push({ path });
       },
-      postPopoverOpen: (_tab: unknown, path: unknown) => {
+      postPopoverOpen: (_tab: Tab, path: JxPath | null) => {
         posted.push({ path });
       },
-      revealCanvasPath: (path: unknown) => {
+      revealCanvasPath: (path: JxPath) => {
         revealed.push(path);
         return Promise.resolve();
       },
@@ -155,26 +185,19 @@ describe("the reveal rule", () => {
     return { mod, posted, postedDialogs, revealed };
   }
 
-  /** The shape the rule writes into, for the assertions that read it back. */
-  interface UiTab {
-    session: {
-      selection: (string | number)[][];
-      ui: { openPopover: unknown; openDialog: unknown };
-    };
-  }
-
   /**
    * A tab-shaped double: the document, a selection and the `ui` slot the rule writes.
    *
-   * REACTIVE, because the tests that drive the standing effect need a write to re-trigger it — and
-   * one of them is about a write that must NOT.
+   * The session is REACTIVE, because the tests that drive the standing effect need a write to it to
+   * re-trigger the rule — and one of them is about a write that must NOT. The document is never
+   * written here, so it stays a plain object.
    */
-  function fakeTab(selection: (string | number)[][], openPopover: unknown = null) {
-    return reactive({
+  function fakeTab(selection: JxPath[], openPopover: JxPath | null = null): Tab {
+    return asTab({
       doc: { document: DOC },
       id: "t1",
-      session: { selection, ui: { openDialog: null, openPopover } },
-    }) as never;
+      session: reactive({ selection, ui: { openDialog: null, openPopover } }),
+    });
   }
 
   /** Vue batches effect re-runs into a microtask; two turns settle a write and its cascade. */
@@ -216,9 +239,7 @@ describe("the reveal rule", () => {
     const { mod, posted } = await loadWithDoubles();
     const tab = fakeTab([]);
     mod.setOpenPopover(tab, ["children", 1]);
-    expect(
-      (tab as unknown as { session: { ui: { openPopover: unknown } } }).session.ui.openPopover,
-    ).toEqual(["children", 1]);
+    expect(tab.session.ui.openPopover).toEqual(["children", 1]);
     expect(posted[0]!.path).toEqual(["children", 1]);
   });
 
@@ -236,7 +257,7 @@ describe("the reveal rule", () => {
     activeTab.value = tab;
     const stop = mod.ensurePopoverRevealWatch();
     await flushEffects();
-    const { ui } = (tab as unknown as UiTab).session;
+    const { ui } = tab.session;
     expect(ui.openPopover).toEqual(["children", 1]);
     // Opening also tells the frames exactly once, rather than twice on the effect's first pass.
     expect(posted).toHaveLength(1);
@@ -255,10 +276,10 @@ describe("the reveal rule", () => {
     activeTab.value = tab;
     const stop = mod.ensurePopoverRevealWatch();
     await flushEffects();
-    const { ui } = (tab as unknown as UiTab).session;
+    const { ui } = tab.session;
     expect(ui.openPopover).toBeNull();
 
-    (tab as unknown as UiTab).session.selection = [["children", 1, "children", 0]];
+    tab.session.selection = [["children", 1, "children", 0]];
     await flushEffects();
     expect(ui.openPopover).toEqual(["children", 1]);
     stop();

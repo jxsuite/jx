@@ -1,39 +1,56 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { rpcParity } from "./_rpc-parity";
-import type { SettingsPatch } from "@jxsuite/protocol";
+import type { KeyValuePatch } from "@jxsuite/protocol";
+import type { CreateProjectServerOptions } from "@jxsuite/server/project-server";
+import type { setAuthorizationHost } from "../src/github-signin";
+import type { ProjectSession } from "../src/project-session";
+import type { StudioRPC, UpdateLocalInfo, UpdateStatus } from "../src/rpc-schema";
 
 // ─── Mock electrobun/main ───────────────────────────────────────────────────
 
 /*
- * The window's RPC handler map, typed as the handlers actually are.
+ * The window's RPC handler map, typed from the same schema the real `defineRPC<StudioRPC>` call is
+ * checked against, so every call below is held to the wire contract.
  *
- * The parameter is an open bag, not `never`. `p?: never` admits no argument at all, so every
- * parameterised call in this file had to write `as never` — forty-five casts that documented
- * nothing and defeated the check on each one — and a handler that genuinely takes an argument
- * (`githubSignIn({ force })`) still could not be called, because `as never` cannot conjure a
- * parameter the signature does not have.
- *
- * The return stays `unknown` on purpose: this map holds a MIX of sync and async handlers
- * (`getCanvasUrl` returns a value, `pickProject` returns a promise), so promising a `Promise` here
- * would be as wrong in the other direction. Call sites await.
+ * The map is total rather than optional because the window registers every declared request (the
+ * parity test below proves it). Each handler answers `R | Promise<R>`: the map holds a MIX of sync
+ * and async handlers (`getCanvasUrl` returns a value, `pickProject` returns a promise) and the
+ * schema records neither, so call sites await.
  */
+type StudioRequests = StudioRPC["bun"]["requests"];
+type StudioRequestHandlers = {
+  [M in keyof StudioRequests]: (
+    params: StudioRequests[M]["params"],
+  ) => StudioRequests[M]["response"] | Promise<StudioRequests[M]["response"]>;
+};
 interface RpcConfig {
-  handlers: { requests: Record<string, (params?: Record<string, unknown>) => unknown> };
+  handlers: { requests: StudioRequestHandlers };
 }
 const rpcConfigs: RpcConfig[] = [];
-const rpcObjects: {
+/** The rpc object the mocked `defineRPC` returns, which each window then sends through. */
+interface MockRpc {
   send: {
     updateReady: ReturnType<typeof mock>;
     onFileEvents: ReturnType<typeof mock>;
     settingsChanged: ReturnType<typeof mock>;
   };
-}[] = [];
+}
+const rpcObjects: MockRpc[] = [];
+/** The options `openProjectWindow` hands the `BrowserWindow` constructor, kept for read-back. */
+interface MockWindowOptions {
+  frame: { height: number; width: number; x: number; y: number };
+  navigationRules: string;
+  rpc: MockRpc;
+  title: string;
+  titleBarStyle: string;
+  url: string;
+}
 const createdWindows: MockWindow[] = [];
 let nextWinId = 1;
 
 class MockWindow {
   id: number;
-  opts: Record<string, unknown>;
+  opts: MockWindowOptions;
   close = mock(() => {});
   minimize = mock(() => {});
   activate = mock(() => {});
@@ -41,7 +58,7 @@ class MockWindow {
   setFrame = mock((_x: number, _y: number, _w: number, _h: number) => {});
   getFrame = mock(() => ({ height: 10, width: 20, x: 1, y: 2 }));
   _closeHandler: (() => void) | null = null;
-  constructor(opts: Record<string, unknown>) {
+  constructor(opts: MockWindowOptions) {
     this.id = nextWinId;
     nextWinId += 1;
     this.opts = opts;
@@ -58,7 +75,7 @@ void mock.module("electrobun/main", () => ({
   BrowserView: {
     defineRPC: (config: RpcConfig) => {
       rpcConfigs.push(config);
-      const rpc = {
+      const rpc: MockRpc = {
         send: {
           onFileEvents: mock((_p: { events: unknown[] }) => {}),
           settingsChanged: mock((_p: { settings: Record<string, string> }) => {}),
@@ -86,7 +103,7 @@ function makeSession(initialRoot: string | null) {
     setProjectRoot: mock((r: string | null) => {
       root = r;
     }),
-    setFileEventSink: mock((_sink: unknown) => {}),
+    setFileEventSink: mock((_sink: Parameters<ProjectSession["setFileEventSink"]>[0]) => {}),
     dispose: mock(() => {}),
     handleReadFile: mock(async (_p: { path: string }) => '{"name":"Proj"}'),
     handleReadFileBytes: mock(async (_p: { path: string }) => ({ data: "aGk=" })),
@@ -223,7 +240,7 @@ void mock.module("../src/packages", () => ({ createPackageOps }));
 // ─── Mock the user-level settings store ──────────────────────────────────────
 
 const readSettingsMock = mock(async () => ({ aiApiKey: "sk-abc" }));
-const patchSettingsMock = mock(async (_patch: SettingsPatch) => ({ aiApiKey: "sk-new" }));
+const patchSettingsMock = mock(async (_patch: KeyValuePatch) => ({ aiApiKey: "sk-new" }));
 void mock.module("../src/settings-store", () => ({
   readSettings: readSettingsMock,
   patchSettings: patchSettingsMock,
@@ -233,18 +250,46 @@ void mock.module("../src/settings-store", () => ({
 
 // ─── Mock updater ────────────────────────────────────────────────────────────
 
+/* Distinct objects per updater call, so each handler is shown to reach its own function. */
+const LOCAL_INFO: UpdateLocalInfo = {
+  baseUrl: "https://updates.example.com",
+  channel: "stable",
+  hash: "abc",
+  identifier: "com.jxsuite.studio",
+  name: "Jx Studio",
+  version: "1.2.3",
+};
+const CHECKED_STATUS: UpdateStatus = {
+  error: null,
+  updateAvailable: true,
+  updateReady: false,
+  version: "1.3.0",
+};
+const DOWNLOADED_STATUS: UpdateStatus = {
+  error: null,
+  updateAvailable: true,
+  updateReady: true,
+  version: "1.3.0",
+};
+const CURRENT_STATUS: UpdateStatus = {
+  error: null,
+  updateAvailable: false,
+  updateReady: false,
+  version: null,
+};
+const applyUpdateMock = mock(() => {});
 void mock.module("../src/updater", () => ({
-  applyUpdate: mock(() => "apply"),
-  checkForUpdate: mock(() => "check"),
+  applyUpdate: applyUpdateMock,
+  checkForUpdate: mock(() => CHECKED_STATUS),
   composeAppInfo: mock(() => ({
     channel: "stable",
     hash: "abc",
     updateStatus: "Up to date",
     version: "1.2.3",
   })),
-  downloadUpdate: mock(() => "download"),
-  getLocalInfo: mock(() => "local"),
-  getStatus: mock(() => "status"),
+  downloadUpdate: mock(() => DOWNLOADED_STATUS),
+  getLocalInfo: mock(() => LOCAL_INFO),
+  getStatus: mock(() => CURRENT_STATUS),
 }));
 
 // ─── Mock the studio-asset dir + project-server factory ──────────────────────
@@ -254,7 +299,7 @@ void mock.module("../src/canvas-runtime", () => ({
 }));
 
 interface FakeServer {
-  resolveSession: () => { projectRoot: string | null; handlers: Record<string, unknown> } | null;
+  resolveSession: CreateProjectServerOptions["resolveSession"];
   url: string;
   canvasUrl: string;
   rpcToken: string;
@@ -265,7 +310,8 @@ interface FakeServer {
 }
 const createdServers: FakeServer[] = [];
 let nextPort = 50_000;
-const createProjectServer = mock((opts: { resolveSession: () => never; studioDir: string }) => {
+/* Answers `undefined` only when a test overrides it to model a server that failed to stand up. */
+const createProjectServer = mock((opts: CreateProjectServerOptions): FakeServer | undefined => {
   const port = nextPort;
   nextPort += 1;
   const url = `http://127.0.0.1:${port}`;
@@ -287,7 +333,7 @@ void mock.module("@jxsuite/server/project-server", () => ({ createProjectServer 
  * GitHub sign-in. Mocked at the module boundary because the real one opens a browser and talks to
  * GitHub; what this file tests is that each window wires the requests and claims the redirect.
  */
-const setAuthorizationHostMock = mock((_host: unknown) => {});
+const setAuthorizationHostMock = mock((_host: Parameters<typeof setAuthorizationHost>[0]) => {});
 void mock.module("../src/github-signin", () => ({
   githubSignIn: mock(async (params: { force?: boolean }) => ({
     token: params.force ? "gho_fresh" : "gho_stored",
@@ -318,6 +364,27 @@ function lastRequests() {
   return rpcConfigs.at(-1)!.handlers.requests;
 }
 
+/**
+ * The MockWindow the mocked `BrowserWindow` constructor built for `win`, found by identity, so a
+ * test can reach the mock's spies without casting the module's return type.
+ */
+function mockWindowFor(win: ReturnType<typeof openProjectWindow>): MockWindow {
+  const built = createdWindows.find((candidate) => Object.is(candidate, win));
+  if (!built) {
+    throw new Error(`window ${win.id} was not built by the mocked BrowserWindow in this test`);
+  }
+  return built;
+}
+
+/** The canvas URL a window's `getCanvasUrl` hands the shell; fails the test when it answers null. */
+async function canvasUrlOf(requests: StudioRequestHandlers): Promise<string> {
+  const { canvasUrl } = await requests.getCanvasUrl();
+  if (canvasUrl === null) {
+    throw new Error("getCanvasUrl answered null: this window has no loopback server");
+  }
+  return canvasUrl;
+}
+
 beforeEach(() => {
   rpcConfigs.length = 0;
   rpcObjects.length = 0;
@@ -344,15 +411,15 @@ describe("openProjectWindow", () => {
   test("opens a project window with the expected options", () => {
     const win = openProjectWindow("/proj/a");
     const w = createdWindows.at(-1)!;
-    expect(win).toBe(w as never);
+    expect(mockWindowFor(win)).toBe(w);
     expect(w.opts.url).toBe("views://studio/index.html");
     expect(w.opts.title).toBe(`a ${DASH} Jx Studio`);
     expect(w.opts.titleBarStyle).toBe("hidden");
     expect(w.opts.frame).toEqual({ height: 900, width: 1400, x: 0, y: 0 });
     // Block-all first, then allow the two known origins last (last-match-wins).
     expect(w.opts.navigationRules).toBe("^*,views://*,http://127.0.0.1:*");
-    expect(w.opts.rpc).toBe(rpcObjects.at(-1) as never);
-    expect(createProjectSession).toHaveBeenLastCalledWith("/proj/a" as never);
+    expect(rpcObjects.at(-1)).toBe(w.opts.rpc);
+    expect(createProjectSession).toHaveBeenLastCalledWith("/proj/a");
   });
 
   test("opens a welcome window (null root) titled 'Jx Studio'", () => {
@@ -364,9 +431,9 @@ describe("openProjectWindow", () => {
     const first = openProjectWindow("/proj/dedupe");
     const createdCount = createdWindows.length;
     const second = openProjectWindow("/proj/dedupe");
-    expect(second).toBe(first as never);
+    expect(second).toBe(first);
     expect(createdWindows.length).toBe(createdCount); // No new window created
-    expect((first as unknown as MockWindow).activate).toHaveBeenCalled();
+    expect(mockWindowFor(first).activate).toHaveBeenCalled();
   });
 
   test("tracks open windows and removes them on close", () => {
@@ -507,13 +574,14 @@ describe("per-window RPC", () => {
     expect(pkg.listPackages).toHaveBeenCalledTimes(1);
 
     // Process-shared handlers.
-    expect(reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
-    expect(reqs.updaterApplyUpdate()).toBe("apply");
-    expect(reqs.updaterCheckForUpdate()).toBe("check");
-    expect(reqs.updaterDownloadUpdate()).toBe("download");
-    expect(reqs.updaterGetLocalInfo()).toBe("local");
-    expect(reqs.updaterGetStatus()).toBe("status");
-    const open = reqs.listOpenWindows() as { id: number; projectRoot: string | null }[];
+    expect(await reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
+    expect(await reqs.updaterApplyUpdate()).toBeUndefined();
+    expect(applyUpdateMock).toHaveBeenCalledTimes(1);
+    expect(await reqs.updaterCheckForUpdate()).toBe(CHECKED_STATUS);
+    expect(await reqs.updaterDownloadUpdate()).toBe(DOWNLOADED_STATUS);
+    expect(await reqs.updaterGetLocalInfo()).toBe(LOCAL_INFO);
+    expect(await reqs.updaterGetStatus()).toBe(CURRENT_STATUS);
+    const open = await reqs.listOpenWindows();
     expect(open.some((w) => w.projectRoot === "/proj/sweep")).toBe(true);
   });
 
@@ -542,37 +610,37 @@ describe("per-window RPC", () => {
     // The redirect lands on a specific port, so the newest window owns it.
     setAuthorizationHostMock.mockClear();
     openProjectWindow("/proj/redirect");
-    const host = setAuthorizationHostMock.mock.calls.at(-1)![0] as { port: number };
-    expect(host.port).toBe(createdServers.at(-1)!.server.port);
+    const [host] = setAuthorizationHostMock.mock.calls.at(-1)!;
+    expect(host?.port).toBe(createdServers.at(-1)!.server.port);
   });
 
-  test("window controls target this window and maximize toggles", () => {
-    const win = openProjectWindow("/proj/controls") as unknown as MockWindow;
+  test("window controls target this window and maximize toggles", async () => {
+    const win = mockWindowFor(openProjectWindow("/proj/controls"));
     const reqs = lastRequests();
 
-    reqs.windowClose();
+    await reqs.windowClose();
     expect(win.close).toHaveBeenCalledTimes(1);
-    expect(reqs.windowGetFrame()).toEqual({ height: 10, width: 20, x: 1, y: 2 });
-    reqs.windowMinimize();
+    expect(await reqs.windowGetFrame()).toEqual({ height: 10, width: 20, x: 1, y: 2 });
+    await reqs.windowMinimize();
     expect(win.minimize).toHaveBeenCalledTimes(1);
-    reqs.windowSetFrame({ height: 6, width: 5, x: 3, y: 4 });
+    await reqs.windowSetFrame({ height: 6, width: 5, x: 3, y: 4 });
     expect(win.setFrame).toHaveBeenLastCalledWith(3, 4, 5, 6);
 
-    reqs.windowMaximize();
+    await reqs.windowMaximize();
     expect(win.setFrame).toHaveBeenLastCalledWith(5, 6, 1920, 1080);
-    reqs.windowMaximize();
+    await reqs.windowMaximize();
     expect(win.setFrame).toHaveBeenLastCalledWith(1, 2, 20, 10); // Restored from getFrame()
   });
 
-  test("aiChatUrl resolves to the shared AI server's proxy endpoint", () => {
+  test("aiChatUrl resolves to the shared AI server's proxy endpoint", async () => {
     openProjectWindow("/proj/ai");
     const reqs = lastRequests();
-    expect(reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
+    expect(await reqs.aiChatUrl()).toBe("http://127.0.0.1:9000/__studio/ai/chat?token=t0k");
   });
 
-  test("importSiteUrl resolves to the shared token-gated import endpoint", () => {
+  test("importSiteUrl resolves to the shared token-gated import endpoint", async () => {
     openProjectWindow("/proj/import");
-    expect(lastRequests().importSiteUrl()).toBe("http://x/import?token=t");
+    expect(await lastRequests().importSiteUrl()).toBe("http://x/import?token=t");
   });
 
   test("pickDirectory delegates to this window's session", async () => {
@@ -587,38 +655,38 @@ describe("per-window RPC", () => {
     // Session would answer the wrong project's catalogue in a second window.
     openProjectWindow("/proj/catalogue");
     const session = sessions.at(-1)!;
-    const catalog = (await lastRequests().listExtensionCatalog()) as { name: string }[];
+    const catalog = await lastRequests().listExtensionCatalog();
     expect(catalog[0]?.name).toBe("@jxsuite/feed");
     expect(session.listExtensionCatalog).toHaveBeenCalledTimes(1);
   });
 
-  test("getProjectRoot reports this window's root", () => {
+  test("getProjectRoot reports this window's root", async () => {
     openProjectWindow("/proj/which");
-    expect(lastRequests().getProjectRoot()).toEqual({ root: "/proj/which" });
+    expect(await lastRequests().getProjectRoot()).toEqual({ root: "/proj/which" });
   });
 
-  test("newWindow / openProjectInNewWindow open additional windows", () => {
+  test("newWindow / openProjectInNewWindow open additional windows", async () => {
     openProjectWindow(null);
     const reqs = lastRequests();
     const before = listOpenWindows().length;
-    reqs.newWindow();
+    await reqs.newWindow();
     expect(listOpenWindows().length).toBe(before + 1);
     expect(createdWindows.at(-1)!.opts.title).toBe("Jx Studio");
-    const res = reqs.openProjectInNewWindow({ root: "/proj/sibling" });
+    const res = await reqs.openProjectInNewWindow({ root: "/proj/sibling" });
     expect(createdWindows.at(-1)!.opts.title).toBe(`sibling ${DASH} Jx Studio`);
     expect(res).toEqual({ focused: false });
   });
 
-  test("openProjectInNewWindow reports a FOCUS when the project is already open", () => {
+  test("openProjectInNewWindow reports a FOCUS when the project is already open", async () => {
     // Both outcomes hand back a window, so the caller cannot tell them apart by the return value
     // Alone — and "opened in a new window" is the wrong thing to tell someone whose existing
     // Window just came forward. The flag is asked before the open, while the answer is still true.
-    const owner = openProjectWindow("/proj/twice") as unknown as MockWindow;
+    const owner = mockWindowFor(openProjectWindow("/proj/twice"));
     openProjectWindow(null);
     const reqs = lastRequests();
     const created = createdWindows.length;
 
-    expect(reqs.openProjectInNewWindow({ root: "/proj/twice" })).toEqual({
+    expect(await reqs.openProjectInNewWindow({ root: "/proj/twice" })).toEqual({
       focused: true,
     });
     expect(createdWindows.length).toBe(created); // Nothing new was built…
@@ -629,7 +697,7 @@ describe("per-window RPC", () => {
     // The whole reason this request exists beside `openProject`: the New Window branch has to ask
     // The question without suffering the answer. A session bound here would leave the window that
     // Merely asked serving a project it is not showing.
-    const win = openProjectWindow("/proj/asking") as unknown as MockWindow;
+    const win = mockWindowFor(openProjectWindow("/proj/asking"));
     const session = sessions.at(-1)!;
     const reqs = lastRequests();
 
@@ -677,7 +745,7 @@ describe("setWindowProject", () => {
   });
 
   test("dedupes to an existing window instead of loading twice", async () => {
-    const owner = openProjectWindow("/proj/shared") as unknown as MockWindow;
+    const owner = mockWindowFor(openProjectWindow("/proj/shared"));
     openProjectWindow(null);
     const reqs = lastRequests();
     const res = await reqs.setWindowProject({ root: "/proj/shared" });
@@ -690,7 +758,7 @@ describe("setWindowProject", () => {
 
 describe("disposeWindow", () => {
   test("clears the session root when a window closes", () => {
-    const win = openProjectWindow("/proj/dispose") as unknown as MockWindow;
+    const win = mockWindowFor(openProjectWindow("/proj/dispose"));
     const session = sessions.at(-1)!;
 
     win._closeHandler!();
@@ -702,14 +770,14 @@ describe("disposeWindow", () => {
 // ─── Per-window loopback canvas server (always stood up) ─────────────────────
 
 describe("loopback canvas server", () => {
-  test("stands up one per-window server and getCanvasUrl returns its canvas URL", () => {
+  test("stands up one per-window server and getCanvasUrl returns its canvas URL", async () => {
     openProjectWindow("/proj/canvas");
     expect(createProjectServer).toHaveBeenCalledTimes(1);
     expect(createdServers).toHaveLength(1);
     const server = createdServers[0]!;
     // GetCanvasUrl returns the server canvasUrl with the per-window rpcToken appended as a query
     // Param, so the in-iframe runtime can authenticate its loopback dev-proxy fetches.
-    const got = (lastRequests().getCanvasUrl() as { canvasUrl: string }).canvasUrl;
+    const got = await canvasUrlOf(lastRequests());
     const gotUrl = new URL(got);
     const expectedUrl = new URL(server.canvasUrl);
     expect(`${gotUrl.origin}${gotUrl.pathname}`).toBe(
@@ -719,27 +787,26 @@ describe("loopback canvas server", () => {
     expect(server.canvasUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/__studio__\/canvas\.html$/);
   });
 
-  test("getCanvasUrl appends the server rpcToken to the canvas URL", () => {
+  test("getCanvasUrl appends the server rpcToken to the canvas URL", async () => {
     openProjectWindow("/proj/token");
     // Pin a known canvasUrl + rpcToken on this window's server so the assertion is exact.
     const server = createdServers[0]!;
     server.canvasUrl = "http://127.0.0.1:5555/__studio__/canvas.html";
     server.rpcToken = "TOK123";
 
-    const { canvasUrl } = lastRequests().getCanvasUrl() as { canvasUrl: string };
-    const parsed = new URL(canvasUrl);
+    const parsed = new URL(await canvasUrlOf(lastRequests()));
     expect(parsed.pathname).toBe("/__studio__/canvas.html");
     expect(parsed.host).toBe("127.0.0.1:5555");
     expect(parsed.searchParams.get("rpcToken")).toBe("TOK123");
   });
 
-  test("getCanvasUrl returns { canvasUrl: null } when there is no server", () => {
+  test("getCanvasUrl returns { canvasUrl: null } when there is no server", async () => {
     // This window's loopback server fails to stand up, so entry.server stays undefined and the
     // Handler must take the null branch instead of constructing a URL from `undefined`.
-    createProjectServer.mockImplementationOnce(() => undefined as never);
+    createProjectServer.mockImplementationOnce((): undefined => {});
     openProjectWindow("/proj/noserver");
     expect(createdServers).toHaveLength(0);
-    expect(lastRequests().getCanvasUrl()).toEqual({ canvasUrl: null });
+    expect(await lastRequests().getCanvasUrl()).toEqual({ canvasUrl: null });
   });
 
   test("the server's session tracks THIS window's projectRoot, no ?win= needed", () => {
@@ -747,8 +814,8 @@ describe("loopback canvas server", () => {
     openProjectWindow("/proj/winB");
     expect(createdServers).toHaveLength(2);
     const [a, b] = createdServers;
-    expect(a!.resolveSession()!.projectRoot).toBe("/proj/winA");
-    expect(b!.resolveSession()!.projectRoot).toBe("/proj/winB");
+    expect(a!.resolveSession(null)!.projectRoot).toBe("/proj/winA");
+    expect(b!.resolveSession(null)!.projectRoot).toBe("/proj/winB");
     // Distinct ports → no cross-window token reuse.
     expect(a!.url).not.toBe(b!.url);
   });
@@ -756,10 +823,7 @@ describe("loopback canvas server", () => {
   test("the WS handler subset exposes only canvas-facing reads (no writes/git)", async () => {
     openProjectWindow("/proj/handlers");
     const session = sessions.at(-1)!;
-    const handlers = createdServers[0]!.resolveSession()!.handlers as Record<
-      string,
-      (p: unknown) => Promise<unknown>
-    >;
+    const { handlers } = createdServers[0]!.resolveSession(null)!;
     expect(Object.keys(handlers).toSorted()).toEqual([
       "jxResolve",
       "jxServerFunction",
@@ -784,6 +848,7 @@ describe("loopback canvas server", () => {
     const server = createdServers[0]!;
     createdWindows.at(-1)!._closeHandler!();
     expect(server.stop).toHaveBeenCalledTimes(1);
+    expect(listOpenWindows().map((w) => w.projectRoot)).not.toContain("/proj/teardown");
   });
 });
 
@@ -791,7 +856,7 @@ describe("loopback canvas server", () => {
 
 describe("openProject request handler", () => {
   test("opens a project, binds the root and updates the window title", async () => {
-    const win = openProjectWindow(null) as unknown as MockWindow;
+    const win = mockWindowFor(openProjectWindow(null));
     const reqs = lastRequests();
     const session = sessions.at(-1)!;
 
@@ -808,12 +873,12 @@ describe("openProject request handler", () => {
 
 describe("createProject request handler", () => {
   test("scaffolds at the chosen destination, binds the root and updates the window title", async () => {
-    const win = openProjectWindow(null) as unknown as MockWindow;
+    const win = mockWindowFor(openProjectWindow(null));
     const reqs = lastRequests();
     const session = sessions.at(-1)!;
 
     const params = {
-      destination: { kind: "path", parent: "/home/dev/Sites" },
+      destination: { kind: "path" as const, parent: "/home/dev/Sites" },
       directory: "shiny",
       name: "New",
     };
@@ -834,7 +899,7 @@ describe("listStarters request handler", () => {
   test("returns the starter template registry", async () => {
     openProjectWindow(null);
     const reqs = lastRequests();
-    const starters = (await reqs.listStarters()) as { id: string }[];
+    const starters = await reqs.listStarters();
     expect(Array.isArray(starters)).toBe(true);
     expect(starters.some((s) => s.id === "restaurant")).toBe(true);
   });
@@ -887,9 +952,12 @@ describe("file event sink", () => {
     openProjectWindow("/proj/events");
     const session = sessions.at(-1)!;
     const rpc = rpcObjects.at(-1)!;
-    const sink = session.setFileEventSink.mock.calls[0]![0] as (events: unknown[]) => void;
+    const [sink] = session.setFileEventSink.mock.calls[0]!;
+    if (!sink) {
+      throw new Error("openProjectWindow installed no file-event sink on its session");
+    }
 
-    const events = [{ kind: "change", path: "pages/index.json" }];
+    const events = [{ isDir: false, path: "pages/index.json", type: "change" as const }];
     sink(events);
     expect(rpc.send.onFileEvents).toHaveBeenCalledWith({ events });
 

@@ -25,6 +25,7 @@
  * studio.ts, and lets a test state a context without standing up the app.
  */
 
+import { isFunction, isString } from "@jxsuite/schema/guards";
 import { resolveI18n } from "@jxsuite/schema/locale";
 import { componentRegistry } from "../files/components";
 import { getNodeAtPath, projectState } from "../store";
@@ -36,7 +37,7 @@ import { hasTyping } from "../tabs/typing";
 import { collabState } from "../collab/collab-state";
 
 import { canvasViewForMode, editorKindForMode, emptyContext } from "./context";
-import type { CommandContext, FocusRegion } from "./context";
+import type { CommandContext } from "./context";
 import type { StudioPlatform } from "../types";
 
 /** Elements that own the keyboard while focused. Matches the old listener's target test exactly. */
@@ -86,7 +87,7 @@ export interface LiveContextSources {
 
 /** `capability.*` is presence-of-method on the PAL — the check every call site does by hand today. */
 function capabilities(platform: StudioPlatform | null): CommandContext["capability"] {
-  const has = (key: keyof StudioPlatform) => typeof platform?.[key] === "function";
+  const has = (key: keyof StudioPlatform) => isFunction(platform?.[key]);
   return {
     dataRows: has("dataRows"),
     // The real member now, not the `codeService` stand-in it was minted against: the usage query is
@@ -161,18 +162,17 @@ export function createLiveContext(sources: LiveContextSources): () => CommandCon
     const selection = primarySelection(paths);
     if (selection) {
       const node = getNodeAtPath(tab!.doc.document, selection);
+      const tagName = node?.tagName;
       ctx.selection.count = paths.length;
       ctx.selection.paths = paths.map((path) => [...path]);
       // Every remaining fact describes the PRIMARY — the one node a single-target verb addresses —
       // Except `isRoot`, which is the batch's own gate: a batch containing the document element
       // Cannot be deleted or duplicated any more than that element could be on its own.
-      ctx.selection.kind = typeof node?.tagName === "string" ? node.tagName : "";
+      ctx.selection.kind = isString(tagName) ? tagName : "";
       // A path of fewer than two segments addresses the document element itself — the same test
       // `shortcuts.ts` spelled as `selection.length >= 2` at four separate call sites.
       ctx.selection.isRoot = paths.some((path) => path.length < 2);
-      ctx.selection.isComponentInstance = componentRegistry.some(
-        (c) => c.tagName === node?.tagName,
-      );
+      ctx.selection.isComponentInstance = componentRegistry.some((c) => c.tagName === tagName);
       ctx.selection.isRepeater = node?.$prototype === "Array";
     }
     // Layout chrome is NOT a document selection: the node is not in the open page at all.
@@ -187,7 +187,7 @@ export function createLiveContext(sources: LiveContextSources): () => CommandCon
        being typed into. The stack asks "is something being typed into"; a record asks "is the
        thing being typed into the page". */
     ctx.caret.inCanvas = sources.isCaretActive();
-    ctx.focus.region = shell.focusRegion as FocusRegion;
+    ctx.focus.region = shell.focusRegion;
     ctx.modal.open = sources.isModalOpen();
 
     if (tab) {

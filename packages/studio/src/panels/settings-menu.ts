@@ -45,18 +45,14 @@ import { openMenu } from "../surfaces/menu";
 import { REGION_ATTR } from "../ui/regions";
 import { rectOf } from "../utils/geometry";
 
+import type { CommandArgValues } from "../commands/command-args";
 import type { CommandRegistry } from "../commands/registry";
 import type { Level } from "../commands/levels";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
+import type { KeyedLabel } from "../ui/surface";
 
 /** The placement the rail's gear renders. One definition site for the string. */
 export const SETTINGS_MENU_PLACEMENT = "settings/menu" as const;
-
-/** One value a parent command's `section` argument accepts. */
-interface MenuSection {
-  key: string;
-  label: string;
-}
 
 let _menu: MenuHandle | null = null;
 let _unsubscribe: (() => void) | null = null;
@@ -73,16 +69,20 @@ let _rerender: (() => void) | null = null;
  * `settings.open` refuses anything absent from `settingsSectionKeys()` — so a submenu row can never
  * name a value its own command would refuse.
  */
-const SECTION_SOURCES: Readonly<Record<string, () => readonly MenuSection[]>> = {
-  "app.preferences": () =>
-    PREFERENCES_SECTIONS.map((section) => ({ key: section.id, label: section.title })),
-  "settings.open": () =>
-    sortedSettingsSections().map((section) => ({ key: section.key, label: section.label })),
-};
+const SECTION_SOURCES: ReadonlyMap<string, () => readonly KeyedLabel[]> = new Map([
+  [
+    "app.preferences",
+    () => PREFERENCES_SECTIONS.map((section) => ({ key: section.id, label: section.title })),
+  ],
+  [
+    "settings.open",
+    () => sortedSettingsSections().map((section) => ({ key: section.key, label: section.label })),
+  ],
+]);
 
 /** The sections a row offers, or none. */
-function menuSectionsFor(id: string): readonly MenuSection[] {
-  return SECTION_SOURCES[id]?.() ?? [];
+function menuSectionsFor(id: string): readonly KeyedLabel[] {
+  return SECTION_SOURCES.get(id)?.() ?? [];
 }
 
 // ─── Running ──────────────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ function menuSectionsFor(id: string): readonly MenuSection[] {
  * click throws BEFORE `run`, synchronously. `commands/run-reported.ts` catches both and files the
  * sentence in Problems, under this menu's name.
  */
-function runRow(id: string, args?: Record<string, unknown>): void {
+function runRow(id: string, args?: CommandArgValues): void {
   const registry = activeRegistry();
   if (!registry) {
     return;

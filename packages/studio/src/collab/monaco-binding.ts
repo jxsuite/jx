@@ -34,6 +34,7 @@ import {
   createAbsolutePositionFromRelativePosition,
   createRelativePositionFromTypeIndex,
 } from "@jxsuite/collab";
+import { isString } from "@jxsuite/schema/guards";
 import type * as Y from "yjs";
 import type { editor } from "monaco-editor";
 import type { AwarenessLike } from "./monaco-cursors";
@@ -43,7 +44,8 @@ import type { AwarenessLike } from "./monaco-cursors";
  * `./monaco-cursors.ts` already defines for the style manager) plus the one writer it needs.
  */
 export interface BindingAwareness extends AwarenessLike {
-  setLocalStateField: (field: string, value: unknown) => void;
+  /** Publishes this client's caret; `selection` is the one field the binding owns. */
+  setLocalStateField: (field: "selection", value: RelativeSelection | null) => void;
 }
 
 export interface MonacoYTextBindingOptions {
@@ -60,14 +62,17 @@ export interface MonacoYTextBindingOptions {
 }
 
 /** A caret snapshotted as two positions that survive a concurrent edit. */
-interface RelativeSelection {
+export interface RelativeSelection {
   anchor: Y.RelativePosition;
   head: Y.RelativePosition;
 }
 
-/** A peer's published caret, as it arrives over the wire (JSON, hence `unknown` halves). */
+/**
+ * A peer's published caret, as it arrives over the wire: the JSON of a {@link RelativeSelection},
+ * with every level optional because an older or partial state may omit it.
+ */
 interface PeerSelectionState {
-  selection?: { anchor?: unknown; head?: unknown } | null;
+  selection?: { anchor?: Y.RelativePosition; head?: Y.RelativePosition } | null;
 }
 
 /**
@@ -178,18 +183,16 @@ export function bindMonacoToYText(options: MonacoYTextBindingOptions): () => voi
       if (clientId === awareness.clientID) {
         continue;
       }
+      /* SAFETY: `selection` is reserved for this binding (awareness-types.ts), so every writer
+       * publishes relativeSelectionOf's RelativeSelection or null. Its JSON round trip keeps the
+       * plain fields createAbsolutePositionFromRelativePosition reads, and every level is optional
+       * and checked below, so a peer that publishes none is skipped. */
       const { selection } = (raw ?? {}) as PeerSelectionState;
       if (!selection?.anchor || !selection.head) {
         continue;
       }
-      const anchor = createAbsolutePositionFromRelativePosition(
-        selection.anchor as Y.RelativePosition,
-        doc,
-      );
-      const head = createAbsolutePositionFromRelativePosition(
-        selection.head as Y.RelativePosition,
-        doc,
-      );
+      const anchor = createAbsolutePositionFromRelativePosition(selection.anchor, doc);
+      const head = createAbsolutePositionFromRelativePosition(selection.head, doc);
       if (!anchor || !head || anchor.type !== text || head.type !== text) {
         continue;
       }
@@ -289,7 +292,7 @@ export function bindMonacoToYText(options: MonacoYTextBindingOptions): () => voi
            embeds (`insert` is then an object or another type), and a Monaco buffer has nowhere to
            put one — upstream cast the field to string and produced `"[object Object]"` in the
            document. The same clause catches an op carrying none of the three fields. */
-        if (typeof op.insert !== "string") {
+        if (!isString(op.insert)) {
           throw new TypeError(
             "bindMonacoToYText: unsupported Y.Text delta op — a text buffer can only apply " +
               "string inserts",

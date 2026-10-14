@@ -19,15 +19,27 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, extname, relative, resolve } from "node:path";
-import { assetUrlFor } from "@jxsuite/schema/asset-paths";
+import {
+  assetUrlFor,
+  CONTENT_SECTION_KEY,
+  LOCALE_PLACEHOLDER,
+  SAFE_CONTENT_TYPE_NAME,
+} from "@jxsuite/schema/asset-paths";
 import { localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
-import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { FormatEntry, FormatHostIO, FormatRegistry } from "@jxsuite/schema/format-registry";
 import type {
+  FormatDiscoverOptions,
+  FormatEntry,
+  FormatRegistry,
+  ProjectDataContext,
+} from "@jxsuite/schema/format-registry";
+import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type {
+  ContentFieldValue,
   ContentTypeSchema,
+  JsonObject,
+  JsonValue,
   JxElement,
-  JxMutableNode,
   ProjectConfig,
 } from "@jxsuite/schema/types";
 import { normalizeAlerts } from "./alerts.ts";
@@ -57,16 +69,10 @@ export type { ContentEntry, ContentLoaderEntry, TocEntry } from "./types.ts";
 /** The value of the project.json `content` section: content type name → definition. */
 export type ContentSection = Record<string, ContentTypeDef>;
 
-/** Host context passed to `Content.projectData` (specs/extensions.md §8). */
-export interface ProjectDataContext {
-  projectConfig?: ProjectConfig;
-  /** Absolute project root directory. */
-  root: string;
-  /** The project's extension registry; format dispatch goes through its `formats` view. */
-  registry: ExtensionRegistry;
-  /** Injected host I/O (unused here — this loader is node-only by its declared timing). */
-  io?: FormatHostIO;
-}
+/* The host context passed to `Content.projectData` is the capability contract's own
+   (specs/extensions.md §8); its injected `io` goes unused here, as this loader is node-only by its
+   declared timing. */
+export type { ProjectDataContext } from "@jxsuite/schema/format-registry";
 
 /** Host context passed to `Content.resolvePaths` (specs/extensions.md §8). */
 export interface ResolvePathsContext {
@@ -94,6 +100,18 @@ export interface ResolvePathsContext {
   patterns?: readonly string[];
 }
 
+/** An entry's `_meta`: where it came from, and the route and URL the loader gave it. */
+type ContentEntryMeta = NonNullable<ContentLoaderEntry["_meta"]>;
+
+/**
+ * One `$paths` result: route parameter → value, plus the entry's own `_meta` under that reserved
+ * name, which the host strips before substitution.
+ */
+export interface ContentPathParams {
+  _meta?: ContentEntryMeta;
+  [param: string]: ContentFieldValue | ContentEntryMeta | undefined;
+}
+
 /** The `$paths` value shape routed to this extension by its `contentType` discriminator. */
 export interface ContentPathsSource {
   contentType: string;
@@ -111,23 +129,24 @@ export interface ContentPathsSource {
  * @returns {ContentLoaderEntry[]} Array of ContentEntry shapes
  */
 function loadJSONEntries(filePath: string): ContentLoaderEntry[] {
-  const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+  // SAFETY: JSON.parse only ever yields JSON values; its `any` return type says nothing more.
+  const raw = JSON.parse(readFileSync(filePath, "utf8")) as JsonValue;
   if (Array.isArray(raw)) {
-    return (raw as Record<string, unknown>[]).map((item: Record<string, unknown>, i: number) => ({
-      body: null,
-      data: item,
-      id: (item.id as string) ?? `${basename(filePath, ".json")}-${i}`,
-    }));
+    return raw.map((item, i) => jsonEntry(item, `${basename(filePath, ".json")}-${i}`));
   }
   // Single object file — filename is the id
-  const rawObj = raw as Record<string, unknown>;
-  return [
-    {
-      body: null,
-      data: rawObj,
-      id: (rawObj.id as string) ?? basename(filePath, ".json"),
-    },
-  ];
+  return [jsonEntry(raw, basename(filePath, ".json"))];
+}
+
+/** One entry of a JSON source: the object is its data, and its own `id` wins over `fallbackId`. */
+function jsonEntry(item: JsonValue, fallbackId: string): ContentLoaderEntry {
+  /* SAFETY: a JSON content file is documented (content-collections docs, "JSON files") as one
+     entry object or an array of entry objects, each optionally naming its `id`; the loader takes
+     the file at its word for that shape, as it always has, rather than checking each item. */
+  const data = item as JsonObject;
+  // SAFETY: by the same documented shape, an entry's own `id` is its text id; absent, the path names it.
+  const id = (data.id ?? fallbackId) as string;
+  return { body: null, data, id };
 }
 
 /** Discover .json entry files for a source (single file or directory), in sorted order. */
@@ -140,15 +159,9 @@ function discoverJSONFiles(resolvedSource: string, exclude: ExcludeMatcher): str
 
 // ─── Asset mounts and content-relative references ────────────────────────────
 
-/**
- * The placeholder a content type's `source` may carry to say "one directory per locale".
- *
- * `./blog/{locale}/` is one content type spread over N directories, not N content types. That
- * distinction is what keeps a translated post the same post: it keeps one schema, one set of
- * relationship targets, and one name in `$paths`, and differs only in which directory it was read
- * from — which is exactly the model `site-architecture.md` §13 uses for routes.
- */
-export const LOCALE_PLACEHOLDER = "{locale}";
+/* `LOCALE_PLACEHOLDER` lives in `@jxsuite/schema/asset-paths`, beside the mount math, so Studio's
+   browser-side canvas reads the same token; this module's public name for it stays available. */
+export { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
 
 /**
  * The locales a `{locale}` source expands over, or `[]` when the project declares none.
@@ -203,12 +216,6 @@ export function localeSource(root: string, source: string, locale: string): stri
      declared rather than against a spelling nobody wrote. */
   return source.split(LOCALE_PLACEHOLDER).join(locale);
 }
-
-/** The project.json section key this class owns; also the URL namespace for its asset mounts. */
-const SECTION_KEY = "content";
-
-/** Content type names safe to place in a URL path segment unescaped. */
-const SAFE_TYPE_NAME = /^[\w.~-]+$/;
 
 /** Node keys whose value is a media reference the rewrite may remap. */
 const ASSET_KEYS = ["src", "poster"] as const;
@@ -273,7 +280,7 @@ function mountFilterFor(def: ContentTypeDef | undefined): ((path: string) => boo
  * @returns {AssetMount[]} One mount per eligible content type, in declaration order
  */
 export function contentAssetMounts(
-  section: ContentSection,
+  section: ContentSection | undefined,
   root: string,
   projectConfig?: ProjectConfig,
 ): AssetMount[] {
@@ -284,7 +291,11 @@ export function contentAssetMounts(
     return filter === undefined ? {} : { filter };
   };
   for (const [name, contentTypeDef] of Object.entries(section ?? {})) {
-    const source = contentTypeDef?.source;
+    // A definition is project.json data, and one still being written may not be an object yet.
+    if (!isNonNullObject(contentTypeDef)) {
+      continue;
+    }
+    const { source } = contentTypeDef;
     if (!source || source.startsWith("http://") || source.startsWith("https://")) {
       continue;
     }
@@ -295,26 +306,26 @@ export function contentAssetMounts(
      */
     if (source.includes(LOCALE_PLACEHOLDER)) {
       for (const locale of locales) {
-        if (!SAFE_TYPE_NAME.test(locale)) {
+        if (!SAFE_CONTENT_TYPE_NAME.test(locale)) {
           continue;
         }
         const dir = resolve(root, localeSource(root, source, locale))
           .split("\\")
           .join("/");
-        if (SAFE_TYPE_NAME.test(name) && existsSync(dir) && statSync(dir).isDirectory()) {
+        if (SAFE_CONTENT_TYPE_NAME.test(name) && existsSync(dir) && statSync(dir).isDirectory()) {
           mounts.push({
             dir,
-            urlPrefix: `/${SECTION_KEY}/${name}/${locale}`,
+            urlPrefix: `/${CONTENT_SECTION_KEY}/${name}/${locale}`,
             ...filterOf(contentTypeDef),
           });
         }
       }
       continue;
     }
-    if (!SAFE_TYPE_NAME.test(name)) {
+    if (!SAFE_CONTENT_TYPE_NAME.test(name)) {
       console.warn(
         `Content type "${name}": name is not URL-safe — its source directory is not published ` +
-          `at /${SECTION_KEY}/${name}, so content-relative asset references stay unresolved.`,
+          `at /${CONTENT_SECTION_KEY}/${name}, so content-relative asset references stay unresolved.`,
       );
       continue;
     }
@@ -324,7 +335,7 @@ export function contentAssetMounts(
     }
     mounts.push({
       dir: resolvedSource,
-      urlPrefix: `/${SECTION_KEY}/${name}`,
+      urlPrefix: `/${CONTENT_SECTION_KEY}/${name}`,
       ...filterOf(contentTypeDef),
     });
   }
@@ -386,26 +397,26 @@ function rewriteNodeAssets(
     }
     return;
   }
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return;
   }
-  const record = node as unknown as Record<string, unknown>;
-  const attributes = record.attributes as Record<string, unknown> | undefined;
+  const { attributes } = node;
   for (const key of ASSET_KEYS) {
-    for (const holder of [record, attributes]) {
+    // The node's own property first, then its attribute of the same name.
+    for (const holder of [node, attributes]) {
       const value = holder?.[key];
-      if (typeof value === "string") {
+      if (holder && isString(value)) {
         const rewritten = rewriteRef(value, entryDir, mount, onProblem);
         if (rewritten) {
-          holder![key] = rewritten;
+          holder[key] = rewritten;
         }
       }
     }
   }
-  const { children } = record;
+  const { children } = node;
   if (Array.isArray(children)) {
     for (const child of children) {
-      rewriteNodeAssets(child as JxElement | string | ContentNodes, entryDir, mount, onProblem);
+      rewriteNodeAssets(child, entryDir, mount, onProblem);
     }
   }
 }
@@ -433,9 +444,14 @@ export function rewriteEntryAssets(
   schema?: ContentTypeSchema,
 ) {
   const entryDir = dirname(filePath);
-  const uriFields = Object.entries(schema?.properties ?? {})
-    .filter(([, def]) => def?.format === "uri-reference" || def?.items?.format === "uri-reference")
-    .map(([field]) => field);
+  /* A field's schema is project.json data, so one that is not an object (a `null` left by an edit)
+     declares nothing rather than failing the load. */
+  const uriFields = Object.entries(schema?.properties ?? {}).flatMap(([field, def]) =>
+    isNonNullObject(def) &&
+    (def.format === "uri-reference" || def.items?.format === "uri-reference")
+      ? [field]
+      : [],
+  );
 
   for (const entry of entries) {
     const onProblem = (value: string, problem: RefProblem) =>
@@ -453,11 +469,11 @@ export function rewriteEntryAssets(
 
     for (const field of uriFields) {
       const value = entry.data[field];
-      if (typeof value === "string") {
+      if (isString(value)) {
         entry.data[field] = rewriteRef(value, entryDir, mount, onProblem) ?? value;
       } else if (Array.isArray(value)) {
         entry.data[field] = value.map((item) =>
-          typeof item === "string" ? (rewriteRef(item, entryDir, mount, onProblem) ?? item) : item,
+          isString(item) ? (rewriteRef(item, entryDir, mount, onProblem) ?? item) : item,
         );
       }
     }
@@ -477,6 +493,9 @@ export function rewriteEntryAssets(
 export function loadContentConfig(projectRoot: string, projectConfig?: ProjectConfig) {
   const contentDir = resolve(projectRoot, "content");
 
+  /* SAFETY: `content` is the section this extension owns, and its project fragment schema defines
+     it as content type name → definition, which is what ContentSection spells; the options of a
+     definition are validated again by compileTypeRules when that type loads. */
   const config = { content: (projectConfig?.content as ContentSection | undefined) ?? {} };
 
   return { config, contentDir };
@@ -508,14 +527,14 @@ export async function loadContentSection(
        * translated entry's `./hero.png` was left unrewritten; and it collided any two types that
        * shared a locale.
        */
-      mount.urlPrefix.slice(`/${SECTION_KEY}/`.length),
+      mount.urlPrefix.slice(`/${CONTENT_SECTION_KEY}/`.length),
       mount,
     ]),
   );
   const locales = localesForExpansion(projectConfig);
   for (const [name, contentTypeDef] of Object.entries(section)) {
-    const source = contentTypeDef?.source;
-    if (typeof source !== "string" || !source.includes(LOCALE_PLACEHOLDER)) {
+    const { source } = contentTypeDef;
+    if (!isString(source) || !source.includes(LOCALE_PLACEHOLDER)) {
       const entries = await loadContentType(name, contentTypeDef, root, formats, {
         mount: mounts.get(name),
         projectConfig,
@@ -585,7 +604,15 @@ interface TypeRules {
   idField: string | undefined;
   route: RouteSpec | null;
   links: LinkMode;
-  alerts: unknown;
+  alerts: ContentTypeDef["alerts"];
+}
+
+/** The values `links` accepts. */
+const LINK_MODES = ["warn", "error", "ignore"] as const;
+
+/** Whether a `links` option names one of the {@link LINK_MODES}; it is project.json data. */
+function isLinkMode(value: JsonValue): value is LinkMode {
+  return LINK_MODES.some((mode) => mode === value);
 }
 
 /** Every key a content type's definition means something by. */
@@ -651,7 +678,7 @@ function compileTypeRules(name: string, def: ContentTypeDef): TypeRules {
   const at = `Content type "${name}"`;
   try {
     for (const key of Object.keys(def)) {
-      if ((KNOWN_TYPE_KEYS as readonly string[]).includes(key) || key === "$comment") {
+      if (KNOWN_TYPE_KEYS.some((known) => known === key) || key === "$comment") {
         continue;
       }
       const suggestion = nearestOption(key);
@@ -662,11 +689,12 @@ function compileTypeRules(name: string, def: ContentTypeDef): TypeRules {
         `${at}: ignores the unknown option "${key}" (the options are ${KNOWN_TYPE_KEYS.join(", ")})`,
       );
     }
-    if (def.idField !== undefined && (typeof def.idField !== "string" || def.idField === "")) {
+    // `idField` and `links` are project.json data: checked here, whatever their declared types say.
+    if (def.idField !== undefined && (!isString(def.idField) || def.idField === "")) {
       throw new TypeError(`"idField" must be a field name`);
     }
     const links = def.links ?? "warn";
-    if (links !== "warn" && links !== "error" && links !== "ignore") {
+    if (!isLinkMode(links)) {
       throw new TypeError(
         `"links" must be "warn", "error" or "ignore", got ${JSON.stringify(links)}`,
       );
@@ -778,7 +806,7 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
   if (rules.idField) {
     for (const entry of entries) {
       const value = entry.data[rules.idField];
-      if ((typeof value === "string" && value !== "") || typeof value === "number") {
+      if ((isString(value) && value !== "") || isNumber(value)) {
         /* An id becomes a directory name under the output (`$paths` hands it to a page), and a
            frontmatter value is not trusted to stay inside it. */
         const unsafe = traversalReason(String(value));
@@ -874,7 +902,7 @@ function settleIndexIds(name: string, entries: ContentLoaderEntry[]): void {
 /** The site's `build.trailingSlash`, defaulting to `"always"` exactly as the build does. */
 function trailingSlashOf(projectConfig: ProjectConfig | undefined): string {
   const value = projectConfig?.build?.trailingSlash;
-  return typeof value === "string" ? value : "always";
+  return isString(value) ? value : "always";
 }
 
 /** The URL prefix a collection's locale puts in front of its routes (`/fr`), or `""`. */
@@ -1044,7 +1072,7 @@ function resolveEntryLinks(
       if (!entry.$children || file.rel === null) {
         continue;
       }
-      rewriteLinks(entry.$children as ContentNodes, file.rel, index, (problem) => {
+      rewriteLinks(entry.$children, file.rel, index, (problem) => {
         const key = `${file.rel}\0${problem.href}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -1115,7 +1143,7 @@ async function loadContentType(
     return [];
   }
   const { mount, projectConfig, locale } = options;
-  const schema = contentTypeDef.schema as ContentTypeSchema | undefined;
+  const { schema } = contentTypeDef;
   const rules = compileTypeRules(name, contentTypeDef);
   const finishContext = (extra: Partial<FinishContext>): FinishContext => ({
     coerceDates: false,
@@ -1133,11 +1161,10 @@ async function loadContentType(
   // Derive directive allowedNames from content type $elements (tag names from npm packages)
   const directiveOptions = contentTypeDef.$elements?.length
     ? {
-        allowedNames: contentTypeDef.$elements
-          .filter(
-            (e) => typeof e === "string" || (typeof e === "object" && (e as JxMutableNode)?.$ref),
-          )
-          .map((e) => (typeof e === "string" ? e : (e as JxMutableNode).$ref)),
+        // A tag name as written, or the `$ref` of an element reference; anything else names nothing.
+        allowedNames: contentTypeDef.$elements.flatMap((e) =>
+          isString(e) ? [e] : isNonNullObject(e) && e.$ref ? [e.$ref] : [],
+        ),
       }
     : undefined;
 
@@ -1170,11 +1197,11 @@ async function loadContentType(
     }
     let remote: ContentLoaderEntry[];
     try {
-      remote = (await entry.call("load", source, {
+      remote = await entry.call("load", source, {
         directiveOptions,
         schema,
         ...(rules.idField !== undefined && { idField: rules.idField }),
-      })) as ContentLoaderEntry[];
+      });
     } catch (error) {
       console.warn(`Content type "${name}": ${errorMessage(error)}`);
       return [];
@@ -1222,11 +1249,12 @@ async function loadContentType(
   }
 
   // Discover entry files via the class, then load each
+  const discoverOptions: FormatDiscoverOptions = { baseDir: projectRoot };
+  if (!rules.exclude.empty) {
+    discoverOptions.exclude = contentTypeDef.exclude;
+  }
   const discovered = entry.capabilities.discover
-    ? ((await entry.call("discover", source, {
-        baseDir: projectRoot,
-        ...(rules.exclude.empty ? {} : { exclude: contentTypeDef.exclude }),
-      })) as string[])
+    ? await entry.call("discover", source, discoverOptions)
     : [resolvedSource];
   const files = discovered.filter((file) => !isExcluded(file));
 
@@ -1236,7 +1264,7 @@ async function loadContentType(
     const rel = relOf(filePath);
     let fileEntries: ContentLoaderEntry[];
     try {
-      fileEntries = (await entry.call("load", filePath, {
+      fileEntries = await entry.call("load", filePath, {
         directiveOptions,
         schema,
         ...(sourceRoot !== undefined && { sourceRoot }),
@@ -1248,7 +1276,7 @@ async function loadContentType(
               `"${type.toLowerCase()}" is not an enabled type, so it stays a blockquote with the ` +
               `marker showing. Add "alerts": { "${type.toUpperCase()}": true } to render it.`,
           ),
-      })) as ContentLoaderEntry[];
+      });
     } catch (error) {
       throw unreadableFile(name, rel ?? filePath, error);
     }
@@ -1280,11 +1308,11 @@ async function loadContentType(
  * The error for one file that would not load, with its path: a parse failure names a line and a
  * reason but never the file, and a vault is hundreds of them.
  */
-function unreadableFile(type: string, path: string, error: unknown): Error {
+function unreadableFile(type: string, path: string, cause: unknown): Error {
   return new Error(
-    `Content type "${type}": cannot read "${path}": ${errorMessage(error)}. Fix the file, or add it ` +
+    `Content type "${type}": cannot read "${path}": ${errorMessage(cause)}. Fix the file, or add it ` +
       `to "exclude" if it is not a document (a templates folder, for example).`,
-    { cause: error },
+    { cause },
   );
 }
 
@@ -1297,8 +1325,23 @@ function unknownFormatError(path: string, ext: string): Error {
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * The JavaScript type name of a field value, as `typeof` spells it, for a validation message. A
+ * date, a list, a nested object, a resolved entry and `null` are all `"object"`, as they are
+ * there.
+ */
+function jsTypeName(value: ContentFieldValue): string {
+  if (isString(value)) {
+    return "string";
+  }
+  if (isNumber(value)) {
+    return "number";
+  }
+  return isBoolean(value) ? "boolean" : "object";
 }
 
 // ─── Schema Validation ────────────────────────────────────────────────────────
@@ -1336,26 +1379,26 @@ function validateEntries(
         continue;
       }
 
-      if (isDateFormat(def.format) && typeof value === "string" && !isCoercedDate(value)) {
+      if (isDateFormat(def.format) && isString(value) && !isCoercedDate(value)) {
         console.warn(
           `Content validation: "${contentTypeName}/${entry.id}" field "${field}" is declared ` +
             `${def.format} but "${value}" was not coerced — it will sort and filter as plain text.`,
         );
-      } else if (def.type === "string" && typeof value !== "string") {
+      } else if (def.type === "string" && !isString(value)) {
         console.warn(
-          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected string, got ${typeof value}`,
+          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected string, got ${jsTypeName(value)}`,
         );
-      } else if (def.type === "number" && typeof value !== "number") {
+      } else if (def.type === "number" && !isNumber(value)) {
         console.warn(
-          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected number, got ${typeof value}`,
+          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected number, got ${jsTypeName(value)}`,
         );
-      } else if (def.type === "boolean" && typeof value !== "boolean") {
+      } else if (def.type === "boolean" && !isBoolean(value)) {
         console.warn(
-          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected boolean, got ${typeof value}`,
+          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected boolean, got ${jsTypeName(value)}`,
         );
       } else if (def.type === "array" && !Array.isArray(value)) {
         console.warn(
-          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected array, got ${typeof value}`,
+          `Content validation: "${contentTypeName}/${entry.id}" field "${field}" expected array, got ${jsTypeName(value)}`,
         );
       }
     }
@@ -1390,7 +1433,7 @@ export function resolveContentTypeRefs(
   section: ContentSection,
 ) {
   for (const [name, contentTypeDef] of Object.entries(section)) {
-    const schema = contentTypeDef.schema as ContentTypeSchema | undefined;
+    const { schema } = contentTypeDef;
     if (!schema?.properties) {
       continue;
     }
@@ -1417,7 +1460,7 @@ export function resolveContentTypeRefs(
 
       for (const entry of entries) {
         const value = entry.data[field];
-        if (toOne && typeof value === "string") {
+        if (toOne && isString(value)) {
           const resolved = refEntries.find((e) => e.id === value);
           if (resolved) {
             entry.data[field] = resolved;
@@ -1428,7 +1471,7 @@ export function resolveContentTypeRefs(
           }
         } else if (toMany && Array.isArray(value)) {
           entry.data[field] = value.map((id) => {
-            if (typeof id !== "string") {
+            if (!isString(id)) {
               return id;
             }
             const resolved = refEntries.find((e) => e.id === id);
@@ -1477,13 +1520,13 @@ function reportUnservedRoutes(
     return;
   }
   const patterns = ctx.patterns.map((pattern) => withoutLocalePrefix(pattern, prefix));
-  const unserved = entries
-    .map((entry) => entry._meta?.route)
-    .filter(
-      (route): route is string =>
-        route !== undefined &&
-        !patterns.some((pattern) => routeParams(route, pattern, []) !== null),
-    );
+  const unserved = entries.flatMap((entry) => {
+    const route = entry._meta?.route;
+    return route !== undefined &&
+      !patterns.some((pattern) => routeParams(route, pattern, []) !== null)
+      ? [route]
+      : [];
+  });
   if (unserved.length === 0) {
     return;
   }
@@ -1514,11 +1557,11 @@ function routedPaths(
   entries: ContentLoaderEntry[],
   ctx: ResolvePathsContext,
   urlPattern: string,
-): Record<string, unknown>[] {
+): ContentPathParams[] {
   const { i18n } = resolveI18n(ctx.projectConfig ?? {});
   const prefix = localeUrlPrefix(ctx.locale, i18n);
   const pattern = withoutLocalePrefix(urlPattern, prefix);
-  const paths: Record<string, unknown>[] = [];
+  const paths: ContentPathParams[] = [];
   let example: string | undefined;
   for (const entry of entries) {
     const route = entry._meta?.route;
@@ -1528,7 +1571,11 @@ function routedPaths(
     example ??= route;
     const params = routeParams(route, pattern, ctx.params ?? []);
     if (params) {
-      paths.push({ ...params, ...(entry._meta === undefined ? {} : { _meta: entry._meta }) });
+      const pathEntry: ContentPathParams = { ...params };
+      if (entry._meta !== undefined) {
+        pathEntry._meta = entry._meta;
+      }
+      paths.push(pathEntry);
     }
   }
   if (paths.length === 0 && example !== undefined) {
@@ -1554,15 +1601,15 @@ export class Content {
    * Load the `content` section: every content type's entries, with relationship references already
    * resolved.
    *
-   * @param {unknown} sectionValue - The project.json `content` section value
+   * @param {ContentSection | undefined} sectionValue - The project.json `content` section value
    * @param {ProjectDataContext} ctx - Host context ({ projectConfig, root, registry, io })
    * @returns {Promise<Map<string, ContentLoaderEntry[]>>} Content type name → entries
    */
   static async projectData(
-    sectionValue: unknown,
+    sectionValue: ContentSection | undefined,
     ctx: ProjectDataContext,
   ): Promise<Map<string, ContentLoaderEntry[]>> {
-    const section = (sectionValue ?? {}) as ContentSection;
+    const section = sectionValue ?? {};
     const data = await loadContentSection(
       section,
       ctx.root,
@@ -1578,15 +1625,15 @@ export class Content {
    * Hosts serve, resolve, and copy files through the returned mounts, which is what lets an entry
    * reference `../images/hero.png` and still resolve in a built site, the dev server, and Studio.
    *
-   * @param {unknown} sectionValue - The project.json `content` section value
+   * @param {ContentSection | undefined} sectionValue - The project.json `content` section value
    * @param {{ projectConfig?: ProjectConfig; root: string }} ctx - Host context
    * @returns {AssetMount[]} One mount per content type with a local directory source
    */
   static assets(
-    sectionValue: unknown,
+    sectionValue: ContentSection | undefined,
     ctx: { root: string; projectConfig?: ProjectConfig },
   ): AssetMount[] {
-    return contentAssetMounts((sectionValue ?? {}) as ContentSection, ctx.root, ctx.projectConfig);
+    return contentAssetMounts(sectionValue ?? {}, ctx.root, ctx.projectConfig);
   }
 
   /**
@@ -1611,12 +1658,12 @@ export class Content {
    *
    * @param {ContentPathsSource} pathsDef - The `$paths` value ({ contentType, param?, field? })
    * @param {ResolvePathsContext} ctx - Host context ({ data, projectConfig, root, urlPattern })
-   * @returns {Promise<Record<string, unknown>[]>} Array of route-param objects
+   * @returns {Promise<ContentPathParams[]>} Array of route-param objects
    */
   static async resolvePaths(
     pathsDef: ContentPathsSource,
     ctx: ResolvePathsContext,
-  ): Promise<Record<string, unknown>[]> {
+  ): Promise<ContentPathParams[]> {
     const entries = ctx.data.get(pathsDef.contentType);
     if (!entries || entries.length === 0) {
       console.warn(
@@ -1635,7 +1682,7 @@ export class Content {
     const localized = entries.some((entry) => entry._meta?.locale !== undefined);
     const wanted = ctx.locale;
     const scoped =
-      localized && typeof wanted === "string"
+      localized && isString(wanted)
         ? entries.filter((entry) => entry._meta?.locale === wanted)
         : entries;
     if (
@@ -1646,7 +1693,7 @@ export class Content {
     ) {
       return routedPaths(pathsDef.contentType, scoped, ctx, ctx.urlPattern);
     }
-    const paths: Record<string, unknown>[] = [];
+    const paths: ContentPathParams[] = [];
     for (const entry of scoped) {
       const value = field === "id" ? entry.id : (entry.data[field] ?? entry.id);
       if (!value) {
@@ -1663,7 +1710,7 @@ export class Content {
         );
         continue;
       }
-      const pathEntry: Record<string, unknown> = { [param]: value };
+      const pathEntry: ContentPathParams = { [param]: value };
       if (entry._meta !== undefined) {
         pathEntry._meta = entry._meta;
       }

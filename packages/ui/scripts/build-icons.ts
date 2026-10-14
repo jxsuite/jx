@@ -19,6 +19,9 @@ const listPath = resolve(here, "../icons/list.json");
 const manifestPath = resolve(here, "../icons/manifest.json");
 const phosphorRoot = dirname(Bun.resolveSync("@phosphor-icons/core/package.json", here));
 
+/* SAFETY: icons/list.json is the committed allow-list, a map of icon name to weight array, and
+   buildManifest only tests each entry with `includes` against ICON_WEIGHTS, so a weight string the
+   kit does not know is skipped rather than read as an IconWeight. */
 const list = JSON.parse(readFileSync(listPath, "utf8")) as IconList;
 const manifest = buildManifest(list, (relativePath) => {
   const file = join(phosphorRoot, relativePath);

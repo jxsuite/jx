@@ -9,6 +9,7 @@
 
 import { SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler } from "kysely";
 import type { CompiledQuery, DatabaseConnection, Dialect, Driver, QueryResult } from "kysely";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 export interface D1HttpDialectConfig {
   accountId: string;
@@ -25,9 +26,16 @@ interface D1HttpResponse {
   errors?: { code?: number; message?: string }[];
   result?: {
     success?: boolean;
-    results?: Record<string, unknown>[];
+    results?: JsonObject[];
     meta?: { changes?: number; last_row_id?: number };
   }[];
+}
+
+/** A QueryResult under construction: Kysely's own interface declares its fields readonly. */
+interface D1HttpQueryResult<R> {
+  insertId?: bigint;
+  numAffectedRows?: bigint;
+  rows: R[];
 }
 
 /**
@@ -62,6 +70,9 @@ async function executeHttp<R>(
     },
     method: "POST",
   });
+  /* SAFETY: Cloudflare's v4 API answers with its { success, errors, result } envelope (or the catch
+     turns an unparsable body into null); every field below is read optionally, and a body without
+     `success: true` is rejected before `result` is touched. */
   const body = (await response.json().catch(() => null)) as D1HttpResponse | null;
   if (!response.ok || !body?.success) {
     const detail =
@@ -73,11 +84,16 @@ async function executeHttp<R>(
   }
   const [result] = body.result ?? [];
   const meta = result?.meta ?? {};
-  return {
-    ...(meta.last_row_id === undefined ? {} : { insertId: BigInt(meta.last_row_id) }),
-    ...(meta.changes === undefined ? {} : { numAffectedRows: BigInt(meta.changes) }),
-    rows: (result?.results ?? []) as R[],
-  };
+  /* SAFETY: Kysely instantiates R with the row shape of the compiled statement, and the D1 query
+     endpoint returns each result row as a JSON object keyed by column name. */
+  const queryResult: D1HttpQueryResult<R> = { rows: (result?.results ?? []) as R[] };
+  if (meta.last_row_id !== undefined) {
+    queryResult.insertId = BigInt(meta.last_row_id);
+  }
+  if (meta.changes !== undefined) {
+    queryResult.numAffectedRows = BigInt(meta.changes);
+  }
+  return queryResult;
 }
 
 /** Build the stateless HTTP driver. */

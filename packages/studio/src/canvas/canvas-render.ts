@@ -4,13 +4,17 @@
  * dispatches to manage/settings/source/edit/design/preview rendering paths.
  */
 
-import { render as litRender, nothing } from "lit-html";
+import { render, nothing } from "lit-html";
 import type * as monaco from "monaco-editor";
 import type { WireDiffMarks } from "./iframe-protocol";
 import type * as Y from "yjs";
 import { loadedMonaco, loadMonaco, mountStillWanted } from "../services/monaco-lazy";
 
-import { getNodeAtPath, updateCanvas } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { isString } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
+import { stageOf } from "./surface-registry";
+import { updateCanvas } from "../store";
 import { activeTab, tabIsLive, workspace } from "../workspace/workspace";
 import {
   activeMediaOfPane,
@@ -40,8 +44,6 @@ import { canRenderComparison } from "../panels/git-diff-open";
 import { releaseStageScrollbar, trackStageScrollbar } from "./stage-scrollbar";
 import { renderDiffToolbar, setDiffRepaint, setDiffToolbarHost } from "./diff-toolbar";
 import { attachCursorStyles } from "../collab/monaco-cursors";
-import type { AwarenessLike } from "../collab/monaco-cursors";
-import type { BindingAwareness } from "../collab/monaco-binding";
 import { monacoTheme, shell } from "../shell";
 import { parseSourceForPath } from "../files/file-ops";
 import { serializeDocument } from "../files/serialize-document";
@@ -412,13 +414,15 @@ async function createSourceCollabBinding(
 ): Promise<() => void> {
   const { bindMonacoToYText } = await import("../collab/monaco-binding");
   const unbind = bindMonacoToYText({
-    awareness: ctx.awareness as unknown as BindingAwareness,
+    awareness: ctx.awareness,
     editors: [editor],
     model,
     origin: ctx.localOrigin,
+    /* SAFETY: collabSourceContext's `text` is `collab.sourceText(handle.doc)`, the session's shared
+       source Y.Text, attached to the handle's Y.Doc as the binding requires. */
     text: ctx.text as Y.Text,
   });
-  const detachStyles = attachCursorStyles(ctx.awareness as unknown as AwarenessLike, document);
+  const detachStyles = attachCursorStyles(ctx.awareness, document);
   return () => {
     detachStyles();
     unbind();
@@ -558,7 +562,7 @@ function sideMarks(
  */
 async function mountDiffEditor(
   surface: CanvasSurface,
-  container: Element,
+  container: HTMLElement,
   state: GitDiffState,
 ): Promise<void> {
   const { paneId } = surface;
@@ -589,17 +593,20 @@ async function mountDiffEditor(
     lang,
     monaco.Uri.parse(uris.work),
   );
-  const editor = monaco.editor.createDiffEditor(container as HTMLElement, {
-    automaticLayout: true,
-    fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace",
-    fontSize: 12,
-    minimap: { enabled: false },
-    originalEditable: false,
-    readOnly: true,
-    renderSideBySide: true,
-    scrollBeyondLastLine: false,
-    theme: monacoTheme(),
-  }) as NonNullable<CanvasSurface["monacoDiffEditor"]>;
+  const editor: NonNullable<CanvasSurface["monacoDiffEditor"]> = monaco.editor.createDiffEditor(
+    container,
+    {
+      automaticLayout: true,
+      fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace",
+      fontSize: 12,
+      minimap: { enabled: false },
+      originalEditable: false,
+      readOnly: true,
+      renderSideBySide: true,
+      scrollBeyondLastLine: false,
+      theme: monacoTheme(),
+    },
+  );
   editor.setModel({ modified, original });
   editor._diffKey = key;
   surface.monacoDiffEditor = editor;
@@ -663,7 +670,7 @@ function resetCanvasView(surface: CanvasSurface) {
 async function mountSourceEditor(
   tab: Tab,
   surface: CanvasSurface,
-  editorContainer: Element,
+  editorContainer: HTMLElement,
   filePath: string,
   lang: string,
 ): Promise<void> {
@@ -757,7 +764,7 @@ async function mountSourceEditor(
   // Typed as the surface `view` declares (the editor plus `_ignoreNextChange` / `_writes`), because
   // The instance is HELD here now rather than re-read off `view.monacoEditor` in every callback.
   const sourceEditor: NonNullable<typeof surface.monacoEditor> = monaco.editor.create(
-    editorContainer as unknown as HTMLElement,
+    editorContainer,
     {
       automaticLayout: true,
       fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace",
@@ -832,7 +839,7 @@ async function mountSourceEditor(
           if (!tabIsLive(tab)) {
             return;
           }
-          tab.doc.document = document as JxMutableNode;
+          tab.doc.document = document;
           tab.doc.content.frontmatter = frontmatter;
           tab.doc.dirty = true;
           writes.markSettled();
@@ -845,6 +852,8 @@ async function mountSourceEditor(
           // The buffer's text is the author's own layout now — the objects they opened up or
           // Closed, the blank lines they left — so it is what the next save preserves.
           const parsed = parseJsonDocument(sourceEditor.getValue());
+          /* SAFETY: a JSON source tab holds a Jx document, whose schema makes the top-level object
+             parseJsonDocument returns a node; text that does not parse throws into the catch. */
           tab.doc.document = parsed.document as JxMutableNode;
           tab.doc.layout = parsed.layout;
           tab.doc.dirty = true;
@@ -930,7 +939,7 @@ function renderDerivationNotice(
   surface.wrap.style.display = "block";
   const registry = activeRegistry();
   const pin = registry?.get("pane.pin");
-  litRender(
+  render(
     emptyState(surface.wrap, {
       message,
       ...(held && { detail: `${tabLabel(held)} is still open here.` }),
@@ -954,7 +963,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
   /* Every read below is scoped to ONE pane. The stage, the panels it mounted and the mode it draws
      are the surface's; the document is whatever tab that pane is showing, which is `activeTab` only
      when the pane is the focused one. */
-  const canvasWrap = surface.wrap;
+  const canvasWrap = stageOf(surface);
   /* A pane with no stage renders nothing — it is not an error and it is not a fallback to some
      other pane's stage. Two schedulers can name a stage-less pane: a frame queued for a pane that
      lost the shell's single stage between the schedule and the rAF, and `escalateToFullRender` on
@@ -1012,6 +1021,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     );
     return;
   }
+  /* SAFETY: `initCanvasRender` runs at studio boot (studio.ts), before the shell schedules the first
+     pane render, and nothing resets `_ctx` afterwards. */
   const ctx = _ctx as CanvasRenderCtx;
   const S = {
     document: tab.doc.document,
@@ -1193,8 +1204,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
       curFilter !== surface.prevStylebookFilter ||
       curCustomized !== surface.prevStylebookCustomizedOnly;
     if (!filterChanged) {
-      const style = transposeStylebookStyle(getEffectiveStyle(tab.doc.document?.style));
-      if (postStyleUpdateToStylebookHosts(style as Record<string, unknown>) > 0) {
+      const style = transposeStylebookStyle(getEffectiveStyle(tab.doc.document.style));
+      if (postStyleUpdateToStylebookHosts(style) > 0) {
         return;
       }
     }
@@ -1261,7 +1272,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
        leaving, and lit's part, which the empty-state and welcome paths own. */
     releaseCanvasHosts(canvasWrap);
     detachCanvasStage(surface);
-    litRender(nothing, canvasWrap);
+    render(nothing, canvasWrap);
     surface.panzoomWrap = null;
     // Reset inline style overrides from other modes
     canvasWrap.style.padding = "";
@@ -1465,7 +1476,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
        decided rather than the opener: a comparison reaches this branch from three doors (the panel,
        a Diff lens, the Editor axis) and only this one sees every arrival. Forcing it here also
        leaves `diffView` alone, so a document opened after a `.css` still comes up Visual. */
-    const renderable = canRenderComparison(gitDiffState.filePath ?? "");
+    const renderable = canRenderComparison(gitDiffState.filePath);
     if (diffShowsCode(surface.paneId, renderable)) {
       /* A null map is how the toolbar learns there is no visual half to offer: it draws Code as a
          static label rather than as half of a choice, and reports the line marks instead of a node
@@ -1518,12 +1529,15 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
     /** @param {string} content */
     const parseContent = (content: string): Promise<JxMutableNode> => {
-      const fmtPath = gitDiffState.filePath ?? "";
+      const fmtPath = gitDiffState.filePath;
       if (formatForPath(fmtPath)) {
         return parseSourceForPath(fmtPath, content).then((r) => r.document);
       }
       return Promise.resolve().then(() => {
         try {
+          /* SAFETY: a side of a VISUAL comparison is a revision of a document the canvas renders
+             (canRenderComparison chose this half), a JSON Jx document; unparseable text throws into
+             the catch, which draws the failure instead. */
           return JSON.parse(content) as JxMutableNode;
         } catch {
           return {
@@ -1636,8 +1650,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const entry = canvasPanelEntry(null, null, true);
     // A component-definition doc (root tag is a custom element) is a fragment, not a page: it should
     // Hug its content rather than have the column fill+stretch to the viewport (dead scroll space).
-    const rootTag = (S.document as { tagName?: unknown }).tagName;
-    const isComponentDoc = typeof rootTag === "string" && rootTag.includes("-");
+    const rootTag = S.document.tagName;
+    const isComponentDoc = isString(rootTag) && rootTag.includes("-");
     const { featureToggles: editToggles } = S.ui;
     /* The stage stacks when it carries the card: the band first, the page's scroller below it.
        Set on every render rather than on the transition, because whether a document HAS a header
@@ -1680,6 +1694,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
       }
       const editColumn = stageHost(surface, "edit-column");
       const scroller = stageHost(surface, "edit-canvas");
+      /* SAFETY: the edit stage view always draws its `edit-canvas` part, and this runs only once
+         drawStage settled with that stage (the `!stage` return above). */
       entry.panel.scrollContainer = scroller as HTMLElement;
       /* The one mode whose stage SCROLLS under the zoom pod, so the one that tells the pane how
          wide its scrollbar is. The pod floats in the pane's chrome layer, which spans the gutter
@@ -1733,7 +1749,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
   if (!hasMedia) {
     // Single panel — use baseWidth if a custom one is defined, otherwise full-width
     const effectiveMedia = getEffectiveMedia(S.document.$media);
-    const hasBaseWidth = effectiveMedia && effectiveMedia["--"];
+    const hasBaseWidth = effectiveMedia["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
     const entry = canvasPanelEntry(
       hasBaseWidth ? "base" : null,
@@ -1900,8 +1916,11 @@ function renderCanvasIntoPanel(
 ) {
   const gen = passGen ?? surface.renderGeneration;
   const tab = tabOfPane(surface.paneId);
+  /* SAFETY: every caller is a renderCanvasImpl pass, which returns before drawing any panel when its
+     pane has no tab, so without an override `tab` was non-null when this pass began; the git-diff
+     callers always pass their override. */
   const docToRender = docOverride || (tab?.doc.document as JxMutableNode);
-  const canvas = panel.canvas as HTMLElement;
+  const { canvas } = panel;
 
   canvasPerf.panelRenders += 1;
   panel.ready = false;
@@ -1947,14 +1966,16 @@ function renderCanvasIntoPanel(
         // The canvas you are looking at; it says so itself.
       }
     })
-    .catch((error: unknown) => {
-      const detail = error instanceof Error ? error.message : String(error);
-      notify.error("The canvas could not be mounted.", {
-        detail,
-        key: "canvas.mount",
-        source: "Canvas",
-      });
-    });
+    .catch(reportMountFailure);
+}
+
+/** A canvas mount that rejected, reported as a Problem with the failure's own message. */
+function reportMountFailure(cause: unknown): void {
+  notify.error("The canvas could not be mounted.", {
+    detail: errorMessage(cause),
+    key: "canvas.mount",
+    source: "Canvas",
+  });
 }
 
 /*
@@ -2012,7 +2033,7 @@ function refuseUnresolvableToken(token: string): void {
     throw new RangeError(`command "insert.data" needs an open document; no tab is active`);
   }
   const root = tokenRoot(token);
-  const state = (tab.doc.document.state ?? {}) as Record<string, unknown>;
+  const state = tab.doc.document.state ?? {};
   if (root === "state") {
     const name = token.split(".")[1] ?? "";
     if (!(name in state)) {

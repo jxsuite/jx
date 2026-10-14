@@ -26,10 +26,9 @@ import { openPopoverSurface } from "../ui/popover-surface";
 import { reactive } from "../reactivity";
 import { registerSurface } from "../ui/surface";
 import mediaBrowserDoc from "./media-browser.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { PopoverSurfaceHandle } from "../ui/popover-surface";
+import type { OpenPopoverSurfaceOptions, PopoverSurfaceHandle } from "../ui/popover-surface";
 
-registerSurface("media-browser", mediaBrowserDoc as unknown as JxDocument);
+registerSurface("media-browser", mediaBrowserDoc);
 
 /** The slot id, and so the panel's region: `overlay.menu:media-picker`. */
 const SLOT = "media-picker";
@@ -79,8 +78,7 @@ export interface MediaBrowserSurfaceHandle extends PopoverSurfaceHandle {
   update: (view: MediaBrowserView) => void;
 }
 
-interface MediaBrowserScope
-  extends Record<string, unknown>, MediaBrowserView, Omit<MediaBrowserActions, "dismissed"> {}
+interface MediaBrowserScope extends MediaBrowserView, Omit<MediaBrowserActions, "dismissed"> {}
 
 /** Write a projection into the scope. */
 function project(scope: MediaBrowserScope, view: MediaBrowserView): void {
@@ -107,7 +105,7 @@ export function openMediaBrowserSurface(
   actions: MediaBrowserActions,
   anchor: HTMLElement | null,
 ): MediaBrowserSurfaceHandle {
-  const scope = reactive<MediaBrowserScope>({
+  const scope: MediaBrowserScope = reactive<MediaBrowserScope>({
     emptyLabel: view.emptyLabel,
     filter: view.filter,
     measure: actions.measure,
@@ -119,15 +117,18 @@ export function openMediaBrowserSurface(
     setFilter: actions.setFilter,
     x: view.x,
     y: view.y,
-  }) as MediaBrowserScope;
+  });
 
-  const handle = openPopoverSurface({
+  const options: OpenPopoverSurfaceOptions<MediaBrowserScope> = {
     anchor,
     name: "media-browser",
     scope,
     slot: SLOT,
-    ...(actions.dismissed ? { onDismissed: actions.dismissed } : {}),
-  });
+  };
+  if (actions.dismissed) {
+    options.onDismissed = actions.dismissed;
+  }
+  const handle = openPopoverSurface(options);
 
   void handle.ready.then(() => {
     if (handle.isOpen()) {

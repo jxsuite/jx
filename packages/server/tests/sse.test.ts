@@ -18,7 +18,10 @@ async function readFrame(reader: ReadableStreamDefaultReader<Uint8Array>): Promi
 function open(hub: ReturnType<typeof createSseHub>, headers?: Record<string, string>) {
   const request = headers ? new Request("http://127.0.0.1/__reload", { headers }) : undefined;
   const response = hub.handleSSE(request);
-  return { reader: (response.body as ReadableStream<Uint8Array>).getReader(), response };
+  if (response.body === null) {
+    throw new Error("handleSSE answered without a stream body");
+  }
+  return { reader: response.body.getReader(), response };
 }
 
 describe("the stream itself", () => {
@@ -57,7 +60,8 @@ describe("a first connection versus a reconnection", () => {
     const { reader } = open(hub, { "Last-Event-ID": "1" });
     expect(await readFrame(reader)).toBe(`retry: ${RECONNECT_MS}\n\n`);
     // One frame, not the two it "missed": a reload is idempotent and total, so one subsumes them.
-    expect(await readFrame(reader)).toBe("id: 4\ndata: reload\n\n");
+    const resumed = await readFrame(reader);
+    expect(resumed).toBe("id: 4\ndata: reload\n\n");
     hub.broadcast();
     expect(await readFrame(reader)).toBe("id: 5\ndata: reload\n\n");
   });
@@ -78,8 +82,9 @@ describe("broadcasting", () => {
     await readFrame(reader);
     hub.broadcast();
     hub.broadcast();
-    expect(await readFrame(reader)).toBe("id: 1\ndata: reload\n\n");
-    expect(await readFrame(reader)).toBe("id: 2\ndata: reload\n\n");
+    const first = await readFrame(reader);
+    const second = await readFrame(reader);
+    expect([first, second]).toEqual(["id: 1\ndata: reload\n\n", "id: 2\ndata: reload\n\n"]);
   });
 
   test("a named event does not reach an onmessage consumer's reload", async () => {

@@ -33,11 +33,27 @@ import type { StudioPlatform } from "@jxsuite/studio/types";
 type ErrorEventSource = Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
 /** An `Error`'s message and stack; anything else thrown, stringified. */
-function toBootError(value: unknown): LauncherBootError {
-  if (value instanceof Error) {
-    return { message: value.message, stack: value.stack };
+function toBootError(cause: unknown): LauncherBootError {
+  if (cause instanceof Error) {
+    return { message: cause.message, stack: cause.stack };
   }
-  return { message: String(value) };
+  return { message: String(cause) };
+}
+
+/**
+ * Whether an error event's `.message` is worth reporting. Local rather than a shared guard, because
+ * a runtime import here would break the first-import rule in the header.
+ */
+function isNonEmptyMessage(message: unknown): message is string {
+  return typeof message === "string" && message !== "";
+}
+
+/**
+ * Whether `target` can be watched. The declared type is what a browser window offers, but the value
+ * is `globalThis`, and a test runner or a worker may hand one over without `addEventListener`.
+ */
+function isErrorEventSource(target: ErrorEventSource | undefined): target is ErrorEventSource {
+  return typeof target?.addEventListener === "function";
 }
 
 /**
@@ -46,11 +62,12 @@ function toBootError(value: unknown): LauncherBootError {
  * other code dispatched, may carry only `.message`, and neither is guaranteed.
  */
 function describeErrorEvent(event: Event): LauncherBootError {
-  const { error, message } = event as { error?: unknown; message?: unknown };
+  const error = "error" in event ? event.error : undefined;
+  const message = "message" in event ? event.message : undefined;
   if (error instanceof Error) {
     return toBootError(error);
   }
-  if (typeof message === "string" && message !== "") {
+  if (isNonEmptyMessage(message)) {
     return { message };
   }
   return toBootError(error);
@@ -68,7 +85,7 @@ export function watchBootErrors(
   target: ErrorEventSource | undefined,
   signal: LauncherSignal,
 ): () => void {
-  if (typeof target?.addEventListener !== "function") {
+  if (!isErrorEventSource(target)) {
     return () => {};
   }
   const stop = () => {

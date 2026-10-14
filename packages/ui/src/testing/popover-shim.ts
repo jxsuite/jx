@@ -13,6 +13,8 @@
  * are the browser's to verify.
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+
 interface PopoverState {
   open: Set<HTMLElement>;
   /** The invoker each showing popover was shown from, when `showPopover({ source })` named one. */
@@ -37,7 +39,10 @@ function toggleEvent(
   source?: Element | null,
 ): Event {
   const event = new Event(type, { bubbles: false, cancelable: type === "beforetoggle" });
-  Object.assign(event, { newState, oldState, ...(source ? { source } : {}) });
+  Object.assign(event, { newState, oldState });
+  if (source) {
+    Object.assign(event, { source });
+  }
   return event;
 }
 
@@ -58,13 +63,19 @@ function modeOf(el: HTMLElement): "auto" | "hint" | "manual" {
   return raw === "auto" || raw === "" ? "auto" : "manual";
 }
 
+/**
+ * `HTMLElement.prototype` as a DOM without the popover API presents it: the methods this shim
+ * installs may be absent, which the DOM lib's own `HTMLElement` type cannot say.
+ */
+interface PopoverPrototype {
+  showPopover?: (options?: ShowPopoverOptions) => void;
+  hidePopover?: () => void;
+  togglePopover?: (force?: boolean) => boolean;
+}
+
 export function installPopoverShim(): void {
-  const proto = HTMLElement.prototype as HTMLElement & {
-    showPopover?: (options?: { source?: Element }) => void;
-    hidePopover?: () => void;
-    togglePopover?: (force?: boolean) => boolean;
-  };
-  if (typeof proto.showPopover === "function") {
+  const proto: PopoverPrototype = HTMLElement.prototype;
+  if (isFunction(proto.showPopover)) {
     return;
   }
   const state: PopoverState = { invokers: new WeakMap(), open: new Set() };

@@ -310,6 +310,8 @@ export function tokensCSS(style: JxStyle): string {
 
 /** Read one authored block. Exported so a test can read it the way the generator does. */
 export async function readSource(root = ROOT, source = "styles/tokens.json"): Promise<JxStyle> {
+  /* SAFETY: `source` names one of the package's authored style blocks (styles/*.json), each a
+     document whose only member is a `style` object; nothing else is ever passed here. */
   const doc = (await Bun.file(join(root, source)).json()) as { style?: JxStyle };
   return doc.style ?? {};
 }

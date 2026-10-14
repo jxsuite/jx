@@ -47,7 +47,21 @@ import { registerFileFormatCommands } from "../src/format/convert-file";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import { loadUsages, peekUsages } from "../src/services/references";
 import { MARKDOWN_FORMAT, mockFormatAction, seedMarkdownFormat } from "./format-fixture";
-import type { DirEntry, ReferencesResult, RenameResult, StudioPlatform } from "../src/types";
+import type {
+  DirEntry,
+  ProjectState,
+  ReferencesResult,
+  RenameResult,
+  StudioPlatform,
+} from "../src/types";
+import type { CommandContext } from "../src/commands/context";
+import type { ProjectConfig } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type {
+  draggable,
+  dropTargetForElements,
+  monitorForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 
 // ─── Mock the DnD adapter (registrations recorded, callbacks driveable) ───────
 
@@ -60,15 +74,15 @@ interface DndRegistry {
 const dnd: DndRegistry = { cleanups: [], draggables: [], dropTargets: [], monitors: [] };
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: (opts: unknown) => {
+  draggable: (opts: Parameters<typeof draggable>[0]) => {
     dnd.draggables.push(opts);
     return () => dnd.cleanups.push("draggable");
   },
-  dropTargetForElements: (opts: unknown) => {
+  dropTargetForElements: (opts: Parameters<typeof dropTargetForElements>[0]) => {
     dnd.dropTargets.push(opts);
     return () => dnd.cleanups.push("dropTarget");
   },
-  monitorForElements: (opts: unknown) => {
+  monitorForElements: (opts: Parameters<typeof monitorForElements>[0]) => {
     dnd.monitors.push(opts);
     return () => dnd.cleanups.push("monitor");
   },
@@ -84,6 +98,12 @@ const { gridCommands } = await import("../src/grid/grid-open");
 const { registerContentCommands } = await import("../src/content/entry-commands");
 
 // ─── Local helpers ────────────────────────────────────────────────────────────
+
+/** The empty command context with a project open: what a tree inside a project offers against. */
+function openProjectContext(): CommandContext {
+  const ctx = emptyContext();
+  return { ...ctx, project: { ...ctx.project, open: true } };
+}
 
 function dirEntriesOf(files: Map<string, string>, dir: string): DirEntry[] {
   const prefix = dir === "." || dir === "" ? "" : dir.endsWith("/") ? dir : `${dir}/`;
@@ -115,7 +135,7 @@ function installFsPlatform(
       formatAction: mockFormatAction,
       listFormats: async () => [MARKDOWN_FORMAT],
       ...overrides,
-    } as Partial<StudioPlatform>,
+    },
     seed,
   );
   if (!overrides.listDirectory) {
@@ -127,7 +147,7 @@ function installFsPlatform(
   return handle;
 }
 
-function siteState(overrides: Record<string, unknown> = {}) {
+function siteState(overrides: Partial<ProjectState> = {}) {
   setProjectState({
     dirs: new Map<string, DirEntry[]>(),
     expanded: new Set<string>(),
@@ -139,7 +159,7 @@ function siteState(overrides: Record<string, unknown> = {}) {
     searchQuery: "",
     selectedPath: null,
     ...overrides,
-  } as never);
+  });
 }
 
 /** Standard fixture: root with two dirs + assorted files, "pages" pre-expanded. */
@@ -205,33 +225,37 @@ function names(): (string | null)[] {
 /* `data-value` rather than `data-path`: `jx-tree-item` mirrors its own `value` there, and it is
    what the drag island addresses a row by, so a second `data-path` saying the same thing would be
    two answers to "which row is this". */
-function rowFor(path: string, expected = true): HTMLElement {
-  const row = host.querySelector<HTMLElement>(`[part="row"][data-value="${path}"]`);
-  if (expected) {
-    expect(row).not.toBeNull();
+function findRow(path: string): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="row"][data-value="${path}"]`);
+}
+
+/** The row for `path`, which the test expects the tree to be drawing. */
+function rowFor(path: string): HTMLElement {
+  const row = findRow(path);
+  expect(row).not.toBeNull();
+  if (!row) {
+    throw new Error(`the tree draws no row for ${path}`);
   }
-  return row as HTMLElement;
+  return row;
 }
 
 function glyph(row: HTMLElement): string {
-  const icon = row.querySelector('[part="row-icon"]') as (HTMLElement & { name: string }) | null;
-  return icon?.name ?? "none";
+  // `name` is the kit icon's own property; the document never writes it as an attribute.
+  const icon = row.querySelector('[part="row-icon"]');
+  return icon && "name" in icon && isString(icon.name) ? icon.name : "none";
 }
 
 function part(name: string): HTMLElement {
   return host.querySelector<HTMLElement>(`[part="${name}"]`)!;
 }
 
-/**
- * A kit element's own state, which the document sets as a PROPERTY rather than an attribute.
- *
- * `$props` writes the element's state directly — that is what makes a binding that resolves to the
- * value the control already holds a no-op — so a test that asked for the attribute would be asking
- * the wrong object, and would pass on a control the document never wrote to.
+/*
+ * A kit element's own state is set by the document as a PROPERTY rather than an attribute, so it
+ * is asserted with `toHaveProperty`. `$props` writes the element's state directly — that is what
+ * makes a binding that resolves to the value the control already holds a no-op — so a test that
+ * asked for the attribute would be asking the wrong object, and would pass on a control the
+ * document never wrote to.
  */
-function propOf<T>(name: string, field: string): T {
-  return (part(name) as unknown as Record<string, T>)[field]!;
-}
 
 // ─── The kit menu ────────────────────────────────────────────────────────────
 
@@ -272,7 +296,11 @@ function dialogWrapper(): HTMLElement | null {
 }
 
 function dialogField(): HTMLInputElement {
-  return dialogWrapper()!.querySelector('jx-textfield [part="input"]') as HTMLInputElement;
+  const field = dialogWrapper()!.querySelector('jx-textfield [part="input"]');
+  if (!(field instanceof HTMLInputElement)) {
+    throw new Error("the open dialog has no text field");
+  }
+  return field;
 }
 
 beforeEach(() => {
@@ -339,7 +367,7 @@ describe("the panel's three states", () => {
     siteState({ isSiteProject: false, projectConfig: null });
     const ran: string[] = [];
     const registry = createCommandRegistry({
-      getContext: () => ({ ...emptyContext(), project: { open: true } }) as never,
+      getContext: openProjectContext,
     });
     registry.register({
       category: "Project",
@@ -506,10 +534,11 @@ describe("file tree listing", () => {
     seedTreeState();
     await mountTree();
 
-    expect(names()).toContain("beta.md");
-    expect(names()).toContain("assets");
-    expect(names()).toContain("pages");
-    expect(names()).not.toContain("zeta.json");
+    const shown = names();
+    expect(shown).toContain("beta.md");
+    expect(shown).toContain("assets");
+    expect(shown).toContain("pages");
+    expect(shown).not.toContain("zeta.json");
   });
 
   test("a language is a CHIP on the row, never a term the search matches", async () => {
@@ -539,7 +568,7 @@ describe("file tree listing", () => {
     requireProjectState().searchQuery = "français";
     repaint();
     await flush();
-    expect(rowFor("pages/fr/about.json", false)).toBeNull();
+    expect(findRow("pages/fr/about.json")).toBeNull();
   });
 
   test("typing in the filter updates the query and repaints — with nothing to submit", async () => {
@@ -772,7 +801,10 @@ describe("createNewFile (toolbar + context menu)", () => {
  */
 describe("New File asks the destination what it is", () => {
   /** Mount a tree over a project whose `content` section is `content`. */
-  async function treeFor(content: Record<string, unknown>, seed: Record<string, string> = {}) {
+  async function treeFor(
+    content: NonNullable<ProjectConfig["content"]>,
+    seed: Record<string, string> = {},
+  ) {
     const handle = installFsPlatform(seed);
     siteState({ projectConfig: { content, name: "Demo" } });
     seedTreeState();
@@ -804,7 +836,7 @@ describe("New File asks the destination what it is", () => {
     return {
       headline: dialog?.getAttribute("headline") ?? null,
       ids,
-      message: dialog?.querySelector("p")?.textContent?.trim() ?? "",
+      message: dialog?.querySelector("p")?.textContent.trim() ?? "",
       rows: promptFormatOptions(),
     };
   }
@@ -965,7 +997,7 @@ describe("file context menu", () => {
     requireProjectState().expanded.add("styles");
 
     const registry = createCommandRegistry({
-      getContext: () => ({ ...emptyContext(), project: { open: true } }) as never,
+      getContext: openProjectContext,
     });
     registry.registerAll(gridCommands());
     registry.registerAll(tabCommands({ openFile: openFileInTab, openFileInPane: () => {} }));
@@ -999,14 +1031,16 @@ describe("file context menu", () => {
     await treeWithRegistry();
 
     await openMenuOn("pages/home.json");
-    expect(menuIds()).toContain("file.convertFormat");
-    expect(menuIds()).not.toContain("content.openEntry");
+    const pageIds = menuIds();
+    expect(pageIds).toContain("file.convertFormat");
+    expect(pageIds).not.toContain("content.openEntry");
 
     // An entry is its collection's, in either direction: converting it would drop it out of the
     // Collection's discovery glob.
     await openMenuOn("posts/first.md");
-    expect(menuIds()).toContain("content.openEntry");
-    expect(menuIds()).not.toContain("file.convertFormat");
+    const entryIds = menuIds();
+    expect(entryIds).toContain("content.openEntry");
+    expect(entryIds).not.toContain("file.convertFormat");
 
     await openMenuOn("styles/site.css");
     expect(menuIds()).not.toContain("file.convertFormat");
@@ -1075,9 +1109,10 @@ describe("file context menu", () => {
     setActiveRegistry(null);
 
     await openMenuOn("posts");
-    expect(menuIds()).not.toContain("collection.editInGrid");
+    const ids = menuIds();
+    expect(ids).not.toContain("collection.editInGrid");
     // The tree's own verbs are unaffected: they are what the TREE does, not what a command does.
-    expect(menuIds()).toEqual(["files.newFile", "files.upload", "files.rename", "files.delete"]);
+    expect(ids).toEqual(["files.newFile", "files.upload", "files.rename", "files.delete"]);
   });
 
   test("the pages directory keeps its hand-built grid row — no command declares one", async () => {
@@ -1093,7 +1128,7 @@ describe("file context menu", () => {
   test("a declared row whose command is disabled is shown, greyed, with its reason", async () => {
     await treeWithRegistry();
     const registry = createCommandRegistry({
-      getContext: () => ({ ...emptyContext(), project: { open: true } }) as never,
+      getContext: openProjectContext,
     });
     registry.register({
       args: {
@@ -1117,7 +1152,7 @@ describe("file context menu", () => {
     await openMenuOn("posts/first.md");
     const item = menuRow("content.demoDisabled");
     expect(item.textContent).toContain("Demo Disabled");
-    expect((item as HTMLElement & { disabled: boolean }).disabled).toBe(true);
+    expect(item).toHaveProperty("disabled", true);
     expect(item.textContent).toContain("a reason the author can act on");
 
     // Clicking it does nothing AND does not close the menu — a row that explains itself has to
@@ -1486,7 +1521,7 @@ describe("the tree's keyboard", () => {
 
   test("a click on a file's empty twisty expands nothing", async () => {
     const { items } = await keyboardTree();
-    const twisty = rowFor("a.json").querySelector('[part="twisty"]') as HTMLElement;
+    const twisty = rowFor("a.json").querySelector('[part="twisty"]')!;
     expect(twisty.children).toHaveLength(0);
 
     twisty.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -2302,8 +2337,8 @@ describe("the file tree and .gitignore", () => {
   test("an ignored directory and an ignored file draw no row; the rest still do", async () => {
     await ignoreTree(NOISY_ROOT);
 
-    expect(rowFor("node_modules", false)).toBeNull();
-    expect(rowFor("build.log", false)).toBeNull();
+    expect(findRow("node_modules")).toBeNull();
+    expect(findRow("build.log")).toBeNull();
     expect(rowFor("beta.md")).not.toBeNull();
     expect(rowFor("pages")).not.toBeNull();
   });
@@ -2323,8 +2358,8 @@ describe("the file tree and .gitignore", () => {
 
   test("the toolbar toggle draws the ignored rows, and takes them away again", async () => {
     const { handle } = await ignoreTree(NOISY_ROOT);
-    expect(rowFor("node_modules", false)).toBeNull();
-    expect(propOf<string>("show-ignored", "label")).toBe("Show ignored files");
+    expect(findRow("node_modules")).toBeNull();
+    expect(part("show-ignored")).toHaveProperty("label", "Show ignored files");
     handle.state.calls.length = 0;
 
     part("show-ignored").click();
@@ -2336,13 +2371,14 @@ describe("the file tree and .gitignore", () => {
 
     expect(rowFor("node_modules")).not.toBeNull();
     expect(rowFor("build.log")).not.toBeNull();
-    expect(propOf<string>("show-ignored", "label")).toBe("Hide ignored files");
-    expect(propOf<string>("show-ignored", "icon")).toBe("eye");
-    expect(propOf<boolean>("show-ignored", "selected")).toBe(true);
+    const toggle = part("show-ignored");
+    expect(toggle).toHaveProperty("label", "Hide ignored files");
+    expect(toggle).toHaveProperty("icon", "eye");
+    expect(toggle).toHaveProperty("selected", true);
 
     part("show-ignored").click();
     await flush(3);
-    expect(rowFor("node_modules", false)).toBeNull();
+    expect(findRow("node_modules")).toBeNull();
     expect(rowFor("beta.md")).not.toBeNull();
   });
 
@@ -2357,8 +2393,8 @@ describe("the file tree and .gitignore", () => {
     await ignoreTree(seed, { searchQuery: "log" });
 
     expect(rowFor("catalog.md")).not.toBeNull();
-    expect(rowFor("build.log", false)).toBeNull();
-    expect(rowFor("other.md", false)).toBeNull();
+    expect(findRow("build.log")).toBeNull();
+    expect(findRow("other.md")).toBeNull();
 
     /* The ignore filter runs BEFORE the query, so the toggle is the only thing that brings the
        masked match back — a search that reached past `.gitignore` would make the toggle a lie. */
@@ -2379,7 +2415,7 @@ describe("the file tree and .gitignore", () => {
       { expand: ["src"] },
     );
 
-    expect(rowFor("src/scratch.tmp", false)).toBeNull();
+    expect(findRow("src/scratch.tmp")).toBeNull();
     expect(rowFor("src/main.ts")).not.toBeNull();
     /* The same name at the root is untouched: `src/.gitignore` is relative to `src/`, and a rule
        the author wrote one level down must not reach back up. */

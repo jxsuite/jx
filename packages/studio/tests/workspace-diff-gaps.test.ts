@@ -39,7 +39,10 @@ import type { PaneDerivation } from "../src/workspace/workspace";
 
 const deps = { openFile: () => {}, openFileInPane: () => {} };
 
-function open(id: string, opts: Record<string, unknown> = {}) {
+/** The options these tests vary; every other `openTab` field is fixed by {@link open}. */
+type OpenOptions = Pick<Parameters<typeof openTab>[0], "preview">;
+
+function open(id: string, opts: OpenOptions = {}) {
   return openTab({ document: { tagName: "div" }, documentPath: `${id}.json`, id, ...opts });
 }
 
@@ -209,6 +212,9 @@ describe("document.setPinned states the pinned state rather than flipping it", (
     // And the BODY, reached with no `pinned` at all, is still just a no-op: it never reads the
     // Arguments when there is nothing under the id.
     const record = registry.get("document.setPinned")!;
+    /* SAFETY: `registry.get` hands back an `AnyCommand`, whose `run` argument is erased to `never`
+       (registry.ts); the empty record is the malformed call this test exists to make, and the
+       body below must return before `booleanArg` ever reads it. */
     expect(() => record.run(registry.context(), {} as never)).not.toThrow();
     expect(workspace.tabs.get("a")!.pinned).toBe(false);
 
@@ -259,6 +265,8 @@ describe("pane.pin run past its own gate", () => {
   test("with no pinnable pane it promotes nothing and clears nothing", () => {
     const tab = open("p", { preview: true });
 
+    /* SAFETY: `derivationCommands` returns `AnyCommand`s, whose `run` argument is erased to
+       `never` (registry.ts); `pane.pin`'s body takes no argument at all, so nothing reads it. */
     expect(() => pinCommand().run(emptyContext(), undefined as never)).not.toThrow();
 
     // Nothing was kept: the preview tab is still replaceable and the grid still has one pane.
@@ -269,6 +277,7 @@ describe("pane.pin run past its own gate", () => {
   test("with a companion holding a tab it promotes that tab and drops the derivation", () => {
     const tab = companionHolding("layouts/base.json");
 
+    // SAFETY: `pane.pin` takes no argument; `never` is only `AnyCommand`'s erased argument type.
     void pinCommand().run(emptyContext(), undefined as never);
 
     expect(workspace.tabs.get(tab.id)!.preview).toBe(false);

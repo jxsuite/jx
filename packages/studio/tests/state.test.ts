@@ -1,6 +1,7 @@
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNodeObject } from "@jxsuite/schema/guards";
 import {
   childIndex,
   flattenTree,
@@ -14,6 +15,15 @@ import {
 } from "../src/state";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** The children of a node normalizeArrayChildren has visited, which it always leaves a member array. */
+function memberArray(node: JxMutableNode): (JxMutableNode | string)[] {
+  const kids = node.children;
+  if (!Array.isArray(kids)) {
+    throw new TypeError("normalizeArrayChildren left children that are not a member array");
+  }
+  return kids;
+}
 
 function makeDoc() {
   return {
@@ -30,6 +40,12 @@ function makeDoc() {
 
 // ─── Path utilities ──────────────────────────────────────────────────────────
 
+/*
+ * GetNodeAtPath declares a node or undefined, but the walk follows any key and stops at a missing
+ * one, so what it can hand back also includes a raw value. The assertions below read it as that.
+ */
+type WalkResult = JxMutableNode | string | undefined;
+
 describe("getNodeAtPath", () => {
   const doc = makeDoc();
 
@@ -42,8 +58,8 @@ describe("getNodeAtPath", () => {
   });
 
   test("resolves deeply nested child", () => {
-    expect(getNodeAtPath(doc, ["children", 1, "children", 0])).toBe(
-      (doc.children[1] as any).children[0],
+    expect<WalkResult>(getNodeAtPath(doc, ["children", 1, "children", 0])).toBe(
+      doc.children[1]?.children?.[0],
     );
   });
 
@@ -56,7 +72,7 @@ describe("getNodeAtPath", () => {
   });
 
   test("resolves a non-children key", () => {
-    expect(getNodeAtPath(doc, ["tagName"]) as any).toBe("div");
+    expect<WalkResult>(getNodeAtPath(doc, ["tagName"])).toBe("div");
   });
 });
 
@@ -161,12 +177,12 @@ describe("flattenTree", () => {
     expect(rows.length).toBe(5); // Root + h1 + section + p + span
     expect(rows[0]!.nodeType).toBe("element");
     expect(rows[0]!.depth).toBe(0);
-    expect((rows[1]!.node as JxMutableNode).tagName).toBe("h1");
+    expect(rows[1]!.node).toMatchObject({ tagName: "h1" });
     expect(rows[1]!.depth).toBe(1);
   });
 
   test("flattens $map children", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       children: {
         $prototype: "Array",
         items: { $ref: "#/$defs/list" },
@@ -174,19 +190,19 @@ describe("flattenTree", () => {
       },
       tagName: "ul",
     };
-    const rows = flattenTree(doc as unknown as JxMutableNode);
+    const rows = flattenTree(doc);
     expect(rows.some((r) => r.nodeType === "map")).toBe(true);
     const mapRow = rows.find((r) => r.nodeType === "map");
-    expect((mapRow as any).depth).toBe(1);
+    expect(mapRow?.depth).toBe(1);
     // Template element should be at depth 2
     const templateRow = rows.find(
-      (r) => (r.node as JxMutableNode).tagName === "li" && r.depth === 2,
+      (r) => isNodeObject(r.node) && r.node.tagName === "li" && r.depth === 2,
     );
     expect(templateRow).toBeDefined();
   });
 
   test("flattens an array pseudo-element among sibling children", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       children: [
         { tagName: "li", textContent: "header" },
         {
@@ -197,7 +213,7 @@ describe("flattenTree", () => {
       ],
       tagName: "ul",
     };
-    const rows = flattenTree(doc as unknown as JxMutableNode);
+    const rows = flattenTree(doc);
     const mapRow = rows.find((r) => r.nodeType === "map");
     expect(mapRow).toBeDefined();
     // The array node sits at its own child index, with the template one level under it.
@@ -205,7 +221,7 @@ describe("flattenTree", () => {
     expect(mapRow!.depth).toBe(1);
     const templateRow = rows.find((r) => pathsEqual(r.path, ["children", 1, "map"]));
     expect(templateRow).toBeDefined();
-    expect((templateRow!.node as JxMutableNode).tagName).toBe("li");
+    expect(templateRow!.node).toMatchObject({ tagName: "li" });
     expect(templateRow!.depth).toBe(2);
   });
 
@@ -256,7 +272,7 @@ describe("flattenTree", () => {
     const rows = flattenTree(doc);
     // Should have the root + the slotted p child
     expect(rows.length).toBe(2);
-    expect((rows[1]!.node as JxMutableNode).tagName).toBe("p");
+    expect(rows[1]!.node).toMatchObject({ tagName: "p" });
     expect(rows[1]!.path).toEqual(["children", 0]);
   });
 
@@ -277,17 +293,16 @@ describe("normalizeArrayChildren", () => {
       tagName: "ul",
     };
     normalizeArrayChildren(doc);
-    const kids = doc.children as JxMutableNode[];
-    expect(Array.isArray(kids)).toBe(true);
+    const kids = memberArray(doc);
     expect(kids.length).toBe(1);
-    expect(kids[0]!.$prototype).toBe("Array");
+    expect(kids[0]).toMatchObject({ $prototype: "Array" });
   });
 
   test("leaves an already-normalized member array untouched", () => {
     const arr: JxMutableNode = { $prototype: "Array", items: [], map: { tagName: "li" } };
     const doc: JxMutableNode = { children: [{ tagName: "li" }, arr], tagName: "ul" };
     normalizeArrayChildren(doc);
-    const kids = doc.children as JxMutableNode[];
+    const kids = memberArray(doc);
     expect(kids).toHaveLength(2);
     expect(kids[1]).toBe(arr);
   });
@@ -306,10 +321,9 @@ describe("normalizeArrayChildren", () => {
       tagName: "div",
     };
     normalizeArrayChildren(doc);
-    const kids = doc.children as JxMutableNode[];
-    const [outer] = kids;
-    expect(Array.isArray(kids)).toBe(true);
-    expect(Array.isArray((outer!.map as JxMutableNode).children)).toBe(true);
+    const [outer] = memberArray(doc);
+    // The nested template's whole-children repeater became a member array too.
+    expect(outer).toMatchObject({ map: { children: expect.any(Array) } });
   });
 });
 

@@ -1,16 +1,17 @@
 /**
  * Jx-compiler.js — Compiler orchestrator
- * @version 3.0.0
- * @license MIT
  *
  * Routes Jx documents to the appropriate compilation target:
- *   - Fully static         → compile-static.js  (plain HTML/CSS, zero JS)
- *   - Custom element (-)   → compile-element.js  (lit-html web component)
- *   - Dynamic (standard)   → compile-client.js   (pre-rendered HTML + reactive bindings)
- *   - Server               → compile-server.js   (Hono server handler)
  *
- * Usage (CLI):
- *   bun packages/compiler/src/compile-cli.js <source.json> [output.html]
+ * - Fully static → compile-static.js (plain HTML/CSS, zero JS)
+ * - Custom element (-) → compile-element.js (lit-html web component)
+ * - Dynamic (standard) → compile-client.js (pre-rendered HTML + reactive bindings)
+ * - Server → compile-server.js (Hono server handler)
+ *
+ * Usage (CLI): `bun packages/compiler/src/compile-cli.js <source.json> [output.html]`
+ *
+ * @license MIT
+ * @version 3.0.0
  */
 
 import { readFileSync } from "node:fs";
@@ -27,7 +28,7 @@ import { compileServer } from "./targets/compile-server.ts";
 import { emitElementModule } from "./targets/compile-element.ts";
 import { compileStaticPage } from "./targets/compile-static.ts";
 import { compileClient } from "./targets/compile-client.ts";
-import { isClassDef } from "@jxsuite/schema/guards";
+import { isClassDef, isString } from "@jxsuite/schema/guards";
 import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxDocument, JxStyle } from "@jxsuite/schema/types";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
@@ -53,7 +54,17 @@ export interface CompileOptions {
    * true). The site pipeline disables this and injects via the merged <head> instead.
    */
   prePaintScheme?: boolean;
-  [key: string]: unknown;
+  /**
+   * The page language the site pipeline passes alongside the other options. No compile target reads
+   * it today: the document's own `lang` is what reaches the emitted markup.
+   */
+  lang?: string;
+}
+
+/** The page-target options {@link compile} forwards only when its caller set them. */
+interface PageTargetOverrides {
+  prePaintScheme?: false;
+  rewriteSrc?: (specifier: string) => string;
 }
 
 /**
@@ -78,20 +89,19 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   } = opts;
 
   let raw: JxDocument;
-  if (typeof sourcePath === "string") {
+  if (isString(sourcePath)) {
     const source = readFileSync(sourcePath, "utf8");
     if (sourcePath.endsWith(".json")) {
       raw = parseJxDocument(source, sourcePath);
     } else {
       const { extname } = await import("node:path");
       const ext = extname(sourcePath).toLowerCase();
-      const entry = opts.formats?.byExtension?.(ext, "parse");
+      const entry = opts.formats?.byExtension(ext, "parse");
       if (!entry) {
         const { unknownFormatError } = await import("./site/format-host.ts");
         throw unknownFormatError(sourcePath, ext);
       }
-      // Format plugins contractually parse source text into a Jx document.
-      raw = (await entry.call("parse", source)) as JxDocument;
+      raw = await entry.parseDocument(source);
     }
   } else {
     raw = sourcePath;
@@ -100,11 +110,10 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   // Route 0: .class.json schema-defined class → JS class module
   if (isClassDef(raw)) {
     const { compileClassJson } = await import("./targets/compile-class.js");
-    const jsContent = compileClassJson(raw, opts);
-    const outputPath =
-      typeof sourcePath === "string"
-        ? sourcePath.replace(/\.class\.json$/, ".js")
-        : `${raw.title}.js`;
+    const jsContent = compileClassJson(raw);
+    const outputPath = isString(sourcePath)
+      ? sourcePath.replace(/\.class\.json$/, ".js")
+      : `${raw.title}.js`;
     return { files: [{ content: jsContent, path: outputPath }], html: "" };
   }
 
@@ -114,8 +123,7 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
       litHtmlSrc,
       projectStyle,
       reactivitySrc,
-      ...(opts.prePaintScheme === false ? { prePaintScheme: false } : {}),
-      ...(opts.rewriteSrc ? { rewriteSrc: opts.rewriteSrc } : {}),
+      ...pageTargetOverrides(opts),
       title,
     });
   }
@@ -162,10 +170,24 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
     litHtmlSrc,
     projectStyle,
     reactivitySrc,
-    ...(opts.prePaintScheme === false ? { prePaintScheme: false } : {}),
-    ...(opts.rewriteSrc ? { rewriteSrc: opts.rewriteSrc } : {}),
+    ...pageTargetOverrides(opts),
     title,
   });
+}
+
+/**
+ * The `prePaintScheme` and `rewriteSrc` options a page target receives, each present only when the
+ * caller set it, so the target's own default applies otherwise.
+ */
+function pageTargetOverrides(opts: CompileOptions): PageTargetOverrides {
+  const overrides: PageTargetOverrides = {};
+  if (opts.prePaintScheme === false) {
+    overrides.prePaintScheme = false;
+  }
+  if (opts.rewriteSrc) {
+    overrides.rewriteSrc = opts.rewriteSrc;
+  }
+  return overrides;
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────

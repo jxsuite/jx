@@ -124,6 +124,9 @@ export async function startDev({ port, root }: DevArgs): Promise<DevServerHandle
     await rebuild();
   }
 
+  /* SAFETY: createDevServer always calls Bun.serve with a hostname and TCP port, never a unix
+     socket, so the returned Server's `port` (typed `number | undefined` for the socket case) is a
+     number; its promise-returning `stop()` satisfies `() => void`. */
   return (await createDevServer({
     port,
     root,

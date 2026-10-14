@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { requireProjectState, setProjectState } from "../src/store";
 import { initLayers } from "../src/ui/layers";
 import type { DirEntry } from "../src/types";
+import { COMFORTABLE, VIEWPORT } from "./shared-fixtures";
 
 /** The recorded drag sources, so a case can start a real drag instead of forging its evidence. */
 const draggables: { element?: HTMLElement; onDragStart?: () => void; onDrop?: () => void }[] = [];
@@ -29,8 +30,6 @@ const { FILE_ROW_HEIGHT, mountFilesPanel, unmountFilesPanel } = await import("..
 
 /** Files in the project root — enough that a window is a small fraction of the tree. */
 const FILE_COUNT = 300;
-/** A Navigator tall enough for ten rows. */
-const VIEWPORT = 240;
 
 let scroller: HTMLElement;
 let host: HTMLElement;
@@ -69,7 +68,7 @@ function seedProject(): void {
     projectRoot: ".",
     searchQuery: "",
     selectedPath: null,
-  } as never);
+  });
 }
 
 /** Rows in the model: the directory, its two children, and every root file. */
@@ -79,8 +78,9 @@ const ROW_COUNT = 3 + FILE_COUNT;
 function place(): void {
   const tree = host.querySelector<HTMLElement>('[part="tree"]');
   if (tree) {
-    (tree as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
-      ({ height: ROW_COUNT * FILE_ROW_HEIGHT, top: -scroller.scrollTop }) as DOMRect;
+    // Read on every call, so a scroll the tree makes itself moves the top without a re-stub.
+    tree.getBoundingClientRect = () =>
+      new DOMRect(0, -scroller.scrollTop, 0, ROW_COUNT * FILE_ROW_HEIGHT);
   }
 }
 
@@ -139,6 +139,21 @@ function pads(): number[] {
   );
 }
 
+/** An element the fixture markup below writes; the test fails if it is missing. */
+function fixtureElement(selector: string): HTMLElement {
+  const el = document.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`the fixture has no ${selector}`);
+  }
+  return el;
+}
+
+/** The `data-value` of the element holding the keyboard: the row the caret is on. */
+function focusedValue(): string | undefined {
+  const focused = document.activeElement;
+  return focused instanceof HTMLElement ? focused.dataset.value : undefined;
+}
+
 /** Stand the Navigator up around a seeded project and let the tree window it. */
 async function mountWindowed(): Promise<void> {
   document.body.innerHTML = `
@@ -149,7 +164,7 @@ async function mountWindowed(): Promise<void> {
   `;
   initLayers();
   installMockPlatform();
-  scroller = document.querySelector("#scroller") as HTMLElement;
+  scroller = fixtureElement("#scroller");
   scroller.style.overflowY = "auto";
   Object.defineProperty(scroller, "clientHeight", { configurable: true, value: VIEWPORT });
   Object.defineProperty(scroller, "scrollHeight", {
@@ -157,7 +172,7 @@ async function mountWindowed(): Promise<void> {
     value: ROW_COUNT * FILE_ROW_HEIGHT,
   });
   stubRect(scroller, { height: VIEWPORT, top: 0 });
-  host = document.querySelector("#host") as HTMLElement;
+  host = fixtureElement("#host");
   renders = 0;
   draggables.length = 0;
   seedProject();
@@ -269,7 +284,7 @@ describe("the keyboard walks the model", () => {
     // The row below the window: the walk scrolled to it and the repaint handed it the keyboard.
     expect(scroller.scrollTop).toBeGreaterThan(0);
     expect(next).not.toBe(from);
-    expect((document.activeElement as HTMLElement).dataset.value).toBe(next);
+    expect(focusedValue()).toBe(next);
     /* And the selection went with it, exactly as it does for a step the element could perform
        itself: `jx-tree` raises `select` beside `change` on every arrow inside the drawn slice, so a
        step the window could not satisfy must not be the one step that silently does not. It is also
@@ -301,7 +316,7 @@ describe("the keyboard walks the model", () => {
     await flush();
 
     expect(rowFor(fileName(index - 1))).not.toBeNull();
-    expect((document.activeElement as HTMLElement).dataset.value).toBe(fileName(index - 1));
+    expect(focusedValue()).toBe(fileName(index - 1));
   });
 
   test("↓ at the very bottom of the MODEL stays put — a tree does not wrap", async () => {
@@ -321,7 +336,7 @@ describe("the keyboard walks the model", () => {
     await flush();
 
     expect(scroller.scrollTop).toBe(top);
-    expect((document.activeElement as HTMLElement).dataset.value).toBe(lastPath);
+    expect(focusedValue()).toBe(lastPath);
   });
 
   test("a letter reaches a row two hundred above the window, not one of the eleven drawn", async () => {
@@ -348,7 +363,7 @@ describe("the keyboard walks the model", () => {
     await flush();
 
     expect(rowFor("pages/index.json")).not.toBeNull();
-    expect((document.activeElement as HTMLElement).dataset.value).toBe("pages/index.json");
+    expect(focusedValue()).toBe("pages/index.json");
     // Selection follows the caret, exactly as it does for a `move` the window could not satisfy.
     expect(rowFor("pages/index.json")!.getAttribute("aria-selected")).toBe("true");
   });
@@ -367,7 +382,7 @@ describe("the keyboard walks the model", () => {
     await flush();
 
     expect(scroller.scrollTop).toBe(top);
-    expect((document.activeElement as HTMLElement).dataset.value).toBe(at);
+    expect(focusedValue()).toBe(at);
   });
 });
 
@@ -394,7 +409,7 @@ describe("← climbs to a parent the window is not drawing", () => {
       projectRoot: ".",
       searchQuery: "",
       selectedPath: null,
-    } as never);
+    });
   }
 
   beforeEach(async () => {
@@ -465,7 +480,7 @@ describe("a multilingual project", () => {
       projectRoot: ".",
       searchQuery: "",
       selectedPath: null,
-    } as never);
+    });
   }
 
   beforeEach(async () => {
@@ -512,7 +527,6 @@ describe("a density switch", () => {
       await mountWindowed();
       const list = host.querySelector<HTMLElement>('[part="tree"]')!;
       expect(ro.observes(list)).toBe(true);
-      const COMFORTABLE = 28;
       for (const el of rows()) {
         Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMFORTABLE });
       }

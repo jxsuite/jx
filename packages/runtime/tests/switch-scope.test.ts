@@ -158,7 +158,7 @@ describe("$switch — each case owns its effects", () => {
     await mount(
       {
         tagName: "div",
-        children: [{ tagName: "section", $switch: "a" as never, cases: { a: { tagName: "p" } } }],
+        children: [{ tagName: "section", $switch: "a", cases: { a: { tagName: "p" } } }],
       },
       host,
       { onNodeCreated: onNode },
@@ -195,7 +195,7 @@ describe("$switch — an unchanged key keeps its case", () => {
             },
           },
         ],
-      } as unknown as JxDocument,
+      },
       mountHost,
       { scope },
     );

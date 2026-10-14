@@ -16,7 +16,8 @@ import {
 } from "../src/ui/value-source";
 import generatedSchema from "@jxsuite/schema/schema.json";
 
-import type { SlotPosition } from "../src/ui/value-source";
+import type { JsonObject } from "@jxsuite/schema/types";
+import type { SlotMode, SlotPosition } from "../src/ui/value-source";
 
 // ─── The vocabulary ──────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ describe("deriveSlotCaps", () => {
   });
 
   test("a recursive schema terminates", () => {
-    const recursive: Record<string, unknown> = { type: "object" };
+    const recursive: JsonObject = { type: "object" };
     recursive.oneOf = [{ type: "string" }, recursive];
     expect(deriveSlotCaps(recursive)).toEqual(["literal", "template"]);
   });
@@ -132,7 +133,7 @@ describe("deriveSlotCaps", () => {
 // ─── The named positions ─────────────────────────────────────────────────────
 
 describe("capsForPosition", () => {
-  const expected: Record<SlotPosition, string[]> = {
+  const expected: Record<SlotPosition, SlotMode[]> = {
     attribute: ["literal", "ref", "template"],
     componentProp: ["literal", "ref", "template"],
     elementProperty: ["literal", "ref", "template"],
@@ -152,9 +153,11 @@ describe("capsForPosition", () => {
     textProperty: ["literal", "ref", "template"],
   };
 
-  for (const [position, caps] of Object.entries(expected) as [SlotPosition, string[]][]) {
+  /* SAFETY: `expected` is a literal annotated `Record<SlotPosition, …>`, so excess-property checking
+     admits no key outside `SlotPosition` and every entry's key is one. */
+  for (const [position, caps] of Object.entries(expected) as [SlotPosition, SlotMode[]][]) {
     test(`${position} permits ${caps.join(" / ")}`, () => {
-      expect(capsForPosition(position)).toEqual(caps as never);
+      expect(capsForPosition(position)).toEqual(caps);
     });
   }
 
@@ -168,6 +171,8 @@ describe("capsForPosition", () => {
     /* The ladder no longer falls back to fixed-value/from-data when a derivation comes back
        empty, so a position whose schema moved out from under it would draw a chip with nowhere to
        go. This is the check that says so first. */
+    /* SAFETY: `SlotPosition` is defined as `keyof typeof SLOT_POSITION_SCHEMAS`, and that object is a
+       module-level literal nothing adds keys to, so its own keys are exactly the positions. */
     for (const position of Object.keys(SLOT_POSITION_SCHEMAS) as SlotPosition[]) {
       expect(capsForPosition(position).length).toBeGreaterThan(0);
     }
@@ -175,7 +180,7 @@ describe("capsForPosition", () => {
 
   test("a repeater's filter and sort, and a $switch, are bindings and nothing else", () => {
     for (const position of ["repeaterFilter", "repeaterSort", "switchDiscriminant"] as const) {
-      expect(capsForPosition(position)).toEqual(["ref"] as never);
+      expect(capsForPosition(position)).toEqual(["ref"]);
     }
   });
 
@@ -184,16 +189,18 @@ describe("capsForPosition", () => {
        could not be a signal — but a style value may now be a `{ $ref }` (spec.md §9.1), which is
        what a row rendering in the face it names requires. The tag position replaces it: a
        `TagName` is a constrained string, so a `${…}` there is refused by the same derivation. */
-    expect(capsForPosition("eventHandler")).not.toContain("literal" as never);
-    expect(capsForPosition("elementTag")).not.toContain("template" as never);
+    expect(capsForPosition("eventHandler")).not.toContain("literal");
+    expect(capsForPosition("elementTag")).not.toContain("template");
   });
 
   test("the derivation is cached and the cache is droppable", () => {
     const first = capsForPosition("attribute");
-    expect(capsForPosition("attribute")).toBe(first);
+    const cached = capsForPosition("attribute");
+    expect(cached).toBe(first);
     resetCapsCache();
-    expect(capsForPosition("attribute")).not.toBe(first);
-    expect(capsForPosition("attribute")).toEqual(first);
+    const rederived = capsForPosition("attribute");
+    expect(rederived).not.toBe(first);
+    expect(rederived).toEqual(first);
   });
 });
 
@@ -201,17 +208,13 @@ describe("capsForPosition", () => {
 
 describe("EVENT_HANDLER_SCHEMA", () => {
   test("still equals the shape the schema generator synthesises for on* properties", () => {
-    const generated = (
-      generatedSchema as unknown as {
-        $defs: { ElementDef: { properties: Record<string, unknown> } };
-      }
-    ).$defs.ElementDef.properties;
-    const handlers = Object.keys(generated).filter((k) => k.startsWith("on"));
+    const { properties } = generatedSchema.$defs.ElementDef;
+    const handlers = Object.entries(properties).filter(([key]) => key.startsWith("on"));
     expect(handlers.length).toBeGreaterThan(0);
-    for (const name of handlers) {
-      expect((generated[name] as { oneOf: unknown }).oneOf).toEqual(
-        EVENT_HANDLER_SCHEMA.oneOf as never,
-      );
+    for (const [, definition] of handlers) {
+      expect("oneOf" in definition ? definition.oneOf : undefined).toEqual([
+        ...EVENT_HANDLER_SCHEMA.oneOf,
+      ]);
     }
   });
 });

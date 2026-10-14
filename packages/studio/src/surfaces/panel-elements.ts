@@ -32,10 +32,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import elementsDoc from "./panel-elements.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-elements", elementsDoc as unknown as JxDocument);
+registerSurface("panel-elements", elementsDoc);
 
 /** One insertable HTML element: the tag is its identity, its caption and what a click inserts. */
 export interface ElementCardView {
@@ -103,7 +102,7 @@ export interface ElementsSurfaceHandle {
 }
 
 /** The scope the document reads: {@link ElementsValues} plus the actions its controls call. */
-interface ElementsScope extends Record<string, unknown>, ElementsValues, ElementsActions {}
+interface ElementsScope extends ElementsValues, ElementsActions {}
 
 /** Write a projection into the scope. */
 function project(scope: ElementsScope, values: ElementsValues): void {
@@ -128,7 +127,7 @@ export function mountElementsSurface(
   values: ElementsValues,
   actions: ElementsActions,
 ): ElementsSurfaceHandle {
-  const scope = reactive<ElementsScope>({
+  const scope: ElementsScope = reactive<ElementsScope>({
     categories: [],
     clearFilter: actions.clearFilter,
     components: [],
@@ -141,7 +140,7 @@ export function mountElementsSurface(
     setComponentsOpen: actions.setComponentsOpen,
     setFilter: actions.setFilter,
     setSectionOpen: actions.setSectionOpen,
-  }) as ElementsScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -163,8 +162,7 @@ export function mountElementsSurface(
        taken away, and answering no would start a second mount racing the first. Once mounted the
        question is whether the root is still in the container — a panel that was switched away from
        had its document cleared out from under it by lit. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

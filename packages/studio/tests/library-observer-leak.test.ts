@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { resetNotifications } from "../src/services/notify";
 import type { DirEntry } from "../src/types";
+import { LIBRARY_VIEWPORT, PAGE_COUNT } from "./shared-fixtures";
 
 void mock.module("../src/files/files.js", () => ({
   createFileIn: () => Promise.resolve(null),
@@ -34,20 +35,43 @@ void mock.module("../src/files/files.js", () => ({
 
 // ─── A recording IntersectionObserver ────────────────────────────────────────
 
-type Records = { isIntersecting: boolean; target: Element }[];
-
 /** Every observation any instance is currently holding — what the browser would walk per frame. */
 const live = new Set<Element>();
 const stats = { observes: 0, unobserves: 0 };
 const instances = new Set<Recording>();
 
-class Recording {
-  private readonly targets = new Set<Element>();
-  private readonly callback: (records: Records) => void;
+/** What the browser would report for a target fully inside the viewport. */
+function intersectingEntry(target: Element): IntersectionObserverEntry {
+  const rect = target.getBoundingClientRect();
+  return {
+    boundingClientRect: rect,
+    intersectionRatio: 1,
+    intersectionRect: rect,
+    isIntersecting: true,
+    rootBounds: null,
+    target,
+    time: performance.now(),
+  };
+}
 
-  constructor(callback: (records: Records) => void) {
+class Recording implements IntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = "0px";
+  readonly scrollMargin = "0px";
+  readonly thresholds: readonly number[] = [0];
+  private readonly targets = new Set<Element>();
+  private readonly callback: IntersectionObserverCallback;
+
+  constructor(callback: IntersectionObserverCallback) {
     this.callback = callback;
     instances.add(this);
+  }
+
+  /** Entries awaiting delivery. `report()` hands its entries straight to the callback, so none wait. */
+  private readonly queued: IntersectionObserverEntry[] = [];
+
+  takeRecords(): IntersectionObserverEntry[] {
+    return this.queued.splice(0);
   }
 
   observe(target: Element) {
@@ -74,12 +98,15 @@ class Recording {
   report() {
     const snapshot = [...this.targets].filter((target) => target.isConnected);
     if (snapshot.length > 0) {
-      this.callback(snapshot.map((target) => ({ isIntersecting: true, target })));
+      this.callback(
+        snapshot.map((target) => intersectingEntry(target)),
+        this,
+      );
     }
   }
 }
 
-globalThis.IntersectionObserver = Recording as unknown as typeof IntersectionObserver;
+globalThis.IntersectionObserver = Recording;
 
 function fireObservers() {
   for (const instance of instances) {
@@ -113,15 +140,11 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
-/** The plan's acceptance case. */
-const PAGE_COUNT = 300;
-/** A 1200×800 pane, less the toolbar — the same box the perf measurement uses. */
-const VIEWPORT = { height: 700, width: 1180 };
 /** 1180 / 200 = 5 columns; 700 / 194 = 4 rows, +1 partial, +3 overscan either side. */
 const WINDOW_CARDS = 55;
 /**
@@ -133,7 +156,7 @@ const WINDOW_CARDS = 55;
  */
 const SWEEP_BUDGET_MS = 30_000;
 
-let host: HTMLElement;
+let host: HTMLElement | undefined;
 
 function install() {
   const pages: DirEntry[] = Array.from({ length: PAGE_COUNT }, (_value, index) => ({
@@ -164,9 +187,15 @@ async function windowedPane(): Promise<HTMLElement> {
   renderLibraryMode(surfaceOf(host), tab);
   await flush();
   await flush();
-  const body = host.querySelector('[part="body"]') as HTMLElement;
-  Object.defineProperty(body, "clientHeight", { configurable: true, value: VIEWPORT.height });
-  Object.defineProperty(body, "clientWidth", { configurable: true, value: VIEWPORT.width });
+  const body = host.querySelector('[part="body"]');
+  if (!(body instanceof HTMLElement)) {
+    throw new Error('the Library pane drew no [part="body"] scroller');
+  }
+  Object.defineProperty(body, "clientHeight", {
+    configurable: true,
+    value: LIBRARY_VIEWPORT.height,
+  });
+  Object.defineProperty(body, "clientWidth", { configurable: true, value: LIBRARY_VIEWPORT.width });
   body.dispatchEvent(new Event("scroll"));
   await flush();
   stats.observes = 0;
@@ -232,7 +261,7 @@ describe(`${PAGE_COUNT} pages, the observation set`, () => {
       await sweep(body, { fire: true });
 
       console.error(
-        `[library observer] steady sweep, ${PAGE_COUNT} pages, ${VIEWPORT.width}×${VIEWPORT.height}: ` +
+        `[library observer] steady sweep, ${PAGE_COUNT} pages, ${LIBRARY_VIEWPORT.width}×${LIBRARY_VIEWPORT.height}: ` +
           `${stats.observes} observe(), ${stats.unobserves} unobserve(), ` +
           `${live.size} still observed, ${detachedObservations()} of them detached`,
       );

@@ -221,8 +221,8 @@ describe("chat-state pushToolResultMessage", () => {
     expect(msg.role).toBe("tool");
     expect(msg.toolCallId).toBe("tc_1");
     expect(msg.content).toBe("result payload");
-    expect(typeof msg.id).toBe("string");
-    expect(typeof msg.timestamp).toBe("number");
+    expect(msg.id).toEqual(expect.any(String));
+    expect(msg.timestamp).toEqual(expect.any(Number));
   });
 });
 
@@ -432,7 +432,8 @@ describe("chat-state usage", () => {
     const bad = [
       { inputTokens: Number.NaN, outputTokens: 1 },
       { inputTokens: 1, outputTokens: -1 },
-      { inputTokens: "10" as unknown as number, outputTokens: 1 },
+      // A count as a backend's JSON can carry it, whatever the frame type says: a string.
+      { inputTokens: JSON.parse('"10"'), outputTokens: 1 },
       { inputTokens: 1, outputTokens: Number.POSITIVE_INFINITY },
     ];
     for (const counts of bad) {
@@ -478,7 +479,7 @@ describe("chat-state toMessagesArray", () => {
     chat.appendDelta("Hi!");
     chat.finishStream("stop");
 
-    const msgs = chat.toMessagesArray() as { role: string; content: unknown }[];
+    const msgs = chat.toMessagesArray();
     expect(msgs).toEqual([
       { role: "user", content: "Hello" },
       { role: "assistant", content: "Hi!" },
@@ -492,19 +493,20 @@ describe("chat-state toMessagesArray", () => {
     chat.appendToolCallDelta("tc_1", '{"tag":"button"}');
     chat.finishStream("tool_calls");
 
-    const msgs = chat.toMessagesArray() as {
-      role: string;
-      content: unknown;
-      tool_calls?: { id: string; type: string; function: { name: string; arguments: string } }[];
-    }[];
-    const assistant = msgs.find((m) => m.role === "assistant")!;
-    expect(assistant.content).toBeNull();
-    expect(assistant.tool_calls?.length).toBe(1);
-    const call = assistant.tool_calls![0]!;
-    expect(call.id).toBe("tc_1");
-    expect(call.type).toBe("function");
-    expect(call.function.name).toBe("addElement");
-    expect(call.function.arguments).toBe('{"tag":"button"}');
+    expect(chat.toMessagesArray()).toEqual([
+      { role: "user", content: "Add a button" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "tc_1",
+            type: "function",
+            function: { name: "addElement", arguments: '{"tag":"button"}' },
+          },
+        ],
+      },
+    ]);
   });
 
   it("preserves assistant text content alongside tool_calls", () => {
@@ -515,9 +517,8 @@ describe("chat-state toMessagesArray", () => {
     chat.appendToolCallDelta("tc_1", "{}");
     chat.finishStream("tool_calls");
 
-    const msgs = chat.toMessagesArray() as { role: string; content: unknown }[];
-    const assistant = msgs.find((m) => m.role === "assistant")!;
-    expect(assistant.content).toBe("Sure, adding one.");
+    const assistant = chat.toMessagesArray().find((m) => m.role === "assistant");
+    expect(assistant?.content).toBe("Sure, adding one.");
   });
 
   it("emits tool-role messages with tool_call_id", () => {
@@ -528,14 +529,8 @@ describe("chat-state toMessagesArray", () => {
     chat.finishStream("tool_calls");
     chat.pushToolResultMessage("tc_1", "completed");
 
-    const msgs = chat.toMessagesArray() as {
-      role: string;
-      content: unknown;
-      tool_call_id?: string;
-    }[];
-    const toolMsg = msgs.find((m) => m.role === "tool")!;
-    expect(toolMsg.tool_call_id).toBe("tc_1");
-    expect(toolMsg.content).toBe("completed");
+    const toolMsg = chat.toMessagesArray().find((m) => m.role === "tool");
+    expect(toolMsg).toEqual({ role: "tool", tool_call_id: "tc_1", content: "completed" });
   });
 
   it("omits the in-flight assistant placeholder", () => {
@@ -567,9 +562,16 @@ describe("chat-state toMessagesArray", () => {
     chat.pushToolResultMessage("tc_1", "done");
     chat.beginAssistantTurn();
 
-    const msgs = chat.toMessagesArray() as { role: string; reasoning_content?: string }[];
-    const assistant = msgs.find((m) => m.role === "assistant")!;
-    expect(assistant.reasoning_content).toBe("The user wants a button.");
+    const msgs = chat.toMessagesArray();
+    const assistant = msgs.find((m) => m.role === "assistant");
+    expect(assistant).toEqual({
+      role: "assistant",
+      content: null,
+      reasoning_content: "The user wants a button.",
+      tool_calls: [
+        { id: "tc_1", type: "function", function: { name: "addElement", arguments: "{}" } },
+      ],
+    });
     // And the next round's placeholder is still not among them.
     expect(msgs.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
   });
@@ -593,8 +595,7 @@ describe("chat-state toMessagesArray", () => {
     chat.messages.at(-1)!.toolCalls = [];
     chat.finishStream("stop");
 
-    const msgs = chat.toMessagesArray() as { role: string; content: unknown }[];
-    const assistant = msgs.find((m) => m.role === "assistant")!;
+    const assistant = chat.toMessagesArray().find((m) => m.role === "assistant");
     expect(assistant).toEqual({ role: "assistant", content: "plain reply" });
   });
 
@@ -602,14 +603,12 @@ describe("chat-state toMessagesArray", () => {
      nor the count that sizes the next one. */
   it("sends a restored message whose call list is not a list, and counts it", () => {
     const chat = createChatState();
-    chat.messages.push({
-      id: "r1",
-      role: "assistant",
-      content: "kept",
-      reasoningContent: null,
-      toolCalls: {},
-      timestamp: 1,
-    } as unknown as (typeof chat.messages)[number]);
+    // Restored the way a saved session is: parsed from storage, and never checked against the type.
+    chat.messages.push(
+      JSON.parse(
+        '{"id":"r1","role":"assistant","content":"kept","reasoningContent":null,"toolCalls":{},"timestamp":1}',
+      ),
+    );
 
     expect(chat.toMessagesArray()).toEqual([{ role: "assistant", content: "kept" }]);
     chat.recordUsage({ type: "usage", inputTokens: 10, outputTokens: 5, reasoningTokens: 3 });

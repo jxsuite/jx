@@ -57,6 +57,7 @@ import { invalidateLayoutCache } from "../src/site-context";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
+import type { FormatFrontmatter } from "../src/format/format-host";
 
 /** Every browse and upload the card asked the media picker for, in order. */
 const mediaCalls: string[] = [];
@@ -170,7 +171,7 @@ function setShell(withPanelHost = true) {
 }
 
 function setupContentTab(
-  frontmatter: Record<string, unknown>,
+  frontmatter: FormatFrontmatter,
   opts: { withSchema?: boolean; documentPath?: string; id?: string; isSite?: boolean } = {},
 ) {
   resetStudioState({
@@ -183,7 +184,7 @@ function setupContentTab(
   const tab = resetWorkspaceWithTab(undefined, {
     documentPath: opts.documentPath ?? "posts/hello.json",
     id: opts.id ?? "fm-tab",
-  }) as any;
+  });
   tab.doc.mode = "content";
   tab.doc.content.frontmatter = frontmatter;
   return tab;
@@ -192,19 +193,19 @@ function setupContentTab(
 /** One row of the card, by the name a reader and the inspector call it. */
 function row(prop: string): HTMLElement {
   const el = host().querySelector(`[data-prop="${prop}"]`);
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`row not found: ${prop}`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The kit element a row draws. */
 function widget(prop: string): HTMLElement {
   const el = row(prop).querySelector('[part="widget"]');
-  if (!el) {
+  if (!(el instanceof HTMLElement)) {
     throw new Error(`row ${prop} draws no widget`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 /** The native control inside a kit element — what a reader actually types into or picks from. */
@@ -435,10 +436,13 @@ describe("the Layout picker belongs to the card's own document", () => {
     installMockPlatform({}, { "layouts/base.json": JSON.stringify({ tagName: "div" }) });
     invalidateLayoutPickerCache();
     closeAllTabs();
-    const page = resetWorkspaceWithTab({ children: [], tagName: "div", title: "About" } as never, {
-      documentPath: "pages/about.json",
-      id: "layout-page",
-    });
+    const page = resetWorkspaceWithTab(
+      { children: [], tagName: "div", title: "About" },
+      {
+        documentPath: "pages/about.json",
+        id: "layout-page",
+      },
+    );
     openTab({
       document: { children: [], tagName: "x-card", title: "Card" },
       documentPath: "components/Card.json",
@@ -452,7 +456,7 @@ describe("the Layout picker belongs to the card's own document", () => {
     await mountAndFlush();
     // The layouts listing settles asynchronously and repaints through `renderOnly`.
     await flush(8);
-    return page as any;
+    return page;
   }
 
   test("a PAGE's card shows the Layout row while a component is focused elsewhere", async () => {
@@ -491,9 +495,9 @@ describe("the Layout picker belongs to the card's own document", () => {
         children: [],
         tagName: "div",
         title: "About",
-      } as never,
+      },
       { documentPath: "pages/about.json", id: "layout-default" },
-    ) as any;
+    );
     await mountAndFlush();
     await flush(8);
     const labels = [...control("layout").querySelectorAll("option")].map((o) => o.textContent);
@@ -527,13 +531,13 @@ describe("the Layout picker belongs to the card's own document", () => {
 describe("the CONTENT branch commits into the card's own document too", () => {
   /** The card is drawn for a content tab in the PRIMARY pane; the focus is in the side pane. */
   async function contentCardWithFocusElsewhere() {
-    const shown = setupContentTab({ category: "news", title: "LEFT" }, { id: "fm-left" }) as any;
+    const shown = setupContentTab({ category: "news", title: "LEFT" }, { id: "fm-left" });
     shown.doc.mode = "content";
     const other = openTab({
       document: { children: [], tagName: "div" },
       documentPath: "posts/other.json",
       id: "fm-right",
-    }) as any;
+    });
     other.doc.mode = "content";
     other.doc.content.frontmatter = { category: "news", title: "RIGHT" };
     expect(splitRight()?.id).toBe("secondary");
@@ -594,7 +598,7 @@ describe("one reserved-key policy", () => {
     const tab = setupContentTab({ $paths: ["x"], title: "T" });
     const { fields, hasSchema, requiredFields } = collectFmFields(
       tab,
-      { content: { posts: { format: "json", schema: FM_SCHEMA, source: "./posts" } } } as any,
+      { content: { posts: { format: "json", schema: FM_SCHEMA, source: "./posts" } } },
       RESERVED_FM_KEYS,
     );
     expect(hasSchema).toBe(true);
@@ -630,7 +634,7 @@ describe("one reserved-key policy", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "posts/hello.json",
       id: "fm-required",
-    }) as any;
+    });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { author: "ada" };
     await mountAndFlush();
@@ -669,7 +673,7 @@ describe("route and disclosures", () => {
     // Form rows inside a card whose job is the four fields you fill in while writing, so it left.
     const disclosures = [...host().querySelectorAll('[part="raw"]')];
     expect(disclosures.length).toBe(1);
-    expect(part("raw")!.querySelector('[part="label"]')?.textContent?.trim()).toBe("Raw head tags");
+    expect(part("raw")!.querySelector('[part="label"]')?.textContent.trim()).toBe("Raw head tags");
     expect(part("raw")!.querySelector<HTMLDetailsElement>("details")!.open).toBe(false);
   });
 
@@ -689,7 +693,7 @@ describe("route and disclosures", () => {
     setupContentTab({ title: "Hello" });
     await mountAndFlush();
     const button = part("seo-button")!;
-    expect(button.textContent?.trim()).toContain("Search appearance…");
+    expect(button.textContent.trim()).toContain("Search appearance…");
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     // The command, not a local open() — so the palette and the Page panel reach the same modal.
     expect(ran).toEqual(["document.openSeo"]);
@@ -720,7 +724,7 @@ describe("route and disclosures", () => {
 
 describe("folding the card", () => {
   /** The card's own disclosure — the one whose summary is the bar. */
-  const fold = () => part("disclosure")!.querySelector("details") as HTMLDetailsElement;
+  const fold = () => part("disclosure")!.querySelector("details")!;
 
   /**
    * Open or close the card the way a reader does: the platform moves `open`, then fires a toggle
@@ -913,7 +917,7 @@ describe("commits and reactivity", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "posts/hello.json",
       id: "fm-number",
-    }) as any;
+    });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { title: "T", weight: 3 };
     await mountAndFlush();
@@ -1009,7 +1013,7 @@ describe("media fields", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "posts/hello.json",
       id: "fm-media",
-    }) as any;
+    });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = { hero: "/hero.jpg" };
     return tab;
@@ -1072,7 +1076,7 @@ describe("media fields", () => {
  * the entry editor and the settings forms use.
  */
 describe("reference fields", () => {
-  function referenceProject(frontmatter: Record<string, unknown>) {
+  function referenceProject(frontmatter: FormatFrontmatter) {
     resetStudioState({
       projectConfig: {
         content: {
@@ -1088,13 +1092,13 @@ describe("reference fields", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "posts/hello.json",
       id: "fm-ref",
-    }) as any;
+    });
     tab.doc.mode = "content";
     tab.doc.content.frontmatter = frontmatter;
     return tab;
   }
 
-  async function settled(frontmatter: Record<string, unknown>) {
+  async function settled(frontmatter: FormatFrontmatter) {
     const tab = referenceProject(frontmatter);
     await mountAndFlush();
     await flush(8);
@@ -1102,9 +1106,7 @@ describe("reference fields", () => {
   }
 
   function options(): string[] {
-    return [...control("author").querySelectorAll("option")].map(
-      (o) => (o as HTMLOptionElement).value,
-    );
+    return [...control("author").querySelectorAll("option")].map((o) => o.value);
   }
 
   test("offers the collection's entries and commits the one that is chosen", async () => {
@@ -1120,7 +1122,7 @@ describe("reference fields", () => {
     await settled({ author: "turing", title: "T" });
     expect(options()).toEqual(["", "turing", "ada", "grace"]);
     const marked = [...control("author").querySelectorAll("option")].find(
-      (o) => (o as HTMLOptionElement).value === "turing",
+      (o) => o.value === "turing",
     );
     expect(marked?.textContent).toContain("not found");
   });
@@ -1179,7 +1181,7 @@ describe("the other commit path and the disclosure state", () => {
   test("a disclosure remembers that it was opened, per tab", async () => {
     setupContentTab({ title: "Hello" }, { id: "fm-a" });
     await mountAndFlush();
-    const details = () => part("raw")!.querySelector("details") as HTMLDetailsElement;
+    const details = () => part("raw")!.querySelector("details")!;
     // The platform's toggle does not bubble; the kit re-announces it from the host.
     details().open = true;
     details().dispatchEvent(new Event("toggle"));
@@ -1199,7 +1201,7 @@ describe("the other commit path and the disclosure state", () => {
     // Also `false` projected no change and inherited the open disclosure.
     setupContentTab({ title: "Hello" }, { id: "fm-a" });
     await mountAndFlush();
-    const details = () => part("raw")!.querySelector("details") as HTMLDetailsElement;
+    const details = () => part("raw")!.querySelector("details")!;
     details().open = true;
     details().dispatchEvent(new Event("toggle"));
     openTab({

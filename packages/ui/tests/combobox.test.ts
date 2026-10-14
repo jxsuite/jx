@@ -17,6 +17,8 @@ import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { documentStyleText } from "@jxsuite/runtime";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -29,7 +31,7 @@ import {
   openList,
   rowFor,
 } from "../src/behaviors/combobox.ts";
-import type { ComboboxRow } from "../src/behaviors/combobox.ts";
+import type { ComboboxRow, ComboboxState } from "../src/behaviors/combobox.ts";
 import { expectInertWhileEmpty } from "./error-region.ts";
 
 /** Let the runtime's queued render and the popover shim's toggle microtask settle. */
@@ -66,6 +68,8 @@ afterEach(() => {
 
 /** A rendered combobox with its id stem minted and its rows built. */
 async function combobox(props: Partial<ComboboxEl> = {}): Promise<ComboboxEl> {
+  /* SAFETY: registerUi() in beforeAll defined jx-combobox, so createElement returns the upgraded
+     element, which carries every reactive property `ComboboxEl` lists from its component document. */
   const el = document.createElement("jx-combobox") as ComboboxEl;
   Object.assign(el, { label: "Model", options: MODELS }, props);
   document.body.append(el);
@@ -95,14 +99,14 @@ function commit(el: Element): void {
 }
 
 /** Every emitted CSS rule scoped to this element's own document, in source order. */
-function rules(el: Element): string[] {
-  const scope = `[data-jx="${(el as HTMLElement).dataset["jx"]}"]`;
+function rules(el: HTMLElement): string[] {
+  const scope = `[data-jx="${el.dataset["jx"]}"]`;
   return documentStyleText()
     .split("\n")
     .filter((line) => line.startsWith(scope) || line.includes(`{ ${scope}`));
 }
 /** The first emitted rule whose selector carries `selector`. */
-const ruleFor = (el: Element, selector: string) =>
+const ruleFor = (el: HTMLElement, selector: string) =>
   rules(el).find((line) => line.slice(0, line.indexOf("{") + 1).includes(selector)) ?? "";
 
 /** Record every `input` and `change` that escapes the element, and who said it. */
@@ -111,6 +115,9 @@ function listen(el: HTMLElement): string[] {
   for (const name of ["input", "change"]) {
     el.addEventListener(name, (event) => {
       const from = event.target === el ? "element" : "control";
+      /* SAFETY: these listeners sit on a jx-combobox, and the only nodes that dispatch input or
+         change through it are the host itself and its inner `<input>`; both expose a string
+         `value`, the host through its reactive prop. */
       heard.push(`${name}:${from}:${(event.target as HTMLInputElement).value}`);
     });
   }
@@ -264,7 +271,7 @@ describe("jx-combobox", () => {
     outer.append(el);
     const escapes: string[] = [];
     outer.addEventListener("keydown", (event) => {
-      escapes.push((event as KeyboardEvent).key);
+      escapes.push(event.key);
     });
     press(el, "ArrowDown");
     await tick();
@@ -571,14 +578,14 @@ describe("jx-combobox", () => {
     expect(doc).toContain("state.uid + '-o'");
     /* `autocomplete` is off rather than absent: the UA's own dropdown over a listbox the element is
        already drawing is two panels answering one question. */
-    expect(documents["jx-combobox"]?.state?.["autocomplete"]).toMatchObject({ default: "off" });
+    expect(documents["jx-combobox"].state?.["autocomplete"]).toMatchObject({ default: "off" });
     /* The panel matches the FIELD's width, which is why the sidecar names the host as the source.
        A browser found the list at the popover's 180px floor under a 320px field: the attribute
        had never been asked for. happy-dom lays nothing out, so the definition is what is held. */
-    const children = (documents["jx-combobox"]?.children ?? []) as {
-      attributes?: Record<string, string>;
-    }[];
-    const popup = children.find((child) => child.attributes?.["part"] === "popup");
+    const { children } = documents["jx-combobox"];
+    const popup = (Array.isArray(children) ? children : []).find(
+      (child): child is JxElement => !isString(child) && child.attributes?.["part"] === "popup",
+    );
     expect(popup?.attributes?.["match-width"]).toBe("");
   });
 });
@@ -618,14 +625,14 @@ describe("the two pure helpers", () => {
        by mistake to a node that is not inside one has no element to write and must be silent rather
        than throw in the middle of a render. */
     const stray = document.createElement("div");
-    const state: Record<string, unknown> = { value: "kept" };
+    const state: ComboboxState = { value: "kept" };
     const event = new Event("change");
     Object.defineProperty(event, "currentTarget", { value: stray });
     expect(() => {
       onComboboxCommit(state, event);
       onComboboxInput(state, event);
     }).not.toThrow();
-    expect(state["value"]).toBe("kept");
+    expect(state.value).toBe("kept");
   });
 
   test("opening and closing a combobox that has no panel is quiet", () => {

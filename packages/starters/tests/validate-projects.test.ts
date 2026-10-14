@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
+import { parseJxDocument } from "@jxsuite/schema/parse";
 
 import { validateProjectFile } from "@jxsuite/schema/validate-project";
 import { listStarters, SITES_DIR } from "../index";
@@ -61,7 +62,7 @@ describe("starter documents pass the overlay, dialog and accessibility lints", (
     test(starter.id, () => {
       const findings: string[] = [];
       for (const file of documentsOf(join(SITES_DIR, starter.id))) {
-        const doc = JSON.parse(readFileSync(file, "utf8")) as Parameters<typeof findA11yDefects>[0];
+        const doc = parseJxDocument(readFileSync(file, "utf8"), file);
         for (const defect of [
           ...findPopoverDefects(doc),
           ...findDialogDefects(doc),

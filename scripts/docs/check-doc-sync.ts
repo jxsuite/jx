@@ -17,8 +17,12 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { DEFAULT_MANIFEST, shotsByDocsPage } from "../check-image-lock";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+
+import { shotsByDocsPage } from "../check-image-lock";
 import { toPosixPath } from "../lib/posix-path";
+import { DEFAULT_MANIFEST } from "../screenshots/lib/contract.ts";
+import { DOCS_TAG_RE } from "./lib/doc-tags.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const DOCS_DIR = join(ROOT, "docs");
@@ -101,10 +105,14 @@ for (const rawRel of new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })) {
   if (!match) {
     continue;
   }
-  let fm: { code?: unknown; spec?: unknown; generated?: unknown };
+  let fm: unknown;
   try {
-    fm = Bun.YAML.parse(match[1]!) as { code?: unknown; spec?: unknown; generated?: unknown };
+    fm = Bun.YAML.parse(match[1]!);
   } catch {
+    continue;
+  }
+  // A block that is not a mapping names no `code:` sources, so it maps nothing.
+  if (!isJsonObject(fm)) {
     continue;
   }
   /* A generated page is a projection of the sources its `code:` names, written at build from
@@ -117,12 +125,10 @@ for (const rawRel of new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })) {
   if (codes.length === 0) {
     continue;
   }
-  const specs = (Array.isArray(fm.spec) ? fm.spec : []).filter(
-    (s): s is string => typeof s === "string",
-  );
+  const specs = (Array.isArray(fm.spec) ? fm.spec : []).filter((s) => isString(s));
   const slug = rel.replace(/(\/index)?\.md$/, "");
   for (const code of codes) {
-    if (typeof code !== "string") {
+    if (!isString(code)) {
       continue;
     }
     bySource.set(code, [...(bySource.get(code) ?? []), { slug, specs }]);
@@ -130,7 +136,6 @@ for (const rawRel of new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })) {
 }
 
 // `@docs <slug>` tags inside changed source files
-const DOCS_TAG_RE = /@docs\s+([A-Za-z0-9/_-]+)/g;
 for (const file of changed) {
   if (!/^(packages|extensions)\/[^/]+\/src\/.*\.ts$/.test(file)) {
     continue;

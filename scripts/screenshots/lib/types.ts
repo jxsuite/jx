@@ -27,13 +27,14 @@
  * > what the design already commits to doing.
  */
 
-/** The manifest shape this runner implements. A bump is for surface SHAPE, never content drift. */
-export const CONTRACT_VERSION = 1;
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
-export interface Viewport {
-  height: number;
-  width: number;
-}
+import type { PixelSize } from "../../lib/png.ts";
+import { CONTRACT_VERSION } from "./contract.ts";
+
+/** Re-exported so the runner and the manifest's own tests read both facts from one import. */
+export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./contract.ts";
 
 /** `ui.fit` as `canvas/canvas-utils.ts` declares it — declared per shot, never an entry side effect. */
 export type FitMode = "width" | "page" | "none" | number;
@@ -76,7 +77,7 @@ export interface ShotOpen {
   clock?: string;
   /** Color scheme. */
   theme?: string;
-  viewport?: Viewport;
+  viewport?: PixelSize;
   deviceScaleFactor?: number;
   /** Dock states by dock id, e.g. `{ "chat": { "collapsed": true } }`. */
   docks?: Record<string, DockState>;
@@ -91,13 +92,13 @@ export interface ResolvedOpen {
   profile: string;
   clock: string | null;
   theme: string | null;
-  viewport: Viewport;
+  viewport: PixelSize;
   deviceScaleFactor: number;
   docks: Record<string, DockState>;
 }
 
 /** Used when neither the shot nor `manifest.defaults` states one. */
-export const DEFAULT_VIEWPORT: Viewport = { height: 1000, width: 1600 };
+export const DEFAULT_VIEWPORT: PixelSize = { height: 1000, width: 1600 };
 export const DEFAULT_DEVICE_SCALE_FACTOR = 2;
 
 /**
@@ -126,14 +127,14 @@ export interface Unstable {
 /** Run a registry command. The projection refuses unknown, unscriptable and `toggle*` ids. */
 export interface CommandStep {
   cmd: string;
-  args?: Record<string, unknown>;
+  args?: JsonObject;
   unstable?: Unstable;
 }
 
 /** Stand in for a remote. Under the Remote Rule a seed never stands in for a user. */
 export interface SeedStep {
   seed: string;
-  args?: Record<string, unknown>;
+  args?: JsonObject;
   unstable?: Unstable;
 }
 
@@ -160,15 +161,15 @@ export const INPUT_KINDS = ["hover", "type", "dragOver", "caret"] as const;
 export type InputKind = (typeof INPUT_KINDS)[number];
 
 export function isCommandStep(step: ShotStep): step is CommandStep {
-  return typeof (step as CommandStep).cmd === "string";
+  return "cmd" in step && isString(step.cmd);
 }
 
 export function isSeedStep(step: ShotStep): step is SeedStep {
-  return typeof (step as SeedStep).seed === "string";
+  return "seed" in step && isString(step.seed);
 }
 
 export function isInputStep(step: ShotStep): step is InputStep {
-  return typeof (step as InputStep).input === "string";
+  return "input" in step && isString(step.input);
 }
 
 // ─── expect ───────────────────────────────────────────────────────────────────
@@ -182,10 +183,10 @@ export function isInputStep(step: ShotStep): step is InputStep {
  * This is what the 43 `waitFor: {selector}` steps became. A wait that only ever succeeded by
  * arriving late is not an assertion; this one says what the picture is supposed to show.
  */
-export type Expectation = { region: string } | { state: Record<string, unknown> };
+export type Expectation = { region: string } | { state: JsonObject };
 
 export function isRegionExpectation(e: Expectation): e is { region: string } {
-  return typeof (e as { region?: unknown }).region === "string";
+  return "region" in e && isString(e.region);
 }
 
 // ─── capture ──────────────────────────────────────────────────────────────────
@@ -307,7 +308,7 @@ export function isRegionId(id: string): boolean {
       }
     }
   }
-  return (REGION_SURFACES as readonly string[]).includes(surface);
+  return REGION_SURFACES.some((known) => known === surface);
 }
 
 /** A capture/hover/type target: a region id, or the camera's own frame. */
@@ -324,43 +325,39 @@ export function isCaptureTarget(id: string): boolean {
  * carrying one would otherwise be silently half-executed — the worst possible outcome for a tool
  * whose entire job is to photograph a true state.
  */
-export const REMOVED_SHOT_KEYS: Readonly<Record<string, string>> = {
-  actions: "steps — one of cmd | seed | input per entry",
-  canvasMode: "open.view",
-  clip: 'capture[].of (a region id, or "viewport")',
-  deviceScaleFactor: "open.deviceScaleFactor",
-  file: "open.file",
-  noCanvas: "nothing — probe.idle() decides when the app has settled",
-  noProject: "nothing — omit open.project",
-  project: "open.project",
-  regions: "capture",
-  selector: "a region id",
-  theme: "open.theme",
-  variants: "then",
-  viewport: "open.viewport",
-  wait: "nothing — probe.idle() replaced all 115 sleeps",
-  waitFor: "expect",
-};
+export const REMOVED_SHOT_KEYS: ReadonlyMap<string, string> = new Map([
+  ["actions", "steps — one of cmd | seed | input per entry"],
+  ["canvasMode", "open.view"],
+  ["clip", 'capture[].of (a region id, or "viewport")'],
+  ["deviceScaleFactor", "open.deviceScaleFactor"],
+  ["file", "open.file"],
+  ["noCanvas", "nothing — probe.idle() decides when the app has settled"],
+  ["noProject", "nothing — omit open.project"],
+  ["project", "open.project"],
+  ["regions", "capture"],
+  ["selector", "a region id"],
+  ["theme", "open.theme"],
+  ["variants", "then"],
+  ["viewport", "open.viewport"],
+  ["wait", "nothing — probe.idle() replaced all 115 sleeps"],
+  ["waitFor", "expect"],
+]);
 
 function fail(message: string): never {
   throw new Error(`manifest: ${message}`);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function checkRemovedKeys(where: string, entry: Record<string, unknown>): void {
+function checkRemovedKeys(where: string, entry: JsonObject): void {
   for (const key of Object.keys(entry)) {
-    const replacement = REMOVED_SHOT_KEYS[key];
+    const replacement = REMOVED_SHOT_KEYS.get(key);
     if (replacement !== undefined) {
       fail(`${where}: "${key}" was deleted by the shot contract — use ${replacement}`);
     }
   }
 }
 
-function validateOpen(where: string, open: unknown): void {
-  if (!isRecord(open)) {
+function validateOpen(where: string, open: JsonValue): void {
+  if (!isJsonObject(open)) {
     fail(`${where}: open must be an object`);
   }
   for (const [key, value] of Object.entries(open)) {
@@ -371,36 +368,32 @@ function validateOpen(where: string, open: unknown): void {
       case "project":
       case "theme":
       case "view": {
-        if (typeof value !== "string" || !value) {
+        if (!isString(value) || !value) {
           fail(`${where}: open.${key} must be a non-empty string`);
         }
         break;
       }
       case "deviceScaleFactor": {
-        if (typeof value !== "number" || value <= 0) {
+        if (!isNumber(value) || value <= 0) {
           fail(`${where}: open.deviceScaleFactor must be a positive number`);
         }
         break;
       }
       case "docks": {
-        if (!isRecord(value)) {
+        if (!isJsonObject(value)) {
           fail(`${where}: open.docks must be an object keyed by dock id`);
         }
         break;
       }
       case "fit": {
-        const ok = typeof value === "number" || (typeof value === "string" && FIT_WORDS.has(value));
+        const ok = isNumber(value) || (isString(value) && FIT_WORDS.has(value));
         if (!ok) {
           fail(`${where}: open.fit must be "width" | "page" | "none" or a number`);
         }
         break;
       }
       case "viewport": {
-        if (
-          !isRecord(value) ||
-          typeof value.width !== "number" ||
-          typeof value.height !== "number"
-        ) {
+        if (!isJsonObject(value) || !isNumber(value.width) || !isNumber(value.height)) {
           fail(`${where}: open.viewport must be {width, height}`);
         }
         break;
@@ -414,11 +407,11 @@ function validateOpen(where: string, open: unknown): void {
 
 const FIT_WORDS = new Set(["none", "page", "width"]);
 
-function validateStep(where: string, step: unknown): void {
-  if (!isRecord(step)) {
+function validateStep(where: string, step: JsonValue): void {
+  if (!isJsonObject(step)) {
     fail(`${where}: every step must be an object`);
   }
-  if (typeof step.selector === "string") {
+  if (isString(step.selector)) {
     fail(
       `${where}: a step may never name a selector — say it in a command id, a region id or a JxPath`,
     );
@@ -431,49 +424,56 @@ function validateStep(where: string, step: unknown): void {
       })`,
     );
   }
-  if (typeof step.cmd === "string" && !step.cmd) {
+  if (isString(step.cmd) && !step.cmd) {
     fail(`${where}: cmd must be a command id`);
   }
-  if (typeof step.seed === "string" && !step.seed) {
+  if (isString(step.seed) && !step.seed) {
     fail(`${where}: seed must be a seed id`);
   }
   if (step.input === undefined) {
     return;
   }
   const kind = step.input;
-  if (typeof kind !== "string" || !(INPUT_KINDS as readonly string[]).includes(kind)) {
+  if (!isString(kind) || !INPUT_KINDS.some((known) => known === kind)) {
     fail(`${where}: input must be one of ${INPUT_KINDS.join(" | ")}`);
   }
-  if ((kind === "hover" || kind === "dragOver") && typeof step.region !== "string") {
+  if ((kind === "hover" || kind === "dragOver") && !isString(step.region)) {
     fail(`${where}: input "${kind}" needs a region id`);
   }
-  if (kind === "type" && typeof step.text !== "string") {
+  if (kind === "type" && !isString(step.text)) {
     fail(`${where}: input "type" needs text`);
   }
   if (kind === "caret" && !Array.isArray(step.path)) {
     fail(`${where}: input "caret" needs a JxPath`);
   }
-  if (typeof step.region === "string" && !isRegionId(step.region)) {
+  if (isString(step.region) && !isRegionId(step.region)) {
     fail(`${where}: "${step.region}" is not a region id (<surface>[.<instance>][/<part>])`);
   }
 }
 
-function validateExpectation(where: string, entry: unknown): void {
-  if (!isRecord(entry)) {
+function validateExpectation(where: string, entry: JsonValue): void {
+  if (!isJsonObject(entry)) {
     fail(`${where}: every expect entry must be an object`);
   }
-  const hasRegion = typeof entry.region === "string";
-  const hasState = isRecord(entry.state);
+  const { region } = entry;
+  const hasRegion = isString(region);
+  const hasState = isJsonObject(entry.state);
   if (hasRegion === hasState) {
     fail(`${where}: an expect entry carries exactly one of region | state`);
   }
-  if (hasRegion && !isRegionId(entry.region as string)) {
-    fail(`${where}: expect region "${entry.region as string}" is not a region id`);
+  if (hasRegion && !isRegionId(region)) {
+    fail(`${where}: expect region "${region}" is not a region id`);
   }
 }
 
-export function validateManifest(raw: unknown): Manifest {
-  if (!isRecord(raw)) {
+/**
+ * Check a parsed manifest against the shot contract, throwing on the first violation.
+ *
+ * The one place a manifest is still raw JSON: everything downstream of {@link validateManifest}
+ * reads a {@link Manifest}.
+ */
+function assertManifest(raw: JsonValue): asserts raw is JsonObject & Manifest {
+  if (!isJsonObject(raw)) {
     fail("root must be an object");
   }
   if (raw.contract !== CONTRACT_VERSION) {
@@ -481,7 +481,7 @@ export function validateManifest(raw: unknown): Manifest {
       `declares contract ${JSON.stringify(raw.contract)}; this runner implements ${CONTRACT_VERSION}`,
     );
   }
-  if (typeof raw.outDir !== "string" || !raw.outDir) {
+  if (!isString(raw.outDir) || !raw.outDir) {
     fail("outDir must be a non-empty string");
   }
   if (raw.defaults !== undefined) {
@@ -493,8 +493,8 @@ export function validateManifest(raw: unknown): Manifest {
 
   const shotNames = new Set<string>();
   const images = new Set<string>();
-  const claimImage = (name: unknown, where: string) => {
-    if (typeof name !== "string" || !name) {
+  const claimImage = (name: JsonValue | undefined, where: string) => {
+    if (!isString(name) || !name) {
       fail(`${where}: every capture needs an image name`);
     }
     if (images.has(name)) {
@@ -502,30 +502,30 @@ export function validateManifest(raw: unknown): Manifest {
     }
     images.add(name);
   };
-  const validateCaptures = (where: string, captures: unknown) => {
+  const validateCaptures = (where: string, captures: JsonValue | undefined) => {
     for (const capture of asArray(where, "capture", captures)) {
-      if (!isRecord(capture)) {
+      if (!isJsonObject(capture)) {
         fail(`${where}: every capture must be an object`);
       }
       claimImage(capture.image, where);
       const target = capture.of ?? VIEWPORT_TARGET;
-      if (typeof target !== "string" || !isCaptureTarget(target)) {
+      if (!isString(target) || !isCaptureTarget(target)) {
         fail(
           `${where}: capture "${String(capture.image)}" names "${String(target)}", which is neither ` +
             `a region id nor "${VIEWPORT_TARGET}" — a capture never names a selector`,
         );
       }
-      if (capture.padding !== undefined && typeof capture.padding !== "number") {
+      if (capture.padding !== undefined && !isNumber(capture.padding)) {
         fail(`${where}: capture "${String(capture.image)}" padding must be a number`);
       }
     }
   };
 
   for (const [index, shot] of raw.shots.entries()) {
-    if (!isRecord(shot)) {
+    if (!isJsonObject(shot)) {
       fail(`shot #${index + 1} must be an object`);
     }
-    if (typeof shot.name !== "string" || !shot.name) {
+    if (!isString(shot.name) || !shot.name) {
       fail(`shot #${index + 1} needs a name`);
     }
     const where = `shot "${shot.name}"`;
@@ -546,7 +546,7 @@ export function validateManifest(raw: unknown): Manifest {
     validateCaptures(where, shot.capture);
     for (const [n, segment] of asArray(where, "then", shot.then).entries()) {
       const segmentWhere = `${where} then[${n}]`;
-      if (!isRecord(segment)) {
+      if (!isJsonObject(segment)) {
         fail(`${segmentWhere} must be an object`);
       }
       checkRemovedKeys(segmentWhere, segment);
@@ -559,10 +559,15 @@ export function validateManifest(raw: unknown): Manifest {
       validateCaptures(segmentWhere, segment.capture);
     }
   }
-  return raw as unknown as Manifest;
 }
 
-function asArray(where: string, key: string, value: unknown): unknown[] {
+/** Check a parsed manifest against the shot contract and return it, throwing on the first violation. */
+export function validateManifest(raw: JsonValue): Manifest {
+  assertManifest(raw);
+  return raw;
+}
+
+function asArray(where: string, key: string, value: JsonValue | undefined): JsonValue[] {
   if (value === undefined) {
     return [];
   }
@@ -582,7 +587,7 @@ export function resolveShot(manifest: Manifest, shot: Shot): ResolvedShot {
   const d = manifest.defaults ?? {};
   const o = shot.open ?? {};
   const pick = <K extends keyof ShotOpen>(key: K): NonNullable<ShotOpen[K]> | null =>
-    (o[key] ?? d[key] ?? null) as NonNullable<ShotOpen[K]> | null;
+    o[key] ?? d[key] ?? null;
   return {
     ...shot,
     open: {

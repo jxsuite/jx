@@ -15,10 +15,13 @@
  */
 
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
+import { DEFAULT_UPSTREAM_BASE_URL } from "@jxsuite/ai/gateway";
 import { createOpenAIStreamingClient } from "@jxsuite/ai/streaming-client";
-import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
+import type { OpenAIMessage } from "@jxsuite/ai/messages";
+import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
 import { registerPlatform } from "../src/platform";
 import type { DirEntry, StudioPlatform } from "../src/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
@@ -30,8 +33,6 @@ import { AI_TOOL_TIERS, buildSystemPrompt, toolActive } from "../src/services/ai
 import { renderCritic } from "./render-critic.js";
 import { schemaGrader } from "./schema-grader.js";
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
 /**
  * Resolve OpenAI config from env, mirroring the server proxy (packages/server/src/ai-api.js).
  *
@@ -39,7 +40,7 @@ const DEFAULT_BASE_URL = "https://api.openai.com/v1";
  */
 export function resolveConfig() {
   const apiKey = process.env.OPENAI_API_KEY || "";
-  const baseUrl = process.env.OPENAI_BASE_URL || DEFAULT_BASE_URL;
+  const baseUrl = process.env.OPENAI_BASE_URL || DEFAULT_UPSTREAM_BASE_URL;
   const model = process.env.OPENAI_MODEL || "gpt-4o";
   return { apiKey, baseUrl, model };
 }
@@ -78,8 +79,8 @@ export interface TrialResult {
   rounds: number;
   toolCalls: number;
   loopError: string | null;
-  finalDoc: object;
-  transcript: object[];
+  finalDoc: JsonValue;
+  transcript: OpenAIMessage[];
   usage: TrialUsage;
 }
 
@@ -97,7 +98,7 @@ function meteredClient(client: StreamingClient, usage: TrialUsage): StreamingCli
           usage.cachedInputTokens += event.cachedInputTokens ?? 0;
           usage.outputTokens += event.outputTokens;
         }
-        yield event as StreamEvent;
+        yield event;
       }
     },
   };
@@ -138,17 +139,16 @@ function searchMemoryFiles(
   extensions: string[],
 ): DirEntry[] {
   const exts = ["json", ...extensions.map((e) => e.replace(/^\./, ""))];
-  return [...files.keys()]
-    .filter((path) => {
-      if (path.split("/").some((segment) => segment.startsWith("."))) {
-        return false;
-      }
-      const name = path.split("/").pop() ?? path;
-      return exts.some(
-        (ext) => name.endsWith(`.${ext}`) && name.slice(0, -(ext.length + 1)).includes(query),
-      );
-    })
-    .map((path) => ({ name: path.split("/").pop() ?? path, path, type: "file" }));
+  return [...files.keys()].flatMap((path): DirEntry[] => {
+    if (path.split("/").some((segment) => segment.startsWith("."))) {
+      return [];
+    }
+    const name = path.split("/").pop() ?? path;
+    const matches = exts.some(
+      (ext) => name.endsWith(`.${ext}`) && name.slice(0, -(ext.length + 1)).includes(query),
+    );
+    return matches ? [{ name, path, type: "file" }] : [];
+  });
 }
 
 /**
@@ -157,6 +157,9 @@ function searchMemoryFiles(
  * transcript, which is where a grader-reader would want to see it.
  */
 function memoryPlatform(files: Map<string, string>): StudioPlatform {
+  /* SAFETY: the file tools (ai-tools, ai-project-tools) call only listDirectory, readFile,
+     searchFiles and writeFile, all defined here. Any other member is undefined on purpose: reaching
+     for it throws inside the tool call, and the loop records that in the transcript. */
   return {
     listDirectory: async (dir: string) => listMemoryDirectory(files, dir),
     readFile: async (path: string) => {
@@ -171,7 +174,7 @@ function memoryPlatform(files: Map<string, string>): StudioPlatform {
     writeFile: async (path: string, content: string) => {
       files.set(path, content);
     },
-  } as Partial<StudioPlatform> as StudioPlatform;
+  } satisfies Partial<StudioPlatform> as StudioPlatform;
 }
 
 /**
@@ -196,17 +199,28 @@ export function projectToolDeps(files: Map<string, string>) {
   };
 }
 
+/** A no-document trial's output: the parsed document to grade, or why there is nothing to grade. */
+type TrialOutput = { document: JsonValue } | { problem: string };
+
 /** What a no-document trial is graded on: `output`, parsed, or why there is nothing to grade. */
-function outputDocument(task: Task, files: Map<string, string>): object | string {
+function outputDocument(task: Task, files: Map<string, string>): TrialOutput {
   const text = task.output === undefined ? undefined : files.get(task.output);
   if (text === undefined) {
-    return `${task.output ?? "(no output declared)"} was not written`;
+    return { problem: `${task.output ?? "(no output declared)"} was not written` };
   }
+  let parsed: JsonValue;
   try {
-    return JSON.parse(text) as object;
+    // SAFETY: JSON.parse without a reviver produces only JSON values: primitives, arrays, objects.
+    parsed = JSON.parse(text) as JsonValue;
   } catch (error) {
-    return `${task.output} is not JSON: ${(error as Error).message}`;
+    // JSON.parse throws only SyntaxError, so the message is always there to quote.
+    return {
+      problem: `${task.output} is not JSON: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
+  /* A file holding a bare JSON string has always been reported as that string, the way the problem
+     text reads, rather than graded as a document. */
+  return isString(parsed) ? { problem: parsed } : { document: parsed };
 }
 
 /**
@@ -240,15 +254,15 @@ export async function runTrial(
   const chatState = createChatState({ model: cfg.model });
   chatState.sendMessage(task.prompt);
 
-  let finalDoc: object;
+  let finalDoc: JsonValue;
   let critique: { pass: boolean; errors: string[] } | null = null;
   if (task.initialDoc) {
     const tab = createTab({
-      document: structuredClone(task.initialDoc) as Record<string, unknown>,
+      document: structuredClone(task.initialDoc),
       id: `eval-${task.id}`,
     });
     try {
-      const toolRegistry = createToolRegistry() as ToolRegistry;
+      const toolRegistry: ToolRegistry = createToolRegistry();
       // Default `validate` is the real validateDoc, so the loop self-corrects just like production.
       registerAiTools(toolRegistry, { getTab: () => tab });
       await runAgentLoop({
@@ -257,20 +271,23 @@ export async function runTrial(
         toolRegistry,
         systemPrompt: buildSystemPrompt({ document: structuredClone(task.initialDoc) }),
       });
-      // JSON-clone to strip the Vue reactive proxy and any functions — graders only need the plain
-      // JSON shape.
+      /* JSON-clone to strip the Vue reactive proxy and any functions — graders only need the plain
+         JSON shape. SAFETY: the document is an object, so JSON.stringify returns text, and
+         JSON.parse without a reviver turns that text back into nothing but JSON values. */
       // oxlint-disable-next-line unicorn/prefer-structured-clone -- structuredClone throws on the reactive proxy; JSON round-trip is the deliberate way to flatten it
-      finalDoc = JSON.parse(JSON.stringify(tab.doc.document)) as typeof tab.doc.document;
+      finalDoc = JSON.parse(JSON.stringify(tab.doc.document)) as JsonValue;
     } finally {
       disposeTab(tab);
     }
   } else {
     const files = new Map(Object.entries(task.files ?? {}));
+    /* SAFETY: this names the one slot registerPlatform (src/platform.ts) writes, globalThis.__jxPlatform,
+       optional because it is absent until a platform registers; nothing else is read through it. */
     const host = globalThis as { __jxPlatform?: StudioPlatform };
     const previous = host.__jxPlatform;
     registerPlatform(memoryPlatform(files));
     try {
-      const inner = createToolRegistry() as ToolRegistry;
+      const inner: ToolRegistry = createToolRegistry();
       const deps = projectToolDeps(files);
       registerAiTools(inner, { getTab: deps.getTab, saveFile: deps.saveFile });
       registerProjectTools(inner, deps);
@@ -300,11 +317,11 @@ export async function runTrial(
       }
     }
     const output = outputDocument(task, files);
-    if (typeof output === "string") {
+    if ("problem" in output) {
       finalDoc = {};
-      critique = { errors: [output], pass: false };
+      critique = { errors: [output.problem], pass: false };
     } else {
-      finalDoc = output;
+      finalDoc = output.document;
     }
   }
 

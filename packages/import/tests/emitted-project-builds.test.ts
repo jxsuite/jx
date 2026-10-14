@@ -24,9 +24,7 @@ import type { JxElement } from "@jxsuite/schema/types";
  * core fragment gains a key and the emitter starts writing it, a list that has not been updated
  * fails a correct import. `tests/emit-schema.test.ts` runs the same composition end to end.
  */
-const PROJECT_KEYS = new Set(
-  Object.keys((coreProjectFragment as { properties: Record<string, unknown> }).properties),
-);
+const PROJECT_KEYS = new Set(Object.keys(coreProjectFragment.properties));
 
 describe("an emitted project is one the compiler accepts", () => {
   test("project.json carries no key the schema rejects", async () => {
@@ -79,7 +77,9 @@ describe("an asset reference names the path the built site serves", () => {
     // Against the current route — so the same document 404s differently on every page.
     const dir = await mkdtemp(join(tmpdir(), "jx-import-assetpath-"));
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => new Response("data")) as unknown as typeof fetch;
+    globalThis.fetch = Object.assign(() => Promise.resolve(new Response("data")), {
+      preconnect: originalFetch.preconnect,
+    });
     try {
       const assets: DiscoveredAsset[] = [
         { url: "https://example.com/logo.png", source: "img-src" },
@@ -166,9 +166,9 @@ describe("srcset survives a URL that carries its own commas", () => {
     const count = rewriteAssetUrls(tree, map);
 
     expect(count).toBe(2);
-    expect((tree.children as JxElement[])[0]!.attributes!.srcset).toBe(
-      "/assets/images/logo.png 1x, /assets/images/logo-1.png 2x",
-    );
+    expect(tree.children).toMatchObject([
+      { attributes: { srcset: "/assets/images/logo.png 1x, /assets/images/logo-1.png 2x" } },
+    ]);
   });
 
   test("an ordinary srcset still splits on every entry", () => {
@@ -189,8 +189,8 @@ describe("srcset survives a URL that carries its own commas", () => {
     const count = rewriteAssetUrls(tree, map);
 
     expect(count).toBe(2);
-    expect((tree.children as JxElement[])[0]!.attributes!.srcset).toBe(
-      "/assets/images/s.jpg 320w, /assets/images/l.jpg 1024w",
-    );
+    expect(tree.children).toMatchObject([
+      { attributes: { srcset: "/assets/images/s.jpg 320w, /assets/images/l.jpg 1024w" } },
+    ]);
   });
 });

@@ -18,11 +18,10 @@ import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { FakeTabulator, tabulatorMockModule } from "./tabulator-mock";
-import { render } from "lit-html";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
-import type { GridColumn } from "../src/grid/grid-source";
+import type { GridCellValue, GridColumn } from "../src/grid/grid-source";
 import type { CellLike } from "../src/grid/cell-editors";
-import type { StudioPlatform } from "../src/types";
+import type { FormatActionRequest, StudioPlatform } from "../src/types";
 
 void mock.module("tabulator-tables", () => tabulatorMockModule);
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
@@ -33,27 +32,17 @@ void mock.module("../src/ui/layers.js", () => ({
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},
-  // The media picker asks which layer its anchor sits in; these fields are in a panel.
-  renderPopover: (template: unknown) => {
-    const host = document.createElement("div");
-    host.className = "test-popover-host";
-    document.body.append(host);
-    render(template as never, host);
-    return {
-      dismiss: () => {
-        host.remove();
-      },
-      host,
-      update: (tpl: unknown) => render(tpl as never, host),
-    };
-  },
   showConfirmDialog: async () => dialogAnswers.confirm,
   showDialog: async () => null,
   showPromptDialog: async () => dialogAnswers.prompt,
 }));
 
 /** What the mocked dialogs answer. Mutated per test — `mock.module` runs once, at import. */
-const dialogAnswers: { confirm: boolean; prompt: string | null } = { confirm: true, prompt: null };
+interface DialogAnswers {
+  confirm: boolean;
+  prompt: string | null;
+}
+const dialogAnswers: DialogAnswers = { confirm: true, prompt: null };
 void mock.module("../src/ui/progress-modal.js", () => ({
   showProgressModal: () => ({ done: () => {}, fail: () => {}, setStatus: () => {} }),
 }));
@@ -76,9 +65,12 @@ const POSTS_CONFIG = {
   },
 };
 
-function setupPosts(seedFiles: Record<string, string> = {}, overrides = {}) {
+function setupPosts(
+  seedFiles: Record<string, string> = {},
+  overrides: Partial<StudioPlatform> = {},
+) {
   const { state } = installMockPlatform(
-    { formatAction: mockFormatAction, ...overrides } as unknown as Partial<StudioPlatform>,
+    { formatAction: mockFormatAction, ...overrides },
     seedFiles,
   );
   resetStudioState({ projectConfig: POSTS_CONFIG });
@@ -191,7 +183,7 @@ describe("content-source gaps", () => {
   });
 
   test("inserts fail cleanly when no format can serialize the path", async () => {
-    installMockPlatform({ formatAction: mockFormatAction } as unknown as Partial<StudioPlatform>);
+    installMockPlatform({ formatAction: mockFormatAction });
     resetStudioState({ projectConfig: {} });
     setFormats([]); // No registered formats at all.
     const source = createPagesSource();
@@ -208,7 +200,7 @@ describe("content-source gaps", () => {
     setupPosts(
       {},
       {
-        formatAction: async (payload: Record<string, unknown>) => {
+        formatAction: async (payload: FormatActionRequest) => {
           if (payload.action === "serialize") {
             throw new Error("serializer exploded");
           }
@@ -281,11 +273,17 @@ describe("cell-editor gaps", () => {
     return el;
   };
 
-  const cellWith = (value: unknown): CellLike => ({ getValue: () => value });
+  const cellWith = (value: GridCellValue): CellLike => ({ getValue: () => value });
 
-  function openEditor(column: GridColumn, value: unknown) {
+  /** What an editor reported back: each committed value and each cancel. */
+  interface EditorOutcome {
+    success: GridCellValue[];
+    cancel: number;
+  }
+
+  function openEditor(column: GridColumn, value: GridCellValue) {
     const editor = editorForColumn(column, makeHost)!;
-    const outcome: { success: unknown[]; cancel: number } = { cancel: 0, success: [] };
+    const outcome: EditorOutcome = { cancel: 0, success: [] };
     const host = editor(
       cellWith(value),
       (fn) => fn(),
@@ -338,9 +336,9 @@ describe("cell-editor gaps", () => {
 // ─── Edit buffer ─────────────────────────────────────────────────────────────
 
 describe("edit-buffer gaps", () => {
-  function makeBuffer(committed: Record<string, Record<string, unknown>> = {}) {
+  function makeBuffer(committed: Record<string, Record<string, GridCellValue>> = {}) {
     return createEditBuffer({
-      resolveBaseline: (rowKey, field) => (committed[rowKey]?.[field] ?? null) as string | null,
+      resolveBaseline: (rowKey, field) => committed[rowKey]?.[field] ?? null,
     });
   }
 

@@ -20,8 +20,9 @@ import {
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AiWrite } from "../src/services/ai-writes";
-import type { AnyCommand } from "../src/commands/registry";
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { AnyCommand, Command } from "../src/commands/registry";
+import type { LiveMessage } from "@jxsuite/ai/messages";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 
 // ─── The one mocked collaborator ─────────────────────────────────────────────
@@ -87,15 +88,17 @@ const ran: [string, unknown][] = [];
 
 /** One record, as bare as the registry allows — the view must not care what it does. */
 function stub(id: string, title: string): AnyCommand {
-  return {
-    category: "Settings",
+  const command: Command<JsonObject | undefined> = {
+    // The real `settings.open` is a Project record; the category only decides where a menu files it.
+    category: "Project",
     id,
     level: "application",
-    run: (_ctx: unknown, args: unknown) => {
+    run: (_ctx, args) => {
       ran.push([id, args]);
     },
     title,
-  } as unknown as AnyCommand;
+  };
+  return command;
 }
 
 function installRegistry(): void {
@@ -134,7 +137,7 @@ describe("the entry editor's way out of a document with no schema", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "pages/index.json",
       id: "c7-entry-tab",
-    }) as unknown as Tab;
+    });
     const el = host();
     renderEntryMode(surfaceOf(el), tab);
     /* The editor is a mounted document (`src/surfaces/entry-editor.json`): `mountSurface` settles
@@ -175,7 +178,7 @@ describe("the entry editor's way out of a document with no schema", () => {
     // Invisible: the crash is caught, the command still does not run, and the test still passes.
     const escaped: unknown[] = [];
     const onError = (event: Event) => {
-      escaped.push((event as ErrorEvent).error ?? event);
+      escaped.push(event instanceof ErrorEvent ? (event.error ?? event) : event);
     };
     globalThis.addEventListener("error", onError);
     try {
@@ -217,7 +220,7 @@ describe("the entry form's repaints, and the pane that stops owning it", () => {
     const tab = resetWorkspaceWithTab(undefined, {
       documentPath: "notes/hello.json",
       id: "c7-note-tab",
-    }) as unknown as Tab;
+    });
     const el = host();
     renderEntryMode(surfaceOf(el), tab);
     await flush(8);
@@ -347,7 +350,7 @@ describe("opening the redirects grid", () => {
       documentPath: null,
       id: REDIRECTS_TAB_ID,
     });
-    (rebuilt.doc.document as Record<string, unknown>).marker = "the tab the author is looking at";
+    rebuilt.doc.document.marker = "the tab the author is looking at";
     expect(getGridController(rebuilt)).toBeNull();
 
     const third = await openRedirectsGrid();
@@ -363,9 +366,7 @@ describe("opening the redirects grid", () => {
     // And it is the SAME tab: opening a second one would throw away the document above with the
     // Author's place in it.
     const open = workspace.tabs.get(REDIRECTS_TAB_ID);
-    expect((open?.doc.document as Record<string, unknown> | undefined)?.marker).toBe(
-      "the tab the author is looking at",
-    );
+    expect(open?.doc.document.marker).toBe("the tab the author is looking at");
     expect([...workspace.tabs.keys()].filter((id) => id === REDIRECTS_TAB_ID)).toHaveLength(1);
   });
 });
@@ -373,12 +374,12 @@ describe("opening the redirects grid", () => {
 // ─── The assistant's changed-files summary ───────────────────────────────────
 
 describe("the changed-files summary of an assistant turn", () => {
-  const turn: Message = {
+  const turn: LiveMessage = {
     content: "Done.",
     id: "c7-msg",
     role: "assistant",
     timestamp: 1,
-  } as Message;
+  };
 
   /* The assistant is a Jx document now, so the summary is a PROJECTION rather than a template:
      `changesState` is what the surface's `$switch` reads, and it is what "no expander at all"
@@ -419,12 +420,12 @@ describe("closing the function body in the Logic tab", () => {
     const tab = resetWorkspaceWithTab(
       {
         children: [],
-        state: { greet: { $function: { body: "return 1;" } } },
+        state: { greet: { $prototype: "Function", body: "return 1;" } },
         tagName: "div",
-      } as never,
+      },
       { id: "c7-logic-tab" },
-    ) as unknown as Tab;
-    tab.session.ui.editingFunction = { defName: "greet", type: "def" } as never;
+    );
+    tab.session.ui.editingFunction = { defName: "greet", type: "def" };
     const dock = host();
     dock.dataset["jxRegion"] = bottomPanelRegion("logic");
     syncLogicPanel(dock);
@@ -462,14 +463,18 @@ describe("a Document Header repaint that lands after the host is gone", () => {
     frameErrors = [];
     // Happy-dom has no frames; the card's scheduler is driven off a timer instead, and the errors
     // A frame would swallow are captured so a repaint that threw is an assertable fact.
-    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) =>
-      setTimeout(() => {
-        try {
-          callback(0);
-        } catch (error) {
-          frameErrors.push(error);
-        }
-      }, 0)) as unknown as typeof requestAnimationFrame;
+    // The handle is the timer's numeric id: nothing on this path cancels a frame, so only its shape
+    // Has to match what `requestAnimationFrame` promises.
+    globalThis.requestAnimationFrame = (callback) =>
+      Number(
+        setTimeout(() => {
+          try {
+            callback(0);
+          } catch (error) {
+            frameErrors.push(error);
+          }
+        }, 0),
+      );
     installMockPlatform();
     registerRenderer("frontmatterPanel", () => {
       frontmatterPanel.render();

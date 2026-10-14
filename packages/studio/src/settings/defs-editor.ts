@@ -40,10 +40,12 @@
  * @docs studio/projects/settings
  */
 
+import { isBoolean, isJsonObject, isString } from "@jxsuite/schema/guards";
 import { projectState } from "../store";
 import { commitProjectConfig } from "../tabs/project-config";
 import { camelToLabel } from "../utils/studio-utils";
 import {
+  BLANK_FIELD,
   FIELD_TYPES,
   FORMAT_OPTIONS,
   detectFieldFormat,
@@ -52,38 +54,29 @@ import {
 } from "./schema-field-ui";
 import { mountDefsSurface } from "../surfaces/settings-defs";
 
-import type { SchemaProperty } from "./schema-field-ui";
+import type { NestedFieldDraft, SchemaProperty } from "./schema-field-ui";
 import type {
   DefsActions,
-  DefsChoice,
   DefsFieldView,
   DefsSurfaceHandle,
   DefsView,
   NestedFieldView,
 } from "../surfaces/settings-defs";
-import type { ContentTypeSchema, ContentTypeSchemaField } from "@jxsuite/schema/types";
+import type { ContentTypeSchema } from "@jxsuite/schema/types";
+import type { SurfaceOption } from "../ui/surface";
 
 // ─── The pickers ──────────────────────────────────────────────────────────────
 
 /** The field types, as picker rows. One array, made once: an equal write re-runs no binding. */
-const TYPE_ROWS: DefsChoice[] = FIELD_TYPES.map((type) => ({ label: type, value: type }));
+const TYPE_ROWS: SurfaceOption[] = FIELD_TYPES.map((type) => ({ label: type, value: type }));
 
 /** The formats, with the empty one named: a blank row says nothing about what choosing it does. */
-const FORMAT_ROWS: DefsChoice[] = FORMAT_OPTIONS.map((format) => ({
+const FORMAT_ROWS: SurfaceOption[] = FORMAT_OPTIONS.map((format) => ({
   label: format || "(none)",
   value: format,
 }));
 
-/** What a new field starts as. */
-const BLANK_FIELD = { format: "", name: "", required: false, type: "string" };
-
 // ─── Per-container state ──────────────────────────────────────────────────────
-
-/** One object field's unsubmitted nested field. */
-interface Draft {
-  name: string;
-  type: string;
-}
 
 /**
  * What the reader is part-way through, per rendered container.
@@ -100,7 +93,7 @@ interface DefsUi {
   addOpen: boolean;
   add: { format: string; name: string; required: boolean; type: string };
   /** Each object field's nested add row, by the field's name on disk. */
-  drafts: Map<string, Draft>;
+  drafts: Map<string, NestedFieldDraft>;
   /**
    * The ONE control whose value has parted from what is on disk, and what it holds.
    *
@@ -166,9 +159,19 @@ function hush(container: HTMLElement): void {
   uiFor(container).echo = null;
 }
 
-/** What a control shows: what it was last told it holds, or what is on disk. */
-function shown<T extends string | boolean>(ui: DefsUi, id: string, disk: T): T {
-  return ui.echo?.id === id ? (ui.echo.value as T) : disk;
+/**
+ * What a text control shows: what it was last told it holds, or what is on disk.
+ *
+ * The echo's value is a string whenever its id is a {@link nameId}, because only the rename setters
+ * echo under one; the check states that rather than assuming it.
+ */
+function shownText(ui: DefsUi, id: string, disk: string): string {
+  return ui.echo?.id === id && isString(ui.echo.value) ? ui.echo.value : disk;
+}
+
+/** What a checkbox shows: what it was last told it holds, or what is on disk. */
+function shownFlag(ui: DefsUi, id: string, disk: boolean): boolean {
+  return ui.echo?.id === id && isBoolean(ui.echo.value) ? ui.echo.value : disk;
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -200,6 +203,9 @@ function persist(): void {
  * outlive a projection, which makes reading through to the store the thing that keeps them honest.
  */
 function currentDefs(): Record<string, ContentTypeSchema> | undefined {
+  /* SAFETY: project `$defs` holds JSON Schema type definitions (project-schema.json, "Global type
+     definitions") and this editor is their writer; ContentTypeSchema is that schema object's view,
+     every member optional, and each read below falls back (`?? {}`, `?? []`) when one is absent. */
   return projectState?.projectConfig?.$defs as Record<string, ContentTypeSchema> | undefined;
 }
 
@@ -213,19 +219,16 @@ function selectedDef(ui: DefsUi): ContentTypeSchema | undefined {
  * resolves through `#/$context/content`, read here without a schema-form context to go through.
  */
 function contentTypeNames(): string[] {
-  const content = (projectState?.projectConfig as Record<string, unknown> | null | undefined)
-    ?.content;
-  return content && typeof content === "object" && !Array.isArray(content)
-    ? Object.keys(content)
-    : [];
+  const content = projectState?.projectConfig?.content;
+  return isJsonObject(content) ? Object.keys(content) : [];
 }
 
 /** The last target list, so an unchanged one is the same array and re-runs no binding. */
-let targetRows: DefsChoice[] = [];
+let targetRows: SurfaceOption[] = [];
 let targetNames = " ";
 
 /** The reference targets, as picker rows. */
-function targets(): DefsChoice[] {
+function targets(): SurfaceOption[] {
   const names = contentTypeNames();
   const id = names.join(" ");
   if (id !== targetNames) {
@@ -256,9 +259,9 @@ function nestedView(
     format: detectFieldFormat(schema),
     hasFormat: takesFormat(type),
     key,
-    name: shown(ui, nameId(id), key),
+    name: shownText(ui, nameId(id), key),
     parent,
-    required: shown(ui, requiredId(id), required),
+    required: shownFlag(ui, requiredId(id), required),
     type,
   };
 }
@@ -290,9 +293,9 @@ function fieldView(
     hasFormat: takesFormat(type),
     key,
     label: camelToLabel(key),
-    name: shown(ui, nameId(key), key),
+    name: shownText(ui, nameId(key), key),
     refTarget: schema.$ref ? schema.$ref.replace(/^#\/[^/]+\//, "") : "",
-    required: shown(ui, requiredId(key), required),
+    required: shownFlag(ui, requiredId(key), required),
     type,
   };
 }
@@ -312,15 +315,15 @@ function project(container: HTMLElement): DefsView {
     addRequired: ui.add.required,
     addState: ui.addOpen && def ? "open" : "closed",
     addType: ui.add.type,
+    defs: Object.keys(defs).map((name) => ({ name, selected: name === ui.selected })),
     editorState: def ? "editing" : "empty",
     fields: Object.entries(properties).map(([key, schema]) =>
-      fieldView(ui, key, schema as SchemaProperty, required.includes(key), rows.length > 0),
+      fieldView(ui, key, schema, required.includes(key), rows.length > 0),
     ),
     formatOptions: FORMAT_ROWS,
     newName: ui.newName,
     newState: ui.newOpen ? "open" : "closed",
     selected: def && ui.selected !== null ? ui.selected : "",
-    shapes: Object.keys(defs).map((name) => ({ name, selected: name === ui.selected })),
     targets: rows,
     typeOptions: TYPE_ROWS,
   };
@@ -338,10 +341,10 @@ function actionsFor(container: HTMLElement): DefsActions {
 
   /** The parent object a nested edit is about, or `undefined` when it has gone underneath. */
   const parentOf = (parent: string): SchemaProperty | undefined =>
-    selectedDef(ui)?.properties?.[parent] as SchemaProperty | undefined;
+    selectedDef(ui)?.properties?.[parent];
 
   /** One object field's add-row draft, made on first use. */
-  const draftOf = (parent: string): Draft => {
+  const draftOf = (parent: string): NestedFieldDraft => {
     let draft = ui.drafts.get(parent);
     if (!draft) {
       draft = { name: "", type: "string" };
@@ -513,7 +516,7 @@ function actionsFor(container: HTMLElement): DefsActions {
       }
       done();
     },
-    removeShape() {
+    removeSelected() {
       const defs = currentDefs();
       if (ui.selected === null || !defs?.[ui.selected]) {
         return;
@@ -613,7 +616,7 @@ function actionsFor(container: HTMLElement): DefsActions {
       }
       /* The pointer form is `#/content/<type>` — the same one `ui/form-controls.ts` writes, so a
          reference authored here and one authored in the content-types builder are the same value. */
-      def.properties[key] = { $ref: `#/content/${value}` } as ContentTypeSchemaField;
+      def.properties[key] = { $ref: `#/content/${value}` };
       done();
     },
     setType(key, value) {

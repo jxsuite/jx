@@ -1,7 +1,7 @@
 {
   "name": "tool-record-results",
   "description": "The chat-state API as documented: appendToolResult called while the turn is still streaming, so the ToolCallRecord carries its result. The result is transcript-only and never reaches the wire; only the tool reply message does.",
-  "shapes": ["tool-record-result-set", "single-tool-call", "content-null-with-tool-calls"],
+  "scenarios": ["tool-record-result-set", "single-tool-call", "content-null-with-tool-calls"],
   "script": [
     ["sendMessage", "Rename the page to About"],
     ["appendToolCallStart", "call_1", "set_property"],

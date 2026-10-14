@@ -132,8 +132,8 @@ export function openDiffTab(path: string): Tab {
  *
  * `files/files.ts` is imported dynamically because it imports `cleanupGitPanel` from
  * `panels/git-panel.ts`, which imports this module: a static edge back would close that cycle.
- * `openFileInTab` answers `void` when it reveals a tab that was already open, so the tab is
- * resolved from the workspace either way.
+ * `openFileInTab` answers `void` whether it opens a new tab or reveals one that was already open,
+ * so the tab is resolved from the workspace by its path.
  *
  * Answers null when the file could not be opened at all, which the caller states rather than
  * silently leaving the stage on someone else's document.
@@ -143,6 +143,6 @@ export async function openComparisonTab(path: string): Promise<Tab | null> {
     return openDiffTab(path);
   }
   const files = await import("../files/files");
-  const opened = await files.openFileInTab(path, {});
-  return opened ?? [...workspace.tabs.values()].find((tab) => tab.documentPath === path) ?? null;
+  await files.openFileInTab(path, {});
+  return [...workspace.tabs.values()].find((tab) => tab.documentPath === path) ?? null;
 }

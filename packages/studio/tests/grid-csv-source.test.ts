@@ -100,8 +100,9 @@ describe("createCsvFileSource — commit", () => {
 
     const { rows } = await source.rows();
     expect(rows.map((r) => r.key)).toEqual(["w-1", "d-3"]);
-    expect(state.files.get("p.csv")).toContain("d-3,Doodad,5,new");
-    expect(state.files.get("p.csv")).not.toContain("Gadget");
+    const written = state.files.get("p.csv");
+    expect(written).toContain("d-3,Doodad,5,new");
+    expect(written).not.toContain("Gadget");
   });
 
   test("aborts the whole commit as stale when the file changed on disk", async () => {

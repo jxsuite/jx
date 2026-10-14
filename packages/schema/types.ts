@@ -62,13 +62,54 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
+/**
+ * What a Jx document object holds under a key its interface leaves open.
+ *
+ * Documents are JSON, so this is the JSON value space widened by the typed shapes this module's
+ * declared keys use (an interface is never assignable to {@link JsonObject}). Each index signature
+ * adds `undefined`, for a key an editor has cleared. Narrow it with the guards in
+ * `@jxsuite/schema/guards`.
+ */
+export type JxDocumentValue =
+  | JsonPrimitive
+  | JxRef
+  | JxExpressionNode
+  | JxExpressionDef
+  | JxStatement
+  | CemParameter
+  | CemEvent
+  | JxFunctionDef
+  | JxServerFnDef
+  | JxPrototypeDef
+  | JxStateObject
+  | JxHeadEntry
+  | JxStyle
+  | JxElement
+  | JxMutableNode
+  | JxMappedArray
+  | { $expression: JxTagExpression }
+  | JxClassParamDef
+  | JxClassFieldDef
+  | JxClassCtorDef
+  | JxClassMethodDef
+  | JxClassDefs
+  | ImageConfig
+  | DeployConfig
+  | HeadersConfig
+  | ManifestConfig
+  | SecurityTxtConfig
+  | ServiceWorkerConfig
+  | JxDocumentValue[]
+  | { [key: string]: JxDocumentValue };
+
 // ─── Binding Model ──────────────────────────────────────────────────────────────
 // Any bindable position in a document holds either a literal value or a JSON
 // Pointer reference into the reactive scope.
 
 /**
- * A JSON Pointer reference into document state, e.g. `{ $ref: "#/state/count" }`. (A type literal
- * rather than an interface so it stays assignable to JsonValue.)
+ * A JSON Pointer reference into document state, e.g. `{ $ref: "#/state/count" }`. Every member is
+ * JSON, but as an interface it has no implicit index signature, so it is not assignable to
+ * `JsonObject`; {@link JxDocumentValue} names it for that reason.
  */
 export interface JxRef {
   $ref: string;
@@ -111,7 +152,7 @@ export interface JxExpressionDef {
    * callable formula invoked via the `call` operator, with `$args/<name>` refs in its body.
    */
   parameters?: (string | CemParameter)[];
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 // ─── State Definition Model ─────────────────────────────────────────────────────
@@ -197,7 +238,7 @@ export interface JxFunctionDef {
   emits?: CemEvent[];
   description?: string;
   deprecated?: string | boolean;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 /** A `timing: "server"` function proxy — executed server-side, no `$prototype`. */
@@ -209,7 +250,7 @@ export interface JxServerFnDef {
   /** Named arguments forwarded to the server function: literals or `$ref` bindings. */
   arguments?: Record<string, JsonValue>;
   debounce?: number;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 // ─── Consumer-Friendly Types ────────────────────────────────────────────────────
@@ -223,9 +264,9 @@ export interface JxHeadEntry {
    * Element content. An **object** is a structured data block — the compiler serializes it to JSON
    * inside the tag, which is how JSON-LD is authored (site-architecture.md §8.5).
    */
-  textContent?: string | Record<string, unknown>;
+  textContent?: string | JsonObject;
   children?: (JxHeadEntry | string)[];
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 export interface ImageConfig {
@@ -241,7 +282,7 @@ export interface ImageConfig {
   remoteDomains?: string[];
 }
 
-/** A CEM-compatible function parameter. JSON-precise (assignable to JsonValue). */
+/** A CEM-compatible function parameter. Every member is JSON (see {@link JxDocumentValue}). */
 export interface CemParameter {
   name: string;
   /** Parameter type — JSON Schema or CEM `{ text }` format. */
@@ -251,7 +292,7 @@ export interface CemParameter {
   default?: JsonValue;
 }
 
-/** A CEM-compatible event a function dispatches. JSON-precise (assignable to JsonValue). */
+/** A CEM-compatible event a function dispatches. Every member is JSON (see {@link JxDocumentValue}). */
 export interface CemEvent {
   name: string;
   type?: JsonValue;
@@ -281,8 +322,13 @@ export interface JxStyle {
  * template and not a third `$switch` spelling.
  */
 export type JxTagExpression =
-  | { operator: "?:"; target: unknown; value: string; initial: string }
-  | { operator: "switch"; target: unknown; cases: Record<string, string>; default: string };
+  | { operator: "?:"; target: JxExpressionOperand; value: string; initial: string }
+  | {
+      operator: "switch";
+      target: JxExpressionOperand;
+      cases: Record<string, string>;
+      default: string;
+    };
 
 /**
  * An ELEMENT's tag. The document root's and a head entry's stay `string` — see
@@ -323,7 +369,7 @@ export interface JxElement {
   $src?: string;
   observedAttributes?: string[];
   state?: Record<string, JxStateDefinition>;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 export interface JxMappedArray {
@@ -400,7 +446,7 @@ export interface JxStateObject {
   /** Whether property changes reflect back to the HTML attribute. */
   reflects?: boolean;
   deprecated?: string | boolean;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 /** A `$prototype` instance entry (Request, Storage, ContentCollection, custom classes, …). */
@@ -443,7 +489,7 @@ export interface JxPrototypeDef {
   indexes?: { name: string; keyPath: string; unique?: boolean }[];
   /** FormData prototype config. */
   fields?: Record<string, JsonValue>;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 // ─── Event Binding Model ────────────────────────────────────────────────────────
@@ -470,11 +516,11 @@ export type ClassConstructorDef = FromSchema<typeof classConstructorDefSchema>;
 export interface JxClassParamDef {
   identifier?: string;
   $ref?: string;
-  type?: unknown;
+  type?: JsonValue;
   format?: string;
   default?: JsonValue;
   description?: string;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 export interface JxClassFieldDef {
@@ -482,12 +528,12 @@ export interface JxClassFieldDef {
   access?: "public" | "private" | "protected";
   scope?: "instance" | "static";
   identifier?: string;
-  type?: unknown;
+  type?: JsonValue;
   $prototype?: string;
   initializer?: JsonValue;
   default?: JsonValue;
   description?: string;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 export interface JxClassCtorDef {
@@ -497,7 +543,7 @@ export interface JxClassCtorDef {
   superCall?: { arguments?: string[] };
   body?: string | string[];
   description?: string;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 export interface JxClassMethodDef {
@@ -513,7 +559,7 @@ export interface JxClassMethodDef {
   getter?: { body?: string };
   setter?: { parameters?: JxClassParamDef[]; body?: string };
   description?: string;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 /** A .class.json document: `$prototype: "Class"` with fields/constructor/methods in `$defs`. */
@@ -525,20 +571,24 @@ export interface JxClassDef {
   description?: string;
   extends?: string | JxRef;
   $implementation?: string;
-  $defs?: {
-    fields?: Record<string, JxClassFieldDef>;
-    /**
-     * The constructor definition. On objects parsed from JSON without an explicit "constructor"
-     * key, plain property access yields `Object.prototype.constructor` (a Function) — narrow with
-     * `typeof === "object"` before use.
-     */
-    // oxlint-disable-next-line typescript/ban-types, typescript/no-unsafe-function-type -- only `Function` absorbs the inherited Object.prototype.constructor on plain object literals
-    constructor?: JxClassCtorDef | Function;
-    methods?: Record<string, JxClassMethodDef>;
-    parameters?: Record<string, JxClassParamDef>;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
+  $defs?: JxClassDefs;
+  [key: string]: JxDocumentValue | undefined;
+}
+
+/** The `$defs` of a .class.json document: the class's members, by role. */
+export interface JxClassDefs {
+  fields?: Record<string, JxClassFieldDef>;
+  /**
+   * The constructor definition. On objects parsed from JSON without an explicit "constructor" key,
+   * plain property access yields `Object.prototype.constructor` (a Function) — narrow with `typeof
+   * === "object"` before use.
+   */
+  // oxlint-disable-next-line typescript/ban-types, typescript/no-unsafe-function-type -- only `Function` absorbs the inherited Object.prototype.constructor on plain object literals
+  constructor?: JxClassCtorDef | Function;
+  methods?: Record<string, JxClassMethodDef>;
+  parameters?: Record<string, JxClassParamDef>;
+  /** Any other definitions a class document keeps beside its members. */
+  [key: string]: JxDocumentValue | JxClassDefs["constructor"];
 }
 
 /** The adapters the compiler actually implements (site-loader VALID_ADAPTERS + "static"). */
@@ -669,11 +719,11 @@ export interface ProjectConfig {
   $schema?: string;
   name?: string;
   url?: string;
-  state?: Record<string, unknown>;
+  state?: Record<string, JxStateDefinition>;
   $media?: Record<string, string>;
   $elements?: (string | JxElement)[];
   $head?: JxHeadEntry[];
-  $defs?: Record<string, unknown>;
+  $defs?: Record<string, JsonValue>;
   build?: {
     adapter?: AdapterId | (string & Record<never, never>);
     deploy?: DeployConfig;
@@ -686,7 +736,7 @@ export interface ProjectConfig {
      * two bundler backends agree on semantics but not on minified bytes.
      */
     minify?: boolean;
-    [key: string]: unknown;
+    [key: string]: JxDocumentValue | undefined;
   };
   images?: ImageConfig;
   imports?: Record<string, string>;
@@ -731,10 +781,10 @@ export interface ProjectConfig {
      */
     shadow?: "open" | "closed" | false;
     charset?: string;
-    [key: string]: unknown;
+    [key: string]: JxDocumentValue | undefined;
   };
   style?: JxStyle;
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 // ─── Editor/Mutation Types ──────────────────────────────────────────────────────
@@ -751,13 +801,13 @@ export type JxAttributeValue = Bindable<string | number | boolean>;
 export type JxPathsDef =
   | { values: JsonValue[]; param?: string }
   | { $ref: string; param?: string; field?: string }
-  | { param?: string; field?: string; [discriminator: string]: unknown }
+  | { param?: string; field?: string; [discriminator: string]: JsonValue | undefined }
   | Record<string, JsonValue>[];
 
 /**
  * The editor's working representation of a document node. Known properties are fully typed;
- * unrecognized keys (open schema) surface as `unknown` and must be narrowed with the guards in
- * `@jxsuite/schema/guards` before use.
+ * unrecognized keys (open schema) surface as {@link JxDocumentValue} and must be narrowed with the
+ * guards in `@jxsuite/schema/guards` before use.
  */
 export interface JxMutableNode {
   tagName?: JxElementTagName;
@@ -798,7 +848,7 @@ export interface JxMutableNode {
   $defs?: Record<string, JsonValue>;
   imports?: Record<string, string>;
   observedAttributes?: string[];
-  [key: string]: unknown;
+  [key: string]: JxDocumentValue | undefined;
 }
 
 // ─── Paths ──────────────────────────────────────────────────────────────────────
@@ -817,13 +867,20 @@ export interface ContentTypeSchemaField {
   items?: ContentTypeSchemaField;
   required?: string[];
   description?: string;
-  [key: string]: unknown;
+  [key: string]: ContentTypeSchemaValue | undefined;
 }
+
+/** A keyword's value inside a content-type schema: JSON, or a nested field schema. */
+export type ContentTypeSchemaValue =
+  | JsonPrimitive
+  | ContentTypeSchemaField
+  | ContentTypeSchemaValue[]
+  | { [key: string]: ContentTypeSchemaValue };
 
 export interface ContentTypeSchema {
   properties?: Record<string, ContentTypeSchemaField>;
   required?: string[];
-  [key: string]: unknown;
+  [key: string]: ContentTypeSchemaValue | undefined;
 }
 
 // ─── Content Wire Types ─────────────────────────────────────────────────────────
@@ -838,10 +895,22 @@ export interface TocEntry {
   id: string;
 }
 
+/**
+ * A field of a loaded content entry's `data`: what front matter parses to, plus the entry a
+ * reference field resolves to. YAML has a timestamp type the parser returns as a `Date`, so this is
+ * wider than {@link JsonValue}.
+ */
+export type ContentFieldValue =
+  | JsonPrimitive
+  | Date
+  | ContentLoaderEntry
+  | ContentFieldValue[]
+  | { [key: string]: ContentFieldValue };
+
 /** One loaded content entry, as produced by a format class's `load` capability. */
 export interface ContentLoaderEntry {
   id: string;
-  data: Record<string, unknown>;
+  data: Record<string, ContentFieldValue | undefined>;
   body: string | null;
   $children?: (JxElement | string)[];
   _meta?: {
@@ -856,7 +925,7 @@ export interface ContentLoaderEntry {
      */
     mtime?: string;
     /** Authored text of a field the date-coercion pass rewrote, keyed by field name. */
-    rawDates?: Record<string, unknown>;
+    rawDates?: Record<string, ContentFieldValue>;
     /**
      * The entry's source file, relative to its content type's source directory, `/`-separated and
      * with its extension (`Frappe/Bench Operations.md`). Stamped by the content loader for every

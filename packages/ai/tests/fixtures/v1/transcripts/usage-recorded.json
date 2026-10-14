@@ -1,7 +1,7 @@
 {
   "name": "usage-recorded",
   "description": "recordUsage across two turns. Usage never touches the messages or the wire. The last valid frame wins: reasoning the provider billed but never streamed is subtracted from contextTokens, `type` is stripped, and a frame with a negative count is ignored.",
-  "shapes": ["usage-recorded", "reasoning-replayed"],
+  "scenarios": ["usage-recorded", "reasoning-replayed"],
   "script": [
     ["sendMessage", "Summarize the page"],
     ["appendReasoning", "Short page."],

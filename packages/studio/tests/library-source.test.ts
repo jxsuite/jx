@@ -16,7 +16,7 @@ import {
 import { gridTabLabel, makeGridTabId, parseGridTabId } from "../src/grid/grid-source";
 import type { DirEntry } from "../src/types";
 
-function tree(): Record<string, DirEntry[]> {
+function tree() {
   return {
     pages: [
       {
@@ -29,7 +29,7 @@ function tree(): Record<string, DirEntry[]> {
       { name: "b.json", path: "pages/b.json", type: "file" },
     ],
     public: [{ name: "logo.png", path: "public/logo.png", type: "file" }],
-  };
+  } satisfies Record<string, DirEntry[]>;
 }
 
 let listed: string[];
@@ -180,7 +180,11 @@ describe("createLibrarySource", () => {
     });
     expect(result.deletes[0]!.ok).toBe(false);
     expect(result.inserts[0]!.ok).toBe(false);
-    expect(LIBRARY_READ_ONLY).toContain("context menu");
+    // The refusal points the author at where those edits DO live.
+    expect(LIBRARY_READ_ONLY).toBe(
+      "The Library lists files; it does not edit them. Rename, duplicate or delete from the file's " +
+        "context menu, or open the file to edit it.",
+    );
   });
 
   test("columns() answers the table's own column set", async () => {

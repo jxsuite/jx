@@ -31,9 +31,11 @@ interface Update {
   "package-ecosystem": string;
   directory?: string;
   directories?: string[];
-  schedule: { interval: string; day?: string };
+  /** Required by Dependabot, and optional here because a test below asserts it is present. */
+  schedule?: { interval: string; day?: string };
   groups?: Record<string, Group>;
-  cooldown?: Record<string, unknown>;
+  /** `*-days` counts, plus the `include` / `exclude` dependency-name lists. */
+  cooldown?: Record<string, number | string[]>;
   ignore?: { "dependency-name"?: string }[];
   "versioning-strategy"?: string;
   reviewers?: unknown;
@@ -44,7 +46,12 @@ interface Config {
   updates: Update[];
 }
 
+/* SAFETY: dependabot.yml is validated by GitHub against Dependabot's configuration schema on every
+ * push, which requires `version` and an `updates` list whose entries each name a
+ * `package-ecosystem`; every other `Update` member is optional and read below as possibly absent. */
 const config = Bun.YAML.parse(await Bun.file(CONFIG).text()) as Config;
+/* SAFETY: the root package.json is the workspace manifest bun itself reads; every member typed here
+ * is optional, and each read below handles its absence. */
 const manifest = (await Bun.file("package.json").json()) as {
   workspaces?: string[];
   packageManager?: string;
@@ -57,11 +64,11 @@ const byEcosystem = new Map(config.updates.map((u) => [u["package-ecosystem"], u
  * entry naming anything else is a typo that costs nothing at validation time and everything at
  * runtime — Dependabot rejects the whole file, so ALL updates stop, not just the bad entry.
  */
-const EXPECTED: Record<string, string> = {
+const EXPECTED = {
   "github-actions": "every `uses:` in .github/workflows/** and .github/actions/**",
   bun: "the root bun.lock and all 21 workspace package.json files",
   nix: "the four root inputs of flake.nix, recorded in flake.lock",
-};
+} satisfies Record<string, string>;
 
 describe("the ecosystems declared", () => {
   test("are exactly the ones this repository has something for", () => {
@@ -195,12 +202,14 @@ describe("the nix entry", () => {
   test("every root flake input is a plain named input the updater can move", async () => {
     // It updates ROOT-level inputs only, one `nix flake update <name>` at a time. An input this
     // Test cannot see is an input nothing will ever update.
+    /* SAFETY: flake.lock is written by `nix flake lock` in lock format 7: `root` names a key of
+     * `nodes`, and a node's `inputs` maps each input name to a node key or a `follows` path. */
     const lock = (await Bun.file("flake.lock").json()) as {
-      nodes: Record<string, unknown>;
+      nodes: Record<string, { inputs?: Record<string, string | string[]> }>;
       root: string;
     };
-    const root = lock.nodes[lock.root] as { inputs?: Record<string, unknown> };
-    const inputs = Object.keys(root.inputs ?? {});
+    const root = lock.nodes[lock.root];
+    const inputs = Object.keys(root?.inputs ?? {});
     expect(inputs.length).toBeGreaterThan(0);
     for (const name of inputs) {
       expect(name, "a flake input name must be a plain identifier").toMatch(/^[A-Za-z0-9_-]+$/);

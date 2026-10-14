@@ -1,8 +1,7 @@
 import "./with-dom.js";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { setProjectState } from "../src/store";
-import type { ProjectState } from "../src/types";
-import type { JxStyle } from "@jxsuite/schema/types";
+import type { ProjectConfig } from "@jxsuite/schema/types";
 import {
   getEffectiveElements,
   getEffectiveHead,
@@ -12,8 +11,25 @@ import {
   getEffectiveStyle,
 } from "../src/site-context";
 
+/**
+ * Open an empty project whose `project.json` is `projectConfig`, the only member site-context
+ * reads.
+ */
+function openProject(projectConfig: ProjectConfig | null): void {
+  setProjectState({
+    dirs: new Map(),
+    expanded: new Set(),
+    isSiteProject: projectConfig !== null,
+    name: "site",
+    projectConfig,
+    projectRoot: "",
+    searchQuery: "",
+    selectedPath: null,
+  });
+}
+
 beforeEach(() => {
-  setProjectState({ projectConfig: null } as unknown as ProjectState);
+  openProject(null);
 });
 
 // ─── getEffectiveMedia ─────────────────────────────────────────────────────
@@ -29,20 +45,16 @@ describe("getEffectiveMedia", () => {
   });
 
   test("returns site media when no doc media", () => {
-    setProjectState({
-      projectConfig: { $media: { "--lg": "(min-width: 1024px)" } },
-    } as unknown as ProjectState);
+    openProject({ $media: { "--lg": "(min-width: 1024px)" } });
     expect(getEffectiveMedia()).toEqual({
       "--lg": "(min-width: 1024px)",
     });
   });
 
   test("merges site and doc media (doc wins)", () => {
-    setProjectState({
-      projectConfig: {
-        $media: { "--lg": "(min-width: 1024px)", "--md": "(min-width: 768px)" },
-      },
-    } as unknown as ProjectState);
+    openProject({
+      $media: { "--lg": "(min-width: 1024px)", "--md": "(min-width: 768px)" },
+    });
     const docMedia = { "--md": "(min-width: 800px)" };
     const result = getEffectiveMedia(docMedia);
     expect(result["--md"]).toBe("(min-width: 800px)");
@@ -63,28 +75,21 @@ describe("getEffectiveStyle", () => {
   });
 
   test("returns site style when no doc style", () => {
-    setProjectState({
-      projectConfig: { style: { margin: "0" } },
-    } as unknown as ProjectState);
+    openProject({ style: { margin: "0" } });
     expect(getEffectiveStyle()).toEqual({ margin: "0" });
   });
 
   test("merges styles (doc wins for flat values)", () => {
-    setProjectState({
-      projectConfig: { style: { color: "blue", margin: "0" } },
-    } as unknown as ProjectState);
+    openProject({ style: { color: "blue", margin: "0" } });
     const result = getEffectiveStyle({ color: "red" });
     expect(result.color).toBe("red");
     expect(result.margin).toBe("0");
   });
 
   test("shallow-merges nested selector objects", () => {
-    setProjectState({
-      projectConfig: { style: { ":hover": { color: "blue", opacity: "0.8" } } },
-    } as unknown as ProjectState);
+    openProject({ style: { ":hover": { color: "blue", opacity: "0.8" } } });
     const result = getEffectiveStyle({ ":hover": { color: "red" } });
-    expect((result[":hover"] as JxStyle).color).toBe("red");
-    expect((result[":hover"] as JxStyle).opacity).toBe("0.8");
+    expect(result[":hover"]).toEqual({ color: "red", opacity: "0.8" });
   });
 });
 
@@ -101,16 +106,12 @@ describe("getEffectiveImports", () => {
   });
 
   test("returns site imports when no doc imports", () => {
-    setProjectState({
-      projectConfig: { imports: { Parser: "@jx/parser" } },
-    } as unknown as ProjectState);
+    openProject({ imports: { Parser: "@jx/parser" } });
     expect(getEffectiveImports()).toEqual({ Parser: "@jx/parser" });
   });
 
   test("merges imports (doc wins)", () => {
-    setProjectState({
-      projectConfig: { imports: { A: "a.json", B: "b.json" } },
-    } as unknown as ProjectState);
+    openProject({ imports: { A: "a.json", B: "b.json" } });
     const result = getEffectiveImports({ A: "override.json" });
     expect(result.A).toBe("override.json");
     expect(result.B).toBe("b.json");
@@ -130,30 +131,21 @@ describe("getEffectiveElements", () => {
   });
 
   test("returns site elements when no doc elements", () => {
-    setProjectState({
-      projectConfig: { $elements: [{ $ref: "./site.json" }] },
-    } as unknown as ProjectState);
+    openProject({ $elements: [{ $ref: "./site.json" }] });
     expect(getEffectiveElements()).toEqual([{ $ref: "./site.json" }]);
   });
 
   test("deduplicates by $ref", () => {
-    setProjectState({
-      projectConfig: {
-        $elements: [{ $ref: "./a.json" }, { $ref: "./b.json" }],
-      },
-    } as unknown as ProjectState);
+    openProject({
+      $elements: [{ $ref: "./a.json" }, { $ref: "./b.json" }],
+    });
     const result = getEffectiveElements([{ $ref: "./a.json" }, { $ref: "./c.json" }]);
-    expect(result).toHaveLength(3);
-    const refs = result.map((e) => (e as { $ref: string }).$ref);
-    expect(refs).toContain("./a.json");
-    expect(refs).toContain("./b.json");
-    expect(refs).toContain("./c.json");
+    // Site entries first, then the document's, each `$ref` once.
+    expect(result).toEqual([{ $ref: "./a.json" }, { $ref: "./b.json" }, { $ref: "./c.json" }]);
   });
 
   test("handles string entries", () => {
-    setProjectState({
-      projectConfig: { $elements: ["./global.json"] },
-    } as unknown as ProjectState);
+    openProject({ $elements: ["./global.json"] });
     const result = getEffectiveElements(["./global.json", "./local.json"]);
     expect(result).toHaveLength(2);
   });
@@ -173,21 +165,17 @@ describe("getEffectiveHead", () => {
 
   test("returns site head when no doc head", () => {
     const siteHead = [{ attributes: { href: "/global.css" }, tagName: "link" }];
-    setProjectState({
-      projectConfig: { $head: siteHead },
-    } as unknown as ProjectState);
+    openProject({ $head: siteHead });
     expect(getEffectiveHead()).toEqual(siteHead);
   });
 
   test("deduplicates by href", () => {
-    setProjectState({
-      projectConfig: {
-        $head: [
-          { attributes: { href: "/a.css" }, tagName: "link" },
-          { attributes: { href: "/b.css" }, tagName: "link" },
-        ],
-      },
-    } as unknown as ProjectState);
+    openProject({
+      $head: [
+        { attributes: { href: "/a.css" }, tagName: "link" },
+        { attributes: { href: "/b.css" }, tagName: "link" },
+      ],
+    });
     const result = getEffectiveHead([
       { attributes: { href: "/a.css" }, tagName: "link" },
       { attributes: { href: "/c.css" }, tagName: "link" },
@@ -196,11 +184,9 @@ describe("getEffectiveHead", () => {
   });
 
   test("deduplicates by src", () => {
-    setProjectState({
-      projectConfig: {
-        $head: [{ attributes: { src: "/app.js" }, tagName: "script" }],
-      },
-    } as unknown as ProjectState);
+    openProject({
+      $head: [{ attributes: { src: "/app.js" }, tagName: "script" }],
+    });
     const result = getEffectiveHead([{ attributes: { src: "/app.js" }, tagName: "script" }]);
     expect(result).toHaveLength(1);
   });
@@ -210,9 +196,7 @@ describe("getEffectiveHead", () => {
       attributes: { content: "width=device-width", name: "viewport" },
       tagName: "meta",
     };
-    setProjectState({
-      projectConfig: { $head: [meta] },
-    } as unknown as ProjectState);
+    openProject({ $head: [meta] });
     const result = getEffectiveHead([meta]);
     expect(result).toHaveLength(1);
   });
@@ -229,14 +213,12 @@ describe("getEffectiveHead", () => {
 describe("getEffectiveLocales", () => {
   test("no project, and a project that declares none, are both null", () => {
     expect(getEffectiveLocales()).toBeNull();
-    setProjectState({ projectConfig: { name: "Demo" } } as unknown as ProjectState);
+    openProject({ name: "Demo" });
     expect(getEffectiveLocales()).toBeNull();
   });
 
   test("reads the live config, resolved the way the build resolves it", () => {
-    setProjectState({
-      projectConfig: { i18n: { defaultLocale: "EN-us", locales: ["en-US", "fr-ca", "not_a_tag"] } },
-    } as unknown as ProjectState);
+    openProject({ i18n: { defaultLocale: "EN-us", locales: ["en-US", "fr-ca", "not_a_tag"] } });
     expect(getEffectiveLocales()).toEqual({
       defaultLocale: "en-US",
       locales: ["en-US", "fr-CA"],
@@ -250,20 +232,16 @@ describe("getEffectiveLocales", () => {
    * on the way to drawing a menu.
    */
   test("a malformed tag is dropped rather than thrown, and the rest survives", () => {
-    setProjectState({
-      projectConfig: { i18n: { locales: ["en_US", "fr"] } },
-    } as unknown as ProjectState);
+    openProject({ i18n: { locales: ["en_US", "fr"] } });
     expect(getEffectiveLocales()?.locales).toEqual(["fr"]);
   });
 
   // `projectState` is replaced wholesale on a project switch, so a cached answer would describe a
   // Project that is no longer open.
   test("follows a project switch", () => {
-    setProjectState({
-      projectConfig: { i18n: { locales: ["en", "fr"] } },
-    } as unknown as ProjectState);
+    openProject({ i18n: { locales: ["en", "fr"] } });
     expect(getEffectiveLocales()?.locales).toHaveLength(2);
-    setProjectState({ projectConfig: { name: "Other" } } as unknown as ProjectState);
+    openProject({ name: "Other" });
     expect(getEffectiveLocales()).toBeNull();
   });
 });

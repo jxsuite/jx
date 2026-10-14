@@ -1,6 +1,7 @@
-import "./with-dom.js";
+import { installMockPlatform } from "./harness";
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { registerPlatform } from "../src/platform";
+import { isNonNullObject } from "@jxsuite/schema/guards";
+import type { editor } from "monaco-editor";
 import type { StudioPlatform } from "../src/types";
 
 import {
@@ -11,16 +12,41 @@ import {
   setLintMarkers,
   getFunctionArgs,
 } from "../src/services/code-services";
-import * as monaco from "monaco-editor/editor";
+import type { OxLintDiagnostic } from "../src/services/code-services";
+
+const setModelMarkers = mock(
+  (_model: editor.ITextModel, _owner: string, _markers: editor.IMarkerData[]) => {},
+);
 
 // Mock monaco-editor
 void mock.module("monaco-editor/editor", () => ({
   MarkerSeverity: { Error: 8, Warning: 4 },
-  Uri: { parse: (url: any) => ({ toString: () => url }) },
-  editor: {
-    setModelMarkers: mock(() => {}),
-  },
+  Uri: { parse: (url: string) => ({ toString: () => url }) },
+  editor: { setModelMarkers },
 }));
+
+/** The markers argument of the most recent `setModelMarkers` call. */
+function lastMarkers(): editor.IMarkerData[] {
+  const call = setModelMarkers.mock.calls.at(-1);
+  if (!call) {
+    throw new Error("setModelMarkers was never called");
+  }
+  return call[2];
+}
+
+/**
+ * An editor showing `model`. setLintMarkers calls nothing on the editor but `getModel()`, so the
+ * stub supplies that one member.
+ */
+function editorShowing(model: editor.ITextModel | null): editor.IStandaloneCodeEditor {
+  const stub: Pick<editor.IStandaloneCodeEditor, "getModel"> = { getModel: () => model };
+  // SAFETY: setLintMarkers reads only `getModel()` from its editor argument, which the stub supplies.
+  return stub as editor.IStandaloneCodeEditor;
+}
+
+/* SAFETY: setLintMarkers never reads a model member; it only hands the model, by identity, to
+   `setModelMarkers`, which the monaco mock above replaces with a recorder. */
+const MODEL = {} as editor.ITextModel;
 
 // ─── codeService ────────────────────────────────────────────────────────────
 
@@ -33,15 +59,15 @@ beforeAll(async () => {
 });
 
 describe("codeService", () => {
-  test("returns null when platform has no codeService", async () => {
-    registerPlatform({} as unknown as StudioPlatform);
+  test("relays a null answer from platform.codeService", async () => {
+    installMockPlatform();
     const result = await codeService("lint", { code: "x" });
     expect(result).toBeNull();
   });
 
   test("delegates to platform.codeService", async () => {
-    const mockFn = mock(() => ({ diagnostics: [] }));
-    registerPlatform({ codeService: mockFn } as unknown as StudioPlatform);
+    const mockFn = mock<StudioPlatform["codeService"]>(async () => ({ diagnostics: [] }));
+    installMockPlatform({ codeService: mockFn });
     const result = await codeService("lint", { code: "x" });
     expect(result).toEqual({ diagnostics: [] });
     expect(mockFn).toHaveBeenCalledWith("lint", { code: "x" });
@@ -51,17 +77,17 @@ describe("codeService", () => {
 // ─── locateDocument ─────────────────────────────────────────────────────────
 
 describe("locateDocument", () => {
-  test("returns null when platform has no locateFile", async () => {
-    registerPlatform({} as unknown as StudioPlatform);
+  test("relays a null answer from platform.locateFile", async () => {
+    installMockPlatform();
     const result = await locateDocument("page.json");
     expect(result).toBeNull();
   });
 
   test("delegates to platform.locateFile", async () => {
-    const mockFn = mock(() => ({ path: "pages/page.json" }));
-    registerPlatform({ locateFile: mockFn } as unknown as StudioPlatform);
+    const mockFn = mock<StudioPlatform["locateFile"]>(async () => "pages/page.json");
+    installMockPlatform({ locateFile: mockFn });
     const result = await locateDocument("page.json");
-    expect(result as unknown).toEqual({ path: "pages/page.json" });
+    expect(result).toBe("pages/page.json");
     expect(mockFn).toHaveBeenCalledWith("page.json");
   });
 });
@@ -74,19 +100,19 @@ describe("fetchPluginSchema", () => {
   });
 
   test("returns null when def has no $src", async () => {
-    registerPlatform({} as unknown as StudioPlatform);
+    installMockPlatform();
     const result = await fetchPluginSchema({ $prototype: "Foo" }, {});
     expect(result).toBeNull();
   });
 
   test("returns null when def has no $prototype", async () => {
-    registerPlatform({} as unknown as StudioPlatform);
+    installMockPlatform();
     const result = await fetchPluginSchema({ $src: "./foo.js" }, {});
     expect(result).toBeNull();
   });
 
-  test("returns null when platform has no fetchPluginSchema", async () => {
-    registerPlatform({} as unknown as StudioPlatform);
+  test("caches null when the platform has no schema for the module", async () => {
+    installMockPlatform();
     const result = await fetchPluginSchema({ $prototype: "Foo", $src: "./foo.js" }, {});
     expect(result).toBeNull();
     expect(pluginSchemaCache.get("./foo.js::Foo")).toBeNull();
@@ -94,10 +120,8 @@ describe("fetchPluginSchema", () => {
 
   test("fetches and caches schema from platform", async () => {
     const schema = { properties: { url: { type: "string" } } };
-    const mockFn = mock(() => schema);
-    registerPlatform({
-      fetchPluginSchema: mockFn,
-    } as unknown as StudioPlatform);
+    const mockFn = mock<StudioPlatform["fetchPluginSchema"]>(async () => schema);
+    installMockPlatform({ fetchPluginSchema: mockFn });
     const result = await fetchPluginSchema(
       { $prototype: "DataSource", $src: "./DataSource.class.json" },
       { documentPath: "pages/index.json" },
@@ -108,23 +132,21 @@ describe("fetchPluginSchema", () => {
 
   test("returns cached schema on second call", async () => {
     const schema = { properties: {} };
-    const mockFn = mock(() => schema);
-    registerPlatform({
-      fetchPluginSchema: mockFn,
-    } as unknown as StudioPlatform);
+    const mockFn = mock<StudioPlatform["fetchPluginSchema"]>(async () => schema);
+    installMockPlatform({ fetchPluginSchema: mockFn });
     const def = { $prototype: "Cached", $src: "./cached.js" };
-    await fetchPluginSchema(def, {});
-    await fetchPluginSchema(def, {});
+    const first = await fetchPluginSchema(def, {});
+    const second = await fetchPluginSchema(def, {});
+    expect(first).toBe(schema);
+    expect(second).toBe(schema);
     expect(mockFn).toHaveBeenCalledTimes(1);
   });
 
   test("caches null on error", async () => {
-    const mockFn = mock(() => {
+    const mockFn = mock<StudioPlatform["fetchPluginSchema"]>(async () => {
       throw new Error("network");
     });
-    registerPlatform({
-      fetchPluginSchema: mockFn,
-    } as unknown as StudioPlatform);
+    installMockPlatform({ fetchPluginSchema: mockFn });
     const def = { $prototype: "Err", $src: "./err.js" };
     const result = await fetchPluginSchema(def, {});
     expect(result).toBeNull();
@@ -136,40 +158,35 @@ describe("fetchPluginSchema", () => {
 
 describe("setLintMarkers", () => {
   test("does nothing when editor has no model", () => {
-    const editor = { getModel: () => null } as any;
-    setLintMarkers(editor, []);
-    // Should not throw
+    setModelMarkers.mockClear();
+    setLintMarkers(editorShowing(null), []);
+    expect(setModelMarkers.mock.calls).toEqual([]);
   });
 
   test("sets markers from diagnostics", () => {
-    const model = {};
-    const editor = { getModel: () => model } as any;
-    const diagnostics = [
+    const diagnostics: OxLintDiagnostic[] = [
       {
         code: "no-unused-vars",
         help: "Remove it",
         labels: [{ span: { column: 3, length: 4, line: 5 } }],
         message: "Unused variable",
         severity: "error",
-        url: null,
       },
-    ] as any;
-    setLintMarkers(editor, diagnostics);
-    expect(monaco.editor.setModelMarkers).toHaveBeenCalled();
-    const [call] = (monaco.editor.setModelMarkers as any).mock.calls;
-    expect(call[0]).toBe(model);
-    expect(call[1]).toBe("oxlint");
-    expect(call[2][0].message).toContain("Unused variable");
-    expect(call[2][0].message).toContain("Remove it");
-    expect(call[2][0].startLineNumber).toBe(5);
-    expect(call[2][0].startColumn).toBe(3);
-    expect(call[2][0].endColumn).toBe(7);
-    expect(call[2][0].severity).toBe(8); // Error
+    ];
+    setLintMarkers(editorShowing(MODEL), diagnostics);
+    const call = setModelMarkers.mock.calls.at(-1);
+    expect(call?.[0]).toBe(MODEL);
+    expect(call?.[1]).toBe("oxlint");
+    const [marker] = lastMarkers();
+    expect(marker?.message).toBe("Unused variable\nRemove it");
+    expect(marker?.startLineNumber).toBe(5);
+    expect(marker?.startColumn).toBe(3);
+    expect(marker?.endColumn).toBe(7);
+    expect(marker?.severity).toBe(8); // Error
   });
 
   test("handles warning severity", () => {
-    const editor = { getModel: () => ({}) } as any;
-    const diagnostics = [
+    const diagnostics: OxLintDiagnostic[] = [
       {
         code: "prefer-const",
         labels: [{ span: { column: 1, length: 3, line: 1 } }],
@@ -178,29 +195,32 @@ describe("setLintMarkers", () => {
         url: "https://docs.example.com",
       },
     ];
-    setLintMarkers(editor, diagnostics);
-    const call = (monaco.editor.setModelMarkers as any).mock.calls.at(-1);
-    expect(call[2][0].severity).toBe(4); // Warning
-    expect(call[2][0].code.value).toBe("prefer-const");
-    expect(call[2][0].code.target.toString()).toBe("https://docs.example.com");
+    setLintMarkers(editorShowing(MODEL), diagnostics);
+    const [marker] = lastMarkers();
+    expect(marker?.severity).toBe(4); // Warning
+    const code = marker?.code;
+    if (!isNonNullObject(code)) {
+      throw new Error("expected the linked form of the rule code");
+    }
+    expect(code.value).toBe("prefer-const");
+    expect(code.target.toString()).toBe("https://docs.example.com");
   });
 
   test("filters diagnostics without labels", () => {
-    const editor = { getModel: () => ({}) } as any;
-    const diagnostics = [
+    const diagnostics: OxLintDiagnostic[] = [
       { labels: [], message: "No labels", severity: "error" },
-      { labels: null, message: "Null labels", severity: "error" },
+      { message: "Absent labels", severity: "error" },
       {
         code: "x",
         labels: [{ span: { column: 1, length: 1, line: 1 } }],
         message: "With label",
         severity: "error",
       },
-    ] as any;
-    setLintMarkers(editor, diagnostics);
-    const call = (monaco.editor.setModelMarkers as any).mock.calls.at(-1);
-    expect(call[2].length).toBe(1);
-    expect(call[2][0].message).toBe("With label");
+    ];
+    setLintMarkers(editorShowing(MODEL), diagnostics);
+    const markers = lastMarkers();
+    expect(markers.length).toBe(1);
+    expect(markers[0]?.message).toBe("With label");
   });
 });
 

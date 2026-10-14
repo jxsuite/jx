@@ -2,27 +2,83 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import type { ComponentMeta, DirEntry } from "../src/rpc-schema";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { DirEntry } from "../src/rpc-schema";
 
 const FIXTURES = join(import.meta.dir, "_fixtures_chromium_rpc");
 
-let server: Subprocess;
+// Unset until beforeAll spawns it, which is why teardown still checks for it.
+let server: Subprocess | undefined;
 let serverPort: number;
 
-function rpc(ws: WebSocket, method: string, params?: Record<string, unknown>): Promise<unknown> {
+/**
+ * Send one request and settle with its reply: the `result` it carries (absent when the method
+ * answers nothing), or a rejection with its `error`.
+ */
+function rpc(ws: WebSocket, method: string, params?: JsonObject): Promise<JsonValue | undefined> {
   return new Promise((resolve, reject) => {
     const id = Math.floor(Math.random() * 100_000);
-    const handler = (event: MessageEvent) => {
-      const msg = JSON.parse(event.data);
-      if (msg.id !== id) {
+    const handler = (event: MessageEvent<string>) => {
+      const msg: JsonValue = JSON.parse(event.data);
+      if (!isJsonObject(msg) || msg.id !== id) {
         return;
       }
       ws.removeEventListener("message", handler);
       if (msg.error) {
-        reject(new Error(msg.error));
+        reject(new Error(String(msg.error)));
       } else {
         resolve(msg.result);
       }
+    };
+    ws.addEventListener("message", handler);
+    ws.send(JSON.stringify({ id, method, params }));
+  });
+}
+
+/** Whether a listed value is a directory entry: string `name` and `path`, and a file/directory type. */
+function isDirEntry(value: unknown): value is DirEntry {
+  return (
+    isJsonObject(value) &&
+    isString(value.name) &&
+    isString(value.path) &&
+    (value.type === "file" || value.type === "directory")
+  );
+}
+
+/** Whether a reply is a directory listing: an array of directory entries. */
+function isDirEntryList(value: unknown): value is DirEntry[] {
+  return Array.isArray(value) && value.every((entry) => isDirEntry(entry));
+}
+
+/** List a project directory over the socket, failing the test when the reply is not a listing. */
+async function listDirectory(ws: WebSocket, dir: string): Promise<DirEntry[]> {
+  const entries = await rpc(ws, "listDirectory", { dir });
+  if (!isDirEntryList(entries)) {
+    throw new TypeError(`listDirectory did not answer a listing: ${JSON.stringify(entries)}`);
+  }
+  return entries;
+}
+
+/**
+ * Send one request and resolve with the raw reply frame that carries its id, whatever it says.
+ * Rejects when nothing answers within three seconds.
+ */
+function rawReply(ws: WebSocket, method: string, params: JsonObject): Promise<JsonObject> {
+  return new Promise((resolve, reject) => {
+    const id = Math.floor(Math.random() * 100_000);
+    const timeout = setTimeout(() => {
+      ws.removeEventListener("message", handler);
+      reject(new Error("timeout"));
+    }, 3000);
+    const handler = (event: MessageEvent<string>) => {
+      const msg: JsonValue = JSON.parse(event.data);
+      if (!isJsonObject(msg) || msg.id !== id) {
+        return;
+      }
+      clearTimeout(timeout);
+      ws.removeEventListener("message", handler);
+      resolve(msg);
     };
     ws.addEventListener("message", handler);
     ws.send(JSON.stringify({ id, method, params }));
@@ -37,23 +93,20 @@ beforeAll(async () => {
   mkdirSync(join(FIXTURES, "ordered"), { recursive: true });
   writeFileSync(join(FIXTURES, "subdir", "nested.json"), '{"key": "value"}');
 
-  server = Bun.spawn(["bun", "run", join(import.meta.dir, "_rpc-server.ts"), FIXTURES], {
+  const child = Bun.spawn(["bun", "run", join(import.meta.dir, "_rpc-server.ts"), FIXTURES], {
     stderr: "inherit",
     stdout: "pipe",
   });
+  server = child;
 
   // Read stdout to find the port
-  const stdout = server.stdout as ReadableStream<Uint8Array>;
+  const { stdout } = child;
   const reader = stdout.getReader();
   const decoder = new TextDecoder();
   let output = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    output += decoder.decode(value, { stream: true });
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    output += decoder.decode(chunk.value, { stream: true });
     const portMatch = output.match(/port=(\d+)/);
     if (portMatch) {
       serverPort = Math.trunc(Number(portMatch[1]));
@@ -97,8 +150,8 @@ describe("chromium RPC server", () => {
 
   test("listDirectory returns entries", async () => {
     const ws = await connect();
-    const entries = await rpc(ws, "listDirectory", { dir: "." });
-    const names = (entries as DirEntry[]).map((e) => e.name);
+    const entries = await listDirectory(ws, ".");
+    const names = entries.map((e) => e.name);
     expect(names).toContain("hello.txt");
     expect(names).toContain("subdir");
     expect(names).toContain("project.json");
@@ -116,7 +169,8 @@ describe("chromium RPC server", () => {
    */
   test("listDirectory answers in stable path order", async () => {
     const ws = await connect();
-    const names = ((await rpc(ws, "listDirectory", { dir: "." })) as DirEntry[]).map((e) => e.path);
+    const entries = await listDirectory(ws, ".");
+    const names = entries.map((e) => e.path);
     expect(names).toEqual(names.toSorted());
     // Written in an order no filesystem is likely to return, so a pass means the sort ran rather
     // Than that the directory happened to agree with it.
@@ -124,7 +178,8 @@ describe("chromium RPC server", () => {
     for (const name of ["zulu.md", "alpha.md", "mike.md", "bravo.md"]) {
       writeFileSync(join(FIXTURES, dir, name), "x");
     }
-    const listed = ((await rpc(ws, "listDirectory", { dir })) as DirEntry[]).map((e) => e.name);
+    const ordered = await listDirectory(ws, dir);
+    const listed = ordered.map((e) => e.name);
     expect(listed).toEqual(["alpha.md", "bravo.md", "mike.md", "zulu.md"]);
     ws.close();
   });
@@ -141,8 +196,8 @@ describe("chromium RPC server", () => {
     const ws = await connect();
     await rpc(ws, "writeFile", { content: "temp", path: "to-delete.txt" });
     await rpc(ws, "deleteFile", { path: "to-delete.txt" });
-    const entries = await rpc(ws, "listDirectory", { dir: "." });
-    const names = (entries as DirEntry[]).map((e) => e.name);
+    const entries = await listDirectory(ws, ".");
+    const names = entries.map((e) => e.name);
     expect(names).not.toContain("to-delete.txt");
     ws.close();
   });
@@ -159,8 +214,8 @@ describe("chromium RPC server", () => {
   test("createDirectory creates dirs", async () => {
     const ws = await connect();
     await rpc(ws, "createDirectory", { path: "new-dir/nested" });
-    const entries = await rpc(ws, "listDirectory", { dir: "new-dir" });
-    expect((entries as DirEntry[]).map((e) => e.name)).toContain("nested");
+    const entries = await listDirectory(ws, "new-dir");
+    expect(entries.map((e) => e.name)).toContain("nested");
     ws.close();
   });
 
@@ -175,9 +230,12 @@ describe("chromium RPC server", () => {
 
   test("resolveSiteContext finds project.json", async () => {
     const ws = await connect();
-    const result = (await rpc(ws, "resolveSiteContext", {
+    const result = await rpc(ws, "resolveSiteContext", {
       filePath: "subdir/nested.json",
-    })) as Record<string, unknown>;
+    });
+    if (!isJsonObject(result)) {
+      throw new TypeError(`resolveSiteContext did not answer an object: ${JSON.stringify(result)}`);
+    }
     expect(result.sitePath).toBe(".");
     ws.close();
   });
@@ -189,7 +247,12 @@ describe("chromium RPC server", () => {
       path: "my-widget.json",
     });
     const components = await rpc(ws, "discoverComponents", { dir: "." });
-    const widget = (components as ComponentMeta[]).find((c) => c.tagName === "my-widget");
+    if (!Array.isArray(components)) {
+      throw new TypeError(
+        `discoverComponents did not answer a list: ${JSON.stringify(components)}`,
+      );
+    }
+    const widget = components.find((c) => isJsonObject(c) && c.tagName === "my-widget");
     expect(widget).toBeDefined();
     ws.close();
   });
@@ -203,32 +266,8 @@ describe("chromium RPC server", () => {
 
   test("returns error for unknown method", async () => {
     const ws = await connect();
-    const result = await new Promise<{
-      id: number;
-      error?: string;
-      result?: unknown;
-    }>((resolve, reject) => {
-      const id = Math.floor(Math.random() * 100_000);
-      const timeout = setTimeout(() => {
-        ws.removeEventListener("message", handler);
-        reject(new Error("timeout"));
-      }, 3000);
-      const handler = (event: MessageEvent) => {
-        const msg = JSON.parse(event.data) as {
-          id: number;
-          error?: string;
-          result?: unknown;
-        };
-        if (msg.id !== id) {
-          return;
-        }
-        clearTimeout(timeout);
-        ws.removeEventListener("message", handler);
-        resolve(msg);
-      };
-      ws.addEventListener("message", handler);
-      ws.send(JSON.stringify({ id, method: "nonexistentMethod", params: {} }));
-    }).catch((error: unknown) => error);
+    // A rejection is a send failure or the timeout, both of which reject with an Error.
+    const result = await rawReply(ws, "nonexistentMethod", {}).catch((error: Error) => error);
     // On some platforms (Windows/Bun) error responses may not deliver;
     // Verify either we got the error response or the connection stays healthy
     if (result instanceof Error) {
@@ -236,50 +275,22 @@ describe("chromium RPC server", () => {
       const content = await rpc(ws, "readFile", { path: "hello.txt" });
       expect(content).toBe("Hello World");
     } else {
-      expect((result as Record<string, unknown>).error).toContain("Unknown method");
+      expect(result.error).toContain("Unknown method");
     }
     ws.close();
   });
 
   test("returns error for path traversal", async () => {
     const ws = await connect();
-    const result = await new Promise<{
-      id: number;
-      error?: string;
-      result?: unknown;
-    }>((resolve, reject) => {
-      const id = Math.floor(Math.random() * 100_000);
-      const timeout = setTimeout(() => {
-        ws.removeEventListener("message", handler);
-        reject(new Error("timeout"));
-      }, 3000);
-      const handler = (event: MessageEvent) => {
-        const msg = JSON.parse(event.data) as {
-          id: number;
-          error?: string;
-          result?: unknown;
-        };
-        if (msg.id !== id) {
-          return;
-        }
-        clearTimeout(timeout);
-        ws.removeEventListener("message", handler);
-        resolve(msg);
-      };
-      ws.addEventListener("message", handler);
-      ws.send(
-        JSON.stringify({
-          id,
-          method: "readFile",
-          params: { path: "../../etc/passwd" },
-        }),
-      );
-    }).catch((error: unknown) => error);
+    // A rejection is a send failure or the timeout, both of which reject with an Error.
+    const result = await rawReply(ws, "readFile", { path: "../../etc/passwd" }).catch(
+      (error: Error) => error,
+    );
     if (result instanceof Error) {
       const content = await rpc(ws, "readFile", { path: "hello.txt" });
       expect(content).toBe("Hello World");
     } else {
-      expect((result as Record<string, unknown>).error).toContain("Path outside project root");
+      expect(result.error).toContain("Path outside project root");
     }
     ws.close();
   });
@@ -289,11 +300,11 @@ describe("chromium RPC server", () => {
     const [content1, content2, entries] = await Promise.all([
       rpc(ws, "readFile", { path: "hello.txt" }),
       rpc(ws, "readFile", { path: "subdir/nested.json" }),
-      rpc(ws, "listDirectory", { dir: "." }),
+      listDirectory(ws, "."),
     ]);
     expect(content1).toBe("Hello World");
-    expect(JSON.parse(content2 as string)).toEqual({ key: "value" });
-    expect((entries as DirEntry[]).length).toBeGreaterThan(0);
+    expect(JSON.parse(String(content2))).toEqual({ key: "value" });
+    expect(entries.length).toBeGreaterThan(0);
     ws.close();
   });
 });

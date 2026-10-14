@@ -14,11 +14,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSite } from "../src/site/site-build";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-state-retention__");
 
-/** @param {string} path @param {unknown} obj */
-function writeJSON(path: string, obj: unknown) {
+/** @param {string} path @param {JsonValue} obj */
+function writeJSON(path: string, obj: JsonValue) {
   mkdirSync(resolve(TMP, ...path.split("/").slice(0, -1)), { recursive: true });
   writeFileSync(resolve(TMP, path), JSON.stringify(obj, null, 2), "utf8");
 }

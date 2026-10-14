@@ -15,12 +15,13 @@ import {
   setPackageVersions,
   stripRange,
 } from "../src/packages";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const BUN = bunExecutable();
 
 let dir: string;
 
-function writePkg(content: object) {
+function writePkg(content: JsonObject) {
   writeFileSync(join(dir, "package.json"), JSON.stringify(content, null, 2));
 }
 
@@ -115,7 +116,7 @@ describe("fetchLatestVersion", () => {
       seen = init?.headers;
       return Response.json({ version: "1.2.3" }, { status: 200 });
     });
-    expect((seen as Record<string, string>).accept).toBe("application/json");
+    expect(seen).toMatchObject({ accept: "application/json" });
   });
 
   test("returns null on non-ok and on throw", async () => {
@@ -195,14 +196,18 @@ describe("install / set-versions with stubbed spawn", () => {
   beforeEach(() => {
     origSpawn = Bun.spawn;
     spawned = [];
-    (Bun as unknown as { spawn: unknown }).spawn = (cmd: string[]) => {
-      spawned.push(cmd);
-      return { exited: Promise.resolve(0), stderr: "", stdout: "done" };
-    };
+    /* Object.assign rather than `Bun.spawn = …`: TypeScript refuses assignment to a namespace
+       function, and the stand-in only implements what runBun reads (exited, stdout, stderr). */
+    Object.assign(Bun, {
+      spawn: (cmd: string[]) => {
+        spawned.push(cmd);
+        return { exited: Promise.resolve(0), stderr: "", stdout: "done" };
+      },
+    });
   });
 
   afterEach(() => {
-    (Bun as unknown as { spawn: unknown }).spawn = origSpawn;
+    Object.assign(Bun, { spawn: origSpawn });
   });
 
   test("installDependencies runs `bun install` and reports ok", async () => {

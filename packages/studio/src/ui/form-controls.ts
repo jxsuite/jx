@@ -20,9 +20,11 @@
  * Imported once for side effects from studio startup.
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { referenceTarget, registerFormControl } from "./schema-form";
 import {
+  BLANK_FIELD,
   FIELD_TYPES,
   FORMAT_OPTIONS,
   detectFieldFormat,
@@ -34,20 +36,18 @@ import { mountReferenceFieldSurface } from "../surfaces/reference-field";
 import { mountSecretFieldSurface } from "../surfaces/secret-field";
 import { camelToLabel, toCamelCase } from "../utils/studio-utils";
 
-import type { SchemaProperty } from "../settings/schema-field-ui";
-import type {
-  NestedSchemaFieldView,
-  SchemaBuilderView,
-  SchemaFieldChoice,
-  SchemaFieldView,
-} from "../surfaces/schema-builder";
-import type { ReferenceChoice, ReferenceFieldView } from "../surfaces/reference-field";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { NestedFieldDraft, SchemaProperty } from "../settings/schema-field-ui";
+import type { SchemaBuilderView } from "../surfaces/schema-builder";
+import type { DefsFieldView, NestedFieldView } from "../surfaces/settings-defs";
+import type { ReferenceFieldView } from "../surfaces/reference-field";
 import type {
   SchemaFormContext,
   SchemaFormControlArgs,
   SchemaFormControlHandle,
   SchemaFormMountedControl,
 } from "./schema-form";
+import type { SurfaceOption } from "./surface";
 
 // ─── Schema-builder control ──────────────────────────────────────────────────
 
@@ -90,12 +90,6 @@ interface BuilderDraft extends BuilderSchema {
   required: string[];
 }
 
-/** One object field's unsubmitted nested field. */
-interface NestedDraft {
-  name: string;
-  type: string;
-}
-
 /**
  * What the reader is part-way through, per mounted control.
  *
@@ -107,7 +101,7 @@ interface BuilderUi {
   addOpen: boolean;
   add: { format: string; name: string; required: boolean; type: string };
   /** Each object field's nested add row, by the field's name in the schema. */
-  drafts: Map<string, NestedDraft>;
+  drafts: Map<string, NestedFieldDraft>;
   /**
    * The ONE control whose value has parted from the schema, and what it holds.
    *
@@ -118,19 +112,16 @@ interface BuilderUi {
 }
 
 /** The field types, as picker rows. One array, made once: an equal write re-runs no binding. */
-const TYPE_ROWS: SchemaFieldChoice[] = FIELD_TYPES.map((type) => ({ label: type, value: type }));
+const TYPE_ROWS: SurfaceOption[] = FIELD_TYPES.map((type) => ({ label: type, value: type }));
 
 /** The formats, with the empty one named: a blank row says nothing about what choosing it does. */
-const FORMAT_ROWS: SchemaFieldChoice[] = FORMAT_OPTIONS.map((format) => ({
+const FORMAT_ROWS: SurfaceOption[] = FORMAT_OPTIONS.map((format) => ({
   label: format || "(none)",
   value: format,
 }));
 
-/** What a new field starts as. */
-const BLANK_FIELD = { format: "", name: "", required: false, type: "string" };
-
 /** The last target list, so an unchanged one is the same array and re-runs no binding. */
-let targetRows: SchemaFieldChoice[] = [];
+let targetRows: SurfaceOption[] = [];
 let targetNames = " ";
 
 /**
@@ -150,10 +141,9 @@ export function resetFormControlUiState(): void {
  * The same list `settings/defs-editor.ts` reads straight off the live config: this one goes through
  * `#/$context/content` because a form control is given a context and never the project.
  */
-function targetsFor(ctx: SchemaFormContext): SchemaFieldChoice[] {
+function targetsFor(ctx: SchemaFormContext): SurfaceOption[] {
   const content = ctx.resolvePointer("#/$context/content");
-  const names =
-    content && typeof content === "object" && !Array.isArray(content) ? Object.keys(content) : [];
+  const names = isJsonObject(content) ? Object.keys(content) : [];
   const id = names.join(" ");
   if (id !== targetNames) {
     targetNames = id;
@@ -167,21 +157,37 @@ function takesFormat(type: string): boolean {
   return type === "string" || type === "array";
 }
 
-/** The value as a schema object: anything else is an object with no fields in it yet. */
-function readSchema(value: unknown): BuilderSchema {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as BuilderSchema)
-    : { properties: {}, required: [], type: "object" };
+/** The field's value as a schema object: anything else is an object with no fields in it yet. */
+function readSchema(value: JsonValue | undefined): BuilderSchema {
+  if (!isJsonObject(value)) {
+    return { properties: {}, required: [], type: "object" };
+  }
+  /* SAFETY: `schema-builder` is the control for a field whose value IS a JSON Schema, and only
+     object-ness was ever checked here; each optional member is defaulted before it is read. */
+  return value as BuilderSchema;
 }
 
 /** Working clone of the schema value — JSON round-trip, as values may be reactive proxies. */
-function cloneSchema(value: unknown): BuilderDraft {
+function cloneSchema(schema: BuilderSchema): JsonObject {
+  // SAFETY: Parsing what JSON.stringify made of an object yields a plain JSON object.
   // oxlint-disable-next-line unicorn/prefer-structured-clone
-  const draft = JSON.parse(JSON.stringify(readSchema(value))) as BuilderSchema;
-  draft.type ??= "object";
-  draft.properties ??= {};
-  draft.required ??= [];
-  return draft as BuilderDraft;
+  return JSON.parse(JSON.stringify(schema)) as JsonObject;
+}
+
+/**
+ * The clone as a mutation is handed it, with its type and both lists filled in.
+ *
+ * The SAME object, not a copy: what a mutation writes is what the host is handed as JSON.
+ */
+function asBuilderDraft(clone: JsonObject): BuilderDraft {
+  /* SAFETY: `clone` is a JSON copy of a BuilderSchema (`cloneSchema`), and the mutations write only
+     strings, string arrays and plain objects into it. */
+  const schema = clone as BuilderSchema;
+  schema.type ??= "object";
+  schema.properties ??= {};
+  schema.required ??= [];
+  // SAFETY: Both lists were defaulted just above, and they are all BuilderDraft adds to BuilderSchema.
+  return schema as BuilderDraft;
 }
 
 /** The id of a field's name control. */
@@ -201,6 +207,8 @@ function nestedId(parent: string, key: string): string {
 
 /** What a control shows: what it was last told it holds, or what the schema says. */
 function shown<T extends string | boolean>(ui: BuilderUi, id: string, held: T): T {
+  /* SAFETY: `say()` echoes a name control (`name:` ids) with its string and a required switch
+     (`required:` ids) with its boolean, so an echo under `id` has the type `held` has for it. */
   return ui.echo?.id === id ? (ui.echo.value as T) : held;
 }
 
@@ -211,7 +219,7 @@ function nestedView(
   key: string,
   schema: SchemaProperty,
   required: boolean,
-): NestedSchemaFieldView {
+): NestedFieldView {
   const id = nestedId(parent, key);
   const type = detectFieldType(schema);
   return {
@@ -232,7 +240,7 @@ function fieldView(
   schema: SchemaProperty,
   required: boolean,
   hasTargets: boolean,
-): SchemaFieldView {
+): DefsFieldView {
   const type = detectFieldType(schema);
   const nested = type === "object";
   const draft = ui.drafts.get(key);
@@ -364,14 +372,15 @@ function mountSchemaBuilder(
    * it is shown from this moment rather than when the host gets round to redrawing.
    */
   const write = (mutate: (draft: BuilderDraft) => boolean): void => {
-    const draft = cloneSchema(source());
+    const clone = cloneSchema(source());
+    const draft = asBuilderDraft(clone);
     if (!mutate(draft)) {
       refuse();
       return;
     }
     committed = draft;
     ui.echo = null;
-    latest.onChange(draft);
+    latest.onChange(clone);
     redraw();
   };
 
@@ -380,7 +389,7 @@ function mountSchemaBuilder(
     draft.properties[parent];
 
   /** One object field's add-row draft, made on first use. */
-  const draftOf = (parent: string): NestedDraft => {
+  const draftOf = (parent: string): NestedFieldDraft => {
     let draft = ui.drafts.get(parent);
     if (!draft) {
       draft = { name: "", type: "string" };
@@ -622,8 +631,8 @@ registerFormControl("schema-builder", schemaBuilderControl);
  * The field persists a NAME — the value itself went to the platform's secret store — so a non-empty
  * string here is the whole of what a screen may say about the secret.
  */
-function envNameOf(value: unknown): string | null {
-  return typeof value === "string" && value ? value : null;
+function envNameOf(value: JsonValue | undefined): string | null {
+  return isString(value) && value ? value : null;
 }
 
 /**
@@ -674,7 +683,7 @@ function mountSecret(host: HTMLElement, args: SchemaFormControlArgs): SchemaForm
         /* A name equal to the one the field already holds is not an edit: the same secret was
            rotated in place, the store answered with the same env var, and a patch would rewrite
            project.json with the bytes it already has. */
-        if (typeof name === "string" && name && name !== envName) {
+        if (isString(name) && name && name !== envName) {
           onChange(name);
         }
       });
@@ -846,7 +855,7 @@ export function referenceEntryState(
   };
   void pending.then(
     (ids) => settle({ ids }),
-    (error: unknown) => settle({ error: errorMessage(error) }),
+    (error) => settle({ error: errorMessage(error) }),
   );
   return null;
 }
@@ -859,8 +868,8 @@ export function referenceEntryState(
  * empty rather than stale.
  */
 function referenceView(args: SchemaFormControlArgs, onSettled: () => void): ReferenceFieldView {
-  const current = typeof args.value === "string" ? args.value : "";
-  const base = {
+  const current = isString(args.value) ? args.value : "";
+  const base: Omit<ReferenceFieldView, "kind"> = {
     canRetry: false,
     disabled: false,
     hasNote: false,
@@ -869,9 +878,9 @@ function referenceView(args: SchemaFormControlArgs, onSettled: () => void): Refe
     label: args.key,
     note: "",
     noteTone: "dim",
-    options: [] as ReferenceChoice[],
+    options: [],
     value: current,
-  } satisfies Omit<ReferenceFieldView, "kind">;
+  };
 
   const collection = referenceTarget(args.schema);
   if (collection === null) {

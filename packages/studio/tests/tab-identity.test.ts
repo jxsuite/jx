@@ -35,7 +35,17 @@ function open(id: string, documentPath: string | null = `pages/${id}.json`) {
 beforeEach(() => {
   closeAllTabs();
   workspace.closedTabs = [];
-  setProjectState({ expanded: new Set(), selectedPath: null } as unknown as ProjectState);
+  const project: ProjectState = {
+    dirs: new Map(),
+    expanded: new Set(),
+    isSiteProject: false,
+    name: "",
+    projectConfig: null,
+    projectRoot: "",
+    searchQuery: "",
+    selectedPath: null,
+  };
+  setProjectState(project);
 });
 
 afterEach(() => {
@@ -60,7 +70,7 @@ describe("tab identity", () => {
 
     const replacement = open("a");
     expect(stopped).toBe(true);
-    expect(toRaw(workspace.tabs.get("a") as object)).toBe(toRaw(replacement as unknown as object));
+    expect(toRaw(workspace.tabs.get("a"))).toBe(toRaw(replacement));
     expect(workspace.tabOrder).toEqual(["a", "b"]);
     expect(workspace.tabOrder.filter((id) => id === "a")).toHaveLength(1);
   });
@@ -179,8 +189,10 @@ describe("⌃Tab cycling", () => {
     open("a");
     open("b");
     open("c"); // MRU: c, b, a
-    expect(cycleTab(1)).toBe("b");
-    expect(cycleTab(1)).toBe("a");
+    const firstPress = cycleTab(1);
+    const secondPress = cycleTab(1);
+    expect(firstPress).toBe("b");
+    expect(secondPress).toBe("a");
     // The frozen snapshot is what makes the second press advance instead of coming straight back.
     expect(workspace.mruOrder).toEqual(["c", "b", "a"]);
     expect(workspace.activeTabId).toBe("a");
@@ -189,8 +201,10 @@ describe("⌃Tab cycling", () => {
   test("wraps in both directions", () => {
     open("a");
     open("b");
-    expect(cycleTab(-1)).toBe("a");
-    expect(cycleTab(-1)).toBe("b");
+    const firstPress = cycleTab(-1);
+    const secondPress = cycleTab(-1);
+    expect(firstPress).toBe("a");
+    expect(secondPress).toBe("b");
   });
 
   test("ending the cycle promotes the tab the author settled on", () => {
@@ -278,8 +292,10 @@ describe("closed-tab stack", () => {
   test("takeClosedTabPath pops the newest, then reports empty", () => {
     open("a");
     closeTab("a");
-    expect(takeClosedTabPath()).toBe("pages/a.json");
-    expect(takeClosedTabPath()).toBeUndefined();
+    const newest = takeClosedTabPath();
+    const afterEmptying = takeClosedTabPath();
+    expect(newest).toBe("pages/a.json");
+    expect(afterEmptying).toBeUndefined();
   });
 });
 
@@ -361,7 +377,10 @@ describe("tab commands", () => {
     open("a");
     closeTab("a");
     takeClosedTabPath();
-    // Invoked past its own gate (an automation step, a stale palette row): it must no-op, not throw.
+    /* Invoked past its own gate (an automation step, a stale palette row): it must no-op, not throw.
+       SAFETY: `AnyCommand` erases the argument type to `never`; `document.reopenClosed` declares no
+       `args` and its `run` takes no parameter, so `undefined` is exactly what `registry.run(id)`
+       would pass it. */
     await command.run(makeContext(), undefined as never);
     expect(opened).toEqual([]);
   });

@@ -26,6 +26,7 @@
    on the object {@link loadMonaco} resolves to — typing this as the root would make five namespaces
    look available that are not. `./editor` is exactly the editor API surface that import returns. */
 import type * as monacoNs from "monaco-editor/editor";
+import type { ProjectSchemasResponse } from "../types";
 
 export type Monaco = typeof monacoNs;
 
@@ -41,7 +42,7 @@ let _loading: Promise<Monaco> | null = null;
  * which is precisely what the lazy path exists to avoid. So the schemas wait here instead, and the
  * loader applies whatever is pending once an editor actually needs one.
  */
-let _pendingSchemas: { project?: unknown; document?: unknown } | null = null;
+let _pendingSchemas: ProjectSchemasResponse | null = null;
 let _pendingSchemasDirty = false;
 
 /**
@@ -54,9 +55,7 @@ let _pendingSchemasDirty = false;
  * @returns Settles once the schemas are in force. Fire-and-forget is a valid use — say so with
  *   `void` at the call site rather than having this hide it.
  */
-export function setProjectSchemasForMonaco(
-  schemas: { project?: unknown; document?: unknown } | null,
-): Promise<void> {
+export function setProjectSchemasForMonaco(schemas: ProjectSchemasResponse | null): Promise<void> {
   _pendingSchemas = schemas;
   _pendingSchemasDirty = true;
   /* Resolves when the schemas have REACHED Monaco, not when they were queued. With Monaco already
@@ -100,7 +99,7 @@ export function loadMonaco(): Promise<Monaco> {
       import("monaco-editor/editor"),
       import("./monaco-setup.js"),
     ]);
-    _monaco = monaco as unknown as Monaco;
+    _monaco = monaco;
     // The project's schemas may have arrived long before now; register them before the first editor
     // Mounts so its very first validation pass uses the right rules.
     await applyPendingSchemas();
@@ -138,15 +137,15 @@ export function loadedMonaco(): Monaco | null {
  * attached to anything, and no URI briefly claimed by a model nobody holds.
  *
  * @param {Element | null | undefined} container Where the editor was going to be created.
- * @param {unknown} existing The surface's editor handle (`view.monacoEditor` /
- *   `view.functionEditor`). Non-null means another mount already won this race.
+ * @param {monacoNs.editor.IEditor | null} existing The surface's editor handle (`view.monacoEditor`
+ *   / `view.functionEditor`). Non-null means another mount already won this race.
  * @param {() => boolean} stillTargeted Whether the app still wants exactly THIS mount — the same
  *   tab, the same mode, the same editing target. Lazy: the two cheap clauses above answer first.
  * @returns {boolean}
  */
 export function mountStillWanted(
   container: Element | null | undefined,
-  existing: unknown,
+  existing: monacoNs.editor.IEditor | null,
   stillTargeted: () => boolean,
 ): boolean {
   if (!container?.isConnected || existing) {

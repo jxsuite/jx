@@ -26,10 +26,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import extensionsDoc from "./settings-extensions.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("settings-extensions", extensionsDoc as unknown as JxDocument);
+registerSurface("settings-extensions", extensionsDoc);
 
 /** One `project.json` key an extension owns, as the chip repeater reads it. */
 export interface ExtensionSectionView {
@@ -117,7 +116,7 @@ export interface ExtensionsSurfaceHandle {
  * value already in the view, and a view that had to keep them in step would be a second place to
  * get it wrong.
  */
-interface ExtensionsScope extends Record<string, unknown>, ExtensionsView, ExtensionsActions {
+interface ExtensionsScope extends ExtensionsView, ExtensionsActions {
   /** Whether to draw the groups or the sentence that says what this region is for. */
   listState: "empty" | "groups";
   hasError: boolean;
@@ -147,14 +146,14 @@ export function mountExtensionsSurface(
   view: ExtensionsView,
   actions: ExtensionsActions,
 ): ExtensionsSurfaceHandle {
-  const scope = reactive<ExtensionsScope>({
+  const scope: ExtensionsScope = reactive<ExtensionsScope>({
     error: "",
     groups: [],
     hasError: false,
     listState: "empty",
     remove: actions.remove,
     toggle: actions.toggle,
-  }) as ExtensionsScope;
+  });
   project(scope, view);
 
   container.replaceChildren();
@@ -182,7 +181,7 @@ export function mountExtensionsSurface(
       !disposed &&
       (mounted === null
         ? container.childNodes.length === 0
-        : (mounted.root as Node).parentNode === container),
+        : mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

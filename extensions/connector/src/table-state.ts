@@ -14,42 +14,55 @@
  * cache-busting param — see table-shared.ts.
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
 import { buildDataUrl, resolveIdValue } from "./table-shared.ts";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { DynamicRow } from "./query.ts";
 import type { TableQueryDef } from "./table-shared.ts";
+import type { TableNodeConfig, getEntry, queryTable } from "./table-node.ts";
 
 /** Route/document context injected by hosts under `_document`. */
 interface DocumentContext {
   route?: { _pathParams?: Record<string, string> };
-  [key: string]: unknown;
 }
 
 /** The context object hosts pass to `lower(def, context)`. */
 export interface LowerContext {
   route?: { _pathParams?: Record<string, string>; sourcePath?: string };
-  projectConfig?: Record<string, unknown>;
+  projectConfig?: JsonObject;
   root?: string;
 }
 
-interface TableStateConfig extends TableQueryDef {
-  id?: unknown;
+interface TableStateConfig extends TableNodeConfig {
   _document?: DocumentContext;
-  _project?: Record<string, unknown>;
+}
+
+/**
+ * A TableQuery/TableEntry def as authored in a document, which is pure JSON: the query options, the
+ * `id` and `default` keys `lower` reads, and the class keys it carries past ($prototype, …).
+ */
+interface TableLowerDef extends TableQueryDef {
+  id?: JsonValue;
+  default?: JsonValue;
+  [key: string]: JsonValue | undefined;
 }
 
 /** True when running in a browser (canvas/client); node hosts take the direct-database path. */
 function inBrowser(): boolean {
-  return typeof document !== "undefined" && typeof fetch === "function";
+  return typeof document !== "undefined" && isFunction(globalThis.fetch);
 }
 
 /** The surface of the node-only sibling module (see table-node.ts). */
 interface TableNodeModule {
-  queryTable: (config: TableStateConfig) => Promise<unknown>;
-  getEntry: (config: TableStateConfig, id: string) => Promise<unknown>;
+  queryTable: typeof queryTable;
+  getEntry: typeof getEntry;
 }
 
 /** Import the node-only sibling through an opaque specifier (bundlers must not follow it). */
 async function nodeModule(): Promise<TableNodeModule> {
   const specifier = "./table-node.ts";
+  /* SAFETY: the opaque specifier is the literal "./table-node.ts" sibling, whose exports include
+     these two functions with exactly the types imported above. */
   return (await import(specifier)) as TableNodeModule;
 }
 
@@ -61,10 +74,12 @@ export class TableQuery {
   }
 
   /** Rows matching the def's filter/sort/limit — over HTTP in browsers, directly under node. */
-  async resolve(): Promise<unknown> {
+  async resolve(): Promise<DynamicRow[]> {
     if (inBrowser()) {
       const response = await fetch(buildDataUrl(this.config));
-      return response.ok ? await response.json() : [];
+      /* SAFETY: a 2xx from GET /_jx/data/:table is the data mount's list answer, Response.json()
+         of the row array (worker.ts listRows), so the parsed body is an array of row objects. */
+      return response.ok ? ((await response.json()) as DynamicRow[]) : [];
     }
     try {
       const { queryTable } = await nodeModule();
@@ -77,11 +92,11 @@ export class TableQuery {
   }
 
   /** Static `lower` capability: compile away into a core Request def (client fetch). */
-  static lower(def: Record<string, unknown>): Record<string, unknown> {
+  static lower(def: TableLowerDef): JsonObject {
     return {
       $prototype: "Request",
       timing: "client",
-      url: buildDataUrl(def as TableQueryDef, { versionParam: true }),
+      url: buildDataUrl(def, { versionParam: true }),
       ...(def.default === undefined ? { default: [] } : { default: def.default }),
     };
   }
@@ -95,7 +110,7 @@ export class TableEntry {
   }
 
   /** One row by id (`#/$params/` refs resolve against the route), or null. */
-  async resolve(): Promise<unknown> {
+  async resolve(): Promise<DynamicRow | null> {
     const { _document } = this.config;
     const id = resolveIdValue(this.config.id, _document?.route?._pathParams);
     if (id === undefined || id === "") {
@@ -103,7 +118,9 @@ export class TableEntry {
     }
     if (inBrowser()) {
       const response = await fetch(buildDataUrl(this.config, { id }));
-      return response.ok ? await response.json() : null;
+      /* SAFETY: a 2xx from GET /_jx/data/:table/:id is the data mount's single-row answer,
+         Response.json() of one row object (worker.ts getRow). */
+      return response.ok ? ((await response.json()) as DynamicRow) : null;
     }
     try {
       const { getEntry } = await nodeModule();
@@ -116,7 +133,7 @@ export class TableEntry {
   }
 
   /** Static `lower` capability: compile away into a core Request def for one row. */
-  static lower(def: Record<string, unknown>, context: LowerContext = {}): Record<string, unknown> {
+  static lower(def: TableLowerDef, context: LowerContext = {}): JsonObject {
     const id = resolveIdValue(def.id, context.route?._pathParams);
     if (id === undefined) {
       console.warn(
@@ -127,7 +144,7 @@ export class TableEntry {
     return {
       $prototype: "Request",
       timing: "client",
-      url: buildDataUrl(def as TableQueryDef, { id: id ?? "", versionParam: true }),
+      url: buildDataUrl(def, { id: id ?? "", versionParam: true }),
       ...(def.default === undefined ? { default: null } : { default: def.default }),
     };
   }

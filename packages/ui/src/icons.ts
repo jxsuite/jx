@@ -5,6 +5,8 @@
  *
  * @docs extending/ui-kit
  */
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import manifest from "../icons/manifest.json";
 import { ICON_VIEW_BOX, ICON_WEIGHTS } from "./icons-build.ts";
 import type { IconManifest, IconWeight } from "./icons-build.ts";
@@ -12,7 +14,8 @@ import type { IconManifest, IconWeight } from "./icons-build.ts";
 export { ICON_VIEW_BOX, ICON_WEIGHTS } from "./icons-build.ts";
 export type { IconWeight } from "./icons-build.ts";
 
-const { icons } = manifest as IconManifest;
+const iconManifest: IconManifest = manifest;
+const { icons } = iconManifest;
 
 /** Every icon name the kit ships, sorted. */
 export const ICON_NAMES: readonly string[] = Object.keys(icons);
@@ -33,10 +36,11 @@ const warned = new Set<string>();
  * every listed icon carries; a name it lacks warns once and draws nothing, so a typo shows as a gap
  * rather than a crash or a wrong glyph.
  *
- * Called from the `jx-icon` document with the element's own `name` and `weight` state.
+ * Called from the `jx-icon` document with the element's own `name` and `weight` state. Both are
+ * declared strings, but a property write can store any value, so neither is trusted to be one.
  */
-export function iconPath(name: unknown, weight: unknown): string {
-  const key = typeof name === "string" ? name : "";
+export function iconPath(name: JsonValue | undefined, weight: JsonValue | undefined): string {
+  const key = isString(name) ? name : "";
   const entry = icons[key];
   if (!entry) {
     if (key && !warned.has(key)) {
@@ -45,11 +49,9 @@ export function iconPath(name: unknown, weight: unknown): string {
     }
     return "";
   }
-  const w = (ICON_WEIGHTS as readonly string[]).includes(String(weight))
-    ? (weight as IconWeight)
-    : "regular";
+  const w = ICON_WEIGHTS.find((candidate) => candidate === String(weight)) ?? "regular";
   return entry[w] ?? entry.regular ?? "";
 }
 
 /** The viewBox `jx-icon` draws on; the manifest's, so a rebuilt manifest cannot drift from it. */
-export const iconViewBox: string = (manifest as IconManifest).viewBox || ICON_VIEW_BOX;
+export const iconViewBox: string = iconManifest.viewBox || ICON_VIEW_BOX;

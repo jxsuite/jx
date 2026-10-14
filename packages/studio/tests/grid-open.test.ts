@@ -70,7 +70,7 @@ describe("openCsvGridTab", () => {
     // Workspace hands back the reactive proxy of the same tab — compare identity via ids.
     expect(second.id).toBe(first.id);
     expect(workspace.tabs.size).toBe(1);
-    expect(workspace.activeTabId as string | null).toBe("a.csv");
+    expect(workspace.activeTabId).toBe("a.csv");
   });
 
   test("opts forward paneId, preview and focus, for a new tab and for an existing one", async () => {
@@ -106,7 +106,7 @@ describe("openCsvGridTab", () => {
     const again = openCollectionGrid("posts");
     expect(again.id).toBe(tab.id);
     expect(workspace.tabs.size).toBe(1);
-    expect(workspace.activeTabId as string | null).toBe(tab.id);
+    expect(workspace.activeTabId).toBe(tab.id);
   });
 
   test("tolerates an unavailable format registry", async () => {
@@ -146,7 +146,7 @@ describe("virtual grid openers", () => {
   const rows = () => [...document.querySelectorAll<HTMLElement>('#layer-dialog [part="source"]')];
   /* Labels, never the elements themselves: `toEqual` over a happy-dom node walks its whole parent
      chain and never comes back, which reads as a hung suite rather than a failing assertion. */
-  const rowLabels = () => rows().map((el) => el.textContent?.trim());
+  const rowLabels = () => rows().map((el) => el.textContent.trim());
   const openDialog = () =>
     [...document.querySelectorAll<HTMLElement>("#layer-dialog jx-dialog")].at(-1) ?? null;
   const dismiss = async () => {
@@ -157,7 +157,7 @@ describe("virtual grid openers", () => {
     document.querySelector<HTMLElement>(`#layer-dialog [part="source"][data-source="${id}"]`)!;
   const groupTitles = () =>
     [...document.querySelectorAll('#layer-dialog [part="group-title"]')].map((el) =>
-      el.textContent?.trim(),
+      el.textContent.trim(),
     );
 
   test("the source picker groups pages, collections and connector tables", async () => {

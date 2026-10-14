@@ -33,6 +33,10 @@ import {
   readLock,
   readShots,
 } from "../check-image-lock";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+
+import { DOCS_TAG_RE } from "./lib/doc-tags.ts";
 import { navPaths, navProblems, readNav } from "./nav";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -54,25 +58,27 @@ function fail(file: string, message: string) {
 
 // ─── Frontmatter ─────────────────────────────────────────────────────────────
 
-interface DocFrontmatter {
-  title?: unknown;
-  description?: unknown;
-  spec?: unknown;
-  code?: unknown;
-  generated?: unknown;
-}
-
-/** Parse the leading YAML frontmatter block of a markdown source, or null. */
-function parseFrontmatter(source: string): DocFrontmatter | null {
+/**
+ * Parse the leading YAML frontmatter block of a markdown source, or null when there is none, it
+ * does not parse, or it is empty. A block that parses to a non-mapping value (a list, a scalar)
+ * carries none of the fields the checks read, so it yields an empty mapping and each required field
+ * then reports as missing.
+ */
+function parseFrontmatter(source: string): JsonObject | null {
   const match = source.match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) {
     return null;
   }
+  let parsed: unknown;
   try {
-    return Bun.YAML.parse(match[1]!) as DocFrontmatter;
+    parsed = Bun.YAML.parse(match[1]!);
   } catch {
     return null;
   }
+  if (isJsonObject(parsed)) {
+    return parsed;
+  }
+  return parsed ? {} : null;
 }
 
 // ─── Spec heading index ──────────────────────────────────────────────────────
@@ -106,7 +112,7 @@ function sectionsOf(specFile: string): Set<string> | null {
 // Shot reading, image-name derivation and the capture lock all live in
 // `scripts/check-image-lock.ts` — one implementation, because a second reading of "what images can
 // This shot produce" is a check that agrees with itself and with nothing else.
-const manifest: unknown = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+const manifest: JsonValue = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 const shots = readShots(manifest);
 
 /**
@@ -158,8 +164,7 @@ const referencedScreenshots = new Set<string>();
  * the top-level one — a README nested inside a published tree would still be a page.
  */
 const docFiles = [...new Bun.Glob("**/*.md").scanSync({ cwd: DOCS_DIR })]
-  .filter((f) => f !== "README.md")
-  .map((f) => join(DOCS_DIR, f))
+  .flatMap((f) => (f === "README.md" ? [] : [join(DOCS_DIR, f)]))
   .toSorted();
 
 for (const file of docFiles) {
@@ -170,22 +175,25 @@ for (const file of docFiles) {
     fail(file, "missing or unparseable YAML frontmatter");
     continue;
   }
-  if (typeof fm.title !== "string" || fm.title.length === 0) {
+  const { title, description } = fm;
+  if (!isString(title) || title.length === 0) {
     fail(file, 'frontmatter "title" is required');
   }
-  if (typeof fm.description !== "string" || fm.description.length === 0) {
+  if (!isString(description) || description.length === 0) {
     fail(file, 'frontmatter "description" is required');
-  } else if (fm.description.length > MAX_DESCRIPTION) {
-    fail(file, `description is ${fm.description.length} chars (max ${MAX_DESCRIPTION})`);
+  } else if (description.length > MAX_DESCRIPTION) {
+    fail(file, `description is ${description.length} chars (max ${MAX_DESCRIPTION})`);
   }
 
   if (fm.spec !== undefined) {
     const specs = Array.isArray(fm.spec) ? fm.spec : [fm.spec];
     for (const entry of specs) {
-      if (typeof entry !== "string") {
+      if (!isString(entry)) {
         fail(file, `spec entry is not a string: ${JSON.stringify(entry)}`);
         continue;
       }
+      /* SAFETY: `split` with a separator always yields at least one element, so the first slot is
+       * a string; the anchor slot is absent when the entry has no `#`. */
       const [specFile, anchor] = entry.split("#") as [string, string | undefined];
       const sections = sectionsOf(specFile);
       if (!sections) {
@@ -201,7 +209,7 @@ for (const file of docFiles) {
   if (fm.code !== undefined) {
     const codes = Array.isArray(fm.code) ? fm.code : [fm.code];
     for (const entry of codes) {
-      if (typeof entry !== "string") {
+      if (!isString(entry)) {
         fail(file, `code entry is not a string: ${JSON.stringify(entry)}`);
         continue;
       }
@@ -278,7 +286,6 @@ for (const file of docFiles) {
 
 // ─── Reverse: @docs tags in code ─────────────────────────────────────────────
 
-const DOCS_TAG_RE = /@docs\s+([A-Za-z0-9/_-]+)/g;
 const CODE_GLOBS = ["packages/*/src/**/*.ts", "extensions/*/src/**/*.ts"];
 
 for (const pattern of CODE_GLOBS) {

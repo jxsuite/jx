@@ -13,6 +13,8 @@
  */
 import { flush, installMockPlatform, resetStudioState, mountOverlayLayers } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { AnyCommand } from "../src/commands/registry";
+import type { PaletteMode } from "../src/panels/quick-search";
 import type { StudioFormat } from "../src/format/format-host";
 
 const openFileInTab = mock((_path: string) => {});
@@ -150,18 +152,46 @@ function installRegistry() {
 function overlay(): HTMLElement | null {
   /* The palette is a persistent mount now: closed it is present but hidden on the layer root, and
      a test that asks "is the palette closed?" asks what the reader SEES — empty, not gone. */
-  const shown = [...document.querySelectorAll('[part="overlay"]')].find(
+  const shown = [...document.querySelectorAll<HTMLElement>('[part="overlay"]')].find(
     (el) => !el.hasAttribute("hidden"),
   );
-  return (shown as HTMLElement) ?? null;
+  return shown ?? null;
 }
 
+/** The one element `selector` names; a missing one fails the test at the line that asked. */
+function element(selector: string): HTMLElement {
+  const found = document.querySelector(selector);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`no element matches ${selector}`);
+  }
+  return found;
+}
+
+/** The palette's native `<input part="input">` (src/surfaces/palette.json). */
 function input(): HTMLInputElement {
-  return document.querySelector('[part="input"]') as HTMLInputElement;
+  const found = document.querySelector('[part="input"]');
+  if (!(found instanceof HTMLInputElement)) {
+    throw new Error("the palette has no input");
+  }
+  return found;
 }
 
 function items(): HTMLElement[] {
-  return [...document.querySelectorAll('[part="option"]')] as HTMLElement[];
+  return [...document.querySelectorAll<HTMLElement>('[part="option"]')];
+}
+
+/** A rendered `jx-icon`, read through the `name` state entry the kit's icon document declares. */
+interface IconElement extends HTMLElement {
+  name: string;
+}
+
+/** The glyph the first result row draws. */
+function firstRowIcon(): string | undefined {
+  /* SAFETY: every row icon is the kit element defined by packages/ui/components/jx-icon.json,
+     whose `name` state entry is a string element property. A row with no icon, or one that never
+     upgraded, reads as undefined and fails the glyph assertion rather than passing it. */
+  const icon = items()[0]!.querySelector("jx-icon") as IconElement | null;
+  return icon?.name;
 }
 
 function names(): (string | undefined)[] {
@@ -251,7 +281,12 @@ describe("resolvePaletteMode", () => {
       expect(modeSpec(spec.mode)).toBe(spec);
       expect(spec.description).not.toBe("");
     }
-    expect(modeSpec("nope" as never)).toBe(PALETTE_MODES[0]!);
+    // A plain `string`, the type a mode name read back from storage arrives as.
+    const undeclared = String("nope");
+    /* SAFETY: deliberately outside `PaletteMode` — a mode name restored from an older session can
+       be one this build no longer declares, and `modeSpec` must fall back rather than return
+       undefined. The cast is how that out-of-domain value reaches the typed parameter. */
+    expect(modeSpec(undeclared as PaletteMode)).toBe(PALETTE_MODES[0]!);
   });
 });
 
@@ -291,18 +326,24 @@ describe("fuzzyScore", () => {
 // ─── Pure: argument prompts ───────────────────────────────────────────────────
 
 describe("paletteArgs", () => {
-  const base = { category: "View", id: "x.y", level: "application", run: () => {}, title: "X" };
+  const base: AnyCommand = {
+    category: "View",
+    id: "x.y",
+    level: "application",
+    run: () => {},
+    title: "X",
+  };
 
   test("no schema means the command runs straight away", () => {
-    expect(paletteArgs(base as never)).toEqual({ kind: "none" });
-    expect(paletteArgs({ ...base, args: { type: "object" } } as never)).toEqual({ kind: "none" });
+    expect(paletteArgs(base)).toEqual({ kind: "none" });
+    expect(paletteArgs({ ...base, args: { type: "object" } })).toEqual({ kind: "none" });
   });
 
   test("one enum property becomes a list of choices", () => {
     const args = paletteArgs({
       ...base,
       args: { properties: { mode: { enum: ["edit", "design"] } } },
-    } as never);
+    });
     expect(args).toEqual({
       kind: "choice",
       name: "mode",
@@ -317,7 +358,7 @@ describe("paletteArgs", () => {
     const args = paletteArgs({
       ...base,
       args: { properties: { open: { type: "boolean" } } },
-    } as never);
+    });
     expect(args).toEqual({
       kind: "choice",
       name: "open",
@@ -331,14 +372,14 @@ describe("paletteArgs", () => {
   test("an open value space, or more than one property, is unsupported", () => {
     // A palette is a LIST. `canvas.setZoom { zoom: number }` has no list to show, so command mode
     // Does not render a row that cannot be completed.
-    expect(
-      paletteArgs({ ...base, args: { properties: { zoom: { type: "number" } } } } as never).kind,
-    ).toBe("unsupported");
+    expect(paletteArgs({ ...base, args: { properties: { zoom: { type: "number" } } } }).kind).toBe(
+      "unsupported",
+    );
     expect(
       paletteArgs({
         ...base,
         args: { properties: { a: { type: "boolean" }, b: { type: "boolean" } } },
-      } as never).kind,
+      }).kind,
     ).toBe("unsupported");
   });
 });
@@ -349,27 +390,28 @@ describe("open and close", () => {
   test("a bare open is the files mode — the gesture an empty state's Open a page… offers", async () => {
     openQuickSearch();
     await flush();
-    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Files");
+    expect(document.querySelector('[part="chip"]')?.textContent.trim()).toContain("Files");
   });
 
   test("⌘K opens the mode picker, which enumerates the namespace", async () => {
     await open();
     expect(isQuickSearchOpen()).toBe(true);
-    expect(names()).toEqual(["Files", "Commands", "Symbols", "Recent Projects"]);
+    const modes = names();
+    expect(modes).toEqual(["Files", "Commands", "Symbols", "Recent Projects"]);
     // `?` lists the modes and is therefore not one of the rows it lists.
-    expect(names()).not.toContain("Modes");
+    expect(modes).not.toContain("Modes");
   });
 
   test("clicking a mode row enters that mode", async () => {
     await open();
     items()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
+    expect(document.querySelector('[part="chip"]')?.textContent.trim()).toContain("Commands");
   });
 
   test("the backdrop closes; a click inside the panel does not", async () => {
     await open();
-    const panel = document.querySelector('[part="panel"]') as HTMLElement;
+    const panel = element('[part="panel"]');
     panel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(overlay()).toBeTruthy();
     overlay()!.dispatchEvent(new MouseEvent("click", { bubbles: false }));
@@ -432,17 +474,11 @@ describe("files mode", () => {
   test("file icons follow the extension", async () => {
     await open("files");
     await type("doc-a");
-    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
-      "file-code",
-    );
+    expect(firstRowIcon()).toBe("file-code");
     await type("hello");
-    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
-      "file-text",
-    );
+    expect(firstRowIcon()).toBe("file-text");
     await type("blob");
-    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
-      "file",
-    );
+    expect(firstRowIcon()).toBe("file");
   });
 
   test("a file at the search root has an empty directory subtitle", async () => {
@@ -453,9 +489,9 @@ describe("files mode", () => {
 
   test("a failing backend leaves the mode usable and says No results", async () => {
     installMockPlatform({
-      searchFiles: (async () => {
+      searchFiles: async () => {
         throw new Error("search backend down");
-      }) as never,
+      },
     });
     await open("files");
     await type("doc");
@@ -668,14 +704,14 @@ describe("the mode chip", () => {
   test("typing a prefix moves it out of the query and into the chip", async () => {
     await open();
     await type(">zen");
-    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
+    expect(document.querySelector('[part="chip"]')?.textContent.trim()).toContain("Commands");
     expect(input().value).toBe("zen");
   });
 
   test("the chip's × drops the mode and returns to the picker", async () => {
     await open("commands");
     expect(document.querySelector('[part="chip"]')).not.toBeNull();
-    (document.querySelector('[part="chip-remove"] [part="control"]') as HTMLElement).click();
+    element('[part="chip-remove"] [part="control"]').click();
     await flush();
     expect(document.querySelector('[part="chip"]')).toBeNull();
     expect(names()).toEqual(["Files", "Commands", "Symbols", "Recent Projects"]);
@@ -704,7 +740,7 @@ describe("the mode chip", () => {
   test("a bare prefix leaves the field empty, not holding the character the chip took", async () => {
     await open();
     await press(">");
-    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
+    expect(document.querySelector('[part="chip"]')?.textContent.trim()).toContain("Commands");
     expect(input().value).toBe("");
   });
 
@@ -716,7 +752,7 @@ describe("the mode chip", () => {
     expect(document.querySelector('[part="chip"]')).toBeNull();
     await press("z");
     expect(input().value).toBe("z");
-    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).not.toContain("Commands");
+    expect(document.querySelector('[part="chip"]')?.textContent.trim()).not.toContain("Commands");
   });
 });
 
@@ -737,9 +773,7 @@ describe("node mode", () => {
     expect(names()).toContain("h1");
     await type("h1");
     expect(names()[0]).toBe("h1");
-    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
-      "stack",
-    );
+    expect(firstRowIcon()).toBe("stack");
 
     keydown("Enter");
     expect(overlay()).toBeNull();
@@ -788,10 +822,8 @@ describe("projects mode", () => {
     await open("projects");
     expect(document.querySelector('[part="chip"]')?.textContent).toContain("Recent Projects");
     expect(names()).toEqual(["Alpha", "Beta"]);
-    expect(items()[0]!.querySelector('[part="description"]')?.textContent?.trim()).toBe("~/alpha");
-    expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
-      "folder-open",
-    );
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent.trim()).toBe("~/alpha");
+    expect(firstRowIcon()).toBe("folder-open");
 
     keydown("Enter");
     expect(openRecentProject).toHaveBeenCalledWith("/home/u/alpha");
@@ -866,7 +898,7 @@ describe("quick search announces its results", () => {
     keydown("ArrowDown");
     await flush();
 
-    const list = document.querySelector('[part="results"]') as HTMLElement;
+    const list = element('[part="results"]');
     const active = input().getAttribute("aria-activedescendant");
 
     expect(active).toBe("quick-search-option-1");
@@ -909,14 +941,14 @@ describe("quick search announces its results", () => {
     await open("commands");
     await type("zzzzz-no-such-command-zzzzz");
     expect(input().hasAttribute("aria-activedescendant")).toBe(false);
-    expect((document.querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
+    expect(element('[part="results"]').dataset.active).toBe("");
 
     // And an arrow key over nothing moves nothing: clamping an empty list lands on index 0, which
     // Would name a row that is not there now that the id IS the highlight.
     keydown("ArrowDown");
     await flush();
     expect(input().hasAttribute("aria-activedescendant")).toBe(false);
-    expect((document.querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
+    expect(element('[part="results"]').dataset.active).toBe("");
   });
 
   test("aria-expanded is honest about whether a popup is showing", async () => {

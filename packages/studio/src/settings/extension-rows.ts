@@ -42,7 +42,7 @@ export interface ExtensionRow {
 
 /** The live project configuration, or an empty one before a project is open. */
 export function projectConfig(): ProjectConfig {
-  return (projectState?.projectConfig ?? {}) as ProjectConfig;
+  return projectState?.projectConfig ?? {};
 }
 
 /** The specifiers `project.json` currently enables. */
@@ -71,7 +71,7 @@ export function buildRows(packages: PackageInfo[] | null = null): ExtensionRow[]
     const here = entry.installed ?? installed.has(entry.name);
     const bundled = entry.bundled ?? false;
     const info = resolved.get(entry.name);
-    rows.push({
+    const row: ExtensionRow = {
       broken: enabled.has(specifier) && !here && !bundled,
       bundled,
       enabled: enabled.has(specifier),
@@ -83,9 +83,14 @@ export function buildRows(packages: PackageInfo[] | null = null): ExtensionRow[]
         : entry.sections.map((s) => s.key),
       specifier,
       title: entry.title ?? entry.name,
-      ...(entry.description === undefined ? {} : { description: entry.description }),
-      ...(entry.problem === undefined ? {} : { unavailable: entry.problem }),
-    });
+    };
+    if (entry.description !== undefined) {
+      row.description = entry.description;
+    }
+    if (entry.problem !== undefined) {
+      row.unavailable = entry.problem;
+    }
+    rows.push(row);
   }
 
   // Anything project.json names that the backend did not describe. It can still be turned OFF,
@@ -95,7 +100,7 @@ export function buildRows(packages: PackageInfo[] | null = null): ExtensionRow[]
       continue;
     }
     const info = resolved.get(specifier);
-    rows.push({
+    const row: ExtensionRow = {
       broken: !installed.has(specifier) && info === undefined,
       bundled: false,
       enabled: true,
@@ -105,8 +110,11 @@ export function buildRows(packages: PackageInfo[] | null = null): ExtensionRow[]
       sections: info ? info.contributions.map((c) => c.project.key) : [],
       specifier,
       title: info?.title ?? specifier,
-      ...(info?.description === undefined ? {} : { description: info.description }),
-    });
+    };
+    if (info?.description !== undefined) {
+      row.description = info.description;
+    }
+    rows.push(row);
   }
 
   return rows;

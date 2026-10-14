@@ -3,6 +3,7 @@
  * same depth-first element-index order as the browser DOM walk in style-capture.ts.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement, JxStyle } from "@jxsuite/schema/types";
 import type { DiffedStyle } from "./style-diff.ts";
 import { parseWidthQuery } from "./breakpoint-plan.ts";
@@ -38,7 +39,7 @@ export function orderBreakpointKeys(
   names: readonly string[],
   queries: Record<string, string> | undefined,
 ): string[] {
-  const rank = (name: string): { band: number; width: number } => {
+  const rank = (name: string) => {
     const parsed = queries?.[name] === undefined ? null : parseWidthQuery(queries[name]!);
     if (!parsed) {
       return { band: 2, width: 0 };
@@ -83,7 +84,7 @@ export function applyStylesToTree(
 
   let childIdx = 0;
   for (const child of root.children) {
-    if (typeof child === "string") {
+    if (isString(child)) {
       continue;
     }
     walkAndApply(child, [childIdx], baseMap, mediaMaps);
@@ -115,12 +116,12 @@ function walkAndApply(
     const delta = deltaMap.get(key);
     if (delta) {
       const filtered = { ...delta };
-      dropDerivedGeometry(node, filtered, (node.style ?? {}) as Record<string, unknown>);
+      dropDerivedGeometry(node, filtered, node.style ?? {});
       if (Object.keys(filtered).length > 0) {
         if (!node.style) {
           node.style = {};
         }
-        (node.style as Record<string, unknown>)[`@${bpName}`] = filtered;
+        node.style[`@${bpName}`] = filtered;
       }
     }
   }
@@ -132,7 +133,7 @@ function walkAndApply(
 
   let childIdx = 0;
   for (const child of node.children) {
-    if (typeof child === "string") {
+    if (isString(child)) {
       continue;
     }
     walkAndApply(child, [...path, childIdx], baseMap, mediaMaps);

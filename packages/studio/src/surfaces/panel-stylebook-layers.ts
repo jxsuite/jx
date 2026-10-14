@@ -26,10 +26,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import stylebookLayersDoc from "./panel-stylebook-layers.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("panel-stylebook-layers", stylebookLayersDoc as unknown as JxDocument);
+registerSurface("panel-stylebook-layers", stylebookLayersDoc);
 
 /**
  * One line of the catalogue, as the document draws it. Every field is a value: no records, no
@@ -91,8 +90,7 @@ export interface StylebookLayersSurfaceHandle {
 }
 
 /** The scope the document reads: the projection, plus the one thing a row can ask for. */
-interface StylebookLayersScope
-  extends Record<string, unknown>, StylebookLayersValues, StylebookLayersActions {}
+interface StylebookLayersScope extends StylebookLayersValues, StylebookLayersActions {}
 
 /** Write a projection into the scope. */
 function project(scope: StylebookLayersScope, values: StylebookLayersValues): void {
@@ -116,13 +114,13 @@ export function mountStylebookLayersSurface(
   values: StylebookLayersValues,
   actions: StylebookLayersActions,
 ): StylebookLayersSurfaceHandle {
-  const scope = reactive<StylebookLayersScope>({
+  const scope: StylebookLayersScope = reactive<StylebookLayersScope>({
     hasVariables: false,
     rows: [],
     selectRow: actions.selectRow,
     tab: "elements",
     variables: [],
-  }) as StylebookLayersScope;
+  });
   project(scope, values);
 
   let mounted: SurfaceHandle | null = null;
@@ -141,8 +139,7 @@ export function mountStylebookLayersSurface(
        mount racing the first. Once mounted, the question is whether the root is still where it was
        put: a Navigator that painted another panel, or the Outline's own lit branch, cleared this
        document out from under it. */
-    connected: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    connected: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

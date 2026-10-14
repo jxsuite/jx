@@ -9,6 +9,7 @@
 
 import { extname, join } from "node:path";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { isFunction } from "@jxsuite/schema/guards";
 import type { Browser, Page } from "puppeteer-core";
 import { launchBrowser, closeBrowser } from "./browser-local.ts";
 import { diffScreenshots } from "./screenshot-diff.ts";
@@ -122,6 +123,11 @@ interface PageDiagnostics {
   failedRequests: string[];
 }
 
+/** The message of a thrown value, which may be any value at all rather than an Error. */
+function describeError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 /**
  * Listen for the two things a fidelity percentage cannot tell you: what the page logged, and what
  * it asked for and did not get.
@@ -132,7 +138,9 @@ interface PageDiagnostics {
  */
 function watchPage(page: Page): PageDiagnostics {
   const diagnostics: PageDiagnostics = { consoleErrors: [], failedRequests: [] };
-  if (typeof (page as Partial<Page>).on !== "function") {
+  /* SAFETY: Widening to Partial<Page> only admits what the doc comment above describes: a stand-in
+     page that screenshots but has no event emitter is passed where a Page is expected. */
+  if (!isFunction((page as Partial<Page>).on)) {
     return diagnostics;
   }
   page.on("console", (msg) => {
@@ -143,7 +151,7 @@ function watchPage(page: Page): PageDiagnostics {
   // `pageerror` carries `Error | unknown`: a page can reject with anything at all, and a thrown
   // String is still a page that broke.
   page.on("pageerror", (error) => {
-    diagnostics.consoleErrors.push(error instanceof Error ? error.message : String(error));
+    diagnostics.consoleErrors.push(describeError(error));
   });
   page.on("requestfailed", (request) => {
     diagnostics.failedRequests.push(`failed ${request.url()}`);
@@ -203,39 +211,44 @@ async function buildProject(projectDir: string): Promise<{ distDir: string; erro
  * will not use a font it was handed as one, which cost the clone fidelity points that were not the
  * importer's fault at all (issue #232).
  */
-const CONTENT_TYPES: Record<string, string> = {
-  ".avif": "image/avif",
-  ".css": "text/css",
-  ".gif": "image/gif",
-  ".htm": "text/html; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".otf": "font/otf",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".ttf": "font/ttf",
-  ".txt": "text/plain; charset=utf-8",
-  ".webmanifest": "application/manifest+json",
-  ".webp": "image/webp",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".xml": "application/xml; charset=utf-8",
-};
+const CONTENT_TYPES = new Map<string, string>(
+  Object.entries({
+    ".avif": "image/avif",
+    ".css": "text/css",
+    ".gif": "image/gif",
+    ".htm": "text/html; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".otf": "font/otf",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".ttf": "font/ttf",
+    ".txt": "text/plain; charset=utf-8",
+    ".webmanifest": "application/manifest+json",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".xml": "application/xml; charset=utf-8",
+  }),
+);
+
+/** A running static server and the origin it answers on. */
+export interface ServedDirectory {
+  server: ReturnType<typeof Bun.serve>;
+  baseUrl: string;
+}
 
 /**
  * Serve a directory over HTTP using Bun's built-in server. Returns the server instance and the base
  * URL.
  */
-export function serveDirectory(dir: string): {
-  server: ReturnType<typeof Bun.serve>;
-  baseUrl: string;
-} {
+export function serveDirectory(dir: string): ServedDirectory {
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
@@ -250,7 +263,7 @@ export function serveDirectory(dir: string): {
       const file = Bun.file(filePath);
       if (await file.exists()) {
         const contentType =
-          CONTENT_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+          CONTENT_TYPES.get(extname(filePath).toLowerCase()) ?? "application/octet-stream";
         return new Response(file, { headers: { "Content-Type": contentType } });
       }
       return new Response("Not Found", { status: 404 });
@@ -302,7 +315,7 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
       onProgress(`  Build completed with ${buildErrors.length} error(s)`);
     }
   } catch (error) {
-    const err = error as Error;
+    const message = describeError(error);
     return {
       pages: [...pages.entries()].map(([route, ref]) => ({
         route,
@@ -315,11 +328,11 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
         renderedScreenshotPath: "",
         consoleErrors: [],
         failedRequests: [],
-        error: `Build failed: ${err.message}`,
+        error: `Build failed: ${message}`,
       })),
       averageFidelity: 0,
       reportDir,
-      buildErrors: [`Build failed: ${err.message}`],
+      buildErrors: [`Build failed: ${message}`],
       passed: false,
     };
   }
@@ -392,8 +405,8 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
           failedRequests: diagnostics.failedRequests,
         });
       } catch (error) {
-        const err = error as Error;
-        onProgress(`    Error: ${err.message}`);
+        const message = describeError(error);
+        onProgress(`    Error: ${message}`);
         results.push({
           route,
           sourceUrl: ref.sourceUrl,
@@ -405,7 +418,7 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
           renderedScreenshotPath: "",
           consoleErrors: [],
           failedRequests: [],
-          error: err.message,
+          error: message,
         });
       }
     }
@@ -430,7 +443,7 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
      */
     const errored = results.filter((r) => r.error);
     const passed =
-      (buildErrors ?? []).length === 0 && errored.length === 0 && averageFidelity >= minFidelity;
+      buildErrors.length === 0 && errored.length === 0 && averageFidelity >= minFidelity;
 
     const report = {
       timestamp: new Date().toISOString(),
@@ -443,7 +456,7 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
       averageFidelity,
       passed,
       pages: results,
-      buildErrors: buildErrors ?? [],
+      buildErrors,
     };
     writeFileSync(join(reportDir, "report.json"), JSON.stringify(report, null, 2));
 
@@ -451,7 +464,7 @@ export async function verifyProject(opts: VerifyOptions): Promise<VerifyResult> 
       pages: results,
       averageFidelity,
       reportDir,
-      buildErrors: buildErrors ?? [],
+      buildErrors,
       passed,
     };
   } finally {

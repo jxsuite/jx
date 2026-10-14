@@ -16,7 +16,7 @@ import { generateStarters } from "./starters.ts";
 import { generateCommands, generateShortcuts } from "./studio-commands.ts";
 import { generateStudioRoutes } from "./studio-routes.ts";
 
-export const PAGES: Readonly<Record<string, () => string>> = {
+export const PAGES = {
   "docs/extending/reference/studio-routes.md": generateStudioRoutes,
   "docs/extending/reference/implementation-status.md": generateImplementationStatus,
   "docs/extending/reference/spec-changelog.md": generateSpecChangelog,
@@ -26,4 +26,4 @@ export const PAGES: Readonly<Record<string, () => string>> = {
   "docs/studio/projects/starters.md": generateStarters,
   "docs/studio/interface/commands.md": generateCommands,
   "docs/studio/interface/shortcuts.md": generateShortcuts,
-};
+} as const satisfies Readonly<Record<string, () => string>>;

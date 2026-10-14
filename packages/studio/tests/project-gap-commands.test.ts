@@ -16,6 +16,7 @@ import { checkPlacements } from "../src/commands/levels";
 import { initLayers } from "../src/ui/layers";
 import { closeAllTabs, workspace } from "../src/workspace/workspace";
 import type { CommandContext } from "../src/commands/context";
+import type { CommandArgValues } from "../src/commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
 
 // ─── Seams ────────────────────────────────────────────────────────────────────
@@ -65,10 +66,12 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+/** Fire frame callbacks on a zero-delay timer, which `flush()` drains. */
+function nextTickFrame(cb: FrameRequestCallback): number {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+}
+globalThis.requestAnimationFrame = nextTickFrame;
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -80,7 +83,7 @@ function allRecords(): AnyCommand[] {
 }
 
 /** Run a command that is expected to refuse, and return the message it refused with. */
-async function refusal(id: string, args?: Record<string, unknown>): Promise<string> {
+async function refusal(id: string, args?: CommandArgValues): Promise<string> {
   try {
     await Promise.resolve(registry.run(id, args));
   } catch (error) {

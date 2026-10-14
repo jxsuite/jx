@@ -1,15 +1,17 @@
 // oxlint-disable typescript/await-thenable -- bun test .rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import type { PackageOpResult } from "@jxsuite/server/packages";
+
 interface Call {
   fn: string;
   args: unknown[];
 }
 
 const calls: Call[] = [];
-let opResult: { ok: boolean; log?: string } = { ok: true };
+let opResult: PackageOpResult = { ok: true };
 
-function record(fn: string, value: () => unknown) {
+function record<T>(fn: string, value: () => T) {
   return (...args: unknown[]) => {
     calls.push({ args, fn });
     return value();

@@ -65,7 +65,7 @@ export function findIJsonProblems(text: string): IJsonProblem[] {
           out += String.fromCodePoint(Number.parseInt(text.slice(index + 2, index + 6), 16));
           index += 6;
         } else {
-          out += ESCAPES[next] ?? next;
+          out += ESCAPES.get(next) ?? next;
           index += 2;
         }
         continue;
@@ -151,13 +151,13 @@ export function findIJsonProblems(text: string): IJsonProblem[] {
   return problems;
 }
 
-const ESCAPES: Record<string, string> = {
-  b: "\b",
-  f: "\f",
-  n: "\n",
-  r: "\r",
-  t: "\t",
-};
+const ESCAPES = new Map([
+  ["b", "\b"],
+  ["f", "\f"],
+  ["n", "\n"],
+  ["r", "\r"],
+  ["t", "\t"],
+]);
 
 /** The next non-whitespace character at or after `from`, or "" at the end. */
 function nextMeaningful(text: string, from: number): string {

@@ -5,30 +5,43 @@
  */
 import { readFileSync } from "node:fs";
 import { Markdown } from "@jxsuite/parser/markdown";
+import { classDefFrom } from "@jxsuite/schema/format-registry";
 import { setFormats } from "../src/format/format-host";
 import type { StudioFormat } from "../src/format/format-host";
+import type { FormatActionRequest } from "../src/types";
+import type { JxDocument } from "@jxsuite/schema/types";
 
 const classUrl = new URL(import.meta.resolve("@jxsuite/parser/Markdown.class.json"));
-const classDef = JSON.parse(readFileSync(classUrl, "utf8"));
+const classDef = classDefFrom(JSON.parse(readFileSync(classUrl, "utf8")));
+const markdownBlock = classDef.format;
+if (!markdownBlock) {
+  throw new Error("Markdown.class.json declares no format block");
+}
+
+const STUDIO_ROLES = new Set(["parse", "serialize", "discover", "load"]);
 
 export const MARKDOWN_FORMAT: StudioFormat = {
   capabilities: Object.fromEntries(
-    Object.entries(classDef.$defs?.methods ?? {})
-      .filter(([, m]) => ["parse", "serialize", "discover", "load"].includes((m as any).role))
-      .map(([key, m]) => [
-        (m as any).role,
-        {
-          identifier: (m as any).identifier ?? key,
-          timing: (m as any).timing ?? ["compiler", "server"],
-        },
-      ]),
+    Object.entries(classDef.$defs?.methods ?? {}).flatMap(([key, m]) =>
+      m.role !== undefined && STUDIO_ROLES.has(m.role)
+        ? [
+            [
+              m.role,
+              {
+                identifier: m.identifier ?? key,
+                timing: m.timing ?? ["compiler", "server"],
+              },
+            ],
+          ]
+        : [],
+    ),
   ),
-  documentKinds: classDef.format.documentKinds ?? [],
-  exportTarget: classDef.format.exportTarget === true,
-  extensions: classDef.format.extensions,
-  mediaType: classDef.format.mediaType ?? null,
+  documentKinds: markdownBlock.documentKinds ?? [],
+  exportTarget: markdownBlock.exportTarget === true,
+  extensions: markdownBlock.extensions,
+  mediaType: markdownBlock.mediaType ?? null,
   name: "Markdown",
-  remote: classDef.format.remote === true,
+  remote: markdownBlock.remote === true,
   studio: classDef.$studio ?? null,
 };
 
@@ -83,14 +96,13 @@ export function seedMarkdownFormat() {
 }
 
 /** Platform formatAction mock — runs the capability in-process. */
-export async function mockFormatAction(payload: Record<string, unknown>) {
-  const { format, action, source, doc, options } = payload as {
-    format: string;
-    action: string;
-    source?: string;
-    doc?: Record<string, unknown>;
-    options?: Record<string, unknown>;
-  };
+export async function mockFormatAction({
+  format,
+  action,
+  source,
+  doc,
+  options,
+}: FormatActionRequest) {
   if (format !== "Markdown") {
     throw new Error(`Unknown format "${format}"`);
   }
@@ -98,7 +110,16 @@ export async function mockFormatAction(payload: Record<string, unknown>) {
     return Markdown.parse(source ?? "");
   }
   if (action === "serialize") {
-    return Markdown.serialize(doc ?? {}, options);
+    /* SAFETY: this stands in for the dev server's POST /__studio/format, which hands the JSON
+       body's `doc` and `options` to `Markdown.serialize` as is. The editor's JxMutableNode is that
+       same element tree; it differs from JxDocument only by members typed `| undefined`, which JSON
+       drops on the real path. `options.mode` is typed `string` on the PAL, but every Studio serialize
+       call (serialize-document, convert-file, library-pane) sends `mode: "roundtrip"`, one of the
+       two modes the serializer declares. */
+    return Markdown.serialize(
+      (doc ?? {}) as JxDocument,
+      options as Parameters<typeof Markdown.serialize>[1],
+    );
   }
   throw new Error(`Unsupported action "${action}"`);
 }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { handleResolve, handleServerFunction } from "../src/resolve";
 import { join, resolve } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -151,7 +152,7 @@ const privateFieldsClass = {
 writeFileSync(join(FIXTURES, "Secret.class.json"), JSON.stringify(privateFieldsClass), "utf8");
 
 // Helper: create a mock Request
-function mockRequest(body: unknown) {
+function mockRequest(body: JsonValue) {
   return new Request("http://localhost/__jx_resolve__", {
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
@@ -373,7 +374,7 @@ describe("handleResolve — $base URL resolution", () => {
       expect(res.status).toBe(200);
       const value = await res.json();
       // The path should be rebased to CWD-relative (starts with ./) and include the sub dir
-      expect(typeof value).toBe("string");
+      expect(value).toBeTypeOf("string");
       expect(value.startsWith("./")).toBe(true);
       expect(value).toContain("_fixtures/sub/data.json");
     } finally {

@@ -1,13 +1,13 @@
 /**
  * Attached-context.js — the composer's "attach context" message-content convention.
  *
- * Attached context (current page, selected element) is embedded into the user message
- * content after a delimiter line: it's the only channel the LLM sees (the streaming
- * payload carries message content only) and it persists with the session for free.
- * The chat view splits the content back apart to show chips instead of the raw block.
+ * Attached context (current page, selected element) is embedded into the user message content after
+ * a delimiter line: it's the only channel the LLM sees (the streaming payload carries message
+ * content only) and it persists with the session for free. The chat view splits the content back
+ * apart to show chips instead of the raw block.
  *
- * The delimiter is a soft convention — a model echoing it would at worst render stray
- * chips (no security impact; assistant markdown is sanitized separately).
+ * The delimiter is a soft convention — a model echoing it would at worst render stray chips (no
+ * security impact; assistant markdown is sanitized separately).
  *
  * @license MIT
  */
@@ -36,8 +36,14 @@ export function buildMessageWithContext(text: string, chips: ContextChip[]): str
   return `${text}\n\n${ATTACHED_CONTEXT_DELIMITER}\n${lines}`;
 }
 
+/** A user message split into its typed body and its attached-context lines. */
+export interface SplitMessage {
+  body: string;
+  contextLines: string[];
+}
+
 /** Split a user message back into its typed body and any attached-context lines. */
-export function splitAttachedContext(content: string): { body: string; contextLines: string[] } {
+export function splitAttachedContext(content: string): SplitMessage {
   const idx = content.indexOf(`\n\n${ATTACHED_CONTEXT_DELIMITER}\n`);
   if (idx === -1) {
     return { body: content, contextLines: [] };

@@ -30,11 +30,10 @@ import {
   serializeLock,
   shotDefinitionHashes,
 } from "../../../scripts/check-image-lock";
-import type { CaptureLock, CaptureRuntime, LockImage } from "../../../scripts/check-image-lock";
+import type { CaptureLock, LockImage } from "../../../scripts/check-image-lock";
+import { RUNTIME } from "./shared-fixtures";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
-
-const RUNTIME: CaptureRuntime = { chromium: "141", fontset: "fc:abc123", os: "ubuntu-24.04" };
 
 function scratch(prefix: string): string {
   return mkdtempSync(join(tmpdir(), `jx-${prefix}-`));
@@ -113,6 +112,9 @@ describe("checkImageLock runtime reporting", () => {
   const definition = shotDefinitionHashes(manifest).get("hero")!;
 
   test("names an entry with no runtime at all, and one with a hole in its triple", () => {
+    /* SAFETY: deliberately malformed. A lock file is parsed JSON, so an entry can arrive without
+       the `runtime` block LockImage promises; reporting that hole is exactly what this test pins,
+       and checkImageLock reaches the field only through describeRuntime's undefined branch. */
     const noRuntime = {
       bytes: 100,
       capturedAt: "2026-01-15T09:30:00Z",
@@ -122,7 +124,7 @@ describe("checkImageLock runtime reporting", () => {
       sha256: "a".repeat(64),
       shot: "hero",
       width: 8,
-    } as unknown as LockImage;
+    } as LockImage;
     const holedRuntime = entry({
       definition,
       runtime: { chromium: "141", fontset: "fc:abc123", os: "" },
@@ -223,8 +225,16 @@ describe("the CLI reports what does not fail the run", () => {
     errors.length = 0;
   });
 
+  /** The paths of a fake repo the CLI is pointed at. */
+  interface CliFixture {
+    docs: string;
+    images: string;
+    lockPath: string;
+    manifestPath: string;
+  }
+
   /** A fake repo whose lock is correct, but whose manifest holds a quarantine and a gap. */
-  function fixture(): { docs: string; images: string; lockPath: string; manifestPath: string } {
+  function fixture(): CliFixture {
     const root = scratch("cli-notes");
     const docs = join(root, "docs");
     const images = join(docs, "images");

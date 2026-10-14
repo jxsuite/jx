@@ -16,7 +16,8 @@ import type { CollabNegotiation } from "@jxsuite/collab/negotiate";
 // Static, and free to be: `reconnect.ts` imports nothing, so no Yjs reaches the initial bundle.
 import { createReconnectScheduler } from "@jxsuite/collab/reconnect";
 import type { WsCollabConnection } from "@jxsuite/collab/client";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import { isBoolean, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
 import { streamImport } from "../services/import-client";
 import type {
@@ -55,7 +56,9 @@ import type {
 import { problemDetail, problemSlug } from "@jxsuite/protocol";
 import type { ReadFilesRequest, ReadFilesResult, UploadResult } from "@jxsuite/protocol";
 import { reportActionRequired } from "../account/action-required";
+import type { ActionRequiredReport } from "../account/action-required";
 import { offeredActions, retryHint } from "../platform-errors";
+import type { PlatformErrorInfo } from "../platform-errors";
 import { createReadBatcher } from "./read-batcher";
 import { normalizeProjectDir } from "../utils/project-dir";
 import type { BatchAnswer } from "./read-batcher";
@@ -79,7 +82,7 @@ interface ProjectInfoWire {
   name: string;
   defaultBranch: string;
   permission: "admin" | "write" | "read" | "none";
-  projectConfig: Record<string, unknown> | null;
+  projectConfig: ProjectConfig | null;
 }
 
 /** One row of the platform's project catalogue (`GET /api/v1/projects`). */
@@ -89,6 +92,64 @@ interface ProjectListWire {
   name: string;
   defaultBranch: string;
   permission: string;
+}
+
+/**
+ * True when a `POST /files/read` body is the route answering: a JSON object whose `files` is an
+ * array. Only that much is checked here, because the batcher checks every row, and `omitted`,
+ * before it trusts any of them (read-batcher.ts `settleAnswer`).
+ */
+function isReadFilesAnswer(body: JsonValue): body is JsonObject & ReadFilesResult {
+  return isJsonObject(body) && Array.isArray(body["files"]);
+}
+
+/** The options object {@link StudioPlatform.formatAction} hands through to `POST /format`. */
+type FormatActionPayload = Parameters<NonNullable<StudioPlatform["formatAction"]>>[0];
+
+/**
+ * A Cloudflare proxy reply (`/api/v1/cf/proxy` here, `/__studio/cf/proxy` on the dev server):
+ * Cloudflare's v4 envelope, or the proxy's own `error`.
+ */
+export interface CfProxyEnvelope extends JsonObject {
+  success?: boolean;
+  result?: JsonValue;
+  errors?: { message: string }[];
+  error?: string;
+}
+
+/** Where a session file sits in its project, as `resolveSiteContext` reports it. */
+interface SiteContext {
+  sitePath: string | null;
+  projectConfig?: ProjectConfig;
+  fileRelPath?: string;
+}
+
+/** The signed-in GitHub user, as `getUser` reports them. */
+interface SignedInUser {
+  login: string;
+  name?: string;
+  avatarUrl?: string;
+}
+
+/** Body of `POST /api/v1/projects/import`: the repository, and the project folder when not its root. */
+interface ImportProjectRequest {
+  owner: string;
+  name: string;
+  dir?: string;
+}
+
+/**
+ * A manifest's `dependencies` or `devDependencies` block, `{}` when absent. The object itself, not
+ * a copy, so `addPackage` can write into it.
+ */
+function dependencyBlock(
+  pkg: JsonObject,
+  key: "dependencies" | "devDependencies",
+): Record<string, string> {
+  /* SAFETY: npm's package.json format defines both blocks as an object of package name → version
+     range string, and every member here that writes one (`addPackage`, `removePackage`) keeps it
+     that way. */
+  return (pkg[key] ?? {}) as Record<string, string>;
 }
 
 interface SessionEventWire {
@@ -110,9 +171,24 @@ interface ErrorBody {
   code?: string;
 }
 
+/** Parse a fetch Response body as JSON, asserting the expected shape at the boundary. */
+async function readJson<T>(res: Response): Promise<T> {
+  /* SAFETY: every response read here comes from a Studio Backend Protocol session route or one of
+     the platform's own `/api/v1/*` routes, whose bodies have the shapes @jxsuite/protocol, ../types
+     and the wire interfaces in this file describe; each caller names the type of the route it
+     called, and a JSON parse always yields a JsonValue. */
+  return (await res.json()) as T;
+}
+
+/** Parse JSON text a session read returned; JSON.parse only ever produces JSON values. */
+function parseJson(text: string): JsonValue {
+  // SAFETY: JSON.parse returns exactly the JSON value the text encodes, or throws.
+  return JSON.parse(text) as JsonValue;
+}
+
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
-    return problemDetail(await res.json()) ?? fallback;
+    return problemDetail(await readJson<JsonValue>(res)) ?? fallback;
   } catch {
     return fallback;
   }
@@ -124,9 +200,9 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
  * says the same. Any other 403 (an expired grant, a revoked share) is not that verdict.
  */
 async function isReadOnlyRefusal(res: Response): Promise<boolean> {
-  let body: (ErrorBody & { type?: unknown }) | null;
+  let body: StructuredBody | null;
   try {
-    body = (await res.json()) as (ErrorBody & { type?: unknown }) | null;
+    body = await readJson<StructuredBody | null>(res);
   } catch {
     return false;
   }
@@ -136,16 +212,22 @@ async function isReadOnlyRefusal(res: Response): Promise<boolean> {
 
 /** A failure body's machine-readable members, each one optional and none of them trusted. */
 interface StructuredBody extends ErrorBody {
-  type?: unknown;
-  installUrl?: unknown;
-  actions?: unknown;
-  heading?: unknown;
-  retry?: unknown;
+  type?: JsonValue;
+  installUrl?: JsonValue;
+  actions?: JsonValue;
+  heading?: JsonValue;
+  retry?: JsonValue;
+}
+
+/** What {@link platformError} carries on the Error it returns: the HTTP status, plus what it found. */
+interface PlatformErrorDetails extends PlatformErrorInfo {
+  status: number;
 }
 
 /** The refusal's heading, when the body carries a usable one. */
 function headingOf(body: StructuredBody | null): string | undefined {
-  return typeof body?.heading === "string" && body.heading ? body.heading : undefined;
+  const heading = body?.heading;
+  return isString(heading) && heading ? heading : undefined;
 }
 
 /**
@@ -161,7 +243,7 @@ function headingOf(body: StructuredBody | null): string | undefined {
 async function platformError(res: Response, fallback: string): Promise<Error> {
   let body: StructuredBody | null;
   try {
-    body = (await res.json()) as StructuredBody | null;
+    body = await readJson<StructuredBody | null>(res);
   } catch {
     body = null;
   }
@@ -169,21 +251,31 @@ async function platformError(res: Response, fallback: string): Promise<Error> {
   const actions = offeredActions(body?.actions);
   const heading = headingOf(body);
   const retry = retryHint(body?.retry);
-  return Object.assign(new Error(problemDetail(body) ?? fallback), {
-    status: res.status,
-    ...(code ? { code } : {}),
-    ...(typeof body?.installUrl === "string" ? { installUrl: body.installUrl } : {}),
-    ...(actions.length > 0 ? { actions } : {}),
-    ...(heading === undefined ? {} : { heading }),
-    ...(retry === undefined ? {} : { retry }),
-  });
+  const installUrl = body?.installUrl;
+  const details: PlatformErrorDetails = { status: res.status };
+  if (code) {
+    details.code = code;
+  }
+  if (isString(installUrl)) {
+    details.installUrl = installUrl;
+  }
+  if (actions.length > 0) {
+    details.actions = actions;
+  }
+  if (heading !== undefined) {
+    details.heading = heading;
+  }
+  if (retry !== undefined) {
+    details.retry = retry;
+  }
+  return Object.assign(new Error(problemDetail(body) ?? fallback), details);
 }
 
 async function okJson<T>(res: Response, fallback: string): Promise<T> {
   if (!res.ok) {
     throw await platformError(res, fallback);
   }
-  return (await res.json()) as T;
+  return readJson<T>(res);
 }
 
 /** Whether a failure body is an `action-required` refusal, by problem type or legacy code. */
@@ -201,7 +293,7 @@ function isActionRequiredBody(body: StructuredBody | null): boolean {
 async function reportRefusal(res: Response): Promise<void> {
   let body: StructuredBody | null;
   try {
-    body = (await res.json()) as StructuredBody | null;
+    body = await readJson<StructuredBody | null>(res);
   } catch {
     return;
   }
@@ -215,12 +307,17 @@ async function reportRefusal(res: Response): Promise<void> {
   const detail = problemDetail(body);
   const heading = headingOf(body);
   const retry = retryHint(body?.retry);
-  reportActionRequired({
-    actions,
-    ...(detail === null ? {} : { detail }),
-    ...(heading === undefined ? {} : { heading }),
-    ...(retry === undefined ? {} : { retry }),
-  });
+  const report: ActionRequiredReport = { actions };
+  if (detail !== null) {
+    report.detail = detail;
+  }
+  if (heading !== undefined) {
+    report.heading = heading;
+  }
+  if (retry !== undefined) {
+    report.retry = retry;
+  }
+  reportActionRequired(report);
 }
 
 /**
@@ -298,6 +395,34 @@ export function projectRootKey(project: CloudProject): string {
   return `${project.owner}/${project.repo}@${revisionSpec(project)}`;
 }
 
+/** `GET /api/v1/cf/connection`: the broker's row, with every diagnostic it may send. */
+interface CfConnectionWire {
+  connected: boolean;
+  accountId?: string | null;
+  accountName?: string | null;
+  needsReconnect?: boolean;
+  needsAccount?: boolean;
+  code?: CfConnection["code"];
+  reason?: string;
+  hasRefreshToken?: boolean;
+  expiresAt?: number;
+}
+
+/**
+ * A same-origin window relay (`{source, status, reason?}`) that a broker or action window posts
+ * back. Only `source` is checked; `status` and `reason` are read as the relay protocol sends them.
+ */
+interface WindowRelay {
+  source?: string;
+  status?: string;
+  reason?: string | null;
+}
+
+/** True when a `message` event carries a relay from `source` (`"jx-cf"`, `"jx-action"`). */
+function isRelayEvent(event: MessageEvent, source: string): event is MessageEvent<WindowRelay> {
+  return isNonNullObject(event.data) && "source" in event.data && event.data.source === source;
+}
+
 /**
  * Current hosted Cloudflare connection; null when none is brokered yet.
  *
@@ -312,33 +437,38 @@ async function fetchCfConnection(): Promise<CfConnection | null> {
   if (!res.ok) {
     return null;
   }
-  const body = (await res.json()) as {
-    connected: boolean;
-    accountId?: string | null;
-    accountName?: string | null;
-    needsReconnect?: boolean;
-    needsAccount?: boolean;
-    code?: CfConnection["code"];
-    reason?: string;
-    hasRefreshToken?: boolean;
-    expiresAt?: number;
-  };
+  const body = await readJson<CfConnectionWire>(res);
   /* Cloud never emits {connected: false} to the PAL — no brokered row at all is `null`, and a row
      that cannot be used arrives as connected + needsReconnect. See CfConnection. */
   if (!body.connected) {
     return null;
   }
-  return {
-    connected: true,
-    ...(body.accountId ? { accountId: body.accountId } : {}),
-    ...(body.accountName ? { accountName: body.accountName } : {}),
-    ...(body.needsReconnect ? { needsReconnect: true } : {}),
-    ...(body.needsAccount ? { needsAccount: true } : {}),
-    ...(body.code ? { code: body.code } : {}),
-    ...(body.reason ? { reason: body.reason } : {}),
-    ...(body.hasRefreshToken === undefined ? {} : { hasRefreshToken: body.hasRefreshToken }),
-    ...(body.expiresAt === undefined ? {} : { expiresAt: body.expiresAt }),
-  };
+  const connection: CfConnection = { connected: true };
+  if (body.accountId) {
+    connection.accountId = body.accountId;
+  }
+  if (body.accountName) {
+    connection.accountName = body.accountName;
+  }
+  if (body.needsReconnect) {
+    connection.needsReconnect = true;
+  }
+  if (body.needsAccount) {
+    connection.needsAccount = true;
+  }
+  if (body.code) {
+    connection.code = body.code;
+  }
+  if (body.reason) {
+    connection.reason = body.reason;
+  }
+  if (body.hasRefreshToken !== undefined) {
+    connection.hasRefreshToken = body.hasRefreshToken;
+  }
+  if (body.expiresAt !== undefined) {
+    connection.expiresAt = body.expiresAt;
+  }
+  return connection;
 }
 
 interface CfConnectFlow {
@@ -403,10 +533,10 @@ async function runCfConnect(
       if (event.origin !== location.origin) {
         return;
       }
-      const data = event.data as { source?: string; status?: string; reason?: string | null };
-      if (!data || data.source !== "jx-cf") {
+      if (!isRelayEvent(event, "jx-cf")) {
         return;
       }
+      const { data } = event;
       if (data.status === "error") {
         fail(data.reason ?? "Cloudflare authorization failed");
         return;
@@ -467,68 +597,76 @@ async function runCfConnect(
 interface MeWire {
   installations?: { id: number; account: string | null; manageUrl?: string }[];
   appInstallUrl?: string;
-  entries?: unknown;
-  notices?: unknown;
+  entries?: JsonValue;
+  notices?: JsonValue;
 }
 
 /** A wire value as a non-empty string, or undefined. */
-function wireText(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
+function wireText(value: JsonValue | undefined): string | undefined {
+  return isString(value) && value ? value : undefined;
 }
 
 /**
  * The account rows a `/me` body holds, each one checked. A row needs an id, a label and a detail to
  * be drawn at all; a malformed one is dropped rather than drawn half-empty.
  */
-function accountEntries(value: unknown): AccountEntry[] {
+function accountEntries(value: JsonValue | undefined): AccountEntry[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.flatMap((raw: Record<string, unknown> | null): AccountEntry[] => {
-    const id = wireText(raw?.["id"]);
-    const label = wireText(raw?.["label"]);
-    const detail = wireText(raw?.["detail"]);
+  return value.flatMap((raw): AccountEntry[] => {
+    // A row that is not an object has no id, label or detail to draw.
+    if (!isJsonObject(raw)) {
+      return [];
+    }
+    const id = wireText(raw["id"]);
+    const label = wireText(raw["label"]);
+    const detail = wireText(raw["detail"]);
     if (!id || !label || !detail) {
       return [];
     }
-    const actions = offeredActions(raw?.["actions"]);
-    return [
-      {
-        detail,
-        id,
-        label,
-        ...(typeof raw?.["connected"] === "boolean" ? { connected: raw["connected"] } : {}),
-        ...(actions.length > 0 ? { actions } : {}),
-      },
-    ];
+    const actions = offeredActions(raw["actions"]);
+    const { connected } = raw;
+    const entry: AccountEntry = { detail, id, label };
+    if (isBoolean(connected)) {
+      entry.connected = connected;
+    }
+    if (actions.length > 0) {
+      entry.actions = actions;
+    }
+    return [entry];
   });
 }
 
 /** The notices a `/me` body holds, each one checked, on the same terms as the rows. */
-function accountNotices(value: unknown): AccountNotice[] {
+function accountNotices(value: JsonValue | undefined): AccountNotice[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.flatMap((raw: Record<string, unknown> | null): AccountNotice[] => {
-    const id = wireText(raw?.["id"]);
-    const title = wireText(raw?.["title"]);
-    const message = wireText(raw?.["message"]);
+  return value.flatMap((raw): AccountNotice[] => {
+    // A notice that is not an object has no id, title or message to show.
+    if (!isJsonObject(raw)) {
+      return [];
+    }
+    const id = wireText(raw["id"]);
+    const title = wireText(raw["title"]);
+    const message = wireText(raw["message"]);
     if (!id || !title || !message) {
       return [];
     }
-    const actions = offeredActions(raw?.["actions"]);
-    const level = raw?.["level"];
-    const display = raw?.["display"];
-    return [
-      {
-        id,
-        message,
-        title,
-        ...(level === "info" || level === "warning" ? { level } : {}),
-        ...(display === "banner" || display === "toast" ? { display } : {}),
-        ...(actions.length > 0 ? { actions } : {}),
-      },
-    ];
+    const actions = offeredActions(raw["actions"]);
+    const { display, level } = raw;
+    const notice: AccountNotice = { id, message, title };
+    if (level === "info" || level === "warning") {
+      notice.level = level;
+    }
+    if (display === "banner" || display === "toast") {
+      notice.display = display;
+    }
+    if (actions.length > 0) {
+      notice.actions = actions;
+    }
+    return [notice];
   });
 }
 
@@ -578,10 +716,10 @@ function awaitAction(popup: Window): Promise<ActionOutcome> {
       if (event.origin !== location.origin) {
         return;
       }
-      const data = event.data as { source?: string; status?: string; reason?: string | null };
-      if (!data || data.source !== "jx-action") {
+      if (!isRelayEvent(event, "jx-action")) {
         return;
       }
+      const { data } = event;
       if (data.status === "done" || data.status === "canceled") {
         settle({ status: data.status });
       } else if (data.status === "error") {
@@ -624,7 +762,7 @@ export function parseRootKey(root: string): CloudProject | null {
 /** Every project this account can open, straight off the wire; [] when the catalogue is unreachable. */
 async function fetchProjects(): Promise<ProjectListWire[]> {
   const res = await fetch("/api/v1/projects", { credentials: "include" });
-  return res.ok ? ((await res.json()) as ProjectListWire[]) : [];
+  return res.ok ? readJson<ProjectListWire[]>(res) : [];
 }
 
 /**
@@ -705,7 +843,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
    */
   const projectHint = project ? `${project.owner}/${project.repo}` : null;
 
-  function postJson(path: string, body: unknown): Promise<Response> {
+  function postJson(path: string, body: JsonValue | FormatActionPayload): Promise<Response> {
     return api(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -752,16 +890,16 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (!res.ok) {
         return "retry-singly";
       }
-      let body: unknown;
+      let body: JsonValue;
       try {
-        body = await res.json();
+        body = await readJson<JsonValue>(res);
       } catch {
         return "unsupported";
       }
-      if (!body || typeof body !== "object" || !Array.isArray((body as ReadFilesResult).files)) {
+      if (!isReadFilesAnswer(body)) {
         return "unsupported";
       }
-      return body as ReadFilesResult;
+      return body;
     },
     fetchOne: readOne,
   });
@@ -774,7 +912,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
    */
   let packageJsonRead: Promise<string> | null = null;
 
-  async function readPackageJson(): Promise<Record<string, unknown>> {
+  async function readPackageJson(): Promise<JsonObject> {
     let text: string;
     try {
       packageJsonRead ??= reader.read("package.json").finally(() => {
@@ -786,13 +924,15 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     }
     // Parsed per caller: the members mutate what they get, and must not mutate each other's copy.
     try {
-      return JSON.parse(text) as Record<string, unknown>;
+      // A manifest that is not a JSON object is as unusable as one that is not JSON at all.
+      const pkg = parseJson(text);
+      return isJsonObject(pkg) ? pkg : {};
     } catch {
       return {};
     }
   }
 
-  async function writePackageJson(pkg: Record<string, unknown>): Promise<void> {
+  async function writePackageJson(pkg: JsonObject): Promise<void> {
     const res = await api("/file", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -801,6 +941,13 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     if (!res.ok) {
       throw new Error(await errorMessage(res, "Failed to update package.json"));
     }
+  }
+
+  // The bound session's /raw tree; see `documentBaseUrl` below for why both members ride together.
+  const repoAssets: Pick<StudioPlatform, "assetSpace" | "documentBaseUrl"> = {};
+  if (base) {
+    repoAssets.assetSpace = "repo";
+    repoAssets.documentBaseUrl = `${base}/raw/`;
   }
 
   const platform: StudioPlatform = {
@@ -822,7 +969,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
        broken, and logs nothing. Declaring "repo" tells Studio to resolve each reference to the
        project file it names and address it under /raw. Until a project is bound there is no /raw to
        address, so the project-less hub declares neither and stays exactly as it was. */
-    ...(base ? { assetSpace: "repo" as const, documentBaseUrl: `${base}/raw/` } : {}),
+    ...repoAssets,
     /* Open Project routes through Studio's repo picker (write-access repos via listRepos +
        importProject) — sessions are URL-bound, so openProject() below never opens a dialog. */
     openProjectPicker: "repo-list",
@@ -851,7 +998,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         return null;
       }
       const info = await projectInfo();
-      const config = (info.projectConfig ?? {}) as ProjectConfig;
+      const config: ProjectConfig = info.projectConfig ?? {};
       return {
         config,
         handle: { root, name: config.name || info.name, projectConfig: config },
@@ -868,7 +1015,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           meta: { root, name: info.name },
           info: {
             isSiteProject: info.projectConfig !== null,
-            projectConfig: (info.projectConfig as ProjectConfig | null) ?? null,
+            projectConfig: info.projectConfig ?? null,
           },
         };
       } catch {
@@ -920,7 +1067,11 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       const body = await okJson<Partial<UploadResult>>(res, `Upload failed: ${path}`);
       // The session echoes the path today; falling back to the request keeps a backend that says
       // Nothing working rather than writing `undefined` into a document.
-      return { path: body.path ?? path, ...(body.size === undefined ? {} : { size: body.size }) };
+      const uploaded: UploadResult = { path: body.path ?? path };
+      if (body.size !== undefined) {
+        uploaded.size = body.size;
+      }
+      return uploaded;
     },
 
     async deleteFile(path: string) {
@@ -979,7 +1130,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       }
       collabNegotiation ??= api("/collab")
         .then(async (res) =>
-          res.ok ? negotiateCollab(await res.json()) : { offer: [], refused: null },
+          res.ok ? negotiateCollab(await readJson<JsonValue>(res)) : { offer: [], refused: null },
         )
         .catch(() => ({ offer: [], refused: null }));
       const negotiated = await collabNegotiation;
@@ -1040,10 +1191,12 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         const scheme = location.protocol === "https:" ? "wss" : "ws";
         const ws = new WebSocket(`${scheme}://${location.host}${base}/events`);
         socket = ws;
-        ws.addEventListener("message", (ev: MessageEvent) => {
+        ws.addEventListener("message", (ev: MessageEvent<string>) => {
           let payload: SessionEventWire;
           try {
-            payload = JSON.parse(ev.data as string) as SessionEventWire;
+            /* SAFETY: the session's /events socket sends only text frames, each one a JSON
+               SessionEventWire (`kind` "fs" with its events, or "git" with the git event). */
+            payload = JSON.parse(ev.data) as SessionEventWire;
           } catch {
             return;
           }
@@ -1086,7 +1239,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         if (!res.ok) {
           return [];
         }
-        const body = (await res.json()) as { formats?: Record<string, unknown>[] };
+        const body = await readJson<{ formats?: JsonObject[] }>(res);
         return body.formats ?? [];
       } catch {
         return [];
@@ -1100,7 +1253,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         if (!res.ok) {
           return [];
         }
-        const body = (await res.json()) as { extensions?: ExtensionsInfo[] };
+        const body = await readJson<{ extensions?: ExtensionsInfo[] }>(res);
         return body.extensions ?? [];
       } catch {
         return [];
@@ -1130,11 +1283,11 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         if (!res.ok) {
           return [];
         }
-        const entries = (await res.json()) as ExtensionCatalogEntry[];
+        const entries = await readJson<ExtensionCatalogEntry[]>(res);
         const pkg = await readPackageJson();
         const declared = new Set([
-          ...Object.keys((pkg["dependencies"] ?? {}) as Record<string, string>),
-          ...Object.keys((pkg["devDependencies"] ?? {}) as Record<string, string>),
+          ...Object.keys(dependencyBlock(pkg, "dependencies")),
+          ...Object.keys(dependencyBlock(pkg, "devDependencies")),
         ]);
         for (const entry of entries) {
           entry.bundled = true;
@@ -1161,7 +1314,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
         if (!res.ok) {
           return {};
         }
-        return (await res.json()) as ProjectSchemasResponse;
+        return await readJson<ProjectSchemasResponse>(res);
       } catch {
         return {};
       }
@@ -1173,7 +1326,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
      * backends without the route surface the error below instead of silently mangling format
      * documents.
      */
-    async formatAction(payload: Record<string, unknown>) {
+    async formatAction(payload) {
       const res = await postJson("/format", payload);
       if (!res.ok) {
         throw new Error(
@@ -1183,7 +1336,8 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           ),
         );
       }
-      const data = (await res.json()) as { result?: unknown };
+      // A successful answer is `{ result }`: the parsed document, or the serialized text.
+      const data = await readJson<{ result: JxMutableNode | string }>(res);
       return data.result;
     },
 
@@ -1242,12 +1396,15 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       const metas = await Promise.all(
         jsonPaths.map(async (path) => {
           try {
-            return componentMetaFrom(JSON.parse(await platform.readFile(path)), path);
+            return componentMetaFrom(parseJson(await platform.readFile(path)), path);
           } catch {
             return null; // Not JSON, not readable, or not a component — all the same answer here.
           }
         }),
       );
+      /* SAFETY: the two Bun backends answer discoverComponents with this same componentMetaFrom
+         output, so ComponentMeta's narrower prop typing describes exactly what Studio already
+         receives for these documents everywhere else. */
       return metas.filter((m): m is NonNullable<typeof m> => m !== null) as ComponentMeta[];
     },
 
@@ -1263,36 +1420,34 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
 
     async addPackage(name: string) {
       const pkg = await readPackageJson();
-      const deps = (pkg["dependencies"] ?? {}) as Record<string, string>;
+      const deps = dependencyBlock(pkg, "dependencies");
       const at = name.lastIndexOf("@");
       const [pkgName, version] =
         at > 0 ? [name.slice(0, at), name.slice(at + 1)] : [name, "latest"];
       deps[pkgName] = version;
       pkg["dependencies"] = deps;
       await writePackageJson(pkg);
-      return { ok: true, name: pkgName, version };
     },
 
     async removePackage(name: string) {
       const pkg = await readPackageJson();
       for (const key of ["dependencies", "devDependencies"]) {
-        const deps = pkg[key] as Record<string, string> | undefined;
-        if (deps && name in deps) {
+        const deps = pkg[key];
+        if (isJsonObject(deps) && name in deps) {
           pkg[key] = Object.fromEntries(Object.entries(deps).filter(([dep]) => dep !== name));
         }
       }
       await writePackageJson(pkg);
-      return { ok: true, name };
     },
 
     async listPackages(): Promise<PackageInfo[]> {
       const pkg = await readPackageJson();
       const out: PackageInfo[] = [];
-      const deps = (pkg["dependencies"] ?? {}) as Record<string, string>;
+      const deps = dependencyBlock(pkg, "dependencies");
       for (const [name, version] of Object.entries(deps)) {
         out.push({ name, version });
       }
-      const devDeps = (pkg["devDependencies"] ?? {}) as Record<string, string>;
+      const devDeps = dependencyBlock(pkg, "devDependencies");
       for (const [name, version] of Object.entries(devDeps)) {
         out.push({ name, version, dev: true });
       }
@@ -1304,12 +1459,15 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     async resolveSiteContext(filePath: string) {
       try {
         const info = await projectInfo();
-        const config = (info.projectConfig as ProjectConfig | null) ?? undefined;
-        return {
-          sitePath: root,
-          ...(config === undefined ? {} : { projectConfig: config }),
-          ...(filePath === root ? {} : { fileRelPath: filePath }),
-        };
+        const config = info.projectConfig ?? undefined;
+        const context: SiteContext = { sitePath: root };
+        if (config !== undefined) {
+          context.projectConfig = config;
+        }
+        if (filePath !== root) {
+          context.fileRelPath = filePath;
+        }
+        return context;
       } catch {
         return { sitePath: null };
       }
@@ -1319,7 +1477,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       try {
         const res = await api(`/locate?name=${encodeURIComponent(name)}`);
         if (res.ok) {
-          const body = (await res.json()) as { path?: string | null };
+          const body = await readJson<{ path?: string | null }>(res);
           return body.path ?? null;
         }
       } catch {
@@ -1336,7 +1494,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (!res.ok) {
         return [];
       }
-      return (await res.json()) as DirEntry[];
+      return await readJson<DirEntry[]>(res);
     },
 
     // ─── Git (virtual engine in the ProjectSession DO) ─────────────────────
@@ -1458,7 +1616,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (!res.ok) {
         return [];
       }
-      return (await res.json()) as StarterInfo[];
+      return await readJson<StarterInfo[]>(res);
     },
 
     /** Welcome/recents open path: navigate this tab into the project's editor. */
@@ -1531,14 +1689,14 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
            missing App installation, the offered actions of an `action-required` refusal. */
         throw await platformError(res, "Failed to create project");
       }
-      const created = (await res.json()) as { owner: string; name: string; defaultBranch: string };
+      const created = await readJson<{ owner: string; name: string; defaultBranch: string }>(res);
       return {
         root: projectRootKey({
           owner: created.owner,
           repo: created.name,
           branch: created.defaultBranch,
         }),
-        config: { name: opts.name } as ProjectConfig,
+        config: { name: opts.name } satisfies ProjectConfig,
       };
     },
 
@@ -1576,17 +1734,20 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (!res.ok) {
         return null;
       }
-      const me = (await res.json()) as {
+      const me = await readJson<{
         user: { login: string; name: string | null; avatar_url: string | null } | null;
-      };
+      }>(res);
       if (!me.user) {
         return null;
       }
-      return {
-        login: me.user.login,
-        ...(me.user.name ? { name: me.user.name } : {}),
-        ...(me.user.avatar_url ? { avatarUrl: me.user.avatar_url } : {}),
-      };
+      const user: SignedInUser = { login: me.user.login };
+      if (me.user.name) {
+        user.name = me.user.name;
+      }
+      if (me.user.avatar_url) {
+        user.avatarUrl = me.user.avatar_url;
+      }
+      return user;
     },
 
     /** Repositories reachable through the user's Jx Suite App installations (user + org). */
@@ -1595,7 +1756,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (!res.ok) {
         throw new Error(await errorMessage(res, "Failed to list repositories"));
       }
-      const entries = (await res.json()) as (RepoInfo & { repoId: number })[];
+      const entries = await readJson<(RepoInfo & { repoId: number })[]>(res);
       return entries.map((r) => ({
         owner: r.owner,
         name: r.name,
@@ -1636,24 +1797,29 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (dir === null) {
         throw new Error("The project folder must stay inside the repository.");
       }
+      const importRequest: ImportProjectRequest = { owner: opts.owner, name: opts.name };
+      if (dir) {
+        importRequest.dir = dir;
+      }
       const res = await fetch("/api/v1/projects/import", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner: opts.owner, name: opts.name, ...(dir ? { dir } : {}) }),
+        body: JSON.stringify(importRequest),
       });
       const imported = await okJson<{ owner: string; name: string; defaultBranch: string }>(
         res,
         "Failed to import repository",
       );
-      return {
-        root: projectRootKey({
-          owner: imported.owner,
-          repo: imported.name,
-          branch: imported.defaultBranch,
-          ...(dir ? { dir } : {}),
-        }),
+      const importedProject: CloudProject = {
+        owner: imported.owner,
+        repo: imported.name,
+        branch: imported.defaultBranch,
       };
+      if (dir) {
+        importedProject.dir = dir;
+      }
+      return { root: projectRootKey(importedProject) };
     },
 
     /**
@@ -1667,10 +1833,10 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       if (!res.ok) {
         return null;
       }
-      const me = (await res.json()) as MeWire;
+      const me = await readJson<MeWire>(res);
       const entries = accountEntries(me.entries);
       const notices = accountNotices(me.notices);
-      return {
+      const status: AccountStatus = {
         installations: (me.installations ?? []).map((entry) => {
           const installation: AccountStatus["installations"][number] = {
             id: entry.id,
@@ -1681,10 +1847,17 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
           }
           return installation;
         }),
-        ...(me.appInstallUrl ? { appInstallUrl: me.appInstallUrl } : {}),
-        ...(entries.length > 0 ? { entries } : {}),
-        ...(notices.length > 0 ? { notices } : {}),
       };
+      if (me.appInstallUrl) {
+        status.appInstallUrl = me.appInstallUrl;
+      }
+      if (entries.length > 0) {
+        status.entries = entries;
+      }
+      if (notices.length > 0) {
+        status.notices = notices;
+      }
+      return status;
     },
 
     /**
@@ -1823,34 +1996,31 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
     async cfApi(apiPath: string, init?: { method?: string; body?: unknown }) {
       /* The project rides in a HEADER, never the query: the platform forwards this path's query
          string to Cloudflare verbatim. */
-      const headers: Record<string, string> = {
-        ...(projectHint ? { "X-Jx-Project": projectHint } : {}),
-        ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }),
-      };
-      const res = await fetch(`/api/v1/cf/proxy${apiPath}`, {
-        method: init?.method ?? "GET",
-        credentials: "include",
-        ...(Object.keys(headers).length === 0 ? {} : { headers }),
-        ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-      });
+      const headers: Record<string, string> = {};
+      if (projectHint) {
+        headers["X-Jx-Project"] = projectHint;
+      }
+      if (init?.body !== undefined) {
+        headers["Content-Type"] = "application/json";
+      }
+      const request: RequestInit = { method: init?.method ?? "GET", credentials: "include" };
+      if (Object.keys(headers).length > 0) {
+        request.headers = headers;
+      }
+      if (init?.body !== undefined) {
+        request.body = JSON.stringify(init.body);
+      }
+      const res = await fetch(`/api/v1/cf/proxy${apiPath}`, request);
       /* An `action-required` refusal is the platform's answer, not Cloudflare's, so it is not
          dressed as one: it keeps its own sentence and the actions the publish flow offers. Read
          from a clone, because every other 403 is Cloudflare's own and is parsed below. */
       if (res.status === 403) {
-        const refusal = (await res
-          .clone()
-          .json()
-          .catch(() => null)) as StructuredBody | null;
+        const refusal = await readJson<StructuredBody | null>(res.clone()).catch(() => null);
         if (isActionRequiredBody(refusal)) {
           throw await platformError(res, "Publishing was refused");
         }
       }
-      const envelope = (await res.json()) as {
-        success?: boolean;
-        result?: unknown;
-        errors?: { message: string }[];
-        error?: string;
-      };
+      const envelope = await readJson<CfProxyEnvelope>(res);
       if (!res.ok || envelope.success === false) {
         const message =
           envelope.errors?.map((e) => e.message).join("; ") ?? envelope.error ?? res.statusText;

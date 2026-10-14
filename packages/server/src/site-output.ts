@@ -29,6 +29,8 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 import { serveContained } from "./net-guard.ts";
 
@@ -60,11 +62,15 @@ export function siteOutDir(projectRoot: string): string | null {
   }
   let outDir: string | null = null;
   try {
-    const config = JSON.parse(readFileSync(configPath, "utf8")) as {
-      build?: { outDir?: unknown };
-    };
-    const declared = config.build?.outDir;
-    outDir = resolve(projectRoot, typeof declared === "string" && declared ? declared : "dist");
+    // SAFETY: JSON.parse without a reviver only ever yields a JSON value; its `any` says no more.
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as JsonValue;
+    const build = isJsonObject(config) ? config.build : undefined;
+    const declared = isJsonObject(build) ? build.outDir : undefined;
+    // A `null` document has no settings to read at all, so it declines like an unparseable one.
+    outDir =
+      config === null
+        ? null
+        : resolve(projectRoot, isString(declared) && declared ? declared : "dist");
   } catch {
     // An unparseable project.json is the editor's problem to report, not this server's to guess
     // At. No output directory means this fallback simply declines, and the request 404s as before.

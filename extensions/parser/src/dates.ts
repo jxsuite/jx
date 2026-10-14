@@ -22,7 +22,8 @@
  * @docs framework/site/content-collections
  */
 
-import type { ContentTypeSchema } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { ContentFieldValue, ContentTypeSchema } from "@jxsuite/schema/types";
 import type { ContentLoaderEntry } from "./types.ts";
 
 /** The two JSON Schema `format` values that carry build behavior. */
@@ -30,7 +31,7 @@ export const DATE_FORMATS = ["date", "date-time"] as const;
 export type DateFormat = (typeof DATE_FORMATS)[number];
 
 export function isDateFormat(format: unknown): format is DateFormat {
-  return typeof format === "string" && (DATE_FORMATS as readonly string[]).includes(format);
+  return DATE_FORMATS.some((candidate) => candidate === format);
 }
 
 /** `YYYY-MM-DD`, with no time part. */
@@ -58,7 +59,10 @@ function toInstant(d: Date): string {
  * Accepts, in order: a `Date` (YAML frontmatter parsers routinely produce one for an unquoted
  * `date: 2025-03-04`), an RFC 3339 string, and a bare `YYYY-MM-DD`. Everything else is refused.
  */
-export function parseDateValue(value: unknown, format: DateFormat): string | null {
+export function parseDateValue(
+  value: ContentFieldValue | undefined,
+  format: DateFormat,
+): string | null {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime())
       ? null
@@ -66,7 +70,7 @@ export function parseDateValue(value: unknown, format: DateFormat): string | nul
         ? toDateOnly(value)
         : toInstant(value);
   }
-  if (typeof value !== "string") {
+  if (!isString(value)) {
     return null;
   }
   const text = value.trim();
@@ -107,7 +111,7 @@ export function isCoercedDate(value: string): boolean {
 export interface DateCoercionWarning {
   entryId: string;
   field: string;
-  value: unknown;
+  value: ContentFieldValue;
   message: string;
 }
 
@@ -128,9 +132,9 @@ export function coerceEntryDates(
     return warnings;
   }
 
-  const dateFields: [string, DateFormat][] = Object.entries(properties)
-    .map(([field, def]): [string, unknown] => [field, (def as { format?: unknown }).format])
-    .filter((pair): pair is [string, DateFormat] => isDateFormat(pair[1]));
+  const dateFields = Object.entries(properties).flatMap(([field, def]): [string, DateFormat][] =>
+    isDateFormat(def.format) ? [[field, def.format]] : [],
+  );
   if (dateFields.length === 0) {
     return warnings;
   }
@@ -174,11 +178,12 @@ export function coerceEntryDates(
  * compares false against everything. Normalized RFC 3339 strings compare chronologically as text,
  * so the fix is to notice when both sides are dates and stay in string space.
  */
-export function parseComparable(a: unknown, b: unknown): [number, number] | [string, string] {
-  const aDate = typeof a === "string" && (DATE_ONLY.test(a) || RFC_3339.test(a));
-  const bDate = typeof b === "string" && (DATE_ONLY.test(b) || RFC_3339.test(b));
-  if (aDate && bDate) {
-    return [a as string, b as string];
+export function parseComparable(
+  a: ContentFieldValue | undefined,
+  b: ContentFieldValue | undefined,
+): [number, number] | [string, string] {
+  if (isString(a) && isCoercedDate(a) && isString(b) && isCoercedDate(b)) {
+    return [a, b];
   }
   return [Number(a), Number(b)];
 }

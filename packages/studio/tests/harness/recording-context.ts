@@ -8,8 +8,9 @@
  */
 import { createLedger, createSessionFacts, createToolContext } from "@jxsuite/ai/tools";
 import type { SessionFacts, ToolContext } from "@jxsuite/ai/tools";
+/* The reducer's own decoder, so this records only what Studio's loop records. */
+import { isImportProgressEvent } from "../../src/services/harness/chat-reducer";
 import { recordImportProgress } from "../../src/services/import-run";
-import type { ImportProgressEvent } from "../../src/types";
 
 /**
  * A call's context: `callId` defaults to `call_1`, the id the import and ask tests key on.
@@ -21,13 +22,15 @@ export function recordingContext(
   init: { callId?: string; signal?: AbortSignal; session?: SessionFacts } = {},
 ): ToolContext {
   const callId = init.callId ?? "call_1";
-  return createToolContext({
+  const context: Partial<ToolContext> = {
     callId,
     ledger: createLedger(),
     progress: (event) => {
-      recordImportProgress(callId, event as unknown as ImportProgressEvent);
+      if (isImportProgressEvent(event)) {
+        recordImportProgress(callId, event);
+      }
     },
     session: init.session ?? createSessionFacts(),
-    ...(init.signal ? { signal: init.signal } : {}),
-  });
+  };
+  return createToolContext(init.signal ? { ...context, signal: init.signal } : context);
 }

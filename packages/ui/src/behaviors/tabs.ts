@@ -33,7 +33,6 @@ export interface TabsState {
   label?: string;
   activation?: string;
   orientation?: string;
-  [key: string]: unknown;
 }
 
 /** A tab element with the property accessors its document installs. */
@@ -87,9 +86,7 @@ function watchTabs(host: HTMLElement): void {
 /** The tablist an event's `currentTarget` is. */
 function hostOf(event: Event): TabsElement | null {
   const target = event.currentTarget;
-  return target instanceof HTMLElement && target.localName === TABS
-    ? (target as TabsElement)
-    : null;
+  return target instanceof HTMLElement && target.localName === TABS ? target : null;
 }
 
 /** Whether `host` is the nearest tablist around `node` — a nested strip owns its own keys. */
@@ -146,12 +143,12 @@ export function focusTab(tabs: TabElement[], index: number): TabElement | null {
  *
  * @param host The `jx-tabs` element.
  */
-export function syncTabs(host: HTMLElement): void {
+export function syncTabs(host: TabsElement): void {
   const tabs = tabsOf(host);
   if (tabs.length === 0) {
     return;
   }
-  const selected = String((host as TabsElement).selected ?? "");
+  const selected = String(host.selected ?? "");
   const found = tabs.findIndex((tab) => valueOf(tab) === selected);
   const caret = found === -1 ? 0 : found;
   for (const [at, tab] of tabs.entries()) {
@@ -228,7 +225,7 @@ export function onTabsSelect(scope: TabsState, event: Event): void {
     return;
   }
   event.stopPropagation();
-  const value = String((event as CustomEvent<unknown>).detail ?? "");
+  const value = "detail" in event ? String(event.detail ?? "") : "";
   if (value === String(scope.selected ?? "")) {
     return;
   }

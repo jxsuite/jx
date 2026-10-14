@@ -19,23 +19,16 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import deployDoc from "./settings-deploy.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("settings-deploy", deployDoc as unknown as JxDocument);
-
-/** One row of the adapter picker. */
-export interface DeployChoice {
-  value: string;
-  label: string;
-}
+registerSurface("settings-deploy", deployDoc);
 
 /** What the section says the surface should be showing right now. */
 export interface DeployValues {
   /** The adapter the project is built with. */
   adapter: string;
   /** Every adapter it may be. */
-  adapters: DeployChoice[];
+  adapters: SurfaceOption[];
   /** What the last write failed with, or `""`. */
   error: string;
 }
@@ -58,9 +51,9 @@ export interface DeploySurfaceHandle {
  * The scope the document reads. `hasError` is derived here: `$switch` is a document's only
  * conditional.
  */
-interface DeployScope extends Record<string, unknown> {
+interface DeployScope {
   adapter: string;
-  adapters: DeployChoice[];
+  adapters: SurfaceOption[];
   error: string;
   hasError: boolean;
   setAdapter: (value: string) => void;
@@ -91,13 +84,13 @@ export function mountDeploySurface(
   values: DeployValues,
   actions: DeployActions,
 ): DeploySurfaceHandle {
-  const scope = reactive<DeployScope>({
+  const scope: DeployScope = reactive<DeployScope>({
     adapter: "",
     adapters: [],
     error: "",
     hasError: false,
     setAdapter: actions.setAdapter,
-  }) as DeployScope;
+  });
   project(scope, values);
 
   container.replaceChildren();
@@ -125,7 +118,7 @@ export function mountDeploySurface(
       !disposed &&
       (mounted === null
         ? container.childNodes.length === 0
-        : (mounted.root as Node).parentNode === container),
+        : mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

@@ -9,13 +9,14 @@ import { describe, expect, test } from "bun:test";
 import { pageShell, problemShell } from "../src/shell.ts";
 import type { ComposedPage } from "../src/compose.ts";
 import type { ShellOptions } from "../src/shell.ts";
+import type { JxDocument } from "@jxsuite/schema/types";
 
 const BASIC: ShellOptions = { base: "/", runtimeUrl: "/__jx_live__/runtime.js" };
 
-const DEFAULT_DOC = { children: ["Hi"], tagName: "main" };
+const DEFAULT_DOC: JxDocument = { children: ["Hi"], tagName: "main" };
 
-function page(doc: unknown = DEFAULT_DOC): ComposedPage {
-  return { dir: "ltr", doc: doc as ComposedPage["doc"], head: [], lang: "en" };
+function page(doc: JxDocument = DEFAULT_DOC): ComposedPage {
+  return { dir: "ltr", doc, head: [], lang: "en" };
 }
 
 /** The payload as the browser would see it, between the JSON block's own tags. */
@@ -30,7 +31,7 @@ describe("pageShell", () => {
   });
 
   test("an attribute value carrying a quote cannot break out of its attribute", () => {
-    const html = pageShell({ ...page(), lang: '"><script>x' } as ComposedPage, BASIC);
+    const html = pageShell({ ...page(), lang: '"><script>x' }, BASIC);
     expect(html).not.toContain('lang=""><script>');
     expect(html).toContain("&quot;&gt;&lt;script&gt;x");
   });

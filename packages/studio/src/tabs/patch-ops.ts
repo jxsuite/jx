@@ -7,6 +7,7 @@
 
 // oxlint-disable-next-line unicorn/prefer-export-from -- JxDocOpPair is also used locally (TransactionRecord)
 import type { JxDocOpPair } from "@jxsuite/schema/doc-ops";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "./tab.js";
 
@@ -48,8 +49,8 @@ export type { JxDocOpPair };
  */
 export interface JxFmOp {
   field: string;
-  before?: unknown;
-  after?: unknown;
+  before?: JxDocumentValue | undefined;
+  after?: JxDocumentValue | undefined;
 }
 
 /** Everything recorded during one transaction. */
@@ -82,7 +83,7 @@ export interface PatchConsumer {
    * was consumed by whichever pane's effect ran first, so the second full-rendered every patched
    * edit while the skip counter reported one skip.
    */
-  markConsumed: (docRef: object, tab: Tab) => void;
+  markConsumed: (docRef: JxMutableNode, tab: Tab) => void;
   /**
    * Apply the batch to all ready canvas panels. Throws on any failure (caller escalates). `record`
    * carries the value-carrying `docOps` the iframe consumer posts across the frame boundary; the

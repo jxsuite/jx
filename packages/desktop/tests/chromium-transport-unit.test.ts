@@ -15,13 +15,23 @@
  * the same approach to the same problem.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { isJsonObject, isNonNullObject, isNumber } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 /** Frames the platform put on the wire, newest last. */
-const sent: Record<string, unknown>[] = [];
+const sent: JsonObject[] = [];
 /** Every live fake socket, in the order the platform opened them. */
 const sockets: FakeSocket[] = [];
 
-type Listener = (event?: unknown) => void;
+/**
+ * The one event member the transport reads: a message's serialized frame. Open and close carry
+ * none.
+ */
+interface FakeMessageEvent {
+  data: string;
+}
+
+type Listener = (event?: FakeMessageEvent) => void;
 
 /** A WebSocket the test opens, closes and answers by hand. */
 class FakeSocket {
@@ -48,7 +58,11 @@ class FakeSocket {
     // Recorded on the module's log rather than per-socket: what a test asserts is the sequence of
     // Frames the transport put on the wire, across whichever socket was live at the time.
     void this.readyState;
-    sent.push(JSON.parse(data) as Record<string, unknown>);
+    const frame: JsonValue = JSON.parse(data);
+    if (!isJsonObject(frame)) {
+      throw new TypeError(`The transport sent a non-object frame: ${data}`);
+    }
+    sent.push(frame);
   }
 
   close(): void {
@@ -63,11 +77,11 @@ class FakeSocket {
   }
 
   /** Deliver a server frame. */
-  deliver(frame: Record<string, unknown>): void {
+  deliver(frame: JsonObject): void {
     this.fire("message", { data: JSON.stringify(frame) });
   }
 
-  private fire(type: string, event?: unknown): void {
+  private fire(type: string, event?: FakeMessageEvent): void {
     for (const fn of this.listeners.get(type) ?? []) {
       fn(event);
     }
@@ -100,7 +114,7 @@ Object.defineProperty(globalThis, "WebSocket", {
 const LONG_MS = 1000;
 
 /** Captured long timers, by the handle the caller was given. */
-const armed = new Map<number, { run: () => unknown; repeats: boolean }>();
+const armed = new Map<number, { run: () => void; repeats: boolean }>();
 let nextHandle = 0;
 
 const realSetTimeout = globalThis.setTimeout;
@@ -108,26 +122,49 @@ const realClearTimeout = globalThis.clearTimeout;
 const realSetInterval = globalThis.setInterval;
 const realClearInterval = globalThis.clearInterval;
 
-function capture(repeats: boolean, real: typeof globalThis.setTimeout) {
-  return ((cb: () => unknown, ms?: number, ...rest: unknown[]) => {
-    if (typeof ms === "number" && ms >= LONG_MS) {
-      nextHandle += 1;
-      armed.set(nextHandle, { repeats, run: cb });
-      return { __armed: nextHandle } as unknown as ReturnType<typeof setTimeout>;
-    }
-    return real(cb as () => void, ms, ...(rest as []));
-  }) as typeof globalThis.setTimeout;
+/** What a captured timer hands back in place of a runner Timer: the key of its `armed` entry. */
+interface ArmedHandle {
+  __armed: number;
 }
 
-function release(real: (handle: never) => void) {
-  return ((handle: unknown) => {
-    const id = (handle as { __armed?: number } | null | undefined)?.__armed;
-    if (typeof id === "number") {
-      armed.delete(id);
+/** Whether a handle given to a clear function came from `capture` rather than the real clock. */
+function isArmedHandle(handle?: ArmedHandle | number | Timer): handle is ArmedHandle {
+  return isNonNullObject(handle) && "__armed" in handle && isNumber(handle.__armed);
+}
+
+/* Bun's own signatures for the real clock functions. The globals' declared types also merge in the
+   DOM's and Node's overloads, so `typeof globalThis.setTimeout` cannot be written as one function. */
+type RealSchedule = (handler: () => void, ms?: number, ...rest: unknown[]) => Timer;
+type RealClear = (handle?: number | Timer) => void;
+
+function capture(repeats: boolean, real: RealSchedule): typeof globalThis.setTimeout {
+  const arm = (cb: () => void, ms?: number, ...rest: unknown[]): ArmedHandle | Timer => {
+    if (isNumber(ms) && ms >= LONG_MS) {
+      nextHandle += 1;
+      armed.set(nextHandle, { repeats, run: cb });
+      return { __armed: nextHandle };
+    }
+    return real(cb, ms, ...rest);
+  };
+  /* SAFETY: the one place an ArmedHandle poses as a Timer, and Bun's single signature as the merged
+     overload set. The platform calls setTimeout/setInterval as `(callback, ms)` only, never through
+     Node's `__promisify__`, and reads a handle nowhere but the clear functions, which `release`
+     replaces for the life of this file so an ArmedHandle is recognised before a real clear sees it. */
+  return arm as typeof globalThis.setTimeout;
+}
+
+function release(real: RealClear): typeof globalThis.clearTimeout {
+  const clear = (handle?: ArmedHandle | number | Timer): void => {
+    if (isArmedHandle(handle)) {
+      armed.delete(handle.__armed);
       return;
     }
-    real(handle as never);
-  }) as typeof globalThis.clearTimeout;
+    real(handle);
+  };
+  /* SAFETY: Node's overload also admits a string id and a NodeJS.Timeout, which this one does not.
+     Under Bun neither exists: every handle the platform clears came from the setTimeout/setInterval
+     above, so it is a Bun Timer, a number, or an ArmedHandle. */
+  return clear as typeof globalThis.clearTimeout;
 }
 
 /** Fire every armed timer once, the way the clock reaching their deadline would. */
@@ -143,9 +180,9 @@ function fireArmed(): number {
 }
 
 globalThis.setTimeout = capture(false, realSetTimeout);
-globalThis.setInterval = capture(true, realSetInterval as typeof globalThis.setTimeout);
-globalThis.clearTimeout = release(realClearTimeout as (h: never) => void);
-globalThis.clearInterval = release(realClearInterval as (h: never) => void);
+globalThis.setInterval = capture(true, realSetInterval);
+globalThis.clearTimeout = release(realClearTimeout);
+globalThis.clearInterval = release(realClearInterval);
 
 const { createDesktopPlatform } = await import("../src/chromium/platform");
 
@@ -165,7 +202,7 @@ afterAll(() => {
 });
 
 /** The frames sent since the marker, so one test does not read another's traffic. */
-function since(mark: number): Record<string, unknown>[] {
+function since(mark: number): JsonObject[] {
   return sent.slice(mark);
 }
 
@@ -207,7 +244,10 @@ describe("a request that is never answered", () => {
   test("a reply that does arrive cancels its own timeout", async () => {
     const answered = platform.getProjectRoot();
     await Promise.resolve();
-    const id = sent.at(-1)!.id as number;
+    const id = sent.at(-1)?.id;
+    if (!isNumber(id)) {
+      throw new TypeError("the request frame carries no numeric id");
+    }
     sockets.at(-1)!.deliver({ id, result: { root: "/abs/proj" } });
     await expect(answered).resolves.toEqual({ root: "/abs/proj" });
 

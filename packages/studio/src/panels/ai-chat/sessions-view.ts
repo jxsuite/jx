@@ -14,11 +14,10 @@
  * @license MIT
  */
 
-import { now } from "../../services/clock";
+import { MINUTE, now } from "../../services/clock";
 import type { ChatSessionView } from "../../surfaces/ai-chat";
 import type { SessionMeta } from "../../services/ai-session-store";
 
-const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 

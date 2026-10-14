@@ -8,9 +8,11 @@
 
 import type {
   JsonObject,
+  JsonPrimitive,
   JsonValue,
   JxClassDef,
   JxElement,
+  JxElementTagName,
   JxEventBinding,
   JxExpressionDef,
   JxFunctionDef,
@@ -24,6 +26,58 @@ import type {
   JxStyle,
   JxTagExpression,
 } from "../types";
+
+// ─── Primitive guards ───────────────────────────────────────────────────────────
+/*
+ * The one sanctioned home of `typeof`. Lint allows the operator only inside a type predicate
+ * (`deslop/no-runtime-typeof`), so code that has to tell a string from a number calls one of these
+ * and gets a narrowed type back instead of a bare boolean. Prefer a domain guard below when the
+ * value is a Jx shape; these are for the primitives a decoder bottoms out on.
+ */
+
+/** A string primitive. */
+export function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+/** A number primitive, `NaN` and the infinities included (use `Number.isFinite` to refuse them). */
+export function isNumber(value: unknown): value is number {
+  return typeof value === "number";
+}
+
+/** A boolean primitive. */
+export function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+/** A bigint primitive. */
+export function isBigInt(value: unknown): value is bigint {
+  return typeof value === "bigint";
+}
+
+/** A symbol primitive. */
+export function isSymbol(value: unknown): value is symbol {
+  return typeof value === "symbol";
+}
+
+/**
+ * Anything callable. The predicate admits no arguments (`never[]`), so a value that was `unknown`
+ * still needs its real signature established before it is called; narrowing a declared union
+ * (`string | (() => void)`) yields the union's own function member.
+ */
+export function isFunction(value: unknown): value is (...args: never[]) => void {
+  return typeof value === "function";
+}
+
+/** Any non-null object, arrays included. {@link isJsonObject} is the narrower plain-object check. */
+export function isNonNullObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+/** A JSON primitive: string, number, boolean or `null`. */
+export function isJsonPrimitive(value: unknown): value is JsonPrimitive {
+  return value === null || isString(value) || isNumber(value) || isBoolean(value);
+}
 
 // ─── JSON shape guards ──────────────────────────────────────────────────────────
 
@@ -153,11 +207,12 @@ export function isMappedArray(value: unknown): value is JxMappedArray {
  * slot (legacy) or as a member of the children array. Used by renderers and the compiler to decide
  * if a children list needs inline repeater expansion.
  */
-export function childrenContainArray(children?: unknown): boolean {
-  if (isMappedArray(children)) {
-    return true;
-  }
-  return Array.isArray(children) && children.some((c) => isMappedArray(c));
+export function childrenContainArray(
+  children?: JxElement["children"] | JxMutableNode["children"] | JsonValue,
+): boolean {
+  // The legacy bare slot is a one-member list, so both forms take the same test.
+  const members = Array.isArray(children) ? children : [children];
+  return members.some((member) => isMappedArray(member));
 }
 
 /** A .class.json schema-defined class document — `{ $prototype: "Class" }`. */
@@ -200,7 +255,7 @@ export function bodyReturnsValue(body: string): boolean {
  * array to look properties up on, which finds nothing and reports nothing.
  */
 export function isNestedStyle(
-  value: string | number | JxStyle | JxStyle[] | undefined,
+  value: string | number | JxStyle | JxStyle[] | null | undefined,
 ): value is JxStyle {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -248,7 +303,22 @@ export function paramNames(parameters: JxFunctionDef["parameters"]): string[] {
   if (!parameters) {
     return [];
   }
-  return parameters.map((p) => (typeof p === "string" ? p : p.name));
+  return parameters.map((p) => (isString(p) ? p : p.name));
+}
+
+/**
+ * What an element's `tagName` slot holds: one of the two declared forms, nothing, or whatever other
+ * JSON a hand-edited document put there. The readers below take the slot as found, because refusing
+ * a malformed one gracefully is part of their contract.
+ */
+export type TagNameSlot = JxElementTagName | JsonValue | undefined;
+
+/**
+ * Whether an element's `tagName` slot holds a plain name: the other form {@link isTagExpression}
+ * admits.
+ */
+function isPlainTagName(tagName: TagNameSlot): tagName is string {
+  return typeof tagName === "string";
 }
 
 /**
@@ -268,8 +338,13 @@ export function paramNames(parameters: JxFunctionDef["parameters"]): string[] {
  * A `$expression` this refuses is not a tag choice, so it has no candidates and no static tag; the
  * readers fall back to their own "nothing declared" answer (`[]`, `"div"`) instead of throwing.
  */
-export function isTagExpression(tagName: unknown): tagName is { $expression: JxTagExpression } {
-  if (!isJsonObject(tagName) || !isJsonObject(tagName.$expression)) {
+export function isTagExpression(tagName: TagNameSlot): tagName is { $expression: JxTagExpression } {
+  if (
+    typeof tagName !== "object" ||
+    tagName === null ||
+    Array.isArray(tagName) ||
+    !isJsonObject(tagName.$expression)
+  ) {
     return false;
   }
   const expression = tagName.$expression;
@@ -279,7 +354,7 @@ export function isTagExpression(tagName: unknown): tagName is { $expression: JxT
   if (expression.operator === "switch") {
     return (
       isJsonObject(expression.cases) &&
-      Object.values(expression.cases).every((tag) => typeof tag === "string") &&
+      Object.values(expression.cases).every((tag) => isString(tag)) &&
       typeof expression.default === "string"
     );
   }
@@ -296,8 +371,8 @@ export function isTagExpression(tagName: unknown): tagName is { $expression: JxT
  *
  * A plain name yields itself, so every caller can treat the two forms alike.
  */
-export function tagNameCandidates(tagName: unknown): string[] {
-  if (typeof tagName === "string") {
+export function tagNameCandidates(tagName: TagNameSlot): string[] {
+  if (isPlainTagName(tagName)) {
     return [tagName];
   }
   if (!isTagExpression(tagName)) {
@@ -317,8 +392,8 @@ export function tagNameCandidates(tagName: unknown): string[] {
  * says "this is one element whose tag is chosen" without pretending to know which. Rendering the
  * first candidate would have been a quieter lie.
  */
-export function displayTagName(tagName: unknown): string {
-  return typeof tagName === "string" ? tagName : tagNameCandidates(tagName).join("|");
+export function displayTagName(tagName: TagNameSlot): string {
+  return isPlainTagName(tagName) ? tagName : tagNameCandidates(tagName).join("|");
 }
 
 /**

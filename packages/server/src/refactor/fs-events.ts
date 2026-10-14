@@ -5,26 +5,25 @@
  */
 
 import { relative } from "node:path";
+import type { FsEvent } from "@jxsuite/protocol";
 
-/** A filesystem change as broadcast to the studio shell (root-relative, forward-slashed path). */
-export interface FsEventPayload {
-  type: "add" | "change" | "unlink" | "addDir" | "unlinkDir";
-  path: string;
-  isDir: boolean;
+/* A filesystem change as broadcast to the studio shell is the protocol's `FsEvent`, declared once
+   there; `FsEventPayload` stays this module's public name for it. */
+export type { FsEvent as FsEventPayload } from "@jxsuite/protocol";
+
+const VALID: ReadonlySet<string> = new Set(["add", "change", "unlink", "addDir", "unlinkDir"]);
+
+/** Whether chokidar's `eventType` is one of the five changes the sidebar is told about. */
+function isFsEventType(eventType: string): eventType is FsEvent["type"] {
+  return VALID.has(eventType);
 }
-
-const VALID = new Set(["add", "change", "unlink", "addDir", "unlinkDir"]);
 
 /**
  * Map one chokidar event to a payload, or null for events we ignore (`ready`/`raw`/`error`) or
  * paths that escape the root.
  */
-export function toFsEvent(
-  eventType: string,
-  root: string,
-  changedPath: string,
-): FsEventPayload | null {
-  if (!VALID.has(eventType)) {
+export function toFsEvent(eventType: string, root: string, changedPath: string): FsEvent | null {
+  if (!isFsEventType(eventType)) {
     return null;
   }
   const path = relative(root, changedPath).replaceAll("\\", "/");
@@ -34,7 +33,7 @@ export function toFsEvent(
   return {
     isDir: eventType === "addDir" || eventType === "unlinkDir",
     path,
-    type: eventType as FsEventPayload["type"],
+    type: eventType,
   };
 }
 
@@ -42,7 +41,7 @@ export function toFsEvent(
  * Fold one event into a buffer, collapsing redundant churn per path (last-write-wins, except
  * add+unlink cancels, add+change stays add, and unlink+add becomes a re-add). Returns a new array.
  */
-export function coalesceFsEvents(buffer: FsEventPayload[], next: FsEventPayload): FsEventPayload[] {
+export function coalesceFsEvents(buffer: FsEvent[], next: FsEvent): FsEvent[] {
   const prev = buffer.find((e) => e.path === next.path);
   if (!prev) {
     return [...buffer, next];

@@ -18,6 +18,8 @@ import { createRequire } from "node:module";
 import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import type { JsonObject, JsonValue } from "../types";
+
 export interface ProjectValidationResult {
   valid: boolean;
   errors: unknown[] | null;
@@ -26,17 +28,28 @@ export interface ProjectValidationResult {
 // Minimal structural types for the optional `ajv` peer dependency (no direct dependency, and it
 // Ships no types usable from here) — same pattern as validateDocument in src/schema.ts.
 interface AjvValidateFn {
-  (doc: unknown): boolean;
+  (doc: JsonValue): boolean;
   errors?: unknown[] | null;
 }
 interface AjvInstance {
-  compileAsync: (schema: unknown) => Promise<AjvValidateFn>;
+  compileAsync: (schema: JsonValue) => Promise<AjvValidateFn>;
 }
 type AjvCtor = new (opts: {
   allErrors: boolean;
   strict: boolean;
-  loadSchema: (uri: string) => Promise<Record<string, unknown>>;
+  loadSchema: (uri: string) => Promise<JsonValue>;
 }) => AjvInstance;
+
+/**
+ * Read and parse a JSON file. `JSON.parse` without a reviver only ever produces JSON values, so the
+ * declared type is exact; what shape of JSON it is stays for the caller to check.
+ *
+ * @param {string} path - Absolute path to a JSON file
+ * @returns {JsonValue}
+ */
+function readJson(path: string): JsonValue {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
 
 /**
  * Validate `<projectRoot>/project.json` against `<projectRoot>/project.schema.json`.
@@ -62,15 +75,25 @@ export async function validateProjectFile(projectRoot: string): Promise<ProjectV
     );
   }
 
-  const project = JSON.parse(readFileSync(projectPath, "utf8")) as Record<string, unknown>;
-  const entrySchema = JSON.parse(readFileSync(schemaPath, "utf8")) as Record<string, unknown>;
+  const project = readJson(projectPath);
+  /*
+   * SAFETY: project.schema.json is written by `jx schema` (emitProjectSchema), which always emits a
+   * JSON object. A hand-damaged file that is not one fails loudly either way: the `$id` write below
+   * throws on a primitive in this strict-mode module, and ajv rejects an array as a schema.
+   */
+  const entrySchema = readJson(schemaPath) as JsonObject;
   // The committed entry document is machine-path-free; injecting its file URL as $id makes its
   // Relative ./node_modules/... refs resolve against the project root.
   entrySchema.$id = pathToFileURL(schemaPath).href;
 
   let Ajv: AjvCtor;
   try {
-    // The entry document is JSON Schema 2020-12, so use the matching Ajv build.
+    /*
+     * The entry document is JSON Schema 2020-12, so use the matching Ajv build.
+     * SAFETY: the default export of `ajv/dist/2020` is the Ajv2020 class. AjvCtor restates, in
+     * JSON terms, only the three constructor options, `compileAsync` and the validate function's
+     * call and `errors` used below; ajv reports a schema value it cannot use as a thrown error.
+     */
     ({ default: Ajv } = (await import("ajv/dist/2020")) as { default: AjvCtor });
   } catch (error) {
     throw new Error("Project validation requires ajv: bun add ajv", { cause: error });
@@ -94,9 +117,9 @@ export async function validateProjectFile(projectRoot: string): Promise<ProjectV
  *
  * @param {string} uri - The `$ref` target ajv could not resolve from already-loaded resources
  * @param {string} root - Absolute project root
- * @returns {Promise<Record<string, unknown>>}
+ * @returns {Promise<JsonValue>}
  */
-async function loadProjectSchemaRef(uri: string, root: string): Promise<Record<string, unknown>> {
+async function loadProjectSchemaRef(uri: string, root: string): Promise<JsonValue> {
   if (!uri.startsWith("file:")) {
     throw new Error(
       `Cannot resolve schema ref "${uri}": only project-relative file refs are loadable ` +
@@ -111,7 +134,7 @@ async function loadProjectSchemaRef(uri: string, root: string): Promise<Record<s
   }
 
   if (existsSync(filePath)) {
-    return JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+    return readJson(filePath);
   }
 
   // Host fallback: <root>/node_modules/<specifier> is absent — resolve the specifier through the
@@ -143,7 +166,7 @@ async function loadProjectSchemaRef(uri: string, root: string): Promise<Record<s
           new URL(`../${specifier.slice(ownPrefix.length)}`, import.meta.url),
         );
         if (existsSync(ownFile)) {
-          return JSON.parse(readFileSync(ownFile, "utf8")) as Record<string, unknown>;
+          return readJson(ownFile);
         }
       }
       throw new Error(
@@ -153,5 +176,5 @@ async function loadProjectSchemaRef(uri: string, root: string): Promise<Record<s
       );
     }
   }
-  return JSON.parse(readFileSync(resolved, "utf8")) as Record<string, unknown>;
+  return readJson(resolved);
 }

@@ -70,10 +70,11 @@ describe("createDistMiddleware", () => {
   test("falls through for missing files, traversal, and non-GET", async () => {
     expect(await get("/nope/")).toBeNull();
     expect(await get("/../secret")).toBeNull();
-    // A relative pathname survives normalize() with its leading ".." intact
-    const sneaky = await middleware(new Request("http://localhost/x"), {
-      pathname: "../secret",
-    } as URL);
+    /* A relative pathname survives normalize() with its leading ".." intact. A real URL always
+       normalizes its pathname to a leading "/", so the only way to reach that branch is a stand-in. */
+    // SAFETY: createDistMiddleware reads nothing from the URL but `pathname`.
+    const relativeUrl = { pathname: "../secret" } as URL;
+    const sneaky = await middleware(new Request("http://localhost/x"), relativeUrl);
     expect(sneaky).toBeNull();
     const post = await middleware(
       new Request("http://localhost/", { method: "POST" }),
@@ -152,12 +153,12 @@ describe("startDev", () => {
     let reloaded = false;
     const deadline = Date.now() + 15_000;
     while (!reloaded && Date.now() < deadline) {
-      const { value } = (await Promise.race([
+      const { value } = await Promise.race([
         reader.read(),
-        new Promise((_, reject) => {
+        new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error("timeout waiting for reload")), 15_000);
         }),
-      ])) as ReadableStreamReadResult<Uint8Array>;
+      ]);
       if (value && decoder.decode(value).includes("data: reload")) {
         reloaded = true;
       }

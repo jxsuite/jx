@@ -27,9 +27,17 @@ function boot(opts?: Parameters<typeof startIframeInlineEdit>[2]) {
 }
 
 /** Click into `el` — pointerdown (opens a prop-bound nested host) then the caret landing inside. */
-function clickInto(el: Element) {
+function clickInto(el: HTMLElement) {
   el.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-  caretInto(el as HTMLElement);
+  caretInto(el);
+}
+
+/** The messages of one `kind` the iframe posted, narrowed to that variant. */
+function ofKind<K extends IframeToParent["kind"]>(
+  msgs: IframeToParent[],
+  kind: K,
+): Extract<IframeToParent, { kind: K }>[] {
+  return msgs.filter((m): m is Extract<IframeToParent, { kind: K }> => m.kind === kind);
 }
 
 afterEach(() => {
@@ -85,9 +93,7 @@ describe("dblclick target walks", () => {
     clickInto(marker);
     pair.flush();
     expect(isEditing()).toBe(true);
-    const start = fromIframe.find((m) => m.kind === "editStart") as
-      | { path: unknown; prop?: string }
-      | undefined;
+    const [start] = ofKind(fromIframe, "editStart");
     expect(start).toMatchObject({ path: ["children", 0], prop: "title" });
     stopEditing();
   });
@@ -141,9 +147,7 @@ describe("Enter splits the block", () => {
 
     // The browser must NOT be allowed to split the DOM itself; the document model does it.
     expect(prevented).toBe(true);
-    const split = fromIframe.find((m) => m.kind === "editSplit") as
-      | { path: unknown; before: unknown; after: unknown }
-      | undefined;
+    const [split] = ofKind(fromIframe, "editSplit");
     expect(split).toBeDefined();
     expect(split!.path).toEqual(["children", 0]);
     expect(split!.before).toEqual({ textContent: "before|" });
@@ -254,9 +258,7 @@ describe("block merges", () => {
     beforeInput(second, "deleteContentBackward");
     pair.flush();
 
-    const commits = fromIframe.filter((m) => m.kind === "editCommit") as {
-      textContent: string | null;
-    }[];
+    const commits = ofKind(fromIframe, "editCommit");
     // The block being merged away had its typed text committed before the join.
     expect(commits.some((c) => c.textContent === "Second edited")).toBe(true);
     expect(fromIframe.some((m) => m.kind === "editMerge")).toBe(true);

@@ -158,7 +158,7 @@
             {
               "$prototype": "Array",
               "items": {
-                "$ref": "#/state/shapes"
+                "$ref": "#/state/defs"
               },
               "key": {
                 "$ref": "$map/item/name"
@@ -406,7 +406,7 @@
                           {
                             "operator": "call",
                             "target": {
-                              "$ref": "#/state/removeShape"
+                              "$ref": "#/state/removeSelected"
                             },
                             "value": []
                           }

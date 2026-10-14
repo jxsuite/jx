@@ -1,13 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { handleCodeApi, resolveOxlintBin } from "../src/code-api";
+
+/** The code API answers every `/__studio/code/<action>` POST it knows; `null` means it declined. */
+function handled(res: Response | null): Response {
+  if (res === null) {
+    throw new Error("handleCodeApi declined a request it was expected to answer");
+  }
+  return res;
+}
 
 /**
  * @param {string} action
- * @param {unknown} body
+ * @param {JsonObject} body
  */
-function codeRequest(action: string, body: unknown) {
+function codeRequest(action: string, body: JsonObject) {
   const url = new URL(`http://localhost/__studio/code/${action}`);
   return {
     req: new Request(url, {
@@ -38,7 +47,7 @@ describe("code-api", () => {
     const url = new URL("http://localhost/__studio/code/format");
     const req = new Request(url, { body: "not json", method: "POST" });
     const res = await handleCodeApi(req, url);
-    expect((res as Response).status).toBe(400);
+    expect(handled(res).status).toBe(400);
   });
 
   test("returns null for unknown action", async () => {
@@ -51,7 +60,7 @@ describe("code-api", () => {
     test("returns empty for empty code", async () => {
       const { req, url } = codeRequest("format", { code: "" });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.code).toBe("");
       expect(data.errors).toEqual([]);
     });
@@ -59,7 +68,7 @@ describe("code-api", () => {
     test("returns empty for whitespace-only code", async () => {
       const { req, url } = codeRequest("format", { code: "   " });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.code).toBe("");
     });
 
@@ -68,7 +77,7 @@ describe("code-api", () => {
         code: "const x=1;const y=2;",
       });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.code).toContain("const x = 1");
       expect(data.errors).toEqual([]);
     });
@@ -79,14 +88,14 @@ describe("code-api", () => {
         code: "return a + b;",
       });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.code).toContain("return a + b");
     });
 
     test("returns original code with errors on syntax error", async () => {
       const { req, url } = codeRequest("format", { code: "const x = ;" });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       // Oxfmt may return errors or the original code
       expect(data.code).toBeDefined();
     });
@@ -96,7 +105,7 @@ describe("code-api", () => {
     test("returns empty for empty code", async () => {
       const { req, url } = codeRequest("minify", { code: "" });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.code).toBe("");
     });
 
@@ -105,14 +114,14 @@ describe("code-api", () => {
         code: "const   x   =   1;",
       });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.code).toBe("const x=1;");
     });
 
     test("returns original with error on invalid code", async () => {
       const { req, url } = codeRequest("minify", { code: "const x = ;" });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.error).toBeDefined();
       expect(data.code).toBe("const x = ;");
     });
@@ -122,14 +131,14 @@ describe("code-api", () => {
     test("returns empty diagnostics for empty code", async () => {
       const { req, url } = codeRequest("lint", { code: "" });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(data.diagnostics).toEqual([]);
     });
 
     test("returns diagnostics for code with issues", async () => {
       const { req, url } = codeRequest("lint", { code: "debugger;" });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       // Oxlint must actually flag the `debugger` statement — an empty array here means the
       // Binary was not found and the endpoint failed silently (the original regression).
       expect(data.error).toBeUndefined();
@@ -141,7 +150,7 @@ describe("code-api", () => {
         code: "const x = 1;\nreturn x;",
       });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(Array.isArray(data.diagnostics)).toBe(true);
     });
 
@@ -151,7 +160,7 @@ describe("code-api", () => {
         code: "return a;",
       });
       const res = await handleCodeApi(req, url);
-      const data = await (res as Response).json();
+      const data = await handled(res).json();
       expect(Array.isArray(data.diagnostics)).toBe(true);
     });
   });

@@ -10,41 +10,48 @@ import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { activeCanvasSurface } from "../src/canvas/canvas-surface";
 import { collabState } from "../src/collab/collab-state";
 import { shell } from "../src/shell";
-import type { CanvasPanel } from "../src/types";
-import type { Tab } from "../src/tabs/tab";
+import type { postMessageChannel } from "../src/canvas/iframe-channel";
+import type { IframeToParent, InsertZone, ParentToIframe } from "../src/canvas/iframe-protocol";
+import type { CanvasPanel, StudioPlatform } from "../src/types";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
    app (`src/canvas/canvas-surface.ts`); the array identity is stable, so a module-level
    binding still sees what the render mutated. */
 const canvasPanels = activeCanvasSurface().panels;
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js`, imported first, registers happy-dom's GlobalRegistrator, which copies the
+   window's members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
 // ─── Mocks (mirrors iframe-host.test.ts): capture channels, stub the resolver ───
 
+type ChannelOptions = Parameters<typeof postMessageChannel<ParentToIframe, IframeToParent>>[0];
+
 interface FakeChannel {
-  opts: Record<string, unknown>;
-  posts: Record<string, unknown>[];
+  opts: ChannelOptions;
+  posts: ParentToIframe[];
   disposed: boolean;
-  deliver: (m: Record<string, unknown>) => void;
+  deliver: (m: IframeToParent) => void;
 }
 const channels: FakeChannel[] = [];
 
 void mock.module("../src/canvas/iframe-channel", () => ({
-  postMessageChannel: (opts: Record<string, unknown>) => {
-    let handler: ((m: Record<string, unknown>) => void) | null = null;
+  postMessageChannel: (opts: ChannelOptions) => {
+    let handler: ((m: IframeToParent) => void) | null = null;
     const rec: FakeChannel = { deliver: (m) => handler?.(m), disposed: false, opts, posts: [] };
     channels.push(rec);
     return {
       dispose: () => {
         rec.disposed = true;
       },
-      onMessage: (h: (m: Record<string, unknown>) => void) => {
+      onMessage: (h: (m: IframeToParent) => void) => {
         handler = h;
         return () => {};
       },
-      post: (m: Record<string, unknown>) => {
+      post: (m: ParentToIframe) => {
         rec.posts.push(m);
       },
     };
@@ -85,15 +92,51 @@ const {
 } = await import("../src/canvas/iframe-host");
 
 const STYLEBOOK_GENERATED = () => ({
-  doc: { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" } as never,
+  doc: { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" },
   pathToTag: new Map([['["children",0]', "h1"]]),
-  tagToCardPath: new Map([["h1", ["children", 0] as (string | number)[]]]),
+  tagToCardPath: new Map<string, (string | number)[]>([["h1", ["children", 0]]]),
 });
+
+/** Every message of one `kind` a channel posted to its frame, oldest first. */
+function postsOfKind<K extends ParentToIframe["kind"]>(
+  channel: FakeChannel,
+  kind: K,
+): Extract<ParentToIframe, { kind: K }>[] {
+  return channel.posts.filter(
+    (post): post is Extract<ParentToIframe, { kind: K }> => post.kind === kind,
+  );
+}
+
+/** The element a selector found, narrowed to the HTMLElement the overlay code renders. */
+function renderedElement(found: Element | null | undefined, what: string): HTMLElement {
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`expected ${what} to be rendered as an HTMLElement`);
+  }
+  return found;
+}
+
+/** A frame message whose `kind` the protocol union does not name. */
+function offProtocolMessage(kind: string): IframeToParent {
+  /* SAFETY: `postMessageChannel` relays any payload carrying the session token without checking its
+     `kind`, so a canvas bundle from another Studio version can post a kind this union does not name.
+     The value is only ever handed to the host's dispatch, which must ignore it. */
+  return { kind } as IframeToParent;
+}
+
+/** An artboard record carrying only the members a test names. */
+function artboard(fields: Pick<CanvasPanel, "canvas"> & Partial<CanvasPanel>): CanvasPanel {
+  /* SAFETY: this suite never renders a stage. An artboard pushed here is read only by
+     `getActivePanel` (which picks it by `mediaName` and hands its `canvas` to `hostForCanvas`) and by
+     `panelHostingCanvas` (which matches on `canvas`); the bound DOM members (`element`, `viewport`,
+     `scrollContainer`), `_width`, `ready` and `renderScope` are read by the stage render and its
+     teardown, neither of which runs in this suite. */
+  return fields as CanvasPanel;
+}
 
 async function mountReady(tabId: string | null = null): Promise<HTMLElement> {
   const canvasEl = document.createElement("div");
   document.body.append(canvasEl);
-  await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl, null, tabId);
+  await mountIframeCanvas(1, { tagName: "div" }, canvasEl, null, tabId);
   channels.at(-1)!.deliver({ kind: "ready" });
   return canvasEl;
 }
@@ -146,12 +189,11 @@ describe("contentHeight handling", () => {
   test("a canvas element without a parent viewport is guarded", async () => {
     // The canvas element is NOT appended anywhere: no `.canvas-panel-viewport` parent exists.
     const canvasEl = document.createElement("div");
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     const ch = channels.at(-1)!;
     ch.deliver({ kind: "ready" });
     expect(() => ch.deliver({ fragment: false, height: 700, kind: "contentHeight" })).not.toThrow();
-    const iframe = canvasEl.querySelector("iframe") as HTMLIFrameElement;
-    expect(iframe.style.height).toBe("700px");
+    expect(canvasEl.querySelector("iframe")?.style.height).toBe("700px");
   });
 });
 
@@ -159,7 +201,7 @@ describe("contentHeight handling", () => {
 
 describe("remote presence", () => {
   test("renderComplete measures peer selections and the geometry reply draws colored boxes", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
+    const tab = resetWorkspaceWithTab();
     collabState(tab).peers = [
       {
         clientId: 7,
@@ -183,16 +225,14 @@ describe("remote presence", () => {
         clientId: 9,
         state: { focusedPath: tab.documentPath, user: { color: "#888", login: "idle" } },
       },
-    ] as never;
+    ];
 
     const canvasEl = await mountReady(tab.id);
     const ch = channels.at(-1)!;
     ch.posts.length = 0;
     ch.deliver({ gen: 1, kind: "renderComplete" });
 
-    const measure = ch.posts.findLast((p) => p.kind === "measure") as
-      | { paths: (string | number)[][]; reqId: number }
-      | undefined;
+    const measure = postsOfKind(ch, "measure").at(-1);
     expect(measure).toBeDefined();
     expect(measure!.paths).toEqual([["children", 0]]);
 
@@ -205,14 +245,13 @@ describe("remote presence", () => {
       kind: "geometry",
       reqId: measure!.reqId,
     });
-    const box = canvasEl.querySelector(".overlay-presence") as HTMLElement;
-    expect(box).not.toBeNull();
+    const box = renderedElement(canvasEl.querySelector(".overlay-presence"), "the presence box");
     expect(box.style.cssText).toContain("#e5484d");
     expect(canvasEl.querySelectorAll(".overlay-presence")).toHaveLength(1);
   });
 
   test("a peer with a MULTI-selection draws one box per path, all under their own name", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
+    const tab = resetWorkspaceWithTab();
     collabState(tab).peers = [
       {
         clientId: 7,
@@ -225,16 +264,14 @@ describe("remote presence", () => {
           user: { color: "#e5484d", login: "octo", name: "Octo Cat" },
         },
       },
-    ] as never;
+    ];
 
     const canvasEl = await mountReady(tab.id);
     const ch = channels.at(-1)!;
     ch.posts.length = 0;
     ch.deliver({ gen: 1, kind: "renderComplete" });
 
-    const measure = ch.posts.findLast((p) => p.kind === "measure") as
-      | { paths: (string | number)[][]; reqId: number }
-      | undefined;
+    const measure = postsOfKind(ch, "measure").at(-1);
     expect(measure!.paths).toEqual([
       ["children", 0],
       ["children", 1],
@@ -248,7 +285,9 @@ describe("remote presence", () => {
       kind: "geometry",
       reqId: measure!.reqId,
     });
-    const boxes = [...canvasEl.querySelectorAll(".overlay-presence")] as HTMLElement[];
+    const boxes = [...canvasEl.querySelectorAll(".overlay-presence")].map((found) =>
+      renderedElement(found, "a presence box"),
+    );
     expect(boxes).toHaveLength(2);
     for (const box of boxes) {
       expect(box.style.cssText).toContain("#e5484d");
@@ -261,10 +300,10 @@ describe("remote presence", () => {
 
 describe("not-ready selection gates", () => {
   test("a selection on a not-yet-ready page host posts no measure", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
+    const tab = resetWorkspaceWithTab();
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl); // Never 'ready'.
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl); // Never 'ready'.
     const ch = channels.at(-1)!;
     ch.posts.length = 0;
     tab.session.selection = [["children", 0]];
@@ -289,30 +328,34 @@ describe("not-ready selection gates", () => {
 
 describe("canvasUrl-change rebuild", () => {
   test("a host built with the default URL rebuilds when the platform's loopback URL arrives", async () => {
-    const g = globalThis as unknown as { __jxPlatform?: { canvasUrl?: string } | undefined };
-    const saved = g.__jxPlatform;
-    delete g.__jxPlatform;
+    const saved = globalThis.__jxPlatform;
+    Reflect.deleteProperty(globalThis, "__jxPlatform");
     try {
       const canvasEl = document.createElement("div");
       document.body.append(canvasEl);
-      await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
       expect(channels).toHaveLength(1);
       const src0 = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       expect(src0.startsWith("/packages/studio/canvas.html?")).toBe(true);
 
       // The electrobun loopback URL resolves late: the same canvas re-mounts against it.
-      g.__jxPlatform = { canvasUrl: "http://127.0.0.1:4242/__studio__/canvas.html" } as never;
-      await mountIframeCanvas(2, { tagName: "div" } as never, canvasEl);
+      /* SAFETY: a mount reads the platform only for `canvasUrl` and `canvasUrlDeferred`
+         (`resolveCanvasUrl`), `documentBaseUrl` (`documentBase`) and `assetSpace` (asset refs), all
+         optional members of StudioPlatform; no method is called on it during these mounts. */
+      globalThis.__jxPlatform = {
+        canvasUrl: "http://127.0.0.1:4242/__studio__/canvas.html",
+      } as StudioPlatform;
+      await mountIframeCanvas(2, { tagName: "div" }, canvasEl);
       expect(channels).toHaveLength(2);
       expect(channels[0]!.disposed).toBe(true);
       const src1 = canvasEl.querySelector("iframe")!.getAttribute("src")!;
       expect(new URL(src1).origin).toBe("http://127.0.0.1:4242");
 
       // Re-mounting with the SAME url reuses the rebuilt host.
-      await mountIframeCanvas(3, { tagName: "div" } as never, canvasEl);
+      await mountIframeCanvas(3, { tagName: "div" }, canvasEl);
       expect(channels).toHaveLength(2);
     } finally {
-      g.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 });
@@ -334,7 +377,8 @@ describe("stylebook message gates", () => {
 
   test("an unknown message kind is ignored", async () => {
     await mountReady();
-    expect(() => channels.at(-1)!.deliver({ kind: "definitely-not-a-message" })).not.toThrow();
+    const unknownKind = offProtocolMessage("definitely-not-a-message");
+    expect(() => channels.at(-1)!.deliver(unknownKind)).not.toThrow();
   });
 
   test("a stylebook re-render on a ready host posts immediately", async () => {
@@ -346,14 +390,14 @@ describe("stylebook message gates", () => {
     expect(ch.posts.filter((p) => p.kind === "render")).toHaveLength(1);
 
     mountStylebookCanvas(2, STYLEBOOK_GENERATED(), canvasEl, 800);
-    const renders = ch.posts.filter((p) => p.kind === "render") as { gen: number; mode: string }[];
+    const renders = postsOfKind(ch, "render");
     expect(renders).toHaveLength(2);
     expect(renders[1]).toMatchObject({ gen: 2, mode: "stylebook" });
   });
 
   test("panToStylebookTag is inert for a non-stylebook active panel", async () => {
     const canvasEl = await mountReady();
-    canvasPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    canvasPanels.push(artboard({ canvas: canvasEl, mediaName: "base" }));
     const ch = channels.at(-1)!;
     ch.posts.length = 0;
     panToStylebookTag("h1");
@@ -366,7 +410,7 @@ describe("stylebook message gates", () => {
     mountStylebookCanvas(1, STYLEBOOK_GENERATED(), canvasEl, 800);
     const ch = channels.at(-1)!;
     ch.deliver({ kind: "ready" });
-    canvasPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    canvasPanels.push(artboard({ canvas: canvasEl, mediaName: "base" }));
     ch.posts.length = 0;
     panToStylebookTag("marquee");
     expect(ch.posts).toHaveLength(0);
@@ -377,7 +421,7 @@ describe("stylebook message gates", () => {
 
 describe("debounced timers", () => {
   test("a peer roster change re-measures presence after the debounce", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
+    const tab = resetWorkspaceWithTab();
     const canvasEl = await mountReady(tab.id);
     const ch = channels.at(-1)!;
     ch.deliver({ gen: 1, kind: "renderComplete" });
@@ -393,13 +437,11 @@ describe("debounced timers", () => {
           user: { color: "#4f9cf9", login: "late-peer" },
         },
       },
-    ] as never;
+    ];
     await new Promise((resolve) => {
       setTimeout(resolve, 180);
     });
-    const measure = ch.posts.findLast((p) => p.kind === "measure") as
-      | { paths: (string | number)[][] }
-      | undefined;
+    const measure = postsOfKind(ch, "measure").at(-1);
     expect(measure?.paths).toEqual([["children", 0]]);
     void canvasEl;
   });
@@ -407,14 +449,14 @@ describe("debounced timers", () => {
   test("the insert '+' hides after the grace delay following an empty zones post", async () => {
     const canvasEl = await mountReady();
     const ch = channels.at(-1)!;
-    const zone = {
+    const zone: InsertZone = {
       edge: "top",
       index: 0,
-      parentPath: [],
+      insertParentPath: [],
       rect: { height: 20, width: 150, x: 10, y: 190 },
     };
     ch.deliver({ kind: "insertZones", zones: [zone] });
-    const btn = canvasEl.querySelector(".insertion-helper") as HTMLElement;
+    const btn = renderedElement(canvasEl.querySelector(".insertion-helper"), "the insert button");
     expect(btn.style.display).toBe("grid");
 
     ch.deliver({ kind: "insertZones", zones: null });
@@ -441,7 +483,7 @@ describe("misc guards", () => {
   test("getEditBarAnchorRect is null when the host has neither snapshot nor selection rect", async () => {
     resetWorkspaceWithTab();
     const canvasEl = await mountReady();
-    canvasPanels.push({ canvas: canvasEl, mediaName: "base" } as unknown as CanvasPanel);
+    canvasPanels.push(artboard({ canvas: canvasEl, mediaName: "base" }));
     // No edit session, no hit ever measured → nothing to anchor the toolbar to.
     expect(getEditBarAnchorRect()).toBeNull();
   });

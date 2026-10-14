@@ -15,6 +15,20 @@ import { undo, redo } from "../../src/tabs/transact";
 import { validateDoc } from "../../src/services/jx-validate";
 import type { Tab } from "../../src/tabs/tab";
 import type { buildRealHarness } from "./real-llm";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
+
+/** Context handed to a test's outcome check: the model's file writes plus a reader for them. */
+export interface EvalCtx {
+  writes?: { relPath: string; content: string }[];
+  readWritten?: (relPath: string) => string;
+}
+
+/** An outcome assertion over the settled document: a pass, a fail, or a 0..1 fraction. */
+export type OutcomeCheck = (
+  doc: JxMutableNode,
+  ctx: EvalCtx,
+) => boolean | number | Promise<boolean | number>;
 
 interface ChatStateLike {
   messages: {
@@ -24,9 +38,10 @@ interface ChatStateLike {
   }[];
 }
 
-function parseToolResult(content: string): unknown {
+function parseToolResult(content: string): JsonValue {
   try {
-    return JSON.parse(content);
+    const parsed: JsonValue = JSON.parse(content);
+    return parsed;
   } catch {
     return { success: false, error: "(unparseable tool result)", _raw: content };
   }
@@ -86,11 +101,8 @@ export async function scoreRun({
 }: {
   harness: ReturnType<typeof buildRealHarness>;
   rounds: number;
-  check?: (
-    doc: unknown,
-    ctx: Record<string, unknown>,
-  ) => boolean | number | Promise<boolean | number>;
-  ctx?: Record<string, unknown>;
+  check?: OutcomeCheck;
+  ctx?: EvalCtx;
   mustReadFirst?: boolean;
 }) {
   const { chatState, tab } = harness;
@@ -110,7 +122,7 @@ export async function scoreRun({
     };
   } else {
     const r = await check(doc, ctx);
-    const frac = typeof r === "number" ? r : r ? 1 : 0;
+    const frac = r === true ? 1 : r === false ? 0 : r;
     completeness =
       frac >= 1
         ? { score: 5, why: "outcome assertion fully satisfied" }
@@ -163,7 +175,7 @@ export async function scoreRun({
   };
 
   // ── Recovery: only meaningful when a tool returned success:false ──
-  const failures = results.filter((r) => (r as { success?: boolean }).success === false);
+  const failures = results.filter((r) => isJsonObject(r) && r.success === false);
   const finalErrors = await validateDoc(doc);
   const recovery =
     failures.length === 0

@@ -11,7 +11,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import type { StudioSchema } from "../src/handlers";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 void mock.module("electrobun/main", () => ({
   BrowserWindow: class {},
@@ -24,17 +25,47 @@ const { setProjectRoot, fetchPluginSchema, fetchProjectSchemas, jxResolve, listE
 
 const PROJECT = join(import.meta.dir, "_fixtures_content");
 
+/** Whether a plugin schema carries the `properties` map the config form is built from. */
+function hasFormProperties(value: unknown): value is { properties: JsonObject } {
+  return isNonNullObject(value) && "properties" in value && isJsonObject(value.properties);
+}
+
+/** Whether a schema member is a list of `{ $ref }` pointers (an `allOf` of root pointers). */
+function isRefList(value: unknown): value is { $ref: string }[] {
+  return (
+    Array.isArray(value) && value.every((entry) => isJsonObject(entry) && isString(entry.$ref))
+  );
+}
+
+/** Decode a jxResolve reply into each collection entry's `data.title`, failing on any other shape. */
+function entryTitles(body: string): (JsonValue | undefined)[] {
+  const entries: JsonValue = JSON.parse(body);
+  if (!Array.isArray(entries)) {
+    throw new TypeError(`jxResolve did not reply with an array: ${body}`);
+  }
+  return entries.map((entry) => {
+    const data = isJsonObject(entry) ? entry.data : undefined;
+    if (!isJsonObject(data)) {
+      throw new Error(`jxResolve entry has no data object: ${JSON.stringify(entry)}`);
+    }
+    return data.title;
+  });
+}
+
 describe("ContentCollection desktop integration", () => {
   test("fetchPluginSchema resolves a bare-specifier .class.json (drives the config form)", async () => {
     setProjectRoot(PROJECT);
-    const schema = (await fetchPluginSchema({
+    const schema = await fetchPluginSchema({
       prototype: "ContentCollection",
       src: "@jxsuite/parser/ContentCollection.class.json",
-    })) as StudioSchema | null;
+    });
 
     expect(schema).not.toBeNull();
+    if (!hasFormProperties(schema)) {
+      throw new Error("fetchPluginSchema returned a schema with no properties");
+    }
     // The form is built from these constructor parameters.
-    expect(Object.keys(schema!.properties)).toEqual(
+    expect(Object.keys(schema.properties)).toEqual(
       expect.arrayContaining(["contentType", "filter", "sort", "limit"]),
     );
     setProjectRoot(null);
@@ -52,12 +83,7 @@ describe("ContentCollection desktop integration", () => {
     });
 
     expect(status).toBe(200);
-    const entries = JSON.parse(body) as {
-      id: string;
-      data: Record<string, unknown>;
-    }[];
-    expect(Array.isArray(entries)).toBe(true);
-    expect(entries.map((e) => e.data.title)).toEqual(["Getting Started", "Advanced"]);
+    expect(entryTitles(body)).toEqual(["Getting Started", "Advanced"]);
     setProjectRoot(null);
   });
 
@@ -73,31 +99,27 @@ describe("ContentCollection desktop integration", () => {
     });
 
     expect(status).toBe(200);
-    const entries = JSON.parse(body) as { data: Record<string, unknown> }[];
-    expect(entries).toHaveLength(1);
-    expect(entries[0].data.title).toBe("Advanced");
+    expect(entryTitles(body)).toEqual(["Advanced"]);
     setProjectRoot(null);
   });
 
   test("listExtensions serves the parser contribution with its fragment entry schema", async () => {
     setProjectRoot(PROJECT);
-    const extensions = (await listExtensions()) as {
-      specifier: string;
-      contributions: {
-        className: string;
-        project: { key: string };
-        studio: { settings?: { layout?: string } } | null;
-        entrySchema: { additionalProperties?: { properties?: Record<string, unknown> } } | null;
-      }[];
-    }[];
+    const extensions = await listExtensions();
     expect(extensions).toHaveLength(1);
     expect(extensions[0]!.specifier).toBe("@jxsuite/parser");
     const content = extensions[0]!.contributions.find((c) => c.project.key === "content")!;
     expect(content.className).toBe("Content");
-    expect(content.studio?.settings?.layout).toBe("map");
-    expect(Object.keys(content.entrySchema?.additionalProperties?.properties ?? {})).toContain(
-      "source",
-    );
+    const settings = content.studio?.settings;
+    expect(isJsonObject(settings) ? settings.layout : undefined).toBe("map");
+    const { entrySchema } = content;
+    const entryValueSchema = isJsonObject(entrySchema)
+      ? entrySchema.additionalProperties
+      : undefined;
+    const entryProperties = isJsonObject(entryValueSchema)
+      ? entryValueSchema.properties
+      : undefined;
+    expect(Object.keys(isJsonObject(entryProperties) ? entryProperties : {})).toContain("source");
     setProjectRoot(null);
   });
 
@@ -106,16 +128,25 @@ describe("ContentCollection desktop integration", () => {
     try {
       const { project, document } = await fetchProjectSchemas();
       // Root pointers only: Monaco gets these as inline objects and never fetches a URI.
-      const { allOf } = project as { allOf: { $ref: string }[] };
+      const allOf = project?.allOf;
+      if (!isRefList(allOf)) {
+        throw new Error("the project schema bundle has no allOf of root pointers");
+      }
       expect(allOf.map((entry) => entry.$ref)).toEqual([
         "#/$defs/project-core-v2",
         "#/$defs/ext-parser-project-v1",
       ]);
-      const projectDefs = (project as { $defs: Record<string, unknown> }).$defs;
+      const projectDefs = project?.$defs;
+      if (!isJsonObject(projectDefs)) {
+        throw new Error("the project schema bundle has no $defs");
+      }
       expect(projectDefs["ext-parser-project-v1"]).toBeDefined();
-      const doc = document as { $ref?: string; allOf: { $ref: string }[] };
-      expect(doc.$ref).toBeUndefined();
-      expect(doc.allOf.map((entry) => entry.$ref)).toEqual(["#/$defs/v1"]);
+      expect(document?.$ref).toBeUndefined();
+      const documentAllOf = document?.allOf;
+      if (!isRefList(documentAllOf)) {
+        throw new Error("the document schema bundle has no allOf of root pointers");
+      }
+      expect(documentAllOf.map((entry) => entry.$ref)).toEqual(["#/$defs/v1"]);
     } finally {
       // The bundler regenerates the entry documents on demand — keep the fixture pristine.
       rmSync(join(PROJECT, "project.schema.json"), { force: true });

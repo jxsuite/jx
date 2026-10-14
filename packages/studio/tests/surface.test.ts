@@ -52,13 +52,8 @@ describe("surface documents", () => {
   });
 
   test("an unregistered name is refused", async () => {
-    let refusal: unknown = null;
-    try {
-      await mountSurface("nope", {}, host);
-    } catch (error) {
-      refusal = error;
-    }
-    expect(String(refusal)).toContain('"nope" is not registered');
+    const refusal = await mountSurface("nope", {}, host).then(() => "mounted", String);
+    expect(refusal).toBe('Error: Studio surface "nope" is not registered');
   });
 });
 

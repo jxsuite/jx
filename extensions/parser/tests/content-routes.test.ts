@@ -19,6 +19,7 @@ import {
   traversalReason,
   unsafePathReason,
 } from "../src/content-routes.ts";
+import type { RouteSubject } from "../src/content-routes.ts";
 
 describe("slugifySegment", () => {
   it("lowercases and hyphenates", () => {
@@ -160,7 +161,7 @@ describe("normalizeRoute", () => {
 
 describe("renderRoute", () => {
   const spec = parseRouteConfig("/kb/{category:slug}/{slug}/", "/kb/{dir:slug}/", "kb")!;
-  const subject = (path: string, data: Record<string, unknown>, id = path) => ({
+  const subject = (path: string, data: RouteSubject["data"], id = path): RouteSubject => ({
     data,
     id,
     path,

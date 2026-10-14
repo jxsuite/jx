@@ -43,9 +43,8 @@ describe("import-seed", () => {
        is what `agent-seed.ts` does, for a case with one reader) would leave the tool inventing a
        path the user never chose. */
     setPendingImportBrief(BRIEF);
-    expect(pendingImportBrief()).toEqual(BRIEF);
-    expect(pendingImportBrief()).toEqual(BRIEF);
-    expect(pendingImportBrief()).toEqual(BRIEF);
+    const reads = [pendingImportBrief(), pendingImportBrief(), pendingImportBrief()];
+    expect(reads).toEqual([BRIEF, BRIEF, BRIEF]);
   });
 
   test("a second brief replaces the first", () => {

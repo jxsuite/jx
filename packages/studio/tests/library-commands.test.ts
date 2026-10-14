@@ -146,14 +146,13 @@ describe("the records", () => {
    */
   test("library.setLocale's enum is read when the palette asks, not when the record is built", () => {
     const record = libraryCommands().find((c) => c.id === "library.setLocale")!;
-    const property = (record.args as { properties: { locale: { enum: string[] } } }).properties
-      .locale;
+    const property = record.args?.properties?.locale;
     resetStudioState({ projectConfig: {} });
-    expect(property.enum).toEqual(["all"]);
+    expect(property?.enum).toEqual(["all"]);
     resetStudioState({
       projectConfig: { i18n: { defaultLocale: "EN-us", locales: ["fr"] } },
     });
-    expect(property.enum).toEqual(["all", "en-US", "fr"]);
+    expect(property?.enum).toEqual(["all", "en-US", "fr"]);
   });
 
   test("library.setLocale is the only one a monolingual project hides", () => {

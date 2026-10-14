@@ -11,19 +11,29 @@ import { mountShellTree } from "../src/shell/tree";
 import { mock } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { nothing } from "lit-html";
-import type { MockPlatformState } from "./harness";
+import type { InstalledMockPlatform } from "./harness";
 import type { StudioPlatform } from "../src/types";
+import type { initBlockActionBar } from "../src/panels/block-action-bar";
+import type { initCanvasRender } from "../src/canvas/canvas-render";
+import type { mount } from "../src/surfaces/commandbar";
+import type { CommandRegistry } from "../src/commands/registry";
+import type { JxPath } from "../src/state";
+import type { StageContext } from "../src/editor/shortcuts";
+import type { initWelcome } from "../src/surfaces/welcome";
 
 /** Statusbar messages captured by the mocked statusbar module. */
 export const statusMessages: string[] = [];
 
-export const captured: {
-  toolbarCtx: any;
-  welcomeCtx: any;
-  blockBarCtx: any;
-  canvasRenderCtx: any;
-  shortcutsGet: (() => any) | null;
-} = {
+/** The contexts studio.ts hands the mocked surfaces at boot, as each real module declares them. */
+export interface CapturedBootContexts {
+  toolbarCtx: Parameters<typeof mount>[1] | null;
+  welcomeCtx: Parameters<typeof initWelcome>[0] | null;
+  blockBarCtx: Parameters<typeof initBlockActionBar>[0] | null;
+  canvasRenderCtx: Parameters<typeof initCanvasRender>[0] | null;
+  shortcutsGet: StageContext | null;
+}
+
+export const captured: CapturedBootContexts = {
   blockBarCtx: null,
   canvasRenderCtx: null,
   shortcutsGet: null,
@@ -40,11 +50,6 @@ export async function waitFor(cond: () => boolean, tries = 50): Promise<void> {
   }
 }
 
-export interface BootResult {
-  platform: StudioPlatform;
-  state: MockPlatformState;
-}
-
 /**
  * Stub globals, scaffold the shell DOM, mock the heavy leaf modules, register an in-memory
  * platform, then import src/studio.ts under the given URL.
@@ -53,31 +58,42 @@ export async function bootStudio(opts: {
   url: string;
   overrides?: Partial<StudioPlatform>;
   seedFiles?: Record<string, string>;
-}): Promise<BootResult> {
-  (globalThis as any).happyDOM.setURL(opts.url);
+}): Promise<InstalledMockPlatform> {
+  /* SAFETY: @happy-dom/global-registrator (loaded by ./harness) copies the window's members onto
+     globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+  const { happyDOM } = globalThis as typeof globalThis & {
+    happyDOM: { setURL: (url: string) => void };
+  };
+  happyDOM.setURL(opts.url);
 
-  (globalThis as any).requestIdleCallback = (cb: (d: unknown) => void) =>
-    setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0);
-  (globalThis as any).cancelIdleCallback = (id: number) => clearTimeout(id);
+  // The global registrator points `window` at globalThis, so these land on the globals boot reads.
+  window.requestIdleCallback = (cb) =>
+    window.setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0);
+  window.cancelIdleCallback = (id) => window.clearTimeout(id);
 
   const noop = () => {
     /* Stub */
   };
   class StubEventSource {
     url: string;
-    onmessage: unknown = null;
-    onerror: unknown = null;
-    addEventListener = noop;
-    removeEventListener = noop;
+    onmessage: EventSource["onmessage"] = null;
+    onerror: EventSource["onerror"] = null;
+    addEventListener: EventTarget["addEventListener"] = noop;
+    removeEventListener: EventTarget["removeEventListener"] = noop;
     close = noop;
     constructor(url: string) {
       this.url = url;
     }
   }
-  (globalThis as any).EventSource = StubEventSource;
-  globalThis.fetch = mock(
-    async () => new Response("{}", { status: 404 }),
-  ) as unknown as typeof fetch;
+  /* SAFETY: the only `new EventSource` in src is devserver.ts's subscribeFileEvents, which calls
+     addEventListener and close on the instance; the stub carries both as no-ops and never dispatches,
+     so the readyState and CONNECTING/OPEN/CLOSED members it lacks are never read. */
+  window.EventSource = StubEventSource as typeof EventSource;
+  // Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+  globalThis.fetch = Object.assign(
+    mock(async () => new Response("{}", { status: 404 })),
+    { preconnect: globalThis.fetch.preconnect },
+  );
 
   /* The real frame, not a description of one. This fixture used to paste its own copy, and that
      copy had lost `#resize-bottom`, `#bottom-dock` and `#layer-toast` — so every shell-boot test
@@ -113,7 +129,7 @@ export async function bootStudio(opts: {
   );
 
   void mock.module("../src/surfaces/commandbar.ts", () => ({
-    mount: (_el: HTMLElement, ctx: unknown) => {
+    mount: (_el: HTMLElement, ctx: CapturedBootContexts["toolbarCtx"]) => {
       captured.toolbarCtx = ctx;
     },
     render: mock(() => {}),
@@ -121,7 +137,7 @@ export async function bootStudio(opts: {
   }));
 
   void mock.module("../src/surfaces/welcome.ts", () => ({
-    initWelcome: (ctx: unknown) => {
+    initWelcome: (ctx: CapturedBootContexts["welcomeCtx"]) => {
       captured.welcomeCtx = ctx;
     },
     renderWelcome: mock(() => {}),
@@ -131,8 +147,8 @@ export async function bootStudio(opts: {
     // The registry is the first argument now; the STAGE-context reader is the second — it takes a
     // Surface, because a wheel belongs to the stage the pointer is over rather than to the pane
     // The keyboard is in.
-    initShortcuts: (_registry: unknown, get: () => unknown) => {
-      captured.shortcutsGet = get as () => any;
+    initShortcuts: (_registry: CommandRegistry, get: StageContext) => {
+      captured.shortcutsGet = get;
     },
     // `panels/pane-grid.ts` installs one disposer per cell it builds, so the mock has to carry it
     // Or the boot fails at import time.
@@ -149,7 +165,7 @@ export async function bootStudio(opts: {
     commandTooltip: mock(() => ""),
     dismissBlockActionBar: mock(() => {}),
     dismissLinkPopover: mock(() => {}),
-    initBlockActionBar: (ctx: unknown) => {
+    initBlockActionBar: (ctx: CapturedBootContexts["blockBarCtx"]) => {
       captured.blockBarCtx = ctx;
     },
     // The inline-format family. The bootstrap composes it into the app-wide registry beside the
@@ -171,12 +187,12 @@ export async function bootStudio(opts: {
     }),
     showCommandOverflow: mock(() => {}),
     suppressBlockActionBar: mock(() => {}),
-    withCommandTarget: <T>(_path: unknown, fn: () => T) => fn(),
+    withCommandTarget: <T>(_path: JxPath, fn: () => T) => fn(),
   }));
 
   void mock.module("../src/canvas/canvas-render.ts", () => ({
     handOverCanvasStage: mock(() => {}),
-    initCanvasRender: (ctx: unknown) => {
+    initCanvasRender: (ctx: CapturedBootContexts["canvasRenderCtx"]) => {
       captured.canvasRenderCtx = ctx;
     },
     redefineElementOnCanvases: mock(() => 0),

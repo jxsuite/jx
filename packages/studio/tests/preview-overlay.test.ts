@@ -17,6 +17,7 @@ import {
   notePreviewOverlayEdit,
 } from "../src/preview/preview-overlay";
 import type { Tab } from "../src/tabs/tab";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** Every overlay call the platform saw, in order. */
 let published: [string, string][];
@@ -38,7 +39,7 @@ function installOverlayPlatform() {
 }
 
 /** A tab holding a document at `path`. */
-function tabAt(path: string, children: unknown[] = ["Hello"]): Tab {
+function tabAt(path: string, children: (JxMutableNode | string)[] = ["Hello"]): Tab {
   return openTab({
     document: { children, tagName: "main" },
     documentPath: path,
@@ -49,7 +50,7 @@ function tabAt(path: string, children: unknown[] = ["Hello"]): Tab {
 /** Mark a tab dirty the way a real structural edit does — through `transactDoc`. */
 function edit(tab: Tab, text: string) {
   transactDoc(tab, (target) => {
-    (target.doc.document as unknown as { children: unknown[] }).children = [text];
+    target.doc.document.children = [text];
   });
 }
 
@@ -200,7 +201,7 @@ describe("the seam for edits the effect cannot see", () => {
     edit(tab, "First");
     await flushPreviewOverlay();
     const before = published.length;
-    (tab.doc.document as unknown as Record<string, unknown>).title = "In place";
+    tab.doc.document.title = "In place";
     notePreviewOverlayEdit();
     await flushPreviewOverlay();
     expect(published.length).toBeGreaterThan(before);
@@ -290,9 +291,9 @@ describe("a document that will not serialize", () => {
     const layout = tabAt("layouts/base.json");
     edit(page, "Page");
     edit(layout, "Layout");
-    const circular: Record<string, unknown> = { tagName: "main" };
-    circular.self = circular;
-    (page.doc as unknown as { document: unknown }).document = circular;
+    const circular: JxMutableNode = { tagName: "main" };
+    circular.cases = { self: circular };
+    page.doc.document = circular;
     await flushPreviewOverlay();
     expect(published.map(([path]) => path)).toEqual(["layouts/base.json"]);
   });
@@ -303,15 +304,14 @@ describe("no platform at all", () => {
     armPreviewOverlay();
     const tab = tabAt("pages/index.json");
     edit(tab, "Edited");
-    const holder = globalThis as unknown as { __jxPlatform?: unknown };
-    const saved = holder.__jxPlatform;
-    delete holder.__jxPlatform;
+    const saved = globalThis.__jxPlatform;
+    Reflect.deleteProperty(globalThis, "__jxPlatform");
     try {
       // oxlint-disable-next-line typescript/await-thenable -- bun test .resolves is typed `void` but returns a real Promise; the await is required.
       await expect(flushPreviewOverlay()).resolves.toBeUndefined();
       expect(published).toEqual([]);
     } finally {
-      holder.__jxPlatform = saved;
+      globalThis.__jxPlatform = saved;
     }
   });
 });

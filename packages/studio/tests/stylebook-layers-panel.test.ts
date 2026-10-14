@@ -26,7 +26,7 @@ import { mountStylebookLayersSurface } from "../src/surfaces/panel-stylebook-lay
 import { componentRegistry } from "../src/files/components";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { resetProjectShell, shell } from "../src/shell";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxStyle } from "@jxsuite/schema/types";
 import type { StylebookLayersCtx } from "../src/panels/stylebook-layers-panel";
 
 const meta = {
@@ -50,7 +50,7 @@ const meta = {
 const selectStylebookTag = mock(
   (_tag: string, _media?: string | null, _opts?: { panCanvas?: boolean }) => {},
 );
-const ctx = { selectStylebookTag, stylebookMeta: meta } as StylebookLayersCtx;
+const ctx: StylebookLayersCtx = { selectStylebookTag, stylebookMeta: meta };
 
 let host: HTMLElement;
 
@@ -65,12 +65,12 @@ function makeHost(): HTMLElement {
   return body;
 }
 
-function makeTab(style: Record<string, unknown> = {}) {
+function makeTab(style: JxStyle = {}) {
   return resetWorkspaceWithTab({
     children: [],
     style,
     tagName: "div",
-  } as unknown as JxMutableNode);
+  });
 }
 
 /** Mount the catalogue into a fresh host and let the document render. */
@@ -97,7 +97,7 @@ function row(path: string): HTMLElement {
 
 /** What a row says: its badge, then its name. */
 function textOf(el: HTMLElement, part: string): string {
-  return el.querySelector(`[part="${part}"]`)?.textContent?.trim() ?? "";
+  return el.querySelector(`[part="${part}"]`)?.textContent.trim() ?? "";
 }
 
 beforeEach(() => {
@@ -136,7 +136,7 @@ describe("stylebookLayersValues", () => {
     const values = stylebookLayersValues({
       selectStylebookTag,
       stylebookMeta: { $sections: [{ elements: [{ tag: "hr" }], label: "Rule" }] },
-    } as StylebookLayersCtx);
+    });
     expect(values.rows[0]!.label).toBe("<hr>");
   });
 
@@ -155,7 +155,7 @@ describe("stylebookLayersValues", () => {
 
   test("component rows carry the glyph, the tag as their name, and select by tag", () => {
     makeTab();
-    componentRegistry.push({ tagName: "x-card" } as never, { tagName: "x-nav" } as never);
+    componentRegistry.push({ tagName: "x-card" }, { tagName: "x-nav" });
     shell.stylebook.selection = "x-nav";
     const comps = stylebookLayersValues(ctx).rows.filter((r) => r.kind === "component");
     expect(comps.map((r) => r.key)).toEqual(["x-card", "x-nav"]);
@@ -174,7 +174,7 @@ describe("stylebookLayersValues", () => {
   });
 
   test("a document with no style block has no variables", () => {
-    resetWorkspaceWithTab({ children: [], tagName: "div" } as unknown as JxMutableNode);
+    resetWorkspaceWithTab({ children: [], tagName: "div" });
     expect(stylebookLayersValues(ctx).hasVariables).toBe(false);
   });
 });
@@ -223,7 +223,7 @@ describe("the catalogue surface", () => {
 
   test("a component row is drawn as one, and clicking it selects the tag", async () => {
     makeTab();
-    componentRegistry.push({ tagName: "x-card" } as never);
+    componentRegistry.push({ tagName: "x-card" });
     await renderCatalogue();
     const comp = row("x-card");
     expect(comp.dataset.kind).toBe("component");

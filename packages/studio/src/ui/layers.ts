@@ -12,7 +12,8 @@
  * array and owns exactly two things that array does not: the timer that retires a resting toast,
  * and the transition account {@link overlayIdleBlockers} publishes.
  */
-import { render as litRender, nothing } from "lit-html";
+import { isFunction, isString } from "@jxsuite/schema/guards";
+import { render, nothing } from "lit-html";
 import { overlayRegion, REGION_ATTR } from "./regions";
 import { openDialogSurface } from "../surfaces/dialog";
 import { mountSurface, registerSurface } from "./surface";
@@ -21,20 +22,20 @@ import { dismiss, toasts } from "../services/notify";
 import { activeRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
 import { effect, effectScope, reactive } from "../reactivity";
-import type { DialogChoiceOption, DialogSurfaceOptions } from "../surfaces/dialog";
+import type { DialogSurfaceOptions } from "../surfaces/dialog";
 import type { Notification, Severity } from "../services/notify";
 import type { EffectScope } from "@vue/reactivity";
-import type { SurfaceHandle } from "./surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "./surface";
 import type { TemplateResult } from "lit-html";
 
 /** The four fixed layer hosts, by name. Also the `kind` half of every overlay region id. */
 export type LayerKind = "popover" | "modal" | "dialog" | "toast";
 
-let _popoverLayer: HTMLElement;
-let _modalLayer: HTMLElement;
-let _dialogLayer: HTMLElement;
-let _toastLayer: HTMLElement;
+/* Null until `initLayers()` runs, and still null afterwards for a page without that host element. */
+let _popoverLayer: HTMLElement | null = null;
+let _modalLayer: HTMLElement | null = null;
+let _dialogLayer: HTMLElement | null = null;
+let _toastLayer: HTMLElement | null = null;
 
 /**
  * The host a layer kind renders into, falling back to `<body>` before `initLayers()` has run.
@@ -52,14 +53,15 @@ export function layerHost(kind: LayerKind): HTMLElement {
         : kind === "toast"
           ? _toastLayer
           : _dialogLayer;
-  return host || document.body;
+  return host ?? document.body;
 }
 
 export function initLayers() {
-  _popoverLayer = document.querySelector("#layer-popover") as HTMLElement;
-  _modalLayer = document.querySelector("#layer-modal") as HTMLElement;
-  _dialogLayer = document.querySelector("#layer-dialog") as HTMLElement;
-  _toastLayer = document.querySelector("#layer-toast") as HTMLElement;
+  // The four hosts are `<div>`s in the shell frame (`src/shell/tree.ts`).
+  _popoverLayer = document.querySelector<HTMLElement>("#layer-popover");
+  _modalLayer = document.querySelector<HTMLElement>("#layer-modal");
+  _dialogLayer = document.querySelector<HTMLElement>("#layer-dialog");
+  _toastLayer = document.querySelector<HTMLElement>("#layer-toast");
   mountToastHost();
 }
 
@@ -214,12 +216,12 @@ export function showSaveDiscardDialog(
 function messageOptions(
   message: string | TemplateResult,
 ): Pick<DialogSurfaceOptions, "message" | "island"> {
-  if (typeof message === "string") {
+  if (isString(message)) {
     return { message };
   }
   return {
     island: (host) => {
-      litRender(message, host);
+      render(message, host);
     },
   };
 }
@@ -344,8 +346,8 @@ export function showPromptDialog(
    * still refuses, because `confirm()` runs `check` unconditionally.
    */
   let touched = false;
-  const placeholderNow = () => (typeof placeholder === "function" ? placeholder() : placeholder);
-  const optionsNow = (): DialogChoiceOption[] =>
+  const placeholderNow = () => (isFunction(placeholder) ? placeholder() : placeholder);
+  const optionsNow = (): SurfaceOption[] =>
     choice ? choice.options().map((option) => ({ label: option.label, value: option.value })) : [];
 
   return new Promise((resolve) => {
@@ -362,15 +364,11 @@ export function showPromptDialog(
       error = next;
       handle.update({ error, invalid: error !== "" });
     };
-    const handle = openDialogSurface({
+    const surfaceOptions: DialogSurfaceOptions = {
       cancelLabel,
       confirmLabel,
       headline,
       layer: layerHost("dialog"),
-      ...(message === undefined ? {} : messageOptions(message)),
-      ...(choice ? { choice: { chosen, label: choice.label, options: optionsNow() } } : {}),
-      field: { mono, multiline, placeholder: placeholderNow(), rows, select, value },
-      ...(size === undefined ? {} : { size }),
       onCancel: () => done(null),
       onClosed: () => done(null),
       onConfirm: () => {
@@ -408,7 +406,18 @@ export function showPromptDialog(
           placeholder: placeholderNow(),
         });
       },
-    });
+    };
+    if (message !== undefined) {
+      Object.assign(surfaceOptions, messageOptions(message));
+    }
+    if (choice) {
+      surfaceOptions.choice = { chosen, label: choice.label, options: optionsNow() };
+    }
+    surfaceOptions.field = { mono, multiline, placeholder: placeholderNow(), rows, select, value };
+    if (size !== undefined) {
+      surfaceOptions.size = size;
+    }
+    const handle = openDialogSurface(surfaceOptions);
   });
 }
 
@@ -452,7 +461,7 @@ export function clearLayerSlot(layer: LayerKind, id: string) {
   const key = `${layer}:${id}`;
   const slot = _namedSlots.get(key);
   if (slot) {
-    litRender(nothing, slot);
+    render(nothing, slot);
     slot.remove();
     _namedSlots.delete(key);
   }
@@ -491,7 +500,11 @@ const _toastEntering = new Set<string>();
  * means the answer has to be able to change.
  */
 function reducedMotion(): boolean {
-  return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  // A realm without `matchMedia` (a bare test runtime) has no preference to honour.
+  if (!("matchMedia" in globalThis)) {
+    return false;
+  }
+  return globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches === true;
 }
 
 /**
@@ -515,7 +528,7 @@ function reducedMotion(): boolean {
  */
 export function toastsAreHeld(): boolean {
   try {
-    return new URLSearchParams(globalThis.location?.search ?? "").get("automation") === "1";
+    return new URLSearchParams(globalThis.location.search).get("automation") === "1";
   } catch {
     // Intentionally ignored: no location (a bare test realm) means no automation.
     return false;
@@ -580,13 +593,13 @@ export interface ToastProjection {
   actionTitle: string;
 }
 
-interface ToastScope extends Record<string, unknown> {
+interface ToastScope {
   toasts: ToastProjection[];
   runAction: (id: string) => void;
   dismissToast: (id: string) => void;
 }
 
-registerSurface("toasts", toastsDoc as unknown as JxDocument);
+registerSurface("toasts", toastsDoc);
 
 let _toastState: ToastScope | null = null;
 let _toastMount: Promise<SurfaceHandle> | null = null;
@@ -610,7 +623,7 @@ function toastScope(): ToastScope {
       void runReported(registry, record.action, record.actionArgs, "Notifications");
     },
     toasts: [],
-  }) as ToastScope;
+  });
   return _toastState;
 }
 
@@ -631,12 +644,12 @@ function projectToast(record: Notification): ToastProjection {
     actionDisabled: reason !== undefined,
     actionLabel: command?.title ?? "",
     actionTitle:
-      command === null || command === undefined
+      command === null
         ? ""
         : reason === undefined
           ? command.title
           : `${command.title} — requires ${reason}`,
-    hasAction: command !== null && command !== undefined,
+    hasAction: command !== null,
     icon: TOAST_ICON[record.severity],
     id: record.id,
     message: record.message,

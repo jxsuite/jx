@@ -7,15 +7,18 @@
  * Electrobun services server, Chromium loopback server) can mount it unchanged.
  *
  * Stream protocol (one JSON object per line):
- *   {"type":"progress","phase":"...","message":"...","current":n,"total":n}
- *   {"type":"ready","root":"..."}              — the destination exists and is openable
- *   {"type":"heartbeat"}                       — keep-alives during silent phases
- *   {"type":"done","root":"...","config":{…},"result":{…}}  — terminal success
- *   {"type":"error","error":"..."}             — terminal failure
+ *
+ * ```text
+ * {"type":"progress","phase":"...","message":"...","current":n,"total":n}
+ * {"type":"ready","root":"..."}              — the destination exists and is openable
+ * {"type":"heartbeat"}                       — keep-alives during silent phases
+ * {"type":"done","root":"...","config":{…},"result":{…}}  — terminal success
+ * {"type":"error","error":"..."}             — terminal failure
+ * ```
  *
  * `ready` arrives seconds in, before the browser launches; `done` arrives minutes later. They are
- * two lines rather than one because they answer different questions — "where is it" and "what did it
- * find" — and a caller that waits for the second to learn the first spends the whole crawl with
+ * two lines rather than one because they answer different questions — "where is it" and "what did
+ * it find" — and a caller that waits for the second to learn the first spends the whole crawl with
  * nothing to show.
  *
  * LLM key flow (matches ai-api.ts): X-Api-Key / Authorization: Bearer header, falling back to the
@@ -30,7 +33,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { problem } from "./problem.ts";
 import type { BreakpointPolicy, BreakpointRounding } from "@jxsuite/import/breakpoint-plan";
+import type { ImportProgressEvent } from "@jxsuite/import/pipeline";
+import type { ImportSiteOptions, ImportSiteResult } from "@jxsuite/import/run";
+import { IMPORT_MAX_PAGES } from "@jxsuite/protocol";
 import type { ImportBreakpointPolicy } from "@jxsuite/protocol";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 export interface ImportApiOptions {
   /**
@@ -44,6 +51,14 @@ export interface ImportApiOptions {
   chromePath?: string;
 }
 
+/**
+ * The breakpoint policy as a request body carries it: the protocol shape, except that nothing has
+ * confirmed `mode` is one of the three until `readBreakpointPolicy` checks it.
+ */
+interface RequestedBreakpointPolicy extends Omit<ImportBreakpointPolicy, "mode"> {
+  mode?: string;
+}
+
 interface ImportRequestBody {
   url?: string;
   directory?: string;
@@ -55,14 +70,35 @@ interface ImportRequestBody {
   verify?: boolean;
   verifyThreshold?: number;
   verifyMinFidelity?: number;
-  breakpoints?: ImportBreakpointPolicy;
+  breakpoints?: RequestedBreakpointPolicy;
+}
+
+/** What the `done` line reports about the run. */
+interface ImportDoneSummary {
+  pages: ImportSiteResult["pages"];
+  fileCount: number;
+  warnings: string[];
+  verify?: NonNullable<ImportSiteResult["verify"]>;
+}
+
+/** One NDJSON line of the import stream (the protocol in this module's header). */
+type ImportStreamLine =
+  | { type: "heartbeat" }
+  | { type: "ready"; root: string }
+  | ({ type: "progress" } & Omit<ImportProgressEvent, "root">)
+  | { type: "done"; root: string; config: JsonObject; result: ImportDoneSummary }
+  | { type: "error"; error: string };
+
+/** The AI pass's credentials, resolved from the request headers or the environment. */
+interface AiConfig {
+  apiKey: string | null;
+  baseUrl: string | undefined;
 }
 
 /** Seconds between keep-alive lines while a phase is silent (browser launch is the longest gap). */
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
 const MAX_DEPTH = 5;
-const MAX_PAGES = 100;
 
 /** Pixelmatch colour-tolerance bounds for the optional verify pass. */
 const MIN_THRESHOLD = 0.01;
@@ -92,7 +128,7 @@ function clamp(value: number, min: number, max: number): number {
  * `mode` that is not one of the three.
  */
 function readBreakpointPolicy(
-  policy: ImportBreakpointPolicy | undefined,
+  policy: RequestedBreakpointPolicy | undefined,
 ): BreakpointPolicy | undefined {
   if (!policy) {
     return undefined;
@@ -118,7 +154,7 @@ function readBreakpointPolicy(
   return undefined;
 }
 
-function getAiConfig(req: Request): { apiKey: string | null; baseUrl: string | undefined } {
+function getAiConfig(req: Request): AiConfig {
   const authHeader = req.headers.get("Authorization") || "";
   const apiKeyHeader = req.headers.get("X-Api-Key") || "";
   const baseUrlHeader = req.headers.get("X-Api-Base-URL") || "";
@@ -142,6 +178,9 @@ function getAiConfig(req: Request): { apiKey: string | null; baseUrl: string | u
 async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<Response> {
   let body: ImportRequestBody;
   try {
+    /* SAFETY: Studio's import dialog posts this body (`ImportSiteRequest` in @jxsuite/protocol);
+       `url` and `directory` are required and checked just below, every number is re-clamped, and
+       the breakpoint policy is re-read field by field in readBreakpointPolicy. */
     body = (await req.json()) as ImportRequestBody;
   } catch {
     return problem("invalidRequest", "Invalid JSON body");
@@ -188,7 +227,7 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
         ),
       }
     : false;
-  const maxPages = clamp(body.maxPages ?? 20, 1, MAX_PAGES);
+  const maxPages = clamp(body.maxPages ?? 20, 1, IMPORT_MAX_PAGES);
   const maxNodesPerPage = clamp(body.maxNodesPerPage ?? 5000, 100, 50_000);
   const breakpoints = readBreakpointPolicy(body.breakpoints);
   const { apiKey, baseUrl } = getAiConfig(req);
@@ -197,15 +236,16 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      let closed = false;
-      const writeLine = (obj: unknown) => {
-        if (closed) {
+      // Held in an object because writeLine closes it from inside a callback
+      const sink = { closed: false };
+      const writeLine = (line: ImportStreamLine) => {
+        if (sink.closed) {
           return;
         }
         try {
-          controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
+          controller.enqueue(encoder.encode(`${JSON.stringify(line)}\n`));
         } catch {
-          closed = true;
+          sink.closed = true;
         }
       };
       const heartbeat = setInterval(() => writeLine({ type: "heartbeat" }), HEARTBEAT_INTERVAL_MS);
@@ -230,59 +270,61 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
           }
         }
 
-        const result = await importSite(
-          {
-            url,
-            outDir: destPath,
-            maxDepth: depth,
-            maxPages,
-            maxNodesPerPage,
-            ai,
-            verify,
-            signal: req.signal,
-            ...(breakpoints === undefined ? {} : { breakpoints }),
-            ...(opts.chromePath === undefined ? {} : { chromePath: opts.chromePath }),
-          },
-          (e) => {
-            /* The seed event carries the root, and it is the ONE thing a caller cannot wait for the
+        const importOptions: ImportSiteOptions = {
+          url,
+          outDir: destPath,
+          maxDepth: depth,
+          maxPages,
+          maxNodesPerPage,
+          ai,
+          verify,
+          signal: req.signal,
+        };
+        if (breakpoints !== undefined) {
+          importOptions.breakpoints = breakpoints;
+        }
+        if (opts.chromePath !== undefined) {
+          importOptions.chromePath = opts.chromePath;
+        }
+        const result = await importSite(importOptions, (e) => {
+          /* The seed event carries the root, and it is the ONE thing a caller cannot wait for the
                terminal line to learn: it arrives seconds in, and `done` arrives minutes later. It
                is re-emitted as its own line rather than left inside a progress message, because a
                root parsed out of prose is a root that breaks when the prose is reworded. */
-            if (e.phase === "seed" && e.root) {
-              writeLine({ type: "ready", root: toRoot(e.root) });
-            }
-            const { root: _root, ...progress } = e;
-            writeLine({ type: "progress", ...progress });
-          },
-        );
+          if (e.phase === "seed" && e.root) {
+            writeLine({ type: "ready", root: toRoot(e.root) });
+          }
+          const { root: _root, ...progress } = e;
+          writeLine({ type: "progress", ...progress });
+        });
 
+        /* SAFETY: importSite's emit phase has just written project.json as a Jx project config,
+           which is a JSON object; text that is not JSON throws into the error line below. */
         const config = JSON.parse(
           await readFile(resolve(result.outDir, "project.json"), "utf8"),
-        ) as Record<string, unknown>;
+        ) as JsonObject;
         /*
          * The result travels with the `done` line. It used to be discarded here: the pipeline had
          * computed the page list, the file count, the warnings and (with verify) a per-page
          * fidelity score, and the caller learned only that an import had happened. A caller that
          * cannot see what a run found cannot report it, and cannot ask about it either.
          */
-        writeLine({
-          type: "done",
-          root: toRoot(result.outDir),
-          config,
-          result: {
-            pages: result.pages,
-            fileCount: result.fileCount,
-            warnings: result.warnings,
-            ...(result.verify ? { verify: result.verify } : {}),
-          },
-        });
+        const summary: ImportDoneSummary = {
+          pages: result.pages,
+          fileCount: result.fileCount,
+          warnings: result.warnings,
+        };
+        if (result.verify) {
+          summary.verify = result.verify;
+        }
+        writeLine({ type: "done", root: toRoot(result.outDir), config, result: summary });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         writeLine({ type: "error", error: message });
       } finally {
         clearInterval(heartbeat);
-        if (!closed) {
-          closed = true;
+        if (!sink.closed) {
+          sink.closed = true;
           try {
             controller.close();
           } catch {

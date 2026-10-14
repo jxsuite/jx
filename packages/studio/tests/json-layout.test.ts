@@ -23,7 +23,7 @@ import { activeTab, closeAllTabs, openTab } from "../src/workspace/workspace";
 import { setProjectState } from "../src/store";
 import { setFormats } from "../src/format/format-host";
 import { MARKDOWN_FORMAT, mockFormatAction, seedMarkdownFormat } from "./format-fixture";
-import type { StudioPlatform } from "../src/types";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 
@@ -42,7 +42,7 @@ const FORMATTED_DOCUMENTS = ["packages/studio/src/surfaces", "packages/ui/compon
   .toSorted();
 
 /** Derive, serialize, and hand back the text — the round trip a save performs. */
-function roundTrip(text: string, edit?: (doc: Record<string, unknown>) => void): string {
+function roundTrip(text: string, edit?: (doc: JsonObject) => void): string {
   const { document, layout } = parseJsonDocument(text);
   edit?.(document);
   return serializeJson(document, layout);
@@ -96,7 +96,7 @@ function siteState() {
     projectRoot: ".",
     searchQuery: "",
     selectedPath: null,
-  } as never);
+  });
 }
 
 function installPlatform(seed: Record<string, string>) {
@@ -104,7 +104,7 @@ function installPlatform(seed: Record<string, string>) {
     {
       formatAction: mockFormatAction,
       listFormats: async () => [MARKDOWN_FORMAT],
-    } as Partial<StudioPlatform>,
+    },
     seed,
   );
 }
@@ -124,7 +124,11 @@ describe("a JSON tab carries its file's layout", () => {
     expect(tab.doc.layout?.inline.get("/attributes")).toBe(true);
 
     // The measured case from issue 308: one style change turned `{ "part": "bar" }` into three lines.
-    (tab.doc.document.style as Record<string, unknown>).flex = "2";
+    const { style } = tab.doc.document;
+    if (!style) {
+      throw new Error("statusbar.json's root carries a style block");
+    }
+    style["flex"] = "2";
     tab.doc.dirty = true;
     expect(await saveFile(tab)).toBe(true);
 
@@ -172,7 +176,7 @@ describe("a JSON tab carries its file's layout", () => {
     );
     const tab = openTab({ document, id: "kept", layout });
     // What transact does: a new root reference with the same shape.
-    tab.doc.document = { ...tab.doc.document, tagName: "section" } as typeof tab.doc.document;
+    tab.doc.document = { ...tab.doc.document, tagName: "section" };
     expect(await serializeDocument(tab)).toBe(
       '{ "tagName": "section", "attributes": { "part": "a" } }\n',
     );
@@ -206,7 +210,7 @@ describe("a JSON tab carries its file's layout", () => {
     expect(tab.doc.layout).toBeNull();
     const peerText = '{ "tagName": "main", "attributes": { "part": "a" } }\n';
     const parsed = await parseCollabSource(tab, peerText);
-    expect(parsed.document).toEqual({ attributes: { part: "a" }, tagName: "main" } as never);
+    expect(parsed.document).toEqual({ attributes: { part: "a" }, tagName: "main" });
     expect(tab.doc.layout?.inline.get("")).toBe(true);
     expect(tab.doc.layout?.inline.get("/attributes")).toBe(true);
     // The next mirror writes the peer's layout back, not the formatter's fresh one.

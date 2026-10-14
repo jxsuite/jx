@@ -18,49 +18,61 @@
 // Command set; when the app bootstraps its registry from more than one contribution point, this
 // Script's default source becomes whatever module composes them — the check is unchanged.
 
+import { isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import { checkPlacements, PLACEMENT_MATRIX } from "../packages/studio/src/commands/levels";
 import type { PlaceableRecord } from "../packages/studio/src/commands/levels";
 
-const DEFAULT_SOURCE = "../packages/studio/src/commands/app-commands.ts";
+/** The studio module this check and `check-chrome-budget.ts` read when no `--source` is given. */
+export const DEFAULT_SOURCE = "../packages/studio/src/commands/app-commands.ts";
 
 interface CommandSource {
-  defaultCommandSet?: () => PlaceableRecord[];
+  defaultCommandSet: () => PlaceableRecord[];
 }
 
-const args = process.argv.slice(2);
-const sourceIndex = args.indexOf("--source");
-if (sourceIndex !== -1 && !args[sourceIndex + 1]) {
-  console.error("Usage: bun scripts/check-command-levels.ts [--source <module>]");
-  process.exit(2);
-}
-const sourcePath =
-  sourceIndex === -1 ? DEFAULT_SOURCE : Bun.pathToFileURL(args[sourceIndex + 1]!).href;
-
-const source = (await import(sourcePath)) as CommandSource;
-if (typeof source.defaultCommandSet !== "function") {
-  console.error(`${sourcePath} does not export defaultCommandSet()`);
-  process.exit(2);
+/**
+ * A `--source` module that exports a callable `defaultCommandSet`. The records it returns are the
+ * module's own typed export, so only the export's presence is checked here.
+ */
+function isCommandSource(mod: unknown): mod is CommandSource {
+  return isNonNullObject(mod) && "defaultCommandSet" in mod && isFunction(mod.defaultCommandSet);
 }
 
-const commands = source.defaultCommandSet();
-const violations = checkPlacements(commands);
-
-if (violations.length > 0) {
-  console.error("Level × placement violations (studio-ui-guidelines §12.1):\n");
-  for (const violation of violations) {
-    console.error(`  ✗ ${violation.commandId} ${violation.message}`);
+if (import.meta.main) {
+  const args = process.argv.slice(2);
+  const sourceIndex = args.indexOf("--source");
+  if (sourceIndex !== -1 && !args[sourceIndex + 1]) {
+    console.error("Usage: bun scripts/check-command-levels.ts [--source <module>]");
+    process.exit(2);
   }
-  console.error(
-    "\nEither the command's `level` is wrong (file a surface by the level of the state it " +
-      "WRITES, not the state it reads) or it is declared into a region that does not host that " +
-      "level. A region that genuinely needs a second level gets a new row in PLACEMENT_MATRIX, " +
-      "with the reason — not an exemption in a comment.",
-  );
-  process.exit(1);
-}
+  const sourcePath =
+    sourceIndex === -1 ? DEFAULT_SOURCE : Bun.pathToFileURL(args[sourceIndex + 1]!).href;
 
-const placed = commands.filter((command) => (command.menus ?? []).length > 0).length;
-console.log(
-  `command-levels OK: ${commands.length} command(s), ${placed} with declared placements, ` +
-    `checked against ${Object.keys(PLACEMENT_MATRIX).length} matrix rows.`,
-);
+  const source = await import(sourcePath);
+  if (!isCommandSource(source)) {
+    console.error(`${sourcePath} does not export defaultCommandSet()`);
+    process.exit(2);
+  }
+
+  const commands = source.defaultCommandSet();
+  const violations = checkPlacements(commands);
+
+  if (violations.length > 0) {
+    console.error("Level × placement violations (studio-ui-guidelines §12.1):\n");
+    for (const violation of violations) {
+      console.error(`  ✗ ${violation.commandId} ${violation.message}`);
+    }
+    console.error(
+      "\nEither the command's `level` is wrong (file a surface by the level of the state it " +
+        "WRITES, not the state it reads) or it is declared into a region that does not host that " +
+        "level. A region that genuinely needs a second level gets a new row in PLACEMENT_MATRIX, " +
+        "with the reason — not an exemption in a comment.",
+    );
+    process.exit(1);
+  }
+
+  const placed = commands.filter((command) => (command.menus ?? []).length > 0).length;
+  console.log(
+    `command-levels OK: ${commands.length} command(s), ${placed} with declared placements, ` +
+      `checked against ${Object.keys(PLACEMENT_MATRIX).length} matrix rows.`,
+  );
+}

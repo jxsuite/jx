@@ -3,23 +3,24 @@
 import { Electroview } from "electrobun/view";
 import { streamImport } from "@jxsuite/studio/import-client";
 import { base64ToBytes, toBase64 } from "@jxsuite/studio/base64";
+import { isString } from "@jxsuite/schema/guards";
 import type { RecentProjectEntry, StudioRPC } from "./rpc-schema";
 import type {
   DataRowDelete,
   DataRowInsert,
   DataRowUpdate,
   DataRowsQuery,
-  SecretsSetRequest,
-  SettingsPatch,
+  KeyValuePatch,
 } from "@jxsuite/protocol";
 import type {
   CreateProjectDestination,
+  FormatActionRequest,
   ImportProgressEvent,
   ImportReadyEvent,
   ImportSiteOptions,
   StudioPlatform,
 } from "@jxsuite/studio/types";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import type { FsEventPayload } from "@jxsuite/server/refactor";
 import { setPreviewNavigateHandler } from "@jxsuite/studio/preview-navigate";
 
@@ -72,7 +73,7 @@ export function createDesktopPlatform() {
     void rpc.request
       .openExternal({ url })
       .then((result) => {
-        if (!result?.ok) {
+        if (!result.ok) {
           fallback();
         }
       })
@@ -83,16 +84,8 @@ export function createDesktopPlatform() {
   void electroview;
 
   const originalFetch = window.fetch.bind(window);
-  (window as unknown as Record<string, unknown>).fetch = async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : (input as Request).url;
+  const routedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = isString(input) ? input : input instanceof URL ? input.href : input.url;
 
     // Route the runtime's dev-proxy endpoints through RPC. The runtime POSTs to relative
     // "/__jx_resolve__" (class resolution) and "/__jx_server__" (server functions); under the
@@ -124,6 +117,9 @@ export function createDesktopPlatform() {
 
     return originalFetch(input, init);
   };
+  /* SAFETY: `typeof fetch` carries Bun's `preconnect` only because this package's program loads
+     Bun's types beside the DOM's. The webview's fetch has no such member, and nothing reads it. */
+  window.fetch = routedFetch as typeof window.fetch;
 
   // ─── Global MutationObserver: resolve relative asset URLs everywhere ────────
   // Catches <img src>, <video src>, <source src>, <video poster> in any part of
@@ -175,12 +171,19 @@ export function createDesktopPlatform() {
     }
   }
 
+  /**
+   * Whether `el` carries an inline style declaration. HTML, SVG and MathML elements all do; a bare
+   * `Element` (an unknown namespace) need not, and is left alone.
+   */
+  function hasInlineStyle(el: Element): el is Element & ElementCSSInlineStyle {
+    return "style" in el && Boolean(el.style);
+  }
+
   function resolveBackgroundImage(el: Element) {
-    const htmlEl = el as HTMLElement;
-    if (!htmlEl.style) {
+    if (!hasInlineStyle(el)) {
       return;
     }
-    const bg = htmlEl.style.backgroundImage;
+    const bg = el.style.backgroundImage;
     if (!bg) {
       return;
     }
@@ -199,7 +202,7 @@ export function createDesktopPlatform() {
     }
     // Rewrite the background-image url() to the loopback origin (a cross-origin image load).
     const path = val.replace(/^\.?\//, "");
-    htmlEl.style.backgroundImage = `url(${origin}/${path})`;
+    el.style.backgroundImage = `url(${origin}/${path})`;
   }
 
   function resolveAllAssets(el: Element) {
@@ -220,9 +223,11 @@ export function createDesktopPlatform() {
           if (node.nodeType !== 1) {
             continue;
           }
+          // SAFETY: nodeType 1 is ELEMENT_NODE, which only Element nodes report.
           resolveAllAssets(node as Element);
         }
       } else if (mutation.type === "attributes") {
+        // SAFETY: only elements carry attributes, so an attribute record's target is an Element.
         const el = mutation.target as Element;
         if (mutation.attributeName === "style") {
           resolveBackgroundImage(el);
@@ -254,6 +259,7 @@ export function createDesktopPlatform() {
      * studio boot, before the first canvas mount). The iframe-host resolves the iframe `src`
      * against it, and the asset observer rewrites relative panel asset srcs to this origin.
      */
+    // SAFETY: a widening, not a narrowing: the url is undefined until activate() sets the string.
     canvasUrl: undefined as string | undefined,
     /* This window's loopback port, so the url is not known until activate() has asked for it over
        RPC. Declared so the iframe host waits rather than mounting the bundle-relative fallback —
@@ -330,7 +336,7 @@ export function createDesktopPlatform() {
       return rpc.request.getSettings();
     },
 
-    async patchSettings(patch: SettingsPatch) {
+    async patchSettings(patch: KeyValuePatch) {
       return rpc.request.patchSettings({ patch });
     },
 
@@ -354,13 +360,17 @@ export function createDesktopPlatform() {
       if (!root) {
         return null;
       }
+      const directories: string[] = [];
       try {
         const content = await rpc.request.readFile({ path: "project.json" });
-        const config = JSON.parse(content as string) as ProjectConfig;
+        /* SAFETY: project.json is this project's config by definition, and every ProjectConfig
+           member is optional; `name` is read through `||`, and a file that does not parse lands in
+           the non-site branch below. */
+        const config = JSON.parse(content) as ProjectConfig;
         // `root` (the absolute backend root) is already resolved above and is the re-openable key.
         return {
           info: {
-            directories: [] as string[],
+            directories,
             isSiteProject: true as const,
             projectConfig: config,
           },
@@ -369,7 +379,7 @@ export function createDesktopPlatform() {
       } catch {
         return {
           info: {
-            directories: [] as string[],
+            directories,
             isSiteProject: false as const,
             projectConfig: null,
           },
@@ -396,6 +406,8 @@ export function createDesktopPlatform() {
        `server.md` §4.2). A Blob built from these bytes is same-origin by construction. */
     async readFileBytes(path: string) {
       const { data } = await rpc.request.readFileBytes({ path });
+      /* SAFETY: base64ToBytes builds its array with Uint8Array.from, which always allocates a fresh
+         ArrayBuffer of exactly the decoded length, never a SharedArrayBuffer. */
       return base64ToBytes(data).buffer as ArrayBuffer;
     },
 
@@ -438,7 +450,7 @@ export function createDesktopPlatform() {
       return rpc.request.discoverComponents({ ...(dir != null && { dir }) });
     },
 
-    async codeService(action: string, payload: unknown) {
+    async codeService(action: string, payload: JsonValue | undefined) {
       return rpc.request.codeService({ action, payload });
     },
 
@@ -590,7 +602,7 @@ export function createDesktopPlatform() {
       return res.names;
     },
 
-    async setSecrets(req: SecretsSetRequest) {
+    async setSecrets(req: KeyValuePatch) {
       return rpc.request.setSecrets(req);
     },
 
@@ -598,23 +610,21 @@ export function createDesktopPlatform() {
      * Class resolution via the shared dev-proxy pipeline (the same handler the canvas runtime
      * reaches through the fetch patch above), called directly over RPC.
      *
-     * @param {Record<string, unknown>} body
+     * @param body The `$prototype` definition to resolve.
      */
-    async resolveClass(body: Record<string, unknown>) {
+    async resolveClass(body: JsonObject) {
       const { status, body: resBody } = await rpc.request.jxResolve({
         body: JSON.stringify(body),
       });
       if (status >= 400) {
         throw new Error(`Class resolution failed: ${status}`);
       }
-      return JSON.parse(resBody) as unknown;
+      // SAFETY: JSON.parse with no reviver yields only JSON values.
+      return JSON.parse(resBody) as JsonValue;
     },
 
-    /** @param {Record<string, unknown>} payload */
-    async formatAction(payload: Record<string, unknown>) {
-      return rpc.request.formatAction(
-        payload as { format: string; action: string; source?: string },
-      );
+    async formatAction(payload: FormatActionRequest) {
+      return rpc.request.formatAction(payload);
     },
 
     async addPackage(name: string) {
@@ -681,10 +691,7 @@ export function createDesktopPlatform() {
           "The desktop app creates projects on disk; repo destinations are cloud-only",
         );
       }
-      return rpc.request.createProject({ ...opts, destination }) as Promise<{
-        root: string;
-        config: ProjectConfig;
-      }>;
+      return rpc.request.createProject({ ...opts, destination });
     },
 
     async listStarters() {
@@ -709,7 +716,7 @@ export function createDesktopPlatform() {
       if (!/^(?:[a-zA-Z]:[\\/]|\/)/.test(directory)) {
         throw new Error("A destination folder is required.");
       }
-      const endpoint = (await rpc.request.importSiteUrl()) as string;
+      const endpoint = await rpc.request.importSiteUrl();
       return streamImport(endpoint, opts, onProgress, signal, onReady);
     },
 
@@ -742,7 +749,7 @@ export function createDesktopPlatform() {
 
     // AI Assistant (Stack B: absolute SSE proxy URL from the shared local server, via RPC)
     async aiChatUrl() {
-      return rpc.request.aiChatUrl() as Promise<string>;
+      return rpc.request.aiChatUrl();
     },
   };
 
@@ -783,7 +790,10 @@ export function createDesktopPlatform() {
  * @param version The version that has been downloaded and is waiting for a restart.
  * @param rpc The webview's RPC handle, for the restart itself.
  */
-function showUpdateToast(version: string, rpc: { request: { updaterApplyUpdate: () => unknown } }) {
+function showUpdateToast(
+  version: string,
+  rpc: { request: { updaterApplyUpdate: () => Promise<void> } },
+) {
   const container = document.createElement("div");
   container.className = "update-toast-container";
 

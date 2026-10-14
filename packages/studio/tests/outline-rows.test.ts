@@ -21,6 +21,7 @@ import {
   mountOutline,
   needRow,
   outlineHost,
+  part,
   press,
   resetOutline,
   row,
@@ -32,6 +33,7 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { pathKey } from "../src/store";
+import { childArray } from "@jxsuite/schema/doc-ops";
 import { view } from "../src/view";
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -57,6 +59,12 @@ async function draw(): Promise<HTMLElement> {
 
 function at(path: JxPath): HTMLElement {
   return needRow(host, pathKey(path));
+}
+
+/** The `data-value` of whatever holds focus — which row the keyboard is on, when it is a row. */
+function focusedValue(): string | undefined {
+  const focused = document.activeElement;
+  return focused instanceof HTMLElement ? focused.dataset.value : undefined;
 }
 
 /** Whether the row's verb cluster is drawn with its backing plate, or invisible and empty. */
@@ -97,7 +105,7 @@ afterEach(() => {
 // ─── What a row says ─────────────────────────────────────────────────────────
 
 describe("outlineLabel", () => {
-  const label = (node: Partial<JxMutableNode>) => outlineLabel(node as JxMutableNode);
+  const label = outlineLabel;
 
   test("a $title wins over everything", () => {
     expect(label({ $id: "hero", $title: "Hero band", tagName: "section" })).toBe("Hero band");
@@ -118,9 +126,7 @@ describe("outlineLabel", () => {
   });
 
   test("a bound class attribute is not a name", () => {
-    expect(label({ attributes: { class: { $ref: "#/state/cls" } }, tagName: "div" } as never)).toBe(
-      "",
-    );
+    expect(label({ attributes: { class: { $ref: "#/state/cls" } }, tagName: "div" })).toBe("");
   });
 
   test("a landmark gets its human name", () => {
@@ -162,7 +168,7 @@ describe("outlineLabel", () => {
   });
 
   test("repeaters and slots keep the composed name nodeLabel gives them", () => {
-    expect(label({ $prototype: "Array", items: { $ref: "#/state/posts" } } as never)).toBe(
+    expect(label({ $prototype: "Array", items: { $ref: "#/state/posts" } })).toBe(
       "Repeater → #/state/posts",
     );
     expect(label({ attributes: { name: "footer" }, tagName: "slot" })).toContain("footer");
@@ -262,7 +268,7 @@ describe("row actions", () => {
     const canMoveDown = () => !isRefusing(rowActions(at(["children", 2])), "selection.moveDown");
     expect(canMoveDown()).toBe(false); // Last child.
 
-    (activeTab.value!.doc.document.children as JxMutableNode[]).push({ tagName: "hr" });
+    childArray(activeTab.value!.doc.document).push({ tagName: "hr" });
     await draw();
     expect(at(["children", 2]).isConnected).toBe(true);
     expect(canMoveDown()).toBe(true); // No longer last.
@@ -354,6 +360,20 @@ describe("role=tree and the keyboard model", () => {
     expect(at(["children", 0]).getAttribute("aria-setsize")).toBe("3");
   });
 
+  test("a $switch whose cases are not an object is a leaf, not a crash", async () => {
+    /* A document mid-edit in the source view, or a hand-written file, can carry `cases: null` or a
+       string. The schema type cannot say that, so the malformed values are written over typed
+       nodes, the way a parsed file would hand them to the tree. */
+    const nullCases: JxMutableNode = { $switch: "mode", tagName: "div" };
+    const textCases: JxMutableNode = { $switch: "mode", tagName: "div" };
+    Object.assign(nullCases, { cases: null });
+    Object.assign(textCases, { cases: "a" });
+    resetWorkspaceWithTab({ children: [nullCases, textCases], tagName: "div" });
+    await draw();
+    expect(at(["children", 0]).getAttribute("aria-expanded")).toBeNull();
+    expect(at(["children", 1]).getAttribute("aria-expanded")).toBeNull();
+  });
+
   test("aria-selected follows the selection, and so does the single tab stop", async () => {
     activeTab.value!.session.selection = [["children", 2]];
     await draw();
@@ -372,7 +392,7 @@ describe("role=tree and the keyboard model", () => {
   });
 
   test("an empty tree has no rows to hand a tab stop to, and teaches instead", async () => {
-    resetWorkspaceWithTab({ children: [], tagName: "div" } as JxMutableNode);
+    resetWorkspaceWithTab({ children: [], tagName: "div" });
     activeTab.value!.doc.mode = "content";
     await draw();
     expect(treeItems(host)).toHaveLength(0);
@@ -385,7 +405,7 @@ describe("role=tree and the keyboard model", () => {
     press(at([]), "ArrowDown");
     await flush();
     expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
-    expect((document.activeElement as HTMLElement).dataset.value).toBe("children/0");
+    expect(focusedValue()).toBe("children/0");
 
     press(at(["children", 0]), "ArrowUp");
     await flush();
@@ -414,7 +434,7 @@ describe("role=tree and the keyboard model", () => {
 
     press(at(["children", 0]), "ArrowRight");
     await flush();
-    expect((document.activeElement as HTMLElement).dataset.value).toBe("children/0/children/0");
+    expect(focusedValue()).toBe("children/0/children/0");
   });
 
   test("→ on a leaf does nothing", async () => {
@@ -435,7 +455,7 @@ describe("role=tree and the keyboard model", () => {
     press(at(["children", 0]), "ArrowLeft");
     await flush();
     expect(activeTab.value!.session.selection).toEqual([[]]);
-    expect((document.activeElement as HTMLElement).dataset.value).toBe("");
+    expect(focusedValue()).toBe("");
   });
 
   test("← at the top of the tree has nowhere to go", async () => {
@@ -521,7 +541,7 @@ describe("role=tree and the keyboard model", () => {
     await draw();
     press(at(["children", 2]), "Enter");
     await flush(2);
-    const input = at(["children", 2]).querySelector('[part="title-input"]') as HTMLInputElement;
+    const input = part(at(["children", 2]), "title-input");
     expect(input).not.toBeNull();
     input.focus();
 
@@ -548,14 +568,14 @@ describe("role=tree and the keyboard model", () => {
        and this tree never had it: a 5 000-row outline was ↓ five thousand times. */
     press(at([]), "e");
     await flush();
-    expect((document.activeElement as HTMLElement).dataset.value).toBe("children/0/children/1");
+    expect(focusedValue()).toBe("children/0/children/1");
   });
 
   test("a text-node line is drawn but is not a tree item", async () => {
     resetWorkspaceWithTab({
       children: [{ children: ["Just words"], tagName: "p" }],
       tagName: "div",
-    } as JxMutableNode);
+    });
     await draw();
     const text = needRow(host, pathKey(["children", 0, "children", 0]));
     expect(text.dataset.kind).toBe("text");
@@ -591,7 +611,7 @@ describe("the panel's rules over the element's", () => {
 
     hover(line);
     await flush();
-    const verbs = line.querySelector('[part="verbs"]') as HTMLElement;
+    const verbs = part(line, "verbs");
     expect(getComputedStyle(verbs).position).toBe("absolute");
   });
 
@@ -607,9 +627,7 @@ describe("the panel's rules over the element's", () => {
        that, hid it with an inline `display: none` a keyed re-render could leave behind. */
     expect(line.dataset.editing).toBe("true");
     expect(line.getAttribute("aria-label")).toBe(textOf(line, "label"));
-    expect(getComputedStyle(line.querySelector('[part="label"]') as HTMLElement).display).toBe(
-      "none",
-    );
+    expect(getComputedStyle(part(line, "label")).display).toBe("none");
     expect(line.querySelector('[part="title-input"]')).not.toBeNull();
   });
 });
@@ -735,7 +753,7 @@ describe("clicking a row", () => {
 
   test("a click on the chevron collapses instead of selecting", async () => {
     await draw();
-    const toggle = at(["children", 0]).querySelector('[part="twisty"]') as HTMLElement;
+    const toggle = part(at(["children", 0]), "twisty");
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
     expect(view._layersCollapsed!.has(pathKey(["children", 0]))).toBe(true);
@@ -749,7 +767,7 @@ describe("clicking a row", () => {
     // Case that matters: a row's buttons act on that row, not on the selection.
     hover(at(["children", 2]));
     await flush();
-    const cluster = at(["children", 2]).querySelector('[part="verbs"]') as HTMLElement;
+    const cluster = part(at(["children", 2]), "verbs");
     expect(cluster.querySelectorAll("jx-action-button").length).toBeGreaterThan(0);
 
     click(cluster);
@@ -785,7 +803,7 @@ describe("clicking a row", () => {
        children when it was last collapsed and an edit has since taken them away. */
     view._layersCollapsed = new Set([pathKey(["children", 2])]);
     await draw();
-    const toggle = at(["children", 2]).querySelector('[part="twisty"]') as HTMLElement;
+    const toggle = part(at(["children", 2]), "twisty");
     expect(toggle.children).toHaveLength(0);
 
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));

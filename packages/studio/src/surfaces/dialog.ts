@@ -25,27 +25,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { selectValue } from "@jxsuite/ui/behaviors/textfield";
 import dialogDoc from "./dialog.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("dialog", dialogDoc as unknown as JxDocument);
-
-/**
- * One option of a prompt's choice.
- *
- * There is no `selected` here, and its absence is the contract rather than an omission: `jx-select`
- * is a native `<select>`, and the reader's first pick sets an option's dirtiness flag, after which
- * the `selected` content attribute stops moving selectedness (`ui.md` §5.1). A projection that
- * marked a row would be right until the first pick and wrong after it. The chosen row is named by
- * `chosen`, once, beside the list.
- */
-export interface DialogChoiceOption {
-  value: string;
-  label: string;
-}
+registerSurface("dialog", dialogDoc);
 
 /** What a flow hands the surface. Everything is a projection; the flow keeps the state machine. */
 export interface DialogSurfaceOptions {
@@ -61,8 +46,15 @@ export interface DialogSurfaceOptions {
   message?: string;
   /** Render a richer body into the document's island, once the element is ready. */
   island?: (host: HTMLElement) => void;
-  /** A `jx-select` above the field, and which of its rows is chosen. */
-  choice?: { label: string; options: DialogChoiceOption[]; chosen: string };
+  /**
+   * A `jx-select` above the field, and which of its rows is chosen. The rows carry no `selected`,
+   * and that absence is the contract rather than an omission: `jx-select` is a native `<select>`,
+   * and the reader's first pick sets an option's dirtiness flag, after which the `selected` content
+   * attribute stops moving selectedness (`ui.md` §5.1). A projection that marked a row would be
+   * right until the first pick and wrong after it. The chosen row is named by `chosen`, once,
+   * beside the list.
+   */
+  choice?: { label: string; options: SurfaceOption[]; chosen: string };
   /** The prompt's field. */
   field?: {
     value: string;
@@ -104,7 +96,7 @@ export interface DialogSurfacePatch {
   placeholder?: string;
   invalid?: boolean;
   error?: string;
-  options?: DialogChoiceOption[];
+  options?: SurfaceOption[];
   chosen?: string;
 }
 
@@ -118,7 +110,7 @@ export interface DialogSurfaceHandle {
   close: () => void;
 }
 
-interface DialogScope extends Record<string, unknown> {
+interface DialogScope {
   headline: string;
   confirmLabel: string;
   secondaryLabel: string;
@@ -129,7 +121,7 @@ interface DialogScope extends Record<string, unknown> {
   hasMessage: boolean;
   hasChoice: boolean;
   choiceLabel: string;
-  options: DialogChoiceOption[];
+  options: SurfaceOption[];
   hasField: boolean;
   multiline: boolean;
   rows: string;
@@ -195,7 +187,7 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
   slot.setAttribute(REGION_ATTR, overlayRegion("dialog", options.region));
   options.layer.append(slot);
 
-  const scope = reactive<DialogScope>({
+  const scope: DialogScope = reactive<DialogScope>({
     cancel: () => {
       options.onCancel();
     },
@@ -236,10 +228,14 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
     secondaryLabel: options.secondaryLabel ?? "",
     size: options.size ?? "sm",
     value: options.field?.value ?? "",
-  }) as DialogScope;
+  });
 
   let handle: SurfaceHandle | null = null;
   let closed = false;
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
   /* Closing while the element is still rendering must not leave `ready` waiting on a `jx-ready`
      a disposed element will never send, so the wait races against the close. */
   let abort: () => void = () => {};
@@ -248,14 +244,16 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
   });
   const mounted = mountSurface("dialog", scope, slot);
   const ready = mounted.then(async (surface) => {
+    /* SAFETY: `dialog.json`'s root definition is a `jx-dialog` element, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     handle = surface;
     await Promise.race([whenReady(element), aborted]);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     options.island?.(element.querySelector<HTMLElement>('[part="island"]') ?? element);
@@ -284,7 +282,7 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
       const element = handle?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it was; then the document goes.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does.
       handle?.dispose();

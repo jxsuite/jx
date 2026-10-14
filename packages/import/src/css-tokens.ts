@@ -3,6 +3,7 @@
  * var(--name) references. Hoists token declarations for project.json.$style.
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import type { DiffedStyle } from "./style-diff.ts";
 
 export interface TokenExtractionResult {
@@ -125,7 +126,7 @@ export function applyTokens(
       if (!TOKEN_ELIGIBLE_PROPS.has(prop)) {
         continue;
       }
-      if (typeof value !== "string") {
+      if (!isString(value)) {
         continue;
       }
       // Already a var() reference

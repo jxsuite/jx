@@ -31,6 +31,7 @@
  * find-replace in those two call sites.
  */
 
+import { isJsonPrimitive, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { flattenTree, nodeLabel, projectState } from "../store";
 import { documentExtensions, formatByExtension, loadFormats } from "../format/format-host";
@@ -45,7 +46,7 @@ import { activeRegistry } from "../commands/active-registry";
 import { runActiveReported, runReported } from "../commands/run-reported";
 import type { PaletteMode } from "../commands/defaults";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
+import type { CommandArgValues } from "../commands/command-args";
 import type { SurfaceHandle } from "../ui/surface";
 import type { JxPath } from "../state";
 
@@ -123,6 +124,12 @@ export function modeSpec(mode: PaletteMode): PaletteModeSpec {
   return MODE_SPEC.get(mode) ?? PALETTE_MODES[0]!;
 }
 
+/** The mode an input resolves to, and the query left once a prefix has moved into the chip. */
+export interface ResolvedPaletteMode {
+  mode: PaletteMode;
+  query: string;
+}
+
 /**
  * The mode a raw input actually addresses.
  *
@@ -139,7 +146,7 @@ export function resolvePaletteMode(
   requested: PaletteMode,
   raw: string,
   projectOpen: boolean,
-): { mode: PaletteMode; query: string } {
+): ResolvedPaletteMode {
   const prefixed = PREFIXED_MODES.find((spec) => raw.startsWith(spec.prefix));
   if (prefixed) {
     return resolvePaletteMode(prefixed.mode, raw.slice(1), projectOpen);
@@ -220,7 +227,7 @@ export function rankBy<T>(items: readonly T[], query: string, key: (item: T) => 
 
 /** One offered value for a command's single argument. */
 export interface PaletteArgChoice {
-  value: unknown;
+  value: string | boolean;
   label: string;
 }
 
@@ -229,11 +236,6 @@ export type PaletteArgs =
   | { kind: "none" }
   | { kind: "choice"; name: string; choices: PaletteArgChoice[] }
   | { kind: "unsupported" };
-
-interface ArgsSchemaShape {
-  properties?: Record<string, { type?: string; enum?: readonly unknown[]; description?: string }>;
-  required?: readonly string[];
-}
 
 /**
  * How a command's arguments are asked for.
@@ -246,7 +248,7 @@ interface ArgsSchemaShape {
  * a command that gains an enum argument becomes promptable without anyone editing this file.
  */
 export function paletteArgs(command: AnyCommand): PaletteArgs {
-  const schema = command.args as ArgsSchemaShape | undefined;
+  const schema = command.args;
   const properties = schema?.properties;
   if (!schema || !properties) {
     return { kind: "none" };
@@ -308,7 +310,7 @@ const RECENT_COMMANDS_MAX = 6;
 export function getRecentCommands(): string[] {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(RECENT_COMMANDS_KEY) || "[]");
-    return Array.isArray(raw) ? raw.filter((id) => typeof id === "string") : [];
+    return Array.isArray(raw) ? raw.filter((id) => isString(id)) : [];
   } catch {
     return [];
   }
@@ -370,7 +372,7 @@ interface ArgRow {
   kind: "arg";
   commandId: string;
   argName: string;
-  value: unknown;
+  value: string | boolean;
   name: string;
   detail: string;
 }
@@ -437,7 +439,7 @@ export function isQuickSearchOpen(): boolean {
 
 /** The project root scoping the palette, or null when no project is open. */
 function scopeRoot(): string | null {
-  return projectState ? (projectState.projectRoot ?? null) : null;
+  return projectState ? projectState.projectRoot : null;
 }
 
 function hasProject(): boolean {
@@ -445,7 +447,7 @@ function hasProject(): boolean {
 }
 
 /** The mode and query the current input resolves to. */
-function current(): { mode: PaletteMode; query: string } {
+function current(): ResolvedPaletteMode {
   return resolvePaletteMode(_requested, _query, hasProject());
 }
 
@@ -466,6 +468,15 @@ function shortenPath(path: string) {
 }
 
 /**
+ * What a file row reads from a search hit. `name` is optional because the cloud adapter hands back
+ * its response body unvalidated, so a hit without one falls back to the path's last segment.
+ */
+interface SearchHit {
+  path: string;
+  name?: string;
+}
+
+/**
  * Fetch the project's document set once per open.
  *
  * The empty query is deliberate: `searchFiles`'s glob is `**\/*<query>*.{json,md,…}`, so an empty
@@ -480,7 +491,7 @@ async function ensureFiles(): Promise<void> {
   renderOverlay();
   try {
     await loadFormats();
-    const hits = await getPlatform().searchFiles("", documentExtensions());
+    const hits: readonly SearchHit[] = await getPlatform().searchFiles("", documentExtensions());
     _files = hits.map((hit) => ({
       kind: "file" as const,
       path: hit.path,
@@ -566,23 +577,27 @@ function nodeRows(query: string): NodeRow[] {
   const rows: NodeRow[] = flattenTree(tab.doc.document).map((row) => ({
     kind: "node" as const,
     path: row.path,
-    name:
-      row.nodeType === "text"
-        ? String(row.node).slice(0, 60)
-        : nodeLabel(row.node as JxMutableNode),
+    // A primitive is exactly what `flattenTree` emits as a "text" row; every other row is a node.
+    name: isJsonPrimitive(row.node) ? String(row.node).slice(0, 60) : nodeLabel(row.node),
     detail: row.nodeType,
   }));
   return rankBy(rows, query.trim(), (row) => row.name);
 }
 
 function modeRows(): ModeRow[] {
-  return PALETTE_MODES.filter((spec) => spec.mode !== "picker").map((spec) => ({
-    kind: "mode" as const,
-    mode: spec.mode,
-    name: spec.chip,
-    detail: spec.description,
-    chord: spec.prefix,
-  }));
+  return PALETTE_MODES.flatMap((spec) =>
+    spec.mode === "picker"
+      ? []
+      : [
+          {
+            kind: "mode" as const,
+            mode: spec.mode,
+            name: spec.chip,
+            detail: spec.description,
+            chord: spec.prefix,
+          },
+        ],
+  );
 }
 
 function argRows(query: string): ArgRow[] {
@@ -598,8 +613,14 @@ function argRows(query: string): ArgRow[] {
   return rankBy(rows, query.trim(), (row) => row.name);
 }
 
+/** What the list draws: its rows, and whether they are a "recent" listing rather than a search. */
+interface CurrentRows {
+  rows: PaletteRow[];
+  showingRecent: boolean;
+}
+
 /** The rows for the current input, and whether they are a "recent" listing rather than a search. */
-function currentRows(): { rows: PaletteRow[]; showingRecent: boolean } {
+function currentRows(): CurrentRows {
   const { mode, query } = current();
   if (_pending) {
     return { rows: argRows(query), showingRecent: false };
@@ -669,7 +690,7 @@ function enterMode(mode: PaletteMode) {
   void ensureFiles();
 }
 
-function runCommand(command: AnyCommand, args?: Record<string, unknown>) {
+function runCommand(command: AnyCommand, args?: CommandArgValues) {
   const registry = activeRegistry();
   if (!registry) {
     return;
@@ -838,7 +859,7 @@ export interface PaletteRowProjection {
   chord: string;
 }
 
-interface PaletteScope extends Record<string, unknown> {
+interface PaletteScope {
   open: boolean;
   hasChip: boolean;
   chipLabel: string;
@@ -863,10 +884,11 @@ interface PaletteScope extends Record<string, unknown> {
   activate: () => void;
   clearMode: () => void;
   hover: (index: number) => void;
-  activateRow: (value: unknown) => void;
+  /** The `select` detail of the picked `jx-option`: its `value` attribute, a string. */
+  activateRow: (value: string) => void;
 }
 
-registerSurface("palette", paletteDoc as unknown as JxDocument);
+registerSurface("palette", paletteDoc);
 
 let _scope: PaletteScope | null = null;
 let _mount: Promise<SurfaceHandle> | null = null;
@@ -924,7 +946,7 @@ function scope(): PaletteScope {
     rows: [],
     sectionLabel: "",
     showSection: false,
-  }) as PaletteScope;
+  });
   return _scope;
 }
 

@@ -16,6 +16,9 @@
  * @docs framework/site/content-collections
  */
 
+import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
+import type { ContentFieldValue, ContentLoaderEntry, JsonValue } from "@jxsuite/schema/types";
+
 // ─── exclude: globs relative to the source root ─────────────────────────────
 
 /**
@@ -225,7 +228,8 @@ export function compileExclude(patterns?: readonly string[]): ExcludeMatcher {
   const dirs: RegExp[] = [];
   let everything = false;
   for (const pattern of patterns) {
-    if (typeof pattern !== "string" || pattern.trim() === "") {
+    // The list is project.json data, so an entry is checked rather than trusted to be text.
+    if (!isString(pattern) || pattern.trim() === "") {
       throw new TypeError(
         `"exclude" entries must be non-empty strings, got ${JSON.stringify(pattern)}`,
       );
@@ -266,27 +270,33 @@ export function compileExclude(patterns?: readonly string[]): ExcludeMatcher {
 
 // ─── where: a declarative frontmatter filter ────────────────────────────────
 
+/** An entry's frontmatter as a filter reads it: field name → value, absent when it is not set. */
+type FieldData = ContentLoaderEntry["data"];
+
+/** A field value, or an operand, in the form a filter compares; `undefined` is a missing field. */
+type FieldValue = ContentFieldValue | undefined;
+
 /** Whether an entry's frontmatter passes a compiled `where`. */
 export interface WherePredicate {
-  (data: Record<string, unknown>): boolean;
+  (data: FieldData): boolean;
   /**
    * The first field whose condition `data` fails, for a message that says why an entry was left
    * out.
    */
-  why: (data: Record<string, unknown>) => string | undefined;
+  why: (data: FieldData) => string | undefined;
 }
 
 /** The query operators. Closed on purpose: see the module comment. */
 const OPERATORS = new Set(["$eq", "$ne", "$in", "$nin", "$exists", "$gt", "$gte", "$lt", "$lte"]);
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+function isPlainObject(value: FieldValue | FieldData): value is FieldData {
   return (
     typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)
   );
 }
 
 /** A frontmatter value in the form a filter compares: YAML dates become RFC 3339 text. */
-function comparable(value: unknown): unknown {
+function comparable(value: FieldValue): FieldValue {
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) {
       return undefined;
@@ -297,7 +307,7 @@ function comparable(value: unknown): unknown {
   return value;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+function deepEqual(a: FieldValue, b: FieldValue): boolean {
   if (a === b) {
     return true;
   }
@@ -321,7 +331,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * it, so `{"tags": "frappe"}` selects every entry tagged frappe without a second operator. An array
  * or object operand compares as a whole value.
  */
-function sameValue(actual: unknown, expected: unknown): boolean {
+function sameValue(actual: FieldValue, expected: JsonValue | undefined): boolean {
   const a = comparable(actual);
   if (Array.isArray(expected) || isPlainObject(expected)) {
     return deepEqual(a, expected);
@@ -333,7 +343,7 @@ function sameValue(actual: unknown, expected: unknown): boolean {
 }
 
 /** Read a frontmatter field: a literal key first, then a dotted path into nested data. */
-export function readField(data: Record<string, unknown>, key: string): unknown {
+export function readField(data: FieldData, key: string): FieldValue {
   // Own properties only: `constructor` and `toString` are not frontmatter, whatever `in` says.
   if (Object.hasOwn(data, key)) {
     return data[key];
@@ -341,31 +351,33 @@ export function readField(data: Record<string, unknown>, key: string): unknown {
   if (!key.includes(".")) {
     return undefined;
   }
-  let current: unknown = data;
-  for (const part of key.split(".")) {
-    if (!isPlainObject(current) || !Object.hasOwn(current, part)) {
-      return undefined;
-    }
-    current = current[part];
+  return readPath(data, key.split("."));
+}
+
+/** Follow a dotted path's parts through nested objects, own properties only like {@link readField}. */
+function readPath(holder: FieldValue | FieldData, [part, ...rest]: readonly string[]): FieldValue {
+  if (part === undefined || !isPlainObject(holder) || !Object.hasOwn(holder, part)) {
+    return undefined;
   }
-  return current;
+  const value = holder[part];
+  return rest.length === 0 ? value : readPath(value, rest);
 }
 
 /** Order two comparable values; undefined when they are not the same kind of thing. */
-function order(actual: unknown, operand: string | number): number | undefined {
+function order(actual: FieldValue, operand: string | number): number | undefined {
   const a = comparable(actual);
-  if (typeof a === "number" && typeof operand === "number") {
+  if (isNumber(a) && isNumber(operand)) {
     return a - operand;
   }
-  if (typeof a === "string" && typeof operand === "string") {
+  if (isString(a) && isString(operand)) {
     return a < operand ? -1 : a > operand ? 1 : 0;
   }
   return undefined;
 }
 
-type FieldTest = (actual: unknown) => boolean;
+type FieldTest = (actual: FieldValue) => boolean;
 
-function operatorTest(where: string, op: string, operand: unknown): FieldTest {
+function operatorTest(where: string, op: string, operand: JsonValue | undefined): FieldTest {
   switch (op) {
     case "$eq": {
       return (actual) => sameValue(actual, operand);
@@ -382,7 +394,7 @@ function operatorTest(where: string, op: string, operand: unknown): FieldTest {
       return op === "$in" ? hit : (actual) => !hit(actual);
     }
     case "$exists": {
-      if (typeof operand !== "boolean") {
+      if (!isBoolean(operand)) {
         throw new TypeError(
           `${where}.$exists: expected true or false, got ${JSON.stringify(operand)}`,
         );
@@ -391,7 +403,7 @@ function operatorTest(where: string, op: string, operand: unknown): FieldTest {
       return (actual) => (actual !== undefined && actual !== null) === operand;
     }
     default: {
-      if (typeof operand !== "string" && typeof operand !== "number") {
+      if (!isString(operand) && !isNumber(operand)) {
         throw new TypeError(
           `${where}.${op}: expected a string or number, got ${JSON.stringify(operand)}`,
         );
@@ -407,7 +419,7 @@ function operatorTest(where: string, op: string, operand: unknown): FieldTest {
 }
 
 /** A condition object is an operator set when every key is `$`-prefixed. */
-function operatorKeys(condition: Record<string, unknown>): string[] | null {
+function operatorKeys(condition: FieldData): string[] | null {
   const keys = Object.keys(condition);
   const dollars = keys.filter((key) => key.startsWith("$"));
   if (dollars.length === 0) {
@@ -416,7 +428,7 @@ function operatorKeys(condition: Record<string, unknown>): string[] | null {
   return dollars.length === keys.length ? keys : [];
 }
 
-function compileCondition(key: string, condition: unknown): FieldTest {
+function compileCondition(key: string, condition: JsonValue): FieldTest {
   const where = `where.${key}`;
   if (!isPlainObject(condition)) {
     return (actual) => sameValue(actual, condition);
@@ -446,10 +458,10 @@ function compileCondition(key: string, condition: unknown): FieldTest {
  * `$exists`, `$gt`, `$gte`, `$lt`, `$lte`; several in one object combine with AND too). There is no
  * OR and no evaluation of text: a project that needs "either" splits it into two content types.
  *
- * @param {unknown} where
+ * @param {JsonValue} [where]
  * @returns {WherePredicate}
  */
-export function compileWhere(where?: unknown): WherePredicate {
+export function compileWhere(where?: JsonValue): WherePredicate {
   if (where === undefined) {
     return Object.assign(() => true, { why: nothing });
   }
@@ -465,10 +477,9 @@ export function compileWhere(where?: unknown): WherePredicate {
     return { key, test: compileCondition(key, condition) };
   });
   return Object.assign(
-    (data: Record<string, unknown>) => tests.every(({ key, test }) => test(readField(data, key))),
+    (data: FieldData) => tests.every(({ key, test }) => test(readField(data, key))),
     {
-      why: (data: Record<string, unknown>) =>
-        tests.find(({ key, test }) => !test(readField(data, key)))?.key,
+      why: (data: FieldData) => tests.find(({ key, test }) => !test(readField(data, key)))?.key,
     },
   );
 }

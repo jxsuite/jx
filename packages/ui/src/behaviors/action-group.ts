@@ -24,7 +24,6 @@ const ITEM = "jx-action-button";
 export interface ActionGroupState {
   selects?: string;
   orientation?: string;
-  [key: string]: unknown;
 }
 
 /** A child action button, with the property accessors its own document installs. */

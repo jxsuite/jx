@@ -8,6 +8,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { hasPlatform } from "@jxsuite/studio/platform";
 import type { LauncherSignal } from "@jxsuite/studio/platform";
 import type { BootablePlatform } from "../src/boot";
+import { BRIDGE_ERROR } from "./_constants";
 
 try {
   GlobalRegistrator.register();
@@ -15,7 +16,8 @@ try {
   /* Already registered */
 }
 
-const g = globalThis as unknown as { __jxLauncher?: LauncherSignal; __jxPlatform?: unknown };
+// Typed by @jxsuite/studio/platform's global declarations (`__jxLauncher`, `__jxPlatform`).
+const g = globalThis;
 
 // Nothing may have announced before boot's own import does.
 delete g.__jxLauncher;
@@ -23,11 +25,11 @@ delete g.__jxPlatform;
 
 const boot = await import("../src/boot");
 
-/** The exact throw desktop 5.x's Electroview constructor raised against a missing bridge. */
-const BRIDGE_ERROR = "Cannot set properties of undefined (setting 'receiveMessageFromHost')";
-
-function fakePlatform(status: () => Promise<{ stored: boolean }>): BootablePlatform {
-  return { githubAuth: { status }, id: "fake" } as unknown as BootablePlatform;
+function fakePlatform(status: () => PromiseLike<{ stored: boolean }>): BootablePlatform {
+  /* SAFETY: bootLauncher touches two things on the adapter it creates: it registers it (a plain
+     assignment to globalThis.__jxPlatform, which reads no member) and awaits githubAuth.status().
+     `id` names the fake; no other StudioPlatform member is reached by the code under test. */
+  return { githubAuth: { status }, id: "fake" } as BootablePlatform;
 }
 
 describe("importing boot", () => {
@@ -183,7 +185,9 @@ describe("bootLauncher", () => {
 });
 
 describe("stripLaunchToken", () => {
-  const { happyDOM } = window as unknown as { happyDOM: { setURL: (url: string) => void } };
+  /* SAFETY: GlobalRegistrator.register() above installed happy-dom's window, which carries its
+     `happyDOM` controller; setURL is the one member these tests use. */
+  const { happyDOM } = window as typeof window & { happyDOM: { setURL: (url: string) => void } };
 
   test("removes ?token and keeps the rest of the URL", () => {
     happyDOM.setURL("http://127.0.0.1:4000/s?token=abc&x=1#h");
@@ -200,6 +204,7 @@ describe("stripLaunchToken", () => {
     const replaceState = spyOn(history, "replaceState");
     boot.stripLaunchToken();
     expect(replaceState).not.toHaveBeenCalled();
+    expect(location.pathname + location.search + location.hash).toBe("/s?x=1");
     replaceState.mockRestore();
   });
 

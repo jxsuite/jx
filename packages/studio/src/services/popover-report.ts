@@ -23,6 +23,7 @@
 
 import { activeTab } from "../workspace/workspace";
 import { clearProblems, notify, problemFindings } from "./notify";
+import type { NotifyOptions } from "./notify";
 import {
   findPopoverDefects,
   popoverDisplayRepair,
@@ -39,7 +40,8 @@ import {
 } from "../tabs/transact";
 import { getNodeAtPath } from "../state";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import type { JxElement, JxMutableNode } from "@jxsuite/schema/types";
+import type { CommandArgValues } from "../commands/command-args";
+import type { JxElement } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { PopoverFix, PopoverPath } from "@jxsuite/schema/overlays";
 
@@ -100,7 +102,7 @@ export function reportPopoverProblems(doc: JxElement, path?: string): number {
   const defects = findPopoverDefects(doc, KIT_SCOPE);
   for (const defect of defects) {
     const action = defect.fix === undefined ? undefined : REPAIR_COMMAND[defect.fix];
-    notify(defect.severity, defect.message, {
+    const options: NotifyOptions = {
       detail: defect.detail,
       /* Keyed by RULE AND PATH, not by rule alone: a header with two popovers can carry the same
          defect twice, and a key that collapsed them would report one and silently drop the other.
@@ -109,32 +111,45 @@ export function reportPopoverProblems(doc: JxElement, path?: string): number {
       key: problemKey(seen, "popover", defect.rule, defect.path),
       source: POPOVER_PROBLEM_SOURCE,
       tier: "problem",
-      ...(action === undefined ? {} : { action, actionArgs: { path: defect.path } }),
-      ...(path === undefined ? {} : { path }),
-    });
+    };
+    if (action !== undefined) {
+      options.action = action;
+      options.actionArgs = { path: defect.path };
+    }
+    if (path !== undefined) {
+      options.path = path;
+    }
+    notify(defect.severity, defect.message, options);
   }
   /* The dialog and invoker-command rules (`spec.md` §8.7) file under the same source: one report
      for everything the platform overlays. They carry no repair button yet — the popover repairs
      move `display` into `:popover-open`, and a dialog's open rule is a different selector. */
   const dialogDefects = findDialogDefects(doc, KIT_SCOPE);
   for (const defect of dialogDefects) {
-    notify(defect.severity, defect.message, {
+    const options: NotifyOptions = {
       detail: defect.detail,
       key: problemKey(seen, "dialog", defect.rule, defect.path),
       source: POPOVER_PROBLEM_SOURCE,
       tier: "problem",
-      ...(path === undefined ? {} : { path }),
-    });
+    };
+    if (path !== undefined) {
+      options.path = path;
+    }
+    notify(defect.severity, defect.message, options);
   }
   return defects.length + dialogDefects.length;
 }
 
 /** Read the path argument a repair command was invoked with, or throw naming the command. */
-function repairPath(id: string, args: Record<string, unknown> | undefined): JxPath {
+function repairPath(id: string, args: CommandArgValues | undefined): JxPath {
   const path = args?.path;
   if (!Array.isArray(path)) {
     throw new RangeError(`command "${id}" needs a "path" argument naming the popover`);
   }
+  /* SAFETY: every repair record below declares `path` as an array whose items are
+     `["string", "number"]`, which `coerceArgs` reads as a path argument and checks segment by
+     segment (`pathArg`) before `run` is called — so an array that reached here holds only string
+     keys and numeric indexes. */
   return path as JxPath;
 }
 
@@ -217,7 +232,7 @@ export function popoverCommands(): AnyCommand[] {
         const id = "document.repairPopoverDisplay";
         const tab = repairTab(id);
         const path = repairPath(id, args);
-        const node = getNodeAtPath(tab.doc.document, path) as JxMutableNode | undefined;
+        const node = getNodeAtPath(tab.doc.document, path);
         const repair = popoverDisplayRepair(node?.style);
         if (!repair) {
           throw new RangeError(`command "${id}": nothing to move — this popover sets no display`);

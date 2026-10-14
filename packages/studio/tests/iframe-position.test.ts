@@ -31,6 +31,26 @@ function mount(html: string): HTMLElement {
   return container;
 }
 
+/** The first `<tag>` in a fixture; a fixture without one fails here rather than downstream. */
+function one<K extends keyof HTMLElementTagNameMap>(
+  root: ParentNode,
+  tag: K,
+): HTMLElementTagNameMap[K] {
+  const el = root.querySelector(tag);
+  if (el === null) {
+    throw new Error(`fixture has no <${tag}>`);
+  }
+  return el;
+}
+
+/** The text node a fixture puts at `node`; markup there instead fails the test. */
+function textOf(node: Node | null): Text {
+  if (!(node instanceof Text)) {
+    throw new Error("expected a text node");
+  }
+  return node;
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
 });
@@ -38,7 +58,7 @@ afterEach(() => {
 describe("activeBlockAt", () => {
   test("finds the block from a text node inside nested inline markup", () => {
     const c = mount(`<p data-jx-path='["children",0]'>a<strong>bc</strong>d</p>`);
-    const bold = c.querySelector("strong") as HTMLElement;
+    const bold = one(c, "strong");
     const found = activeBlockAt(bold.firstChild, EDITABLE);
     expect(found?.path).toEqual(["children", 0]);
     expect(found?.el.tagName).toBe("P");
@@ -62,7 +82,7 @@ describe("activeBlockAt", () => {
     const c = mount(
       `<li data-jx-path='["children",0]'><p data-jx-path='["children",0,"children",0]'>x</p></li>`,
     );
-    const para = c.querySelector("p") as HTMLElement;
+    const para = one(c, "p");
     expect(activeBlockAt(para.firstChild, EDITABLE)?.path).toEqual(["children", 0, "children", 0]);
   });
 
@@ -77,13 +97,13 @@ describe("activeBlockAt", () => {
     const c = mount(
       `<li data-jx-path='["children",0]'><x-card contenteditable="false"><h3>Inside</h3></x-card></li>`,
     );
-    const h3 = c.querySelector("h3") as HTMLElement;
+    const h3 = one(c, "h3");
     expect(activeBlockAt(h3.firstChild, EDITABLE)).toBeNull();
   });
 
   test("stops at an unstamped custom element too (belt and braces)", () => {
     const c = mount(`<li data-jx-path='["children",0]'><x-card><h3>Inside</h3></x-card></li>`);
-    const h3 = c.querySelector("h3") as HTMLElement;
+    const h3 = one(c, "h3");
     expect(activeBlockAt(h3.firstChild, EDITABLE)).toBeNull();
   });
 
@@ -91,7 +111,7 @@ describe("activeBlockAt", () => {
     const c = mount(
       `<x-card data-jx-definition-root=""><p data-jx-path='["children",0]'>Body</p></x-card>`,
     );
-    const para = c.querySelector("p") as HTMLElement;
+    const para = one(c, "p");
     expect(activeBlockAt(para.firstChild, EDITABLE)?.path).toEqual(["children", 0]);
   });
 });
@@ -119,19 +139,19 @@ describe("elementForPath", () => {
 describe("offsetOf / domPositionAt round-trip", () => {
   test("offset is measured in rendered characters, ignoring inline nesting", () => {
     const c = mount(`<p data-jx-path='["children",0]'>a<strong>bc</strong>d</p>`);
-    const p = c.querySelector("p") as HTMLElement;
+    const p = one(c, "p");
     expect(blockTextLength(p)).toBe(4);
 
-    const bold = p.querySelector("strong") as HTMLElement;
+    const bold = one(p, "strong");
     // Between "b" and "c" inside the bold run = character offset 2.
-    expect(offsetOf(p, bold.firstChild as Text, 1)).toBe(2);
+    expect(offsetOf(p, textOf(bold.firstChild), 1)).toBe(2);
     // End of the trailing text node = 4.
-    expect(offsetOf(p, p.lastChild as Text, 1)).toBe(4);
+    expect(offsetOf(p, textOf(p.lastChild), 1)).toBe(4);
   });
 
   test("every offset round-trips back to an equivalent DOM position", () => {
     const c = mount(`<p data-jx-path='["children",0]'>a<strong>bc</strong>d</p>`);
-    const p = c.querySelector("p") as HTMLElement;
+    const p = one(c, "p");
     for (let i = 0; i <= 4; i++) {
       const dom = domPositionAt(p, i);
       expect(offsetOf(p, dom.node, dom.offset)).toBe(i);
@@ -140,42 +160,42 @@ describe("offsetOf / domPositionAt round-trip", () => {
 
   test("element-anchored positions resolve by the same rule as text-anchored ones", () => {
     const c = mount(`<p data-jx-path='["children",0]'>ab<br>cd</p>`);
-    const p = c.querySelector("p") as HTMLElement;
+    const p = one(c, "p");
     // Caret "at child index 2" — immediately after the <br>, which contributes no characters.
     expect(offsetOf(p, p, 2)).toBe(2);
   });
 
   test("offsets clamp into range instead of throwing", () => {
     const c = mount(`<p data-jx-path='["children",0]'>abc</p>`);
-    const p = c.querySelector("p") as HTMLElement;
-    expect(domPositionAt(p, 99)).toEqual({ node: p.firstChild as Text, offset: 3 });
-    expect(domPositionAt(p, -5)).toEqual({ node: p.firstChild as Text, offset: 0 });
+    const p = one(c, "p");
+    expect(domPositionAt(p, 99)).toEqual({ node: textOf(p.firstChild), offset: 3 });
+    expect(domPositionAt(p, -5)).toEqual({ node: textOf(p.firstChild), offset: 0 });
   });
 
   test("an empty block resolves to the element itself", () => {
     const c = mount(`<p data-jx-path='["children",0]'></p>`);
-    const p = c.querySelector("p") as HTMLElement;
+    const p = one(c, "p");
     expect(blockTextLength(p)).toBe(0);
     expect(domPositionAt(p, 0)).toEqual({ node: p, offset: 0 });
   });
 
   test("offsetOf returns null for a node outside the block", () => {
     const c = mount(`<p data-jx-path='["children",0]'>a</p><p data-jx-path='["children",1]'>b</p>`);
-    const [first, second] = [...c.querySelectorAll("p")] as HTMLElement[];
-    expect(offsetOf(first!, second!.firstChild as Text, 0)).toBeNull();
+    const [first, second] = [...c.querySelectorAll("p")];
+    expect(offsetOf(first!, textOf(second!.firstChild), 0)).toBeNull();
   });
 
   test("offsetOf returns null for an offset past the node's length", () => {
     const c = mount(`<p data-jx-path='["children",0]'>ab</p>`);
-    const p = c.querySelector("p") as HTMLElement;
-    expect(offsetOf(p, p.firstChild as Text, 99)).toBeNull();
+    const p = one(c, "p");
+    expect(offsetOf(p, textOf(p.firstChild), 99)).toBeNull();
   });
 });
 
 describe("toDocPos / toDomPosition", () => {
   test("a DOM caret converts to document coordinates and back", () => {
     const c = mount(`<p data-jx-path='["children",1]'>hello <em>world</em></p>`);
-    const em = c.querySelector("em") as HTMLElement;
+    const em = one(c, "em");
 
     const pos = toDocPos(em.firstChild, 2, EDITABLE);
     expect(pos).toEqual({ offset: 8, path: ["children", 1] });
@@ -204,7 +224,7 @@ describe("toDocPos / toDomPosition", () => {
     // At the new end, not be discarded (that would kick the user out of the block mid-collab).
     const c = mount(`<p data-jx-path='["children",0]'>hi</p>`);
     const back = toDomPosition(c, { offset: 40, path: ["children", 0] });
-    expect(back).toEqual({ node: (c.querySelector("p") as HTMLElement).firstChild!, offset: 2 });
+    expect(back).toEqual({ node: one(c, "p").firstChild!, offset: 2 });
   });
 });
 
@@ -216,14 +236,14 @@ describe("boundary predicates", () => {
 
   test("isAtBlockEnd compares against the block's live text length", () => {
     const c = mount(`<p data-jx-path='["children",0]'>abc</p>`);
-    const p = c.querySelector("p") as HTMLElement;
+    const p = one(c, "p");
     expect(isAtBlockEnd(p, { offset: 3, path: ["children", 0] })).toBe(true);
     expect(isAtBlockEnd(p, { offset: 2, path: ["children", 0] })).toBe(false);
   });
 
   test("an empty block is simultaneously at its start and its end", () => {
     const c = mount(`<p data-jx-path='["children",0]'></p>`);
-    const p = c.querySelector("p") as HTMLElement;
+    const p = one(c, "p");
     const pos = { offset: 0, path: ["children", 0] };
     expect(isAtBlockStart(pos)).toBe(true);
     expect(isAtBlockEnd(p, pos)).toBe(true);

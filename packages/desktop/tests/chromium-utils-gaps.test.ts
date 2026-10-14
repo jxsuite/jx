@@ -1,5 +1,6 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 // ─── Configurable fake D-Bus session bus ───────────────────────────────────
 //
@@ -7,7 +8,20 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // We mock `dbus-ts` so each test can script the portal's behavior: what
 // OpenFile returns, and how the Request object fires its "Response" event.
 
-type ResponseHandler = (response: number, results: unknown) => void;
+/** One `a{sv}` option the module passes to OpenFile: `[key, [signature, value]]`. */
+type PortalOption = [string, [string, JsonValue]];
+
+/** A Response's `results` as a test fires it: the raw `a{sv}` list, or a decoded `{ uris }` map. */
+type PortalResults = [string, [string, string[]]][] | { uris?: string[] };
+
+type ResponseHandler = (response: number, results: PortalResults) => void;
+
+/** The arguments of the most recent OpenFile call, by parameter name. */
+interface OpenFileCall {
+  parent: string;
+  title: string;
+  options: PortalOption[];
+}
 
 interface FakeConfig {
   openFileError?: Error;
@@ -17,7 +31,7 @@ interface FakeConfig {
 
 let config: FakeConfig = {};
 let endCalls = 0;
-let openFileArgs: unknown[] = [];
+let openFileCall: OpenFileCall | null = null;
 let requestPath: string | null = null;
 
 const fakeBus = {
@@ -29,8 +43,8 @@ const fakeBus = {
   getInterface: (_service: string, path: string, iface: string) => {
     if (iface === "org.freedesktop.portal.FileChooser") {
       return Promise.resolve({
-        OpenFile: (...args: unknown[]) => {
-          openFileArgs = args;
+        OpenFile: (parent: string, title: string, options: PortalOption[]) => {
+          openFileCall = { options, parent, title };
           if (config.openFileError) {
             return Promise.reject(config.openFileError);
           }
@@ -56,10 +70,18 @@ void mock.module("dbus-ts", () => ({
 
 const { openFileDialog, openDirectoryDialog } = await import("../src/chromium/utils");
 
+/** The arguments the module last passed to OpenFile, failing the test when it never called it. */
+function lastOpenFile(): OpenFileCall {
+  if (!openFileCall) {
+    throw new Error("OpenFile was never called");
+  }
+  return openFileCall;
+}
+
 beforeEach(() => {
   config = {};
   endCalls = 0;
-  openFileArgs = [];
+  openFileCall = null;
   requestPath = null;
 });
 
@@ -85,9 +107,9 @@ describe("openFileDialog (chromium / D-Bus portal)", () => {
   test("passes title, modal options and a handle token to OpenFile", async () => {
     config.respond = (fire) => fire(0, { uris: ["file:///a/b.json"] });
     await openFileDialog();
-    expect(openFileArgs[0]).toBe("");
-    expect(openFileArgs[1]).toBe("Open project.json");
-    const options = openFileArgs[2] as [string, [string, unknown]][];
+    const { parent, title, options } = lastOpenFile();
+    expect(parent).toBe("");
+    expect(title).toBe("Open project.json");
     const keys = options.map(([key]) => key);
     expect(keys).toEqual(["directory", "modal", "handle_token", "filters"]);
     const tokenEntry = options.find(([key]) => key === "handle_token");
@@ -165,8 +187,8 @@ describe("openDirectoryDialog (chromium / D-Bus portal)", () => {
   test("requests a directory and omits the *.json filter", async () => {
     config.respond = (fire) => fire(0, { uris: ["file:///home/user/x"] });
     await openDirectoryDialog();
-    expect(openFileArgs[1]).toBe("Choose a folder for your new project");
-    const options = openFileArgs[2] as [string, [string, unknown]][];
+    const { title, options } = lastOpenFile();
+    expect(title).toBe("Choose a folder for your new project");
     const directoryEntry = options.find(([key]) => key === "directory");
     expect(directoryEntry?.[1][1]).toBe(true);
     expect(options.map(([key]) => key)).not.toContain("filters");

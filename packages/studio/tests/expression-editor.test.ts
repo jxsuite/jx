@@ -30,11 +30,15 @@ import {
   mountOperandEditor,
 } from "../src/ui/expression-editor";
 
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { ExprRowView } from "../src/surfaces/expression-editor";
+import type { ExpressionEditorOpts } from "../src/ui/expression-editor";
+import type { ExpressionFields, ExpressionValue } from "../src/ui/formula-chips";
+import type { JsonValue, JxPath } from "@jxsuite/schema/types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_OPTS = { allowEventRef: false, stateDefs: ["count", "items"] };
+const DEFAULT_OPTS: ExpressionEditorOpts = { allowEventRef: false, stateDefs: ["count", "items"] };
 
 const hosts: HTMLElement[] = [];
 
@@ -46,9 +50,9 @@ afterEach(() => {
 
 interface Mounted {
   host: HTMLElement;
-  changes: unknown[];
+  changes: ExpressionValue[];
   /** Re-run the flow over a new node, the way a panel's repaint does. */
-  update: (next: unknown) => Promise<void>;
+  update: (next: ExpressionValue | undefined) => Promise<void>;
 }
 
 /**
@@ -57,13 +61,16 @@ interface Mounted {
  * Attached, because a mount keyed by host is only swept when its host leaves the page — and the
  * sweep is what {@link mountExpressionEditor} runs first on every call.
  */
-async function mount(node: unknown, opts: Record<string, unknown> = {}): Promise<Mounted> {
-  const changes: unknown[] = [];
+async function mount(
+  node: ExpressionValue | undefined,
+  opts: Partial<ExpressionEditorOpts> = {},
+): Promise<Mounted> {
+  const changes: ExpressionValue[] = [];
   const host = document.createElement("div");
   document.body.append(host);
   hosts.push(host);
-  const options = { ...DEFAULT_OPTS, ...opts } as never;
-  const push = (n: unknown) => changes.push(n);
+  const options: ExpressionEditorOpts = { ...DEFAULT_OPTS, ...opts };
+  const push = (n: ExpressionValue) => changes.push(n);
   mountExpressionEditor(host, node, push, options);
   await flush(6);
   return {
@@ -77,21 +84,57 @@ async function mount(node: unknown, opts: Record<string, unknown> = {}): Promise
 }
 
 /** The projection alone: rows and plans, with no document and no DOM. */
-function project(node: unknown, opts: Record<string, unknown> = {}) {
-  const changes: unknown[] = [];
+function project(node: ExpressionValue | undefined, opts: Partial<ExpressionEditorOpts> = {}) {
+  const changes: ExpressionValue[] = [];
   const projection = flattenExpression(node, (n) => changes.push(n), {
     ...DEFAULT_OPTS,
     ...opts,
-  } as never);
+  });
   return { ...projection, changes };
 }
 
-const rowsOf = (host: HTMLElement) => [...host.querySelectorAll('[part="row"]')] as HTMLElement[];
+/** A named member of a node the editor committed, or undefined when it is not an object node. */
+function memberOf(node: ExpressionValue | undefined, key: string): JsonValue | undefined {
+  return isJsonObject(node) ? node[key] : undefined;
+}
+
+const rowsOf = (host: HTMLElement) =>
+  [...host.querySelectorAll('[part="row"]')].filter((el) => el instanceof HTMLElement);
 
 function row(host: HTMLElement, prop: string): HTMLElement {
   const el = host.querySelector(`[data-prop="${prop}"]`);
   expect(el).toBeTruthy();
-  return el as HTMLElement;
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`No HTML row carries data-prop="${prop}"`);
+  }
+  return el;
+}
+
+/** A kit select's own native control. */
+function selectIn(el: Element | null): HTMLSelectElement {
+  const control = el?.querySelector('[part="control"]');
+  if (!(control instanceof HTMLSelectElement)) {
+    throw new Error("The kit select renders no native select control");
+  }
+  return control;
+}
+
+/** A kit text, number or checkbox field's own native input. */
+function inputIn(el: Element | null): HTMLInputElement | HTMLTextAreaElement {
+  const input = el?.querySelector('[part="input"]');
+  if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) {
+    throw new Error("The kit field renders no native input");
+  }
+  return input;
+}
+
+/** A kit checkbox's own native input. */
+function checkboxIn(el: Element | null): HTMLInputElement {
+  const input = el?.querySelector('[part="input"]');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("The kit checkbox renders no native input");
+  }
+  return input;
 }
 
 const part = (el: Element, name: string) => el.querySelector(`[part="${name}"]`);
@@ -99,7 +142,7 @@ const parts = (el: Element, name: string) => [...el.querySelectorAll(`[part="${n
 
 /** What a kit select currently holds, read off its own control. */
 function selectValue(el: Element | null): string {
-  return (el!.querySelector('[part="control"]') as HTMLSelectElement).value;
+  return selectIn(el).value;
 }
 
 /** What one row's own picker holds — `row` then `part` then `value`, said once. */
@@ -114,28 +157,28 @@ function optionValues(el: Element | null): string[] {
 
 /** Pick a row in a kit select the way a reader does. */
 function pick(el: Element | null, value: string): void {
-  const control = el!.querySelector('[part="control"]') as HTMLSelectElement;
+  const control = selectIn(el);
   control.value = value;
   control.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /** Type into a kit text control: it reports, and the event bubbles to the handler's element. */
 function type(el: Element | null, value: string): void {
-  const input = el!.querySelector('[part="input"]') as HTMLInputElement;
+  const input = inputIn(el);
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /** Commit a kit control: the value is set and `change` fires, as a blur or a pick does. */
 function commit(el: Element | null, value: string): void {
-  const input = el!.querySelector('[part="input"]') as HTMLInputElement;
+  const input = inputIn(el);
   input.value = value;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /** Toggle a kit checkbox the way a reader does. */
 function check(el: Element | null, next: boolean): void {
-  const input = el!.querySelector('[part="input"]') as HTMLInputElement;
+  const input = checkboxIn(el);
   input.checked = next;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -460,16 +503,18 @@ describe("chips strip", () => {
 
   test("a group chip is marked as a branch rather than a link of the chain", async () => {
     const m = await mount({ operator: "+", target: 1, value: { operator: "!", target: 2 } });
-    const groups = parts(m.host, "chip").map((c) => (c as HTMLElement).dataset["group"]);
+    const groups = parts(m.host, "chip").map((c) =>
+      c instanceof HTMLElement ? c.dataset["group"] : undefined,
+    );
     expect(groups).toContain("true");
     expect(groups).toContain("false");
   });
 
   test("clicking a chip invokes the onChipSelect hook with the node path", async () => {
-    const picks: unknown[] = [];
+    const picks: JxPath[] = [];
     const m = await mount(
       { operator: "!", target: { $ref: "#/state/count" } },
-      { onChipSelect: (p: unknown) => picks.push(p) },
+      { onChipSelect: (p) => picks.push(p) },
     );
     press(part(m.host, "chip"));
     expect(picks).toEqual([["target"]]);
@@ -483,11 +528,8 @@ describe("chips strip", () => {
   });
 
   test("a chip key the strip does not hold reports nothing", () => {
-    const picks: unknown[] = [];
-    const p = project(
-      { operator: "!", target: null },
-      { onChipSelect: (x: unknown) => picks.push(x) },
-    );
+    const picks: JxPath[] = [];
+    const p = project({ operator: "!", target: null }, { onChipSelect: (x) => picks.push(x) });
     expect(p.chipPaths.has("nope")).toBe(false);
     expect(picks).toEqual([]);
   });
@@ -603,8 +645,9 @@ describe("ref picker", () => {
     expect([...picker.querySelectorAll("optgroup")].map((g) => g.getAttribute("label"))).toEqual([
       "Event",
     ]);
-    expect(optionValues(picker)).toContain("event#/detail");
-    expect(optionValues(picker)).toContain("event#/target/value");
+    const values = optionValues(picker);
+    expect(values).toContain("event#/detail");
+    expect(values).toContain("event#/target/value");
   });
 
   test("a ref no group holds keeps its own stand-in row rather than falling to the first", async () => {
@@ -636,7 +679,7 @@ describe("ref picker", () => {
 
 describe("operator change", () => {
   /** Every case is the same shape: pick an operator, read what the node became. */
-  function reoperated(node: unknown, op: string): unknown {
+  function reoperated(node: ExpressionValue | undefined, op: string): ExpressionValue | undefined {
     const p = project(node);
     p.plans.get("::operator")!.setOperator!(op);
     return p.changes[0];
@@ -828,7 +871,7 @@ describe("literal editor", () => {
   test("string literal renders a text field and commits typed input", async () => {
     const m = await mount({ operator: "+", target: "hello", value: null });
     const field = part(row(m.host, "target"), "literal-text")!;
-    expect((field.querySelector('[part="input"]') as HTMLInputElement).value).toBe("hello");
+    expect(inputIn(field).value).toBe("hello");
     type(field, "world");
     expect(m.changes[0]).toEqual({ operator: "+", target: "world", value: null });
   });
@@ -836,7 +879,7 @@ describe("literal editor", () => {
   test("number literal renders a number field and commits a number", async () => {
     const m = await mount({ operator: "+", target: 5, value: null });
     const field = part(row(m.host, "target"), "literal-number")!;
-    expect((field.querySelector('[part="input"]') as HTMLInputElement).value).toBe("5");
+    expect(inputIn(field).value).toBe("5");
     commit(field, "7");
     expect(m.changes[0]).toEqual({ operator: "+", target: 7, value: null });
   });
@@ -844,7 +887,7 @@ describe("literal editor", () => {
   test("boolean literal renders a checkbox and commits checked state", async () => {
     const m = await mount({ operator: "+", target: true, value: null });
     const box = part(row(m.host, "target"), "literal-bool")!;
-    expect((box.querySelector('[part="input"]') as HTMLInputElement).checked).toBe(true);
+    expect(checkboxIn(box).checked).toBe(true);
     check(box, false);
     expect(m.changes[0]).toEqual({ operator: "+", target: false, value: null });
   });
@@ -872,14 +915,14 @@ describe("literal editor", () => {
     for (const type_ of ["number", "boolean", "null", "string"]) {
       pick(picker, type_);
     }
-    expect(m.changes.map((c) => (c as { target: unknown }).target)).toEqual([0, false, null, ""]);
+    expect(m.changes.map((c) => memberOf(c, "target"))).toEqual([0, false, null, ""]);
   });
 });
 
 // ─── Positional args ─────────────────────────────────────────────────────────
 
 describe("positional args", () => {
-  async function mountSplice(value: unknown) {
+  async function mountSplice(value: ExpressionValue) {
     return mount({ operator: "splice", target: { $ref: "#/state/items" }, value });
   }
 
@@ -888,7 +931,7 @@ describe("positional args", () => {
   test("editing an arg replaces only that index", async () => {
     const m = await mountSplice([null, 1]);
     commit(part(argRows(m.host)[1]!, "literal-number"), "5");
-    expect((m.changes[0] as { value: unknown[] }).value).toEqual([null, 5]);
+    expect(memberOf(m.changes[0], "value")).toEqual([null, 5]);
   });
 
   test("the remove button takes away exactly that arg, and is named", async () => {
@@ -896,26 +939,26 @@ describe("positional args", () => {
     const remove = part(argRows(m.host)[0]!, "remove")!;
     expect(buttonName(remove)).toBe("Remove start");
     press(remove);
-    expect((m.changes[0] as { value: unknown[] }).value).toEqual([1, "a"]);
+    expect(memberOf(m.changes[0], "value")).toEqual([1, "a"]);
   });
 
   test("removing the last arg resets to [null]", async () => {
     const m = await mountSplice(["only"]);
     press(part(argRows(m.host)[0]!, "remove"));
-    expect((m.changes[0] as { value: unknown[] }).value).toEqual([null]);
+    expect(memberOf(m.changes[0], "value")).toEqual([null]);
   });
 
   test("the add row appends a null arg", async () => {
     const m = await mountSplice([0]);
     press(part(m.host, "action"));
-    expect((m.changes[0] as { value: unknown[] }).value).toEqual([0, null]);
+    expect(memberOf(m.changes[0], "value")).toEqual([0, null]);
   });
 
   test("a non-array value renders zero arg rows but still offers add", async () => {
     const m = await mountSplice("not-an-array");
     expect(argRows(m.host).length).toBe(0);
     press(part(m.host, "action"));
-    expect((m.changes[0] as { value: unknown[] }).value).toEqual([null]);
+    expect(memberOf(m.changes[0], "value")).toEqual([null]);
   });
 
   test("an arg's own path is its own, so a formula inside one keys to that index", () => {
@@ -957,7 +1000,7 @@ describe("aggregate value and initial editing", () => {
       value: { operator: "!", target: null },
     });
     commit(part(row(m.host, "initial"), "literal-number"), "42");
-    expect((m.changes[0] as { initial: number }).initial).toBe(42);
+    expect(memberOf(m.changes[0], "initial")).toBe(42);
   });
 
   test("a conditional labels its three slots If / Then / Else", async () => {
@@ -976,7 +1019,7 @@ describe("aggregate value and initial editing", () => {
 // ─── Switch cases ────────────────────────────────────────────────────────────
 
 describe("switch cases", () => {
-  async function mountSwitch(cases: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  async function mountSwitch(cases: ExpressionFields, extra: ExpressionFields = {}) {
     return mount({
       cases,
       default: null,
@@ -986,10 +1029,7 @@ describe("switch cases", () => {
     });
   }
 
-  const caseKeys = (host: HTMLElement) =>
-    parts(host, "case-key").map(
-      (f) => (f.querySelector('[part="input"]') as HTMLInputElement).value,
-    );
+  const caseKeys = (host: HTMLElement) => parts(host, "case-key").map((f) => inputIn(f).value);
 
   test("renders a key field per case, the default row, and the add row", async () => {
     const m = await mountSwitch({ a: { $ref: "#/state/count" }, b: null });
@@ -1004,16 +1044,16 @@ describe("switch cases", () => {
     commit(key, "a");
     expect(m.changes.length).toBe(0);
     commit(key, "z");
-    const { cases } = m.changes[0] as { cases: Record<string, unknown> };
+    const cases = memberOf(m.changes[0], "cases");
     expect(cases).toEqual({ b: null, z: { $ref: "#/state/count" } });
-    expect(Object.keys(cases)).toEqual(["z", "b"]);
+    expect(Object.keys(isJsonObject(cases) ? cases : {})).toEqual(["z", "b"]);
   });
 
   test("editing a case operand writes through that key only", async () => {
     const m = await mountSwitch({ a: 1, b: 2 });
     const caseRow = rowsOf(m.host).find((r) => part(r, "case-key"))!;
     commit(part(caseRow, "literal-number"), "9");
-    expect((m.changes[0] as { cases: unknown }).cases).toEqual({ a: 9, b: 2 });
+    expect(memberOf(m.changes[0], "cases")).toEqual({ a: 9, b: 2 });
   });
 
   test("the remove button takes away exactly that case, and is named", async () => {
@@ -1021,21 +1061,21 @@ describe("switch cases", () => {
     const caseRow = rowsOf(m.host).find((r) => part(r, "case-key"))!;
     expect(buttonName(part(caseRow, "remove"))).toBe("Remove case a");
     press(part(caseRow, "remove"));
-    expect((m.changes[0] as { cases: unknown }).cases).toEqual({ b: 2 });
+    expect(memberOf(m.changes[0], "cases")).toEqual({ b: 2 });
   });
 
   test("editing the default operand writes the default key", async () => {
     const m = await mountSwitch({}, { default: 5 });
     const defaultRow = rowsOf(m.host).find((r) => part(r, "lead"))!;
     commit(part(defaultRow, "literal-number"), "7");
-    expect((m.changes[0] as { default: number }).default).toBe(7);
+    expect(memberOf(m.changes[0], "default")).toBe(7);
   });
 
   test("add case generates a fresh key past collisions, seeded null", async () => {
     const m = await mountSwitch({ "case 2": null });
     press(part(m.host, "action"));
     // One existing entry → tries "case 2" (taken) → lands on "case 3".
-    expect((m.changes[0] as { cases: unknown }).cases).toEqual({
+    expect(memberOf(m.changes[0], "cases")).toEqual({
       "case 2": null,
       "case 3": null,
     });
@@ -1044,7 +1084,7 @@ describe("switch cases", () => {
   test("a node whose cases are not an object is read as having none", () => {
     const p = project({ cases: "nope", operator: "switch", target: null });
     p.plans.get("::add-case")!.act!();
-    expect((p.changes[0] as { cases: unknown }).cases).toEqual({ "case 1": null });
+    expect(memberOf(p.changes[0], "cases")).toEqual({ "case 1": null });
   });
 });
 
@@ -1125,7 +1165,7 @@ describe("the mount seam", () => {
     const host = document.createElement("div");
     document.body.append(host);
     hosts.push(host);
-    mountExpressionEditor(host, { operator: "!", target: null }, () => {}, DEFAULT_OPTS as never);
+    mountExpressionEditor(host, { operator: "!", target: null }, () => {}, DEFAULT_OPTS);
     /* Detached and swept BEFORE the mount settles — a slot the reader unbinds does exactly this.
        The record is marked given-up, so the handle that arrives afterwards disposes itself rather
        than leaving a live document standing in a node nothing can reach. */
@@ -1136,7 +1176,7 @@ describe("the mount seam", () => {
   });
 
   test("one operand slot mounts with no operator row above it", async () => {
-    const changes: unknown[] = [];
+    const changes: ExpressionValue[] = [];
     const host = document.createElement("div");
     document.body.append(host);
     hosts.push(host);
@@ -1144,7 +1184,7 @@ describe("the mount seam", () => {
       ...DEFAULT_OPTS,
       label: "If",
       prop: "if",
-    } as never);
+    });
     await flush(6);
     expect(part(host, "operator")).toBeNull();
     expect(row(host, "if").textContent).toContain("If");
@@ -1153,7 +1193,7 @@ describe("the mount seam", () => {
   });
 
   test("an operand slot with no name of its own falls back to Value", () => {
-    const { rows } = flattenOperand(null, () => {}, { ...DEFAULT_OPTS } as never);
+    const { rows } = flattenOperand(null, () => {}, { ...DEFAULT_OPTS });
     expect(rows[0]!.label).toBe("Value");
     expect(rows[0]!.prop).toBe("operand");
   });
@@ -1179,7 +1219,8 @@ describe("the surface is styled through part, never through a class", () => {
        A kit element's own internals are its business — this asks about what the DOCUMENT drew. */
     const styled = [...m.host.querySelectorAll("[style]")].filter(
       (e) =>
-        (e as HTMLElement).style.getPropertyValue("--expr-indent") === "" &&
+        (e instanceof HTMLElement || e instanceof SVGElement) &&
+        e.style.getPropertyValue("--expr-indent") === "" &&
         e.closest(
           "jx-icon, jx-select, jx-textfield, jx-number-field, jx-checkbox, jx-action-button",
         ) === null,

@@ -1,9 +1,13 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { streamImport } from "@jxsuite/studio/import-client";
 import type { StudioPlatform } from "@jxsuite/studio/types";
+import type { StudioRPC } from "../src/rpc-schema";
 import { KIT_TAGS } from "@jxsuite/ui/documents";
+import { LOOPBACK } from "./_constants";
 
 try {
   GlobalRegistrator.register();
@@ -13,45 +17,60 @@ try {
 
 // ─── Mock electrobun/view ───────────────────────────────────────────────────
 
+/* What a relaying PAL method answers when its RPC is typed with a reply (others are `Promise<void>`
+   but still relay at runtime). Each keeps its own method's return type; the tables below only await
+   it and compare it with the stub's echo, so this is what those return types have in common. */
+type RelayedReply = object | string | boolean | null;
+
 interface Call {
   method: string;
   args: unknown[];
 }
 
 const calls: Call[] = [];
-const impls = new Map<string, (...args: unknown[]) => unknown>();
+/* A test's stand-in for one backend request. Every reply crosses the RPC JSON-serialized, so a
+   stand-in answers with JSON (or throws, as a failed request does). */
+const impls = new Map<string, (...args: unknown[]) => JsonValue>();
 
-const requestProxy = new Proxy({} as Record<string, (...args: unknown[]) => Promise<unknown>>, {
-  get(_target, prop: string) {
-    return (...args: unknown[]) => {
-      calls.push({ args, method: prop });
-      const impl = impls.get(prop);
-      if (impl) {
-        return (async () => impl(...args))();
-      }
-      return Promise.resolve({ method: prop, ok: true });
-    };
+const requestProxy = new Proxy<Record<string, (...args: unknown[]) => Promise<JsonValue>>>(
+  {},
+  {
+    get(_target, prop: string) {
+      return (...args: unknown[]) => {
+        calls.push({ args, method: prop });
+        const impl = impls.get(prop);
+        if (impl) {
+          return (async () => impl(...args))();
+        }
+        return Promise.resolve({ method: prop, ok: true });
+      };
+    },
   },
-});
+);
 
 const rpcObject = { request: requestProxy };
 
-let capturedRpcConfig: {
+type WebviewMessages = StudioRPC["webview"]["messages"];
+
+/** The config the platform hands `Electroview.defineRPC`: one handler per webview message. */
+interface CapturedRpcConfig {
   handlers: {
-    messages: Record<string, (payload: never) => void>;
-    requests: Record<string, unknown>;
+    messages: { [K in keyof WebviewMessages]: (payload: WebviewMessages[K]) => void };
+    requests: Record<string, never>;
   };
   maxRequestTime: number;
-} | null = null;
-let electroviewCtorArgs: unknown = null;
+}
+
+let capturedRpcConfig: CapturedRpcConfig | null = null;
+let electroviewCtorArgs: { rpc: typeof rpcObject } | null = null;
 
 void mock.module("electrobun/view", () => ({
   Electroview: class {
-    static defineRPC(config: never) {
+    static defineRPC(config: CapturedRpcConfig) {
       capturedRpcConfig = config;
       return rpcObject;
     }
-    constructor(opts: unknown) {
+    constructor(opts: { rpc: typeof rpcObject }) {
       electroviewCtorArgs = opts;
     }
   },
@@ -73,9 +92,9 @@ async function flush(ms = 25): Promise<void> {
 
 // The NDJSON stream client is exercised by studio's import-client tests; here only the plumbing
 // (endpoint lookup, directory resolution, callback threading) matters.
-const streamImportCalls: unknown[][] = [];
+const streamImportCalls: Parameters<typeof streamImport>[] = [];
 void mock.module("@jxsuite/studio/import-client", () => ({
-  streamImport: (...args: unknown[]) => {
+  streamImport: (...args: Parameters<typeof streamImport>) => {
     streamImportCalls.push(args);
     return Promise.resolve({ config: { name: "Imported" }, root: "/imported" });
   },
@@ -87,13 +106,15 @@ const { createDesktopPlatform } = await import("../src/platform");
 const { getPreviewNavigateHandler } = await import("@jxsuite/studio/preview-navigate");
 
 // Stub the original fetch BEFORE the platform wraps it, so passthrough is observable.
-const passthroughFetch = mock(async () => new Response("passthrough-body", { status: 299 }));
-(window as unknown as Record<string, unknown>).fetch = passthroughFetch;
+const passthroughFetch = spyOn(window, "fetch").mockImplementation(
+  Object.assign(async () => new Response("passthrough-body", { status: 299 }), {
+    preconnect: () => {},
+  }),
+);
 
 const platform = createDesktopPlatform();
 // The asset observer rewrites relative panel srcs to the loopback origin; set it BEFORE the
 // Synchronous mutation batch below so the observer sees the canvas origin as active.
-const LOOPBACK = "http://127.0.0.1:51999";
 platform.canvasUrl = `${LOOPBACK}/__studio__/canvas.html`;
 
 // ─── Asset-resolution fixture (single synchronous mutation batch) ───────────
@@ -157,8 +178,8 @@ describe("RPC setup", () => {
   test("defines RPC with message handlers and constructs Electroview", () => {
     expect(capturedRpcConfig).not.toBeNull();
     expect(capturedRpcConfig!.maxRequestTime).toBe(300_000);
-    expect(typeof capturedRpcConfig!.handlers.messages.fileChanged).toBe("function");
-    expect(typeof capturedRpcConfig!.handlers.messages.updateReady).toBe("function");
+    expect(capturedRpcConfig!.handlers.messages.fileChanged).toBeInstanceOf(Function);
+    expect(capturedRpcConfig!.handlers.messages.updateReady).toBeInstanceOf(Function);
     expect(capturedRpcConfig!.handlers.requests).toEqual({});
     expect(electroviewCtorArgs).toEqual({ rpc: rpcObject });
   });
@@ -168,9 +189,7 @@ describe("RPC setup", () => {
    * made in one only reaches the others through this message.
    */
   test("settingsChanged reaches the kernel's subscriber until it unsubscribes", () => {
-    const handler = capturedRpcConfig!.handlers.messages.settingsChanged as (p: {
-      settings: Record<string, string>;
-    }) => void;
+    const handler = capturedRpcConfig!.handlers.messages.settingsChanged;
     const seen: Record<string, string>[] = [];
     const unsubscribe = platform.subscribeSettings!((settings) => seen.push(settings));
 
@@ -183,9 +202,7 @@ describe("RPC setup", () => {
   });
 
   test("a settingsChanged with no subscriber is not an error", () => {
-    const handler = capturedRpcConfig!.handlers.messages.settingsChanged as (p: {
-      settings: Record<string, string>;
-    }) => void;
+    const handler = capturedRpcConfig!.handlers.messages.settingsChanged;
     expect(() => handler({ settings: { a: "1" } })).not.toThrow();
   });
 
@@ -195,9 +212,7 @@ describe("RPC setup", () => {
    * from, and it is a different wire message with its own subscriber seam.
    */
   test("onFileEvents reaches the sidebar's live-sync subscriber until it unsubscribes", () => {
-    const handler = capturedRpcConfig!.handlers.messages.onFileEvents as (p: {
-      events: { type: string; path: string; isDir: boolean }[];
-    }) => void;
+    const handler = capturedRpcConfig!.handlers.messages.onFileEvents;
     const seen: { type: string; path: string; isDir: boolean }[][] = [];
     const unsubscribe = platform.subscribeFileEvents!((events) => seen.push(events));
 
@@ -210,16 +225,12 @@ describe("RPC setup", () => {
   });
 
   test("an onFileEvents message with no subscriber is not an error", () => {
-    const handler = capturedRpcConfig!.handlers.messages.onFileEvents as (p: {
-      events: { type: string; path: string; isDir: boolean }[];
-    }) => void;
+    const handler = capturedRpcConfig!.handlers.messages.onFileEvents;
     expect(() => handler({ events: [] })).not.toThrow();
   });
 
   test("fileChanged message handler runs without error", () => {
-    const handler = capturedRpcConfig!.handlers.messages.fileChanged as (p: {
-      path: string;
-    }) => void;
+    const handler = capturedRpcConfig!.handlers.messages.fileChanged;
     expect(() => handler({ path: "some/file.json" })).not.toThrow();
   });
 
@@ -231,13 +242,13 @@ describe("RPC setup", () => {
    * toast.
    */
   function raiseUpdateToast(version: string): HTMLElement {
-    const handler = capturedRpcConfig!.handlers.messages.updateReady as (p: {
-      version: string;
-    }) => void;
-    handler({ version });
+    capturedRpcConfig!.handlers.messages.updateReady({ version });
     const raised = [...document.body.querySelectorAll(".update-toast-container")].at(-1);
-    expect(raised).toBeDefined();
-    return raised as HTMLElement;
+    expect(raised).toBeInstanceOf(HTMLElement);
+    if (!(raised instanceof HTMLElement)) {
+      throw new Error(`updateReady ${version} raised no toast container`);
+    }
+    return raised;
   }
 
   test("updateReady raises a kit toast whose recovery control triggers applyUpdate", () => {
@@ -306,9 +317,10 @@ describe("RPC setup", () => {
   test("every custom element the notice writes is one the kit defines", () => {
     const container = raiseUpdateToast("7.8.9");
     const tags = new Set(
-      [...container.querySelectorAll("*")]
-        .map((element) => element.tagName.toLowerCase())
-        .filter((tag) => tag.includes("-")),
+      [...container.querySelectorAll("*")].flatMap((element) => {
+        const tag = element.tagName.toLowerCase();
+        return tag.includes("-") ? [tag] : [];
+      }),
     );
     expect(tags.size).toBeGreaterThan(0);
     for (const tag of tags) {
@@ -366,8 +378,7 @@ describe("fetch interception", () => {
     });
     const res = await window.fetch("/__jx_server__", { body: "{}", method: "POST" });
     expect(res.status).toBe(500);
-    const json = (await res.json()) as { error: string };
-    expect(json.error).toContain("boom");
+    expect(await res.json()).toEqual({ error: "Error: boom" });
     impls.delete("jxServerFunction");
   });
 });
@@ -440,7 +451,8 @@ describe("platform methods", () => {
     // Through the INTERFACE: the factory returns an INFERRED type (see `platform.ts`), so a
     // Property it deliberately does not set is not on that type at all. The assertion is about
     // What a host MAY declare, and this one declaring nothing.
-    expect((platform as unknown as StudioPlatform).assetSpace).toBeUndefined();
+    const pal: StudioPlatform = platform;
+    expect(pal.assetSpace).toBeUndefined();
   });
 
   test("activate stores the loopback canvasUrl returned by getCanvasUrl", async () => {
@@ -466,11 +478,19 @@ describe("platform methods", () => {
     impls.delete("getCanvasUrl");
   });
 
-  test("openProject delegates with no arguments", async () => {
-    const result = await platform.openProject();
-    // The stub RPC echoes the call rather than returning a real OpenProjectResult.
-    expect(result).toEqual({ method: "openProject", ok: true } as never);
-    expect(lastCall("openProject")!.args).toEqual([]);
+  test("openProject delegates with no arguments and relays the backend's answer", async () => {
+    const opened = {
+      config: { name: "Opened" },
+      handle: { name: "Opened", projectConfig: { name: "Opened" }, root: "/opened" },
+    };
+    impls.set("openProject", () => opened);
+    try {
+      const result = await platform.openProject();
+      expect(result).toEqual(opened);
+      expect(lastCall("openProject")!.args).toEqual([]);
+    } finally {
+      impls.delete("openProject");
+    }
   });
 
   /* The image editor's read path. The adapter's job is the base64 boundary: the backend cannot send
@@ -491,7 +511,7 @@ describe("platform methods", () => {
     const probe = await platform.probeRootProject();
     expect(probe).not.toBeNull();
     expect(probe!.info.isSiteProject).toBe(true);
-    expect(probe!.info.projectConfig).toEqual({ name: "My Site" } as never);
+    expect(probe!.info.projectConfig).toEqual({ name: "My Site" });
     expect(probe!.meta).toEqual({ name: "My Site", root: "/proj" });
     expect(lastCall("readFile")!.args[0]).toEqual({ path: "project.json" });
     impls.delete("readFile");
@@ -542,78 +562,127 @@ describe("platform methods", () => {
     impls.delete("getProjectRoot");
   });
 
-  const delegations: [string, unknown[], string, unknown][] = [
-    ["resolveSiteContext", ["pages/a.json"], "resolveSiteContext", { filePath: "pages/a.json" }],
-    ["listDirectory", ["src"], "listDirectory", { dir: "src" }],
-    ["readFile", ["a.json"], "readFile", { path: "a.json" }],
-    ["writeFile", ["a.json", "body"], "writeFile", { content: "body", path: "a.json" }],
-    ["uploadFile", ["img.png", "ZGF0YQ=="], "uploadFile", { data: "ZGF0YQ==", path: "img.png" }],
-    ["deleteFile", ["a.json"], "deleteFile", { path: "a.json" }],
-    ["renameFile", ["old.json", "new.json"], "renameFile", { from: "old.json", to: "new.json" }],
+  /* One PAL method that relays its backend reply: its label, the call (typed against the method's
+     own signature), the RPC it rides, and the payload it sends (undefined: no argument at all). */
+  type Delegation = [
+    method: string,
+    invoke: () => Promise<RelayedReply> | Promise<void>,
+    rpcMethod: string,
+    payload: JsonValue | undefined,
+  ];
+
+  const delegations: Delegation[] = [
+    [
+      "resolveSiteContext",
+      () => platform.resolveSiteContext("pages/a.json"),
+      "resolveSiteContext",
+      { filePath: "pages/a.json" },
+    ],
+    ["listDirectory", () => platform.listDirectory("src"), "listDirectory", { dir: "src" }],
+    ["readFile", () => platform.readFile("a.json"), "readFile", { path: "a.json" }],
+    [
+      "writeFile",
+      () => platform.writeFile("a.json", "body"),
+      "writeFile",
+      { content: "body", path: "a.json" },
+    ],
+    [
+      "uploadFile",
+      () => platform.uploadFile("img.png", "ZGF0YQ=="),
+      "uploadFile",
+      { data: "ZGF0YQ==", path: "img.png" },
+    ],
+    ["deleteFile", () => platform.deleteFile("a.json"), "deleteFile", { path: "a.json" }],
+    [
+      "renameFile",
+      () => platform.renameFile("old.json", "new.json"),
+      "renameFile",
+      { from: "old.json", to: "new.json" },
+    ],
     // The usage query rides the same RPC as the rename it warns about.
     [
       "findReferences",
-      [{ path: "components/card.json", tagName: "my-card" }],
+      () => platform.findReferences({ path: "components/card.json", tagName: "my-card" }),
       "findReferences",
       { path: "components/card.json", tagName: "my-card" },
     ],
-    ["createDirectory", ["newdir"], "createDirectory", { path: "newdir" }],
+    [
+      "createDirectory",
+      () => platform.createDirectory("newdir"),
+      "createDirectory",
+      { path: "newdir" },
+    ],
     [
       "codeService",
-      ["lint", { code: "x" }],
+      () => platform.codeService("lint", { code: "x" }),
       "codeService",
       {
         action: "lint",
         payload: { code: "x" },
       },
     ],
-    ["locateFile", ["button.json"], "locateFile", { name: "button.json" }],
-    ["searchFiles", ["query"], "searchFiles", { query: "query" }],
+    ["locateFile", () => platform.locateFile("button.json"), "locateFile", { name: "button.json" }],
+    ["searchFiles", () => platform.searchFiles("query"), "searchFiles", { query: "query" }],
     // Quick Access widens the search with the format registry's document extensions.
     [
       "searchFiles",
-      ["query", [".md", ".mdx"]],
+      () => platform.searchFiles("query", [".md", ".mdx"]),
       "searchFiles",
       { extensions: [".md", ".mdx"], query: "query" },
     ],
-    ["listFormats", [], "listFormats", undefined],
-    ["listExtensions", [], "listExtensions", undefined],
-    ["listExtensionCatalog", [], "listExtensionCatalog", undefined],
-    ["fetchProjectSchemas", [], "fetchProjectSchemas", undefined],
+    ["listFormats", () => platform.listFormats(), "listFormats", undefined],
+    ["listExtensions", () => platform.listExtensions(), "listExtensions", undefined],
+    [
+      "listExtensionCatalog",
+      () => platform.listExtensionCatalog(),
+      "listExtensionCatalog",
+      undefined,
+    ],
+    ["fetchProjectSchemas", () => platform.fetchProjectSchemas(), "fetchProjectSchemas", undefined],
     [
       "formatAction",
-      [{ action: "parse", format: "md" }],
+      () => platform.formatAction({ action: "parse", format: "md" }),
       "formatAction",
       {
         action: "parse",
         format: "md",
       },
     ],
-    ["addPackage", ["lodash"], "addPackage", { name: "lodash" }],
-    ["removePackage", ["lodash"], "removePackage", { name: "lodash" }],
-    ["listPackages", [], "listPackages", undefined],
-    ["installDependencies", [], "installDependencies", undefined],
-    ["dependenciesNeedInstall", [], "dependenciesNeedInstall", undefined],
-    ["packageVersions", [], "packageVersions", undefined],
+    ["addPackage", () => platform.addPackage("lodash"), "addPackage", { name: "lodash" }],
+    ["removePackage", () => platform.removePackage("lodash"), "removePackage", { name: "lodash" }],
+    ["listPackages", () => platform.listPackages(), "listPackages", undefined],
+    ["installDependencies", () => platform.installDependencies(), "installDependencies", undefined],
+    [
+      "dependenciesNeedInstall",
+      () => platform.dependenciesNeedInstall(),
+      "dependenciesNeedInstall",
+      undefined,
+    ],
+    ["packageVersions", () => platform.packageVersions(), "packageVersions", undefined],
     [
       "setPackageVersions",
-      [[{ name: "x", version: "^1" }]],
+      () => platform.setPackageVersions([{ name: "x", version: "^1" }]),
       "setPackageVersions",
       { updates: [{ name: "x", version: "^1" }] },
     ],
-    ["gitStatus", [], "gitStatus", undefined],
-    ["gitBranches", [], "gitBranches", undefined],
-    ["gitStage", [["a.json"]], "gitStage", { files: ["a.json"] }],
-    ["gitUnstage", [["a.json"]], "gitUnstage", { files: ["a.json"] }],
-    ["gitCommit", ["feat: x"], "gitCommit", { message: "feat: x" }],
-    ["gitPull", [], "gitPull", undefined],
-    ["gitFetch", [], "gitFetch", undefined],
-    ["gitCheckout", ["dev"], "gitCheckout", { branch: "dev" }],
-    ["gitCreateBranch", ["feature"], "gitCreateBranch", { name: "feature" }],
-    ["gitDiscard", [["a.json"]], "gitDiscard", { files: ["a.json"] }],
+    ["gitStatus", () => platform.gitStatus(), "gitStatus", undefined],
+    ["gitBranches", () => platform.gitBranches(), "gitBranches", undefined],
+    ["gitStage", () => platform.gitStage(["a.json"]), "gitStage", { files: ["a.json"] }],
+    ["gitUnstage", () => platform.gitUnstage(["a.json"]), "gitUnstage", { files: ["a.json"] }],
+    ["gitCommit", () => platform.gitCommit("feat: x"), "gitCommit", { message: "feat: x" }],
+    ["gitPull", () => platform.gitPull(), "gitPull", undefined],
+    ["gitFetch", () => platform.gitFetch(), "gitFetch", undefined],
+    ["gitCheckout", () => platform.gitCheckout("dev"), "gitCheckout", { branch: "dev" }],
+    [
+      "gitCreateBranch",
+      () => platform.gitCreateBranch("feature"),
+      "gitCreateBranch",
+      { name: "feature" },
+    ],
+    ["gitDiscard", () => platform.gitDiscard(["a.json"]), "gitDiscard", { files: ["a.json"] }],
     [
       "gitShow",
-      [{ path: "a.json", ref: "HEAD~1" }],
+      () => platform.gitShow({ path: "a.json", ref: "HEAD~1" }),
       "gitShow",
       {
         path: "a.json",
@@ -622,7 +691,12 @@ describe("platform methods", () => {
     ],
     [
       "createProject",
-      [{ destination: { kind: "path", parent: "/tmp" }, directory: "p", name: "p" }],
+      () =>
+        platform.createProject({
+          destination: { kind: "path", parent: "/tmp" },
+          directory: "p",
+          name: "p",
+        }),
       "createProject",
       {
         destination: { kind: "path", parent: "/tmp" },
@@ -630,68 +704,95 @@ describe("platform methods", () => {
         name: "p",
       },
     ],
-    ["listStarters", [], "listStarters", undefined],
-    ["aiChatUrl", [], "aiChatUrl", undefined],
-    ["setWindowProject", ["/proj/x"], "setWindowProject", { root: "/proj/x" }],
+    ["listStarters", () => platform.listStarters(), "listStarters", undefined],
+    ["aiChatUrl", () => platform.aiChatUrl(), "aiChatUrl", undefined],
+    [
+      "setWindowProject",
+      () => platform.setWindowProject("/proj/x"),
+      "setWindowProject",
+      { root: "/proj/x" },
+    ],
     // Both of these ANSWER now. `openProjectInNewWindow` reports whether it built a window or
     // Raised one that already had the project, and `pickProject` is the picker whose whole value
     // Is its return: the chosen project, with this window left bound to its own.
-    ["openProjectInNewWindow", ["/proj/y"], "openProjectInNewWindow", { root: "/proj/y" }],
-    ["pickProject", [], "pickProject", undefined],
-    ["getProjectRoot", [], "getProjectRoot", undefined],
-    ["getRecentProjects", [], "getRecentProjects", undefined],
-    ["getSettings", [], "getSettings", undefined],
+    [
+      "openProjectInNewWindow",
+      () => platform.openProjectInNewWindow("/proj/y"),
+      "openProjectInNewWindow",
+      { root: "/proj/y" },
+    ],
+    ["pickProject", () => platform.pickProject(), "pickProject", undefined],
+    ["getProjectRoot", () => platform.getProjectRoot(), "getProjectRoot", undefined],
+    ["getRecentProjects", () => platform.getRecentProjects(), "getRecentProjects", undefined],
+    ["getSettings", () => platform.getSettings(), "getSettings", undefined],
     /* A patch, and it ANSWERS with the resulting store — so the caller learns what actually landed
        after composing with any concurrent writer. */
     [
       "patchSettings",
-      [{ remove: ["jx.ai.model"], set: { "jx.ai.openaiKey": "sk-x" } }],
+      () => platform.patchSettings({ remove: ["jx.ai.model"], set: { "jx.ai.openaiKey": "sk-x" } }),
       "patchSettings",
       { patch: { remove: ["jx.ai.model"], set: { "jx.ai.openaiKey": "sk-x" } } },
     ],
     // Data surface + secrets (desktop twins of /__studio/data/* + /__studio/secrets)
-    ["dataConnections", [], "dataConnections", undefined],
-    ["dataConnectionTest", ["main"], "dataConnectionTest", { connection: "main" }],
+    ["dataConnections", () => platform.dataConnections(), "dataConnections", undefined],
+    [
+      "dataConnectionTest",
+      () => platform.dataConnectionTest("main"),
+      "dataConnectionTest",
+      { connection: "main" },
+    ],
     [
       "dataPush",
-      [{ connection: "main", dryRun: true }],
+      () => platform.dataPush({ connection: "main", dryRun: true }),
       "dataPush",
       { connection: "main", dryRun: true },
     ],
-    ["dataPush", [], "dataPush", {}],
-    ["dataRows", [{ limit: 50, table: "posts" }], "dataRows", { limit: 50, table: "posts" }],
+    ["dataPush", () => platform.dataPush(), "dataPush", {}],
+    [
+      "dataRows",
+      () => platform.dataRows({ limit: 50, table: "posts" }),
+      "dataRows",
+      { limit: 50, table: "posts" },
+    ],
     [
       "dataInsertRow",
-      [{ table: "posts", values: { title: "t" } }],
+      () => platform.dataInsertRow({ table: "posts", values: { title: "t" } }),
       "dataInsertRow",
       { table: "posts", values: { title: "t" } },
     ],
     [
       "dataUpdateRow",
-      [{ pk: "r1", set: { title: "u" }, table: "posts" }],
+      () => platform.dataUpdateRow({ pk: "r1", set: { title: "u" }, table: "posts" }),
       "dataUpdateRow",
       { pk: "r1", set: { title: "u" }, table: "posts" },
     ],
     [
       "dataDeleteRow",
-      [{ pk: "r1", table: "posts" }],
+      () => platform.dataDeleteRow({ pk: "r1", table: "posts" }),
       "dataDeleteRow",
       { pk: "r1", table: "posts" },
     ],
-    ["setSecrets", [{ set: { MAIN_URL: "v" } }], "setSecrets", { set: { MAIN_URL: "v" } }],
+    [
+      "setSecrets",
+      () => platform.setSecrets({ set: { MAIN_URL: "v" } }),
+      "setSecrets",
+      { set: { MAIN_URL: "v" } },
+    ],
     // `Build Site` compiles through this and opens the origin the reply names.
-    ["buildSite", [], "buildSite", undefined],
+    ["buildSite", () => platform.buildSite(), "buildSite", undefined],
     /* `View: Open in Browser` reaches this one, and the route travels WITH the call: the backend
        needs it to point an already-open tab somewhere, not just to name an origin. */
-    ["previewSite", [{ route: "/blog/hello/" }], "previewSite", { route: "/blog/hello/" }],
+    [
+      "previewSite",
+      () => platform.previewSite({ route: "/blog/hello/" }),
+      "previewSite",
+      { route: "/blog/hello/" },
+    ],
   ];
 
-  for (const [method, args, rpcMethod, expectedPayload] of delegations) {
+  for (const [method, invoke, rpcMethod, expectedPayload] of delegations) {
     test(`${method} delegates to rpc.request.${rpcMethod}`, async () => {
-      const fn = (platform as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[
-        method
-      ];
-      const result = await fn.apply(platform, args);
+      const result = await invoke();
       const call = lastCall(rpcMethod);
       expect(call).toBeDefined();
       if (expectedPayload === undefined) {
@@ -746,21 +847,29 @@ describe("platform methods", () => {
     expect(lastCall("uploadFile")!.args[0]).toEqual({ data: "aGk=", path: "img.png" });
   });
 
-  const voidDelegations: [string, unknown[], string, unknown][] = [
-    ["gitInit", [], "gitInit", undefined],
+  /** A PAL method that awaits its RPC and answers nothing, whatever the backend replied. */
+  type VoidDelegation = [
+    method: string,
+    invoke: () => Promise<void>,
+    rpcMethod: string,
+    payload: JsonValue | undefined,
+  ];
+
+  const voidDelegations: VoidDelegation[] = [
+    ["gitInit", () => platform.gitInit(), "gitInit", undefined],
     [
       "gitAddRemote",
-      ["origin", "git@host:repo.git"],
+      () => platform.gitAddRemote("origin", "git@host:repo.git"),
       "gitAddRemote",
       {
         name: "origin",
         url: "git@host:repo.git",
       },
     ],
-    ["newWindow", [], "newWindow", undefined],
+    ["newWindow", () => platform.newWindow(), "newWindow", undefined],
     [
       "saveRecentProjects",
-      [[{ name: "x", root: "/x", timestamp: 1 }]],
+      () => platform.saveRecentProjects([{ name: "x", root: "/x", timestamp: 1 }]),
       "saveRecentProjects",
       { projects: [{ name: "x", root: "/x", timestamp: 1 }] },
     ],
@@ -768,13 +877,13 @@ describe("platform methods", () => {
        positional arguments on the PAL, one object on the wire. */
     [
       "setPreviewOverlay",
-      ["pages/index.json", '{"tagName":"main"}'],
+      () => platform.setPreviewOverlay("pages/index.json", '{"tagName":"main"}'),
       "setPreviewOverlay",
       { contents: '{"tagName":"main"}', path: "pages/index.json" },
     ],
     [
       "clearPreviewOverlay",
-      ["pages/index.json"],
+      () => platform.clearPreviewOverlay("pages/index.json"),
       "clearPreviewOverlay",
       {
         path: "pages/index.json",
@@ -782,12 +891,9 @@ describe("platform methods", () => {
     ],
   ];
 
-  for (const [method, args, rpcMethod, expectedPayload] of voidDelegations) {
+  for (const [method, invoke, rpcMethod, expectedPayload] of voidDelegations) {
     test(`${method} awaits rpc.request.${rpcMethod} and returns undefined`, async () => {
-      const fn = (platform as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[
-        method
-      ];
-      const result = await fn.apply(platform, args);
+      const result = await invoke();
       const call = lastCall(rpcMethod);
       expect(call).toBeDefined();
       if (expectedPayload === undefined) {
@@ -818,9 +924,7 @@ describe("platform methods", () => {
   test("listSecrets unwraps the names-only response", async () => {
     impls.set("listSecrets", () => ({ names: ["MAIN_URL", "OTHER"] }));
     try {
-      const names = await (
-        platform as unknown as { listSecrets: () => Promise<string[]> }
-      ).listSecrets();
+      const names = await platform.listSecrets();
       expect(names).toEqual(["MAIN_URL", "OTHER"]);
       expect(lastCall("listSecrets")!.args).toEqual([]);
     } finally {
@@ -861,16 +965,16 @@ describe("platform methods", () => {
   });
 
   test("updater methods delegate", async () => {
-    const mapping: [keyof typeof platform.updater, string][] = [
-      ["applyUpdate", "updaterApplyUpdate"],
-      ["checkForUpdate", "updaterCheckForUpdate"],
-      ["downloadUpdate", "updaterDownloadUpdate"],
-      ["getLocalInfo", "updaterGetLocalInfo"],
-      ["getStatus", "updaterGetStatus"],
+    const mapping: [invoke: () => Promise<RelayedReply> | Promise<void>, rpcMethod: string][] = [
+      [() => platform.updater.applyUpdate(), "updaterApplyUpdate"],
+      [() => platform.updater.checkForUpdate(), "updaterCheckForUpdate"],
+      [() => platform.updater.downloadUpdate(), "updaterDownloadUpdate"],
+      [() => platform.updater.getLocalInfo(), "updaterGetLocalInfo"],
+      [() => platform.updater.getStatus(), "updaterGetStatus"],
     ];
-    for (const [method, rpcMethod] of mapping) {
+    for (const [invoke, rpcMethod] of mapping) {
       const before = callsFor(rpcMethod).length;
-      await (platform.updater[method] as () => Promise<unknown>)();
+      await invoke();
       expect(callsFor(rpcMethod).length).toBe(before + 1);
     }
   });
@@ -1013,15 +1117,14 @@ describe("activate() initial asset sweep", () => {
     platform.canvasUrl = undefined;
     impls.set("getCanvasUrl", () => ({ canvasUrl: `${LOOPBACK}/__studio__/canvas.html` }));
     // Force resolveAllAssets to throw by making the tree walk blow up; the catch must swallow it.
-    const original = document.documentElement.querySelectorAll.bind(document.documentElement);
-    document.documentElement.querySelectorAll = (() => {
+    const sweep = spyOn(document.documentElement, "querySelectorAll").mockImplementation(() => {
       throw new Error("sweep boom");
-    }) as typeof document.documentElement.querySelectorAll;
+    });
     try {
       const result = await platform.activate();
       expect(result).toBeUndefined();
     } finally {
-      document.documentElement.querySelectorAll = original;
+      sweep.mockRestore();
     }
   });
 });
@@ -1072,14 +1175,13 @@ describe("preview link navigation", () => {
 /** Capture `window.open` calls without letting happy-dom navigate anything. */
 function trackWindowOpen() {
   const urls: string[] = [];
-  const original = window.open;
-  window.open = ((url?: string | URL) => {
+  const open = spyOn(window, "open").mockImplementation((url?: string | URL) => {
     urls.push(String(url));
     return null;
-  }) as typeof window.open;
+  });
   return {
     restore: () => {
-      window.open = original;
+      open.mockRestore();
     },
     urls,
   };
@@ -1174,10 +1276,10 @@ describe("importSite / pickDirectory", () => {
       },
       onProgress,
     );
-    expect(result).toEqual({ config: { name: "Imported" }, root: "/imported" } as never);
+    expect(result).toEqual({ config: { name: "Imported" }, root: "/imported" });
     const [endpoint, opts, cb] = streamImportCalls[0]!;
     expect(endpoint).toBe("http://127.0.0.1:9/__studio/import-site?token=T");
-    expect((opts as { directory: string }).directory).toBe("/abs/dest");
+    expect(opts.directory).toBe("/abs/dest");
     expect(cb).toBe(onProgress);
   });
 
@@ -1195,9 +1297,7 @@ describe("importSite / pickDirectory", () => {
       },
       () => {},
     );
-    expect((streamImportCalls[0]![1] as { directory: string }).directory).toBe(
-      String.raw`C:\Sites\dest`,
-    );
+    expect(streamImportCalls[0]![1].directory).toBe(String.raw`C:\Sites\dest`);
   });
 
   test("rejects an empty destination directory", async () => {

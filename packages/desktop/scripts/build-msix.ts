@@ -127,6 +127,8 @@ for (const file of readdirSync(join(desktopDir, "msix-assets"))) {
 }
 
 // --- Step 6: Generate AppxManifest.xml ---
+/* SAFETY: this is @jxsuite/desktop's own committed manifest; release-please rewrites its `version`
+   string on every desktop release and never removes it. */
 const pkg = JSON.parse(await readFile(join(desktopDir, "package.json"), "utf8")) as {
   version: string;
 };

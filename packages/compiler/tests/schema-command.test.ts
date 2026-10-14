@@ -20,7 +20,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { GENERATED_SCHEMA_COMMENT } from "@jxsuite/schema/project-schemas";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import {
   isFirstPartySchema,
   readBundledProjectSchemas,
@@ -30,27 +32,51 @@ import {
 
 const TMP = resolve(import.meta.dir, "__test-schema-command__");
 
-function writeFile(relPath: string, content: string | object) {
+/** Writes `content` verbatim when it is a string, as pretty-printed JSON otherwise. */
+function writeFile(relPath: string, content: JsonValue) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
-interface SchemaDoc {
-  $comment?: string;
-  $ref?: string;
-  allOf?: { $ref: string }[];
-  $defs?: Record<string, Record<string, unknown>>;
-  unevaluatedProperties?: boolean;
-  [key: string]: unknown;
+/** Parses a schema file; every entry document and fragment this suite reads is a JSON object. */
+function parseSchema(text: string, label: string): JsonObject {
+  const value: JsonValue = JSON.parse(text);
+  if (!isJsonObject(value)) {
+    throw new TypeError(`${label} is not a JSON object`);
+  }
+  return value;
 }
 
-function readJson(relPath: string): SchemaDoc {
-  return JSON.parse(readFileSync(resolve(TMP, relPath), "utf8")) as SchemaDoc;
+function readJson(relPath: string): JsonObject {
+  return parseSchema(readFileSync(resolve(TMP, relPath), "utf8"), relPath);
+}
+
+/** Walks `keys` down from `root`, requiring an object at every step. */
+function objectAt(root: JsonObject, ...keys: string[]): JsonObject {
+  let node = root;
+  for (const key of keys) {
+    const next = node[key];
+    if (!isJsonObject(next)) {
+      throw new TypeError(`expected an object at ${keys.join("/")} (missing at "${key}")`);
+    }
+    node = next;
+  }
+  return node;
+}
+
+/** The array stored at `key` of `node`, which must be one. */
+function arrayAt(node: JsonObject, key: string): JsonValue[] {
+  const value = node[key];
+  if (!Array.isArray(value)) {
+    throw new TypeError(`expected an array at "${key}"`);
+  }
+  return value;
+}
+
+/** The `$ref` each member of a schema's `allOf` names. */
+function allOfRefs(schema: JsonObject): (JsonValue | undefined)[] {
+  return arrayAt(schema, "allOf").map((entry) => (isJsonObject(entry) ? entry.$ref : undefined));
 }
 
 beforeAll(() => {
@@ -99,33 +125,34 @@ describe("writeProjectSchemas", () => {
     /* The committed form is bundled AND flattened into one resource: every fragment ref is a
        root-relative pointer into the embed under $defs — no ./node_modules or in-project relative
        refs, and no canonical URIs an editor would try to fetch. */
-    expect(project.allOf!.map((entry) => entry.$ref)).toEqual([
+    expect(allOfRefs(project)).toEqual([
       "#/$defs/project-core-v2",
       "#/$defs/ext-parser-project-v1",
       "#/$defs/local-ext-project-v1",
     ]);
-    expect(project.$defs!["project-core-v2"]).toBeDefined();
-    expect(project.$defs!["local-ext-project-v1"]).toBeDefined();
-    expect(project.$defs!["project-core-v2"]!.$id).toBeUndefined();
+    const projectDefs = objectAt(project, "$defs");
+    expect(projectDefs["project-core-v2"]).toBeDefined();
+    expect(projectDefs["local-ext-project-v1"]).toBeDefined();
+    expect(objectAt(projectDefs, "project-core-v2").$id).toBeUndefined();
     expect(project.unevaluatedProperties).toBe(false);
 
     const document = readJson("document.schema.json");
     // A root $ref beside $defs would make VS Code merge the core's $defs over the entry's own.
     expect(document.$ref).toBeUndefined();
-    expect(document.allOf!.map((entry) => entry.$ref)).toEqual(["#/$defs/v1"]);
-    expect(document.$defs!.v1).toBeDefined();
+    expect(allOfRefs(document)).toEqual(["#/$defs/v1"]);
+    const documentDefs = objectAt(document, "$defs");
+    expect(documentDefs.v1).toBeDefined();
     /* Parser's fragment contributes its paths shape; the $id-less local fragment none. The union
        also restates the core source shapes — it shadows the shipped default rather than extending
        it — so assert on the contributed tail. */
-    const pathsMembers = document.$defs!.PathsValue!.anyOf as Record<string, unknown>[];
+    const pathsMembers = arrayAt(objectAt(documentDefs, "PathsValue"), "anyOf");
     expect(pathsMembers.at(-1)).toEqual({
       $ref: "#/$defs/ext-parser-document-v1/$defs/ContentPathsSource",
     });
     expect(pathsMembers.length).toBeGreaterThan(1);
     // And the shape it names is embedded, so the union actually resolves.
     expect(
-      (document.$defs!["ext-parser-document-v1"]!.$defs as Record<string, unknown>)
-        .ContentPathsSource,
+      objectAt(documentDefs, "ext-parser-document-v1", "$defs").ContentPathsSource,
     ).toBeDefined();
   });
 
@@ -138,8 +165,10 @@ describe("writeProjectSchemas", () => {
     });
     await writeProjectSchemas(TMP);
     let document = readJson("document.schema.json");
-    const contributed = (defs: SchemaDoc) =>
-      (defs.$defs!.PathsValue!.anyOf as Record<string, unknown>[]).filter((m) => "$ref" in m);
+    const contributed = (schema: JsonObject) =>
+      arrayAt(objectAt(schema, "$defs", "PathsValue"), "anyOf").filter(
+        (member) => isJsonObject(member) && "$ref" in member,
+      );
     expect(contributed(document)).toEqual([
       { $ref: "#/$defs/ext-parser-document-v1/$defs/ContentPathsSource" },
     ]);
@@ -177,16 +206,18 @@ describe("writeProjectSchemas", () => {
 
       await writeProjectSchemas(root);
 
-      const project = JSON.parse(
+      const project = parseSchema(
         readFileSync(resolve(root, "project.schema.json"), "utf8"),
-      ) as SchemaDoc;
-      expect(project.allOf!.map((entry) => entry.$ref)).toEqual(["#/$defs/project-core-v2"]);
-      expect(project.$defs!["project-core-v2"]).toBeDefined();
-      const document = JSON.parse(
+        "project.schema.json",
+      );
+      expect(allOfRefs(project)).toEqual(["#/$defs/project-core-v2"]);
+      expect(objectAt(project, "$defs")["project-core-v2"]).toBeDefined();
+      const document = parseSchema(
         readFileSync(resolve(root, "document.schema.json"), "utf8"),
-      ) as SchemaDoc;
-      expect(document.allOf!.map((entry) => entry.$ref)).toEqual(["#/$defs/v1"]);
-      expect(document.$defs!.v1).toBeDefined();
+        "document.schema.json",
+      );
+      expect(allOfRefs(document)).toEqual(["#/$defs/v1"]);
+      expect(objectAt(document, "$defs").v1).toBeDefined();
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
@@ -215,17 +246,16 @@ describe("readBundledProjectSchemas", () => {
     expect(existsSync(resolve(TMP, "document.schema.json"))).toBe(true);
 
     // Every relative ref is gone — the bundles resolve without any file access.
-    const scanRefs = (node: unknown, out: string[] = []): string[] => {
+    const scanRefs = (node: JsonValue | undefined, out: string[] = []): string[] => {
       if (Array.isArray(node)) {
         for (const item of node) {
           scanRefs(item, out);
         }
-      } else if (node && typeof node === "object") {
-        const obj = node as Record<string, unknown>;
-        if (typeof obj.$ref === "string") {
-          out.push(obj.$ref);
+      } else if (isJsonObject(node)) {
+        if (isString(node.$ref)) {
+          out.push(node.$ref);
         }
-        for (const value of Object.values(obj)) {
+        for (const value of Object.values(node)) {
           scanRefs(value, out);
         }
       }
@@ -239,12 +269,11 @@ describe("readBundledProjectSchemas", () => {
 
     // The parser fragment (host-fallback: TMP has no node_modules) and the local fragment embed
     // Under $defs keyed by slugs of their $ids; the entry allOf refs point at them.
-    const projectDefs = project.$defs as Record<string, Record<string, unknown>>;
+    const projectDefs = objectAt(project, "$defs");
     expect(projectDefs["ext-parser-project-v1"]).toBeDefined();
-    expect(projectDefs["ext-parser-project-v1"]!.$id).toBeUndefined();
+    expect(objectAt(projectDefs, "ext-parser-project-v1").$id).toBeUndefined();
     expect(projectDefs["local-ext-project-v1"]).toBeDefined();
-    const allOf = project.allOf as { $ref: string }[];
-    expect(allOf.map((entry) => entry.$ref)).toEqual([
+    expect(allOfRefs(project)).toEqual([
       "#/$defs/project-core-v2",
       "#/$defs/ext-parser-project-v1",
       "#/$defs/local-ext-project-v1",
@@ -252,11 +281,8 @@ describe("readBundledProjectSchemas", () => {
 
     // The document bundle inlines the core document schema, reached through allOf (never a root $ref).
     expect(document.$ref).toBeUndefined();
-    expect((document.allOf as { $ref: string }[]).map((entry) => entry.$ref)).toEqual([
-      "#/$defs/v1",
-    ]);
-    const documentDefs = document.$defs as Record<string, Record<string, unknown>>;
-    expect(documentDefs.v1).toBeDefined();
+    expect(allOfRefs(document)).toEqual(["#/$defs/v1"]);
+    expect(objectAt(document, "$defs").v1).toBeDefined();
   });
 
   it("reuses fresh entry documents but regenerates stale ones", async () => {

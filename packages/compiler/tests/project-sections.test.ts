@@ -12,18 +12,18 @@ import { resolve } from "node:path";
 import { buildProjectExtensionRegistry } from "../src/site/format-host";
 import { loadProjectSections } from "../src/site/project-sections";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-project-sections__");
 
-function writeFile(relPath: string, content: string | object) {
+function writeFile(relPath: string, content: string) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, content, "utf8");
+}
+
+function writeJson(relPath: string, value: JsonObject | ProjectConfig) {
+  writeFile(relPath, JSON.stringify(value, null, 2));
 }
 
 const projectConfig: ProjectConfig = {
@@ -37,9 +37,9 @@ let registry: ExtensionRegistry;
 
 beforeAll(async () => {
   rmSync(TMP, { force: true, recursive: true });
-  writeFile("project.json", projectConfig);
+  writeJson("project.json", projectConfig);
 
-  writeFile("ext/jx-extension.json", {
+  writeJson("ext/jx-extension.json", {
     classes: {
       NoData: "./nodata.class.json",
       WithData: "./withdata.class.json",
@@ -48,13 +48,13 @@ beforeAll(async () => {
   });
 
   // Owns a section but declares no projectData capability — must be skipped.
-  writeFile("ext/nodata.class.json", {
+  writeJson("ext/nodata.class.json", {
     $prototype: "Class",
     project: { key: "vacant" },
     title: "NoData",
   });
 
-  writeFile("ext/withdata.class.json", {
+  writeJson("ext/withdata.class.json", {
     $defs: {
       methods: {
         projectData: {

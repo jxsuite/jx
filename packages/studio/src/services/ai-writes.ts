@@ -22,7 +22,7 @@
  * @docs studio/ai/chat
  */
 
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import { createLedger } from "@jxsuite/ai/tools";
 import type { AiWrite, WriteLedger } from "@jxsuite/ai/tools";
 
@@ -113,7 +113,7 @@ export function summarizeWrites(writes: AiWrite[]): string {
     return failed > 0 ? `${failed} change${failed === 1 ? "" : "s"} failed` : "";
   }
   const files = `Changed ${paths.size} file${paths.size === 1 ? "" : "s"}`;
-  const diskPaths = new Set(applied.filter((w) => w.disk).map((w) => w.path));
+  const diskPaths = new Set(applied.flatMap((w) => (w.disk ? [w.path] : [])));
   const parts = [files];
   if (diskPaths.size > 0) {
     parts.push(
@@ -150,13 +150,13 @@ export function resetAiWrites(): void {
  * message in it belongs to some other conversation: filing there would draw "Changed 1 file", and
  * Restore, under a reply that changed nothing.
  *
- * @param {readonly Message[]} messages
+ * @param {readonly LiveMessage[]} messages
  * @param {string} [userId] - The id of the user message this turn answers; without one, the whole
  *   transcript is the turn
  * @returns {string | null} Null when the turn drew nothing (so it ran no tool either), or when its
  *   user message has left the transcript
  */
-export function turnAnchor(messages: readonly Message[], userId?: string): string | null {
+export function turnAnchor(messages: readonly LiveMessage[], userId?: string): string | null {
   let anchor: string | null = null;
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index]!;

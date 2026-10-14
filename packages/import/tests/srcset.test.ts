@@ -40,7 +40,7 @@ describe("parseSrcset", () => {
     expect(parseSrcset("a.png 400w, b.png 800w, c.png 1200w")).toEqual(["a.png", "b.png", "c.png"]);
   });
 
-  test.each([
+  test.each<[string, string, string[]]>([
     ["root-relative", "/img/a.png 1x, /img/b.png 2x", ["/img/a.png", "/img/b.png"]],
     ["dot-relative", "./a.png 1x, ../b.png 2x", ["./a.png", "../b.png"]],
     [
@@ -49,7 +49,7 @@ describe("parseSrcset", () => {
       ["//cdn.example.com/a.png", "//cdn.example.com/b.png"],
     ],
   ])("splits %s entries", (_name, srcset, expected) => {
-    expect(parseSrcset(srcset)).toEqual(expected as string[]);
+    expect(parseSrcset(srcset)).toEqual(expected);
   });
 
   // A data URI's own `base64,` comma is the exact case a naive split gets wrong in the other

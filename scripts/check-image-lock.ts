@@ -48,8 +48,11 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { isJsonObject, isJsonPrimitive, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonPrimitive, JsonValue } from "@jxsuite/schema/types";
 
 import { changedPixelRatio, decodePng, readPngSize } from "./lib/png";
+import { DEFAULT_MANIFEST } from "./screenshots/lib/contract.ts";
 
 /**
  * Paths here are repo-relative, resolved against the repo root rather than `cwd` — the same rule
@@ -63,7 +66,6 @@ export function fromRoot(path: string): string {
   return isAbsolute(path) ? path : resolve(REPO_ROOT, path);
 }
 
-export const DEFAULT_MANIFEST = "scripts/screenshots/manifest.json";
 export const DEFAULT_LOCK = "scripts/screenshots/capture.lock.json";
 export const DEFAULT_IMAGES_DIR = "docs/images";
 export const DEFAULT_DOCS_DIR = "docs";
@@ -141,12 +143,9 @@ export function emptyLock(manifest: string = DEFAULT_MANIFEST): CaptureLock {
   return { images: {}, lock: LOCK_VERSION, manifest };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function records(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter((entry) => isRecord(entry)) : [];
+/** The object members of a JSON array; anything else holds none. */
+function records(value: JsonValue | undefined): JsonObject[] {
+  return Array.isArray(value) ? value.filter((entry) => isJsonObject(entry)) : [];
 }
 
 /** Read the lock, or `null` when it does not exist yet (a first capture, and not an error). */
@@ -155,14 +154,18 @@ export function readLock(path: string = DEFAULT_LOCK): CaptureLock | null {
   if (!existsSync(file)) {
     return null;
   }
-  const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
-  if (!isRecord(parsed) || !isRecord(parsed.images)) {
+  const parsed: JsonValue = JSON.parse(readFileSync(file, "utf8"));
+  if (!isJsonObject(parsed) || !isJsonObject(parsed.images)) {
     throw new Error(`${path} is not a capture lock (expected an object with an "images" map)`);
   }
+  /* SAFETY: the only writer of the lock is writeLock(), which serialises LockImage values through
+     orderEntry(), so a committed entry has LockImage's members. checkImageLock() still re-reads
+     every member it relies on as possibly absent, because a hand edit is what it exists to catch. */
+  const images = parsed.images as Record<string, LockImage> & JsonObject;
   return {
-    images: parsed.images as Record<string, LockImage>,
-    lock: typeof parsed.lock === "number" ? parsed.lock : 0,
-    manifest: typeof parsed.manifest === "string" ? parsed.manifest : DEFAULT_MANIFEST,
+    images,
+    lock: isNumber(parsed.lock) ? parsed.lock : 0,
+    manifest: isString(parsed.manifest) ? parsed.manifest : DEFAULT_MANIFEST,
   };
 }
 
@@ -256,7 +259,11 @@ export function chromiumMajor(version: string): string {
  * so families are what the lock records.
  */
 export function fontsetId(families: readonly string[]): string {
-  const unique = [...new Set(families.map((family) => family.trim()).filter(Boolean))].toSorted();
+  const trimmed = families.flatMap((family) => {
+    const name = family.trim();
+    return name ? [name] : [];
+  });
+  const unique = [...new Set(trimmed)].toSorted();
   if (unique.length === 0) {
     return "unknown";
   }
@@ -305,28 +312,40 @@ export function captureOrigin(env: Record<string, string | undefined> = process.
 
 // ─── The definition hash ──────────────────────────────────────────────────────
 
+/**
+ * JSON as a shot can be handed to {@link hashShotDefinition}: a JS literal may also carry a member
+ * that is explicitly `undefined`, which canonicalise() drops exactly as `JSON.stringify` would.
+ */
+export type AuthoredValue = JsonPrimitive | undefined | AuthoredValue[] | AuthoredObject;
+
+/** The object form of {@link AuthoredValue}. */
+export interface AuthoredObject {
+  [key: string]: AuthoredValue;
+}
+
 /** Recursively sort keys and drop `undefined` and `//`-prefixed comment keys. Arrays keep order. */
-function canonicalise(value: unknown): unknown {
+function canonicalise(value: AuthoredValue): AuthoredValue {
   if (Array.isArray(value)) {
     return value.map((entry) => canonicalise(entry));
   }
-  if (!isRecord(value)) {
+  if (value === undefined || isJsonPrimitive(value)) {
     return value;
   }
-  const out: Record<string, unknown> = {};
+  const out: AuthoredObject = {};
   for (const key of Object.keys(value).toSorted()) {
-    if (key.startsWith("//") || value[key] === undefined) {
+    const member = value[key];
+    if (key.startsWith("//") || member === undefined) {
       continue;
     }
-    out[key] = canonicalise(value[key]);
+    out[key] = canonicalise(member);
   }
   return out;
 }
 
 /** Everything a shot inherits that can move a pixel. */
 export interface ShotDefinitionContext {
-  contract?: unknown;
-  defaults?: unknown;
+  contract?: JsonValue | undefined;
+  defaults?: JsonValue | undefined;
 }
 
 /**
@@ -338,9 +357,12 @@ export interface ShotDefinitionContext {
  * URL is infrastructure, and treating it as part of the picture would re-baseline the repo every
  * time the port moved.
  */
-export function hashShotDefinition(shot: unknown, context: ShotDefinitionContext = {}): string {
-  const pruned: Record<string, unknown> = {};
-  if (isRecord(shot)) {
+export function hashShotDefinition(
+  shot: AuthoredValue,
+  context: ShotDefinitionContext = {},
+): string {
+  const pruned: AuthoredObject = {};
+  if (isJsonObject(shot)) {
     for (const [key, value] of Object.entries(shot)) {
       if (!NON_VISUAL_SHOT_KEYS.includes(key)) {
         pruned[key] = value;
@@ -357,12 +379,12 @@ export function hashShotDefinition(shot: unknown, context: ShotDefinitionContext
 }
 
 /** Shot name → definition hash, for a whole manifest. What both the runner and the gate call. */
-export function shotDefinitionHashes(manifest: unknown): Map<string, string> {
-  const root = isRecord(manifest) ? manifest : {};
+export function shotDefinitionHashes(manifest: JsonValue): Map<string, string> {
+  const root: JsonObject = isJsonObject(manifest) ? manifest : {};
   const context: ShotDefinitionContext = { contract: root.contract, defaults: root.defaults };
   const hashes = new Map<string, string>();
   for (const shot of records(root.shots)) {
-    if (typeof shot.name === "string") {
+    if (isString(shot.name)) {
       hashes.set(shot.name, hashShotDefinition(shot, context));
     }
   }
@@ -371,10 +393,14 @@ export function shotDefinitionHashes(manifest: unknown): Map<string, string> {
 
 // ─── Manifest reading ─────────────────────────────────────────────────────────
 
+/**
+ * A shot's `status` block as authored. The members stay JSON values rather than strings because the
+ * gate's job is to report a malformed one, quoting what was actually written.
+ */
 export interface ShotStatus {
-  state: string;
-  reason?: string;
-  since?: string;
+  state?: JsonValue;
+  reason?: JsonValue;
+  since?: JsonValue;
 }
 
 export interface ManifestShot {
@@ -385,7 +411,7 @@ export interface ManifestShot {
   status?: ShotStatus | undefined;
   /** Every image basename the shot can produce, in either contract shape. */
   images: Set<string>;
-  raw: Record<string, unknown>;
+  raw: JsonObject;
 }
 
 /**
@@ -396,28 +422,28 @@ export interface ManifestShot {
  * manifest conversion does not have to touch this file — the same tolerance
  * `check-shot-contract.ts` buys for the same reason.
  */
-export function shotImageNames(shot: Record<string, unknown>): Set<string> {
+export function shotImageNames(shot: JsonObject): Set<string> {
   const names = new Set<string>();
-  const name = typeof shot.name === "string" ? shot.name : "";
+  const name = isString(shot.name) ? shot.name : "";
   if (name) {
     names.add(name);
   }
   for (const region of records(shot.regions)) {
-    if (typeof region.name === "string") {
+    if (isString(region.name)) {
       names.add(region.name);
     }
   }
   for (const capture of records(shot.capture)) {
-    if (typeof capture.image === "string") {
+    if (isString(capture.image)) {
       names.add(capture.image);
     }
   }
   for (const variant of [...records(shot.variants), ...records(shot.then)]) {
-    if (typeof variant.suffix === "string" && name) {
+    if (isString(variant.suffix) && name) {
       names.add(`${name}${variant.suffix}`);
     }
     for (const capture of records(variant.capture)) {
-      if (typeof capture.image === "string") {
+      if (isString(capture.image)) {
         names.add(capture.image);
       }
     }
@@ -425,18 +451,16 @@ export function shotImageNames(shot: Record<string, unknown>): Set<string> {
   return names;
 }
 
-export function readShots(manifest: unknown): ManifestShot[] {
-  const root = isRecord(manifest) ? manifest : {};
+export function readShots(manifest: JsonValue): ManifestShot[] {
+  const root: JsonObject = isJsonObject(manifest) ? manifest : {};
   const shots: ManifestShot[] = [];
   for (const raw of records(root.shots)) {
-    if (typeof raw.name !== "string") {
+    if (!isString(raw.name)) {
       continue;
     }
-    const status = isRecord(raw.status) ? (raw.status as unknown as ShotStatus) : undefined;
+    const status: ShotStatus | undefined = isJsonObject(raw.status) ? raw.status : undefined;
     shots.push({
-      docs: Array.isArray(raw.docs)
-        ? raw.docs.filter((s): s is string => typeof s === "string")
-        : undefined,
+      docs: Array.isArray(raw.docs) ? raw.docs.filter((entry) => isString(entry)) : undefined,
       images: shotImageNames(raw),
       name: raw.name,
       raw,
@@ -447,7 +471,7 @@ export function readShots(manifest: unknown): ManifestShot[] {
 }
 
 /** Every image basename the pipeline can produce — what `docs:check` name-matches against. */
-export function manifestImageNames(manifest: unknown): Set<string> {
+export function manifestImageNames(manifest: JsonValue): Set<string> {
   const names = new Set<string>();
   for (const shot of readShots(manifest)) {
     for (const name of shot.images) {
@@ -458,7 +482,7 @@ export function manifestImageNames(manifest: unknown): Set<string> {
 }
 
 /** Docs slug → shot names that illustrate it, from the shots' own `docs:` field. */
-export function shotsByDocsPage(manifest: unknown): Map<string, string[]> {
+export function shotsByDocsPage(manifest: JsonValue): Map<string, string[]> {
   const map = new Map<string, string[]>();
   for (const shot of readShots(manifest)) {
     for (const slug of shot.docs ?? []) {
@@ -468,7 +492,7 @@ export function shotsByDocsPage(manifest: unknown): Map<string, string[]> {
   return map;
 }
 
-export function quarantinedShots(manifest: unknown): ManifestShot[] {
+export function quarantinedShots(manifest: JsonValue): ManifestShot[] {
   return readShots(manifest).filter((shot) => shot.status?.state === "quarantined");
 }
 
@@ -546,7 +570,7 @@ export interface QuarantineFinding {
  * the opposite. Reported with page context, which is why `docs:check` owns the failure.
  */
 export function quarantineRefFindings(
-  manifest: unknown,
+  manifest: JsonValue,
   refs: readonly DocImageRef[],
   lock: CaptureLock | null,
 ): QuarantineFinding[] {
@@ -584,7 +608,7 @@ export interface ImageOnDisk {
 }
 
 export interface LockCheckInput {
-  manifest: unknown;
+  manifest: JsonValue;
   lock: CaptureLock | null;
   disk: readonly ImageOnDisk[];
   refs?: readonly DocImageRef[];
@@ -680,22 +704,25 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
           `entry and re-capture.`,
       );
     }
-    if (!SHA256_RE.test(entry.sha256 ?? "")) {
+    /* The integrity checks read the entry as possibly incomplete: readLock() vouches for the map,
+     * and a hand-edited entry missing any of these members is exactly what they report. */
+    const recorded: Partial<LockImage> = entry;
+    if (!SHA256_RE.test(recorded.sha256 ?? "")) {
       violations.push(`${DEFAULT_LOCK} entry ${path} has no valid sha256`);
     }
-    if (!CAPTURED_BY_RE.test(entry.capturedBy ?? "")) {
+    if (!CAPTURED_BY_RE.test(recorded.capturedBy ?? "")) {
       violations.push(
-        `${DEFAULT_LOCK} entry ${path} records capturedBy ${JSON.stringify(entry.capturedBy)}; ` +
+        `${DEFAULT_LOCK} entry ${path} records capturedBy ${JSON.stringify(recorded.capturedBy)}; ` +
           `only "bun run screenshots" writes the lock and it stamps "screenshots@<origin>".`,
       );
     }
-    if (!ISO_RE.test(entry.capturedAt ?? "")) {
+    if (!ISO_RE.test(recorded.capturedAt ?? "")) {
       violations.push(
-        `${DEFAULT_LOCK} entry ${path} records capturedAt ${JSON.stringify(entry.capturedAt)}, ` +
+        `${DEFAULT_LOCK} entry ${path} records capturedAt ${JSON.stringify(recorded.capturedAt)}, ` +
           `which is not an ISO-8601 UTC timestamp.`,
       );
     }
-    const { runtime } = entry;
+    const { runtime } = recorded;
     if (!runtime?.chromium || !runtime.fontset || !runtime.os) {
       violations.push(
         `${DEFAULT_LOCK} entry ${path} records an incomplete runtime triple ` +
@@ -1035,10 +1062,10 @@ export async function main(argv: readonly string[]): Promise<number> {
   const imagesDir = options.images ?? DEFAULT_IMAGES_DIR;
   const docsDir = options.docs ?? DEFAULT_DOCS_DIR;
 
-  let manifest: unknown;
+  let manifest: JsonValue;
   let lock: CaptureLock | null;
   try {
-    manifest = JSON.parse(readFileSync(fromRoot(manifestPath), "utf8")) as unknown;
+    manifest = JSON.parse(readFileSync(fromRoot(manifestPath), "utf8"));
     lock = readLock(lockPath);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

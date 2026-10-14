@@ -20,7 +20,15 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { isMappedArray, isRef } from "@jxsuite/schema/guards";
+import {
+  isJsonObject,
+  isMappedArray,
+  isNonNullObject,
+  isRef,
+  isString,
+  isTemplateString,
+} from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
 import {
   isNpmSpecifier,
   npmAssetPath,
@@ -55,6 +63,7 @@ import {
 } from "./headers-emitter.ts";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectSections } from "./project-sections.ts";
+import type { ProjectSections } from "./project-sections.ts";
 import { collectAssetRefs, copyMountedAssets, loadAssetMounts } from "./asset-mounts.ts";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
@@ -64,7 +73,9 @@ import { mergeHead, renderHead } from "@jxsuite/site/head-merger";
 import { unregisteredHeadRelations } from "./link-relations.ts";
 import { injectContext } from "./context-injection.ts";
 import { compile, compileServer, compileSiteServer } from "../compiler.ts";
+import type { CompileOptions } from "../compiler.ts";
 import { compileElement } from "../targets/compile-element.ts";
+import type { CompileElementOptions } from "../targets/compile-element.ts";
 import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server.ts";
 import {
   buildComponentCSS,
@@ -77,7 +88,6 @@ import {
   evaluateStaticTemplate,
   isComponentFullyStatic,
   isSingleExpression,
-  isTemplateString,
   liftPropsAttributes,
   preRenderComponentHtml,
   pureSchemeOf,
@@ -131,18 +141,31 @@ import { getImageCacheDir, loadCache, saveCache } from "./image-cache.ts";
 import type { ImageConfig } from "./image-optimizer.ts";
 import type { ImageMetaCache } from "./image-transform.ts";
 import type {
+  JsonObject,
   JsonValue,
   JxAttributeValue,
   JxElement,
   JxHeadEntry,
   JxMappedArray,
-  JxMutableNode,
   JxStateDefinition,
   JxStyle,
   ProjectConfig,
 } from "@jxsuite/schema/types";
-import type { SiteRoute } from "../types.ts";
+import type { JxScope } from "@jxsuite/runtime/types";
 import type { CacheManifest } from "./image-cache.js";
+
+declare module "@jxsuite/schema/format-registry" {
+  /**
+   * The template hooks a site build adds to an export sidecar's `serialize` options
+   * (specs/extensions.md §7). The format builds a document's scope with `buildScope` and hands that
+   * scope back to `evaluateTemplate` unread, so both are typed by the compiler's static scope.
+   */
+  interface SerializeExportOptions {
+    buildScope?: (state: Record<string, JxStateDefinition>) => JxScope;
+    /** Evaluate one template string against that scope; `undefined` keeps it as written. */
+    evaluateTemplate?: (value: string, scope: JxScope) => JxScope[string] | undefined;
+  }
+}
 
 /**
  * Build an entire Jx site from a project directory.
@@ -289,7 +312,7 @@ export async function buildSite(
       sidecarBundles.set(assetPath, { entryPath, specifier });
       return assetPath;
     } catch (error) {
-      errors.push(`Sidecar "${specifier}": ${(error as Error).message}`);
+      errors.push(`Sidecar "${specifier}": ${errorMessage(error)}`);
       return specifier;
     }
   };
@@ -304,7 +327,7 @@ export async function buildSite(
     } catch (error) {
       // A missing dependency is a hard error, like an unresolvable sidecar: the alternative is a
       // Page that looks fine in dev and loses its stylesheet on deploy.
-      errors.push(`$head specifier "${specifier}": ${(error as Error).message}`);
+      errors.push(`$head specifier "${specifier}": ${errorMessage(error)}`);
       return specifier;
     }
   };
@@ -328,8 +351,8 @@ export async function buildSite(
     if (!entry.project) {
       return true;
     }
-    const value = projectConfig[entry.project.key] as Record<string, unknown> | undefined;
-    return value !== undefined && typeof value === "object" && Object.keys(value).length > 0;
+    const value = projectConfig[entry.project.key];
+    return isNonNullObject(value) && Object.keys(value).length > 0;
   });
   if (activeMounts.length > 0 && !projectConfig.build.adapter) {
     const sections = activeMounts
@@ -386,11 +409,9 @@ export async function buildSite(
   const assetRefs = new Set<string>();
 
   // ── 4. Expand dynamic routes ────────────────────────────────────────────
-  const extensionHead = registry
-    ? await collectExtensionHead(registry, projectConfig, projectRoot)
-    : [];
+  const extensionHead = await collectExtensionHead(registry, projectConfig, projectRoot);
 
-  const routes = await expandDynamicRoutes(
+  const expandedRoutes = await expandDynamicRoutes(
     staticRoutes,
     projectRoot,
     sections,
@@ -404,10 +425,13 @@ export async function buildSite(
    * of one entry share an id (§13.3), so a page that asked for `hello` without saying in which
    * language got whichever translation was loaded first — the English copy under a French route,
    * silently, on a page whose `<html lang>` said otherwise.
+   *
+   * Stamped onto each route object in place, so every holder of a route (the extension `emit`
+   * capability receives this table) sees the same `locale` member.
    */
-  for (const route of routes) {
-    (route as { locale?: string | null }).locale = localeOfRoute(route.urlPattern, i18n);
-  }
+  const routes = expandedRoutes.map((route) =>
+    Object.assign(route, { locale: localeOfRoute(route.urlPattern, i18n) }),
+  );
   log(`  ${routes.length} route(s) after expansion`);
 
   let fileCount = 0;
@@ -446,8 +470,7 @@ export async function buildSite(
     for (const file of componentFiles) {
       try {
         const componentPath = resolve(componentsDir, file);
-        const result = await compileElement(componentPath, {
-          ...(projectConfig.$media ? { $media: projectConfig.$media } : {}),
+        const elementOptions: CompileElementOptions = {
           formats: formatRegistry,
           resolveElementPath: (refPath: string, currentDir: string | null) => {
             const depPath = currentDir ? resolve(currentDir, refPath) : resolve(refPath);
@@ -455,7 +478,11 @@ export async function buildSite(
             return depTag ? `./${depTag}.js` : refPath.replace(/\.json$/, ".js");
           },
           rewriteSrc: rewriteSidecarSrc,
-        });
+        };
+        if (projectConfig.$media) {
+          elementOptions.$media = projectConfig.$media;
+        }
+        const result = await compileElement(componentPath, elementOptions);
         for (const f of result.files) {
           // Name the output after the tag. `injectComponentScripts` emits
           // `<script src="/components/<tag>.js">` and the CSS sidecar is written as `<tag>.css`, so
@@ -511,9 +538,9 @@ export async function buildSite(
           }
         }
       } catch (error) {
-        const err = error as Error;
-        errors.push(`Error compiling component ${file}: ${err.message}`);
-        console.error(`Error compiling component ${file}: ${err.message}`);
+        const message = errorMessage(error);
+        errors.push(`Error compiling component ${file}: ${message}`);
+        console.error(`Error compiling component ${file}: ${message}`);
       }
     }
     log(
@@ -579,15 +606,12 @@ export async function buildSite(
   const declaredKeys =
     i18n === null
       ? new Map<string, string>()
-      : await readTranslationKeys(
-          concreteRoutes as { sourcePath: string; urlPattern: string }[],
-          formatRegistry,
-        );
+      : await readTranslationKeys(concreteRoutes, formatRegistry);
   const keyedRoutes = concreteRoutes.map((r) => ({
     translationKey: declaredKeys.get(r.urlPattern),
     urlPattern: r.urlPattern,
   }));
-  const alternateMap = localeAlternates(keyedRoutes, i18n, siteUrl ?? "", trailingSlash);
+  const alternateMap = localeAlternates(keyedRoutes, i18n, siteUrl, trailingSlash);
   /*
    * The same sets, site-absolute, for `$page.alternates`. Computed from the whole table for the
    * same reason the alternates are — and separately from them because a switcher must work in a
@@ -683,7 +707,7 @@ export async function buildSite(
     try {
       log(`  Compiling ${route.urlPattern} ...`);
       const result = await compilePage(
-        route as unknown as SiteRoute,
+        route,
         projectConfig,
         projectRoot,
         sections,
@@ -773,7 +797,7 @@ export async function buildSite(
            * template was, which is precisely the signal `<lastmod>` exists to give.
            */
           lastmod:
-            typeof route.sourceMtime === "string" && route.sourceMtime !== ""
+            isString(route.sourceMtime) && route.sourceMtime !== ""
               ? route.sourceMtime
               : toRfc3339(statSync(route.sourcePath).mtime),
           loc: siteAbsoluteUrl(servedRoute(route.urlPattern, trailingSlash), siteUrl),
@@ -793,25 +817,26 @@ export async function buildSite(
           continue;
         }
         try {
-          const content = (await fmt.call("serialize", result.doc, {
+          const content = await fmt.call("serialize", result.doc, {
             buildScope: (state: Record<string, JxStateDefinition>) =>
               buildInitialScope(state, null),
             componentDefs,
-            evaluateTemplate: (value: string, scope: Record<string, unknown>) => {
+            evaluateTemplate: (value: string, scope: JxScope) => {
               if (!isTemplateString(value)) {
                 return;
               }
               return evaluateStaticTemplate(value, scope) ?? value;
             },
             mode: "export",
-          })) as string;
+          });
           if (content) {
             const sidecarPath = outPath.replace(/\.html$/, fmt.extensions[0]!);
             sidecars.push({ content, path: sidecarPath, type: fmt.mediaTypeEssence });
           }
         } catch (error) {
-          const err = error as Error;
-          errors.push(`Error exporting ${fmt.name} for ${route.urlPattern}: ${err.message}`);
+          errors.push(
+            `Error exporting ${fmt.name} for ${route.urlPattern}: ${errorMessage(error)}`,
+          );
         }
       }
       for (const sidecar of sidecars) {
@@ -847,8 +872,7 @@ export async function buildSite(
         fileCount += 1;
       }
     } catch (error) {
-      const err = error as Error;
-      const msg = `Error compiling ${route.urlPattern}: ${err.message}`;
+      const msg = `Error compiling ${route.urlPattern}: ${errorMessage(error)}`;
       errors.push(msg);
       console.error(msg);
     }
@@ -920,7 +944,7 @@ export async function buildSite(
         fileCount += 1;
         log(`  Generated dist/${workerName} (bundled, ${deduped.size} server function(s))`);
       } catch (error) {
-        const msg = `Error bundling dist/${workerName}: ${(error as Error).message}`;
+        const msg = `Error bundling dist/${workerName}: ${errorMessage(error)}`;
         errors.push(msg);
         console.error(msg);
       }
@@ -987,7 +1011,7 @@ export async function buildSite(
         fileCount += 1;
         log(`  ${bundle.specifier} → ${assetPath}`);
       } catch (error) {
-        const msg = `Error bundling sidecar "${bundle.specifier}": ${(error as Error).message}`;
+        const msg = `Error bundling sidecar "${bundle.specifier}": ${errorMessage(error)}`;
         errors.push(msg);
         console.error(msg);
       }
@@ -1012,9 +1036,7 @@ export async function buildSite(
         fileCount += 1;
         log(`  ${specifiers.length} element(s) → ${assetPath}`);
       } catch (error) {
-        const msg = `Error bundling npm $elements [${specifiers.join(", ")}]: ${
-          (error as Error).message
-        }`;
+        const msg = `Error bundling npm $elements [${specifiers.join(", ")}]: ${errorMessage(error)}`;
         errors.push(msg);
         console.error(msg);
       }
@@ -1044,23 +1066,23 @@ export async function buildSite(
   // Runs later and can shadow emitted files — same semantics as sitemap.xml.
   for (const entry of registry.emitters()) {
     const sectionKey = entry.project?.key;
-    const sectionValue = sectionKey
-      ? (projectConfig as unknown as Record<string, unknown>)[sectionKey]
-      : undefined;
+    const sectionValue = sectionKey ? projectConfig[sectionKey] : undefined;
     if (
       sectionKey &&
       (sectionValue == null ||
-        (typeof sectionValue === "object" && Object.keys(sectionValue).length === 0))
+        (isNonNullObject(sectionValue) && Object.keys(sectionValue).length === 0))
     ) {
       continue; // Section owner with nothing declared — same gating as sections/mounts
     }
     try {
-      const emitted = (await entry.call("emit", sectionValue ?? null, {
+      /* The emit contract (extensions.md §8.4) answers outDir-relative files, or null for none; each
+         `path` is still checked for traversal below before anything is written. */
+      const emitted = await entry.call("emit", sectionValue ?? null, {
         projectConfig,
         root: projectRoot,
         routes,
         sections,
-      })) as { path: string; content: string | Uint8Array }[] | null;
+      });
       for (const file of emitted ?? []) {
         const target = resolve(outDir, file.path.replace(/^\//, ""));
         if (!target.startsWith(outDir + sep)) {
@@ -1072,7 +1094,7 @@ export async function buildSite(
         log(`  ${entry.name} emitted ${file.path}`);
       }
     } catch (error) {
-      const msg = `Error in ${entry.name}.emit: ${(error as Error).message}`;
+      const msg = `Error in ${entry.name}.emit: ${errorMessage(error)}`;
       errors.push(msg);
       console.error(msg);
     }
@@ -1170,9 +1192,12 @@ export async function buildSite(
         errors.push(error);
         console.error(error);
       }
-      writeFileSync(join(outDir, output.path as string), output.source, "utf8");
-      fileCount += 1;
-      log(sw === false ? "  sw.js — tombstone (unregisters and clears)" : "  sw.js");
+      // `path` is null only when there is nothing to emit; both builders always name sw.js.
+      if (output.path !== null) {
+        writeFileSync(join(outDir, output.path), output.source, "utf8");
+        fileCount += 1;
+        log(sw === false ? "  sw.js — tombstone (unregisters and clears)" : "  sw.js");
+      }
     }
   }
 
@@ -1229,8 +1254,11 @@ export async function buildSite(
   if (projectConfig.copy) {
     log("Copying mapped files...");
     for (const [src, dest] of Object.entries(projectConfig.copy)) {
-      const srcPath = resolve(projectRoot, src as string);
-      const destPath = resolve(outDir, dest as string);
+      if (!isString(dest)) {
+        throw new TypeError(`project.json copy["${src}"] must be a destination path string`);
+      }
+      const srcPath = resolve(projectRoot, src);
+      const destPath = resolve(outDir, dest);
       mkdirSync(dirname(destPath), { recursive: true });
       cpSync(srcPath, destPath);
     }
@@ -1245,15 +1273,22 @@ export async function buildSite(
   return { errors, files: fileCount, routes: routes.length };
 }
 
+/** The route `compilePage` renders: a URL and the page document that produces it. */
+interface PageRoute {
+  urlPattern: string;
+  sourcePath: string;
+  _pathParams?: Record<string, string>;
+}
+
 /**
  * Compile a single page within the site build context.
  *
  * Pipeline: load JSON → resolve layout → inject context → merge head → compile
  *
- * @param {SiteRoute} route
+ * @param {PageRoute} route
  * @param {ProjectConfig} projectConfig
  * @param {string} projectRoot
- * @param {Record<string, unknown>} [sections] - Extension-loaded project sections
+ * @param {ProjectSections} sections - Extension-loaded project sections
  * @param {import("./image-cache.js").CacheManifest | null} [imageCache]
  * @param {Map<string, JxElement>} [componentDefs]
  * @param {ImageMetaCache | null} [imageMetaCache] - Set when images.service is "cloudflare"
@@ -1268,16 +1303,16 @@ export async function buildSite(
  *   `rewriteNpmAsset`, was a function that could never run pretending to be a safety net.
  */
 async function compilePage(
-  route: SiteRoute,
+  route: PageRoute,
   projectConfig: ResolvedProjectConfig,
   projectRoot: string,
-  sections: Record<string, unknown>,
+  sections: ProjectSections,
   imageCache: CacheManifest | null,
   componentDefs: Map<string, JxElement>,
   imageMetaCache: ImageMetaCache | null,
-  formatRegistry: FormatRegistry | undefined,
-  registry: ExtensionRegistry | undefined,
-  rewriteSidecarSrc: ((specifier: string, docDir: string | null) => string) | undefined,
+  formatRegistry: FormatRegistry,
+  registry: ExtensionRegistry,
+  rewriteSidecarSrc: (specifier: string, docDir: string | null) => string,
   assetMounts: readonly AssetMount[],
   extensionHead: readonly JxHeadEntry[],
   rewriteNpmAsset: (specifier: string) => string,
@@ -1291,14 +1326,18 @@ async function compilePage(
   const basePath = siteBasePath(projectConfig.url);
 
   // Load the raw page document (.json natively, other formats via the registry)
-  const pageDoc = await readPageDocument(route.sourcePath as string, formatRegistry);
+  const pageDoc = await readPageDocument(route.sourcePath, formatRegistry);
 
   // Resolve layout (wraps page in layout with slot distribution)
   const layoutDoc = await resolveLayout(pageDoc, projectConfig, projectRoot);
 
   // Extract head arrays before they get lost in the merge
+  /* SAFETY: `_pageHead` is written only by `resolveLayout`, which copies the page's `$head` (a
+     JxHeadEntry[]) into it when the page has one. */
   const pageHead = (pageDoc.$head ?? layoutDoc._pageHead ?? []) as JxHeadEntry[];
-  const layoutHead = (layoutDoc.$head ?? []) as JxHeadEntry[];
+  const layoutHead = layoutDoc.$head ?? [];
+  /* SAFETY: `_pageTitle` is written only by `resolveLayout`, which copies the page's `title` (a
+     string) into it when the page has one. */
   const pageTitle = (pageDoc.title ?? layoutDoc._pageTitle ?? null) as string | null;
 
   // Clean up internal properties
@@ -1315,32 +1354,31 @@ async function compilePage(
    */
   const language = pageLanguage({
     defaults: projectConfig.defaults,
-    pageDir: typeof pageDoc.$dir === "string" ? pageDoc.$dir : undefined,
-    pageLang: typeof pageDoc.$lang === "string" ? pageDoc.$lang : undefined,
+    pageDir: isString(pageDoc.$dir) ? pageDoc.$dir : undefined,
+    pageLang: isString(pageDoc.$lang) ? pageDoc.$lang : undefined,
     routeLocale: localeOfRoute(route.urlPattern, locale.i18n),
   });
 
   // Resolve generic $prototype entries via .class.json imports (and lower registry classes)
   await resolvePrototypes(layoutDoc, route, projectRoot, {
     config: projectConfig,
+    registerBundle: (specifier: string) => {
+      rewriteSidecarSrc(specifier, null);
+    },
+    registry,
     sections,
-    ...(registry === undefined ? {} : { registry }),
-    ...(rewriteSidecarSrc === undefined
-      ? {}
-      : {
-          registerBundle: (specifier: string) => {
-            rewriteSidecarSrc(specifier, null);
-          },
-        }),
   });
 
   // Build scope from resolved state so template strings in title/$head can be evaluated
   const scope = buildInitialScope(layoutDoc.state ?? {});
 
   // Determine the page title — resolve template strings against the scope
-  let title = pageTitle ?? projectConfig.name ?? "Jx Site";
-  if (typeof title === "string" && isTemplateString(title)) {
-    title = (evaluateStaticTemplate(title, scope) as string | null) ?? (title as string);
+  let title = pageTitle ?? projectConfig.name;
+  if (isTemplateString(title)) {
+    /* SAFETY: the result stands in for the title text it was written as, and its one consumer,
+       `mergeHead`, places it as the `<title>` element's only child, which `renderHead` joins into
+       the markup as text, so a non-string result renders as its string form. */
+    title = (evaluateStaticTemplate(title, scope) as string | null) ?? title;
   }
 
   // Resolve template strings in $head entries
@@ -1393,12 +1431,7 @@ async function compilePage(
       if (key === "$site" || key === "$page") {
         continue;
       }
-      if (
-        def &&
-        typeof def === "object" &&
-        !Array.isArray(def) &&
-        (def as JxMutableNode).timing === "compiler"
-      ) {
+      if (isJsonObject(def) && def.timing === "compiler") {
         delete layoutDoc.state[key];
       } else if (Array.isArray(def)) {
         strippable.add(key);
@@ -1408,7 +1441,7 @@ async function compilePage(
     let rescued = true;
     while (rescued) {
       rescued = false;
-      const surviving = { ...layoutDoc.state } as Record<string, unknown>;
+      const surviving = { ...layoutDoc.state };
       for (const key of strippable) {
         delete surviving[key];
       }
@@ -1444,7 +1477,7 @@ async function compilePage(
   const resolvedSiteHead = [
     // The manifest link and theme colour are first-party and unconditional once declared, so they
     // Sit with the extension contributions: below the project's own $head, which still wins.
-    ...(manifestHeadEntries(projectConfig) as JxHeadEntry[]),
+    ...manifestHeadEntries(projectConfig),
     ...swHead,
     ...extensionHead,
     ...resolveHeadBareSpecifiers(projectConfig.$head ?? [], rewriteNpmAsset),
@@ -1453,9 +1486,9 @@ async function compilePage(
   // Merge $head from site + layout + page
   const mergedHead = mergeHead(resolvedSiteHead, resolvedLayoutHead, resolvedPageHead, {
     title,
-    charset: projectConfig.defaults?.charset ?? "utf8",
-    ...(projectConfig.name != null && { siteName: projectConfig.name }),
-    ...(projectConfig.url != null && { siteUrl: projectConfig.url }),
+    charset: projectConfig.defaults.charset ?? "utf8",
+    siteName: projectConfig.name,
+    siteUrl: projectConfig.url,
     ...(locale.alternates.length > 0 && { alternates: locale.alternates }),
     /*
      * The canonical link and og:url name the URL the host answers with the page: the route as
@@ -1484,40 +1517,42 @@ async function compilePage(
    * it is governed by `images.lazyLoad`, and declining to generate variants for an image says
    * nothing about when the browser should fetch it.
    */
-  if (projectConfig.images) {
-    await transformImageNodes(
-      layoutDoc,
-      projectConfig.images as ImageConfig,
-      projectRoot,
-      imageCache,
-      imageMetaCache ?? undefined,
-      assetMounts,
-    );
-  }
+  /* SAFETY: `loadProjectConfig` spreads its `images` defaults (optimize, widths, formats, quality,
+     sizes, lazyLoad) under the author's block, so every member the optimizer's config requires is
+     present. */
+  const imageConfig = projectConfig.images as ImageConfig;
+  await transformImageNodes(
+    layoutDoc,
+    imageConfig,
+    projectRoot,
+    imageCache,
+    imageMetaCache ?? undefined,
+    assetMounts,
+  );
 
   // Compile the document using the existing compiler
-  const result = await compile(layoutDoc, {
+  const compileOptions: CompileOptions = {
     lang: language.lang,
-    /*
-     * The page-template tiers emit their own import map, and it defaulted to the CDN — so a page
-     * that reached compile-static/compile-client kept loading its runtime from esm.sh even after
-     * the self-hosting landed, because `injectComponentScripts` sees a map already present and
-     * declines to add its own. Both halves have to name the same URLs.
-     */
-    ...(runtimeImports["@vue/reactivity"] === undefined
-      ? {}
-      : { reactivitySrc: runtimeImports["@vue/reactivity"] }),
-    ...(runtimeImports["lit-html"] === undefined ? {} : { litHtmlSrc: runtimeImports["lit-html"] }),
     prePaintScheme: false, // Injected via the merged <head> above, not the target template
     projectStyle: projectConfig.style ?? null,
-    ...(rewriteSidecarSrc === undefined
-      ? {}
-      : {
-          rewriteSrc: (specifier: string) =>
-            rewriteSidecarSrc(specifier, dirname(route.sourcePath as string)),
-        }),
+    rewriteSrc: (specifier: string) => rewriteSidecarSrc(specifier, dirname(route.sourcePath)),
     title,
-  });
+  };
+  /*
+   * The page-template tiers emit their own import map, and it defaulted to the CDN — so a page
+   * that reached compile-static/compile-client kept loading its runtime from esm.sh even after
+   * the self-hosting landed, because `injectComponentScripts` sees a map already present and
+   * declines to add its own. Both halves have to name the same URLs.
+   */
+  const reactivitySrc = runtimeImports["@vue/reactivity"];
+  if (reactivitySrc !== undefined) {
+    compileOptions.reactivitySrc = reactivitySrc;
+  }
+  const litHtmlSrc = runtimeImports["lit-html"];
+  if (litHtmlSrc !== undefined) {
+    compileOptions.litHtmlSrc = litHtmlSrc;
+  }
+  const result = await compile(layoutDoc, compileOptions);
 
   // Inject CSS rules collected from component slot content
   if (slotCss.rules.length > 0) {
@@ -1549,10 +1584,9 @@ async function compilePage(
     typeof e === "string" && !e.startsWith("./") && !e.startsWith("../");
   const npmElements = [
     ...new Set(
-      [
-        ...((layoutDoc.$elements ?? []) as (JxElement | string)[]),
-        ...((pageDoc.$elements ?? []) as (JxElement | string)[]),
-      ].filter((e) => isNpmElementEntry(e)),
+      [...(layoutDoc.$elements ?? []), ...(pageDoc.$elements ?? [])].filter((e) =>
+        isNpmElementEntry(e),
+      ),
     ),
   ];
   if (npmElements.length > 0) {
@@ -1561,9 +1595,9 @@ async function compilePage(
 
   // Compile server handler if applicable (skip when provider bundles site-wide)
   let serverHandler: string | null = null;
-  if (!projectConfig.build?.adapter) {
+  if (!projectConfig.build.adapter) {
     try {
-      const serverResult = await compileServer(route.sourcePath as string);
+      const serverResult = await compileServer(route.sourcePath);
       if (serverResult) {
         serverHandler = serverResult;
       }
@@ -1600,19 +1634,19 @@ async function compilePage(
  * @param {FormatEntry[]} activeMounts - Server-mount classes with active sections
  * @param {ExtensionRegistry} registry
  * @param {ProjectConfig} projectConfig
- * @returns {{ mounts: SiteMountSpec[]; connectors: SiteConnectorSpec[] }}
+ * @returns {WorkerMountSpecs}
  */
 function buildMountSpecs(
   activeMounts: FormatEntry[],
   registry: ExtensionRegistry,
   projectConfig: ProjectConfig,
-): { mounts: SiteMountSpec[]; connectors: SiteConnectorSpec[] } {
+): WorkerMountSpecs {
   if (activeMounts.length === 0) {
     return { connectors: [], mounts: [] };
   }
   const base = siteBasePath(projectConfig.url);
 
-  const sections: Record<string, unknown> = {};
+  const sections: Record<string, ProjectConfig[string]> = {};
   for (const contribution of registry.projectContributions()) {
     const { key } = contribution.project!;
     if (key in projectConfig) {
@@ -1623,7 +1657,7 @@ function buildMountSpecs(
   const mounts: SiteMountSpec[] = activeMounts.map((entry) => {
     const server = entry.server!;
     const { module } = server;
-    if (typeof module !== "string" || module === "") {
+    if (!isString(module) || module === "") {
       throw new Error(
         `Extension class "${entry.name}": server.module (a bare import specifier) is required ` +
           `to generate a deployable worker`,
@@ -1635,7 +1669,7 @@ function buildMountSpecs(
     const mountBase = withBase(base, server.basePath);
     return {
       basePath: mountBase,
-      className: (entry.classDef.title as string | undefined) ?? entry.name,
+      className: entry.classDef.title ?? entry.name,
       module,
       options: { basePath: mountBase, sections },
       order: server.order ?? 100,
@@ -1646,12 +1680,12 @@ function buildMountSpecs(
   // Vocabulary, §12) marks that provider's class for import.
   const usedProviders = new Set<string>();
   for (const value of Object.values(sections)) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (!isJsonObject(value)) {
       continue;
     }
-    for (const sectionEntry of Object.values(value as Record<string, unknown>)) {
-      const provider = (sectionEntry as { provider?: unknown } | null)?.provider;
-      if (typeof provider === "string") {
+    for (const sectionEntry of Object.values(value)) {
+      const provider = isJsonObject(sectionEntry) ? sectionEntry.provider : undefined;
+      if (isString(provider)) {
         usedProviders.add(provider);
       }
     }
@@ -1664,20 +1698,26 @@ function buildMountSpecs(
       continue;
     }
     const { module } = entry.connector!;
-    if (typeof module !== "string" || module === "") {
+    if (!isString(module) || module === "") {
       throw new Error(
         `Connector class "${entry.name}": connector.module (a bare import specifier) is ` +
           `required to generate a deployable worker`,
       );
     }
     connectors.push({
-      className: (entry.classDef.title as string | undefined) ?? entry.name,
+      className: entry.classDef.title ?? entry.name,
       module,
       provider,
     });
   }
 
   return { connectors, mounts };
+}
+
+/** What the generated worker imports and mounts, as `buildMountSpecs` derives it. */
+interface WorkerMountSpecs {
+  mounts: SiteMountSpec[];
+  connectors: SiteConnectorSpec[];
 }
 
 /**
@@ -1696,72 +1736,89 @@ async function collectExtensionHead(
   const out: JxHeadEntry[] = [];
   for (const entry of registry.headProviders()) {
     const key = entry.project?.key;
-    const sectionValue = key === undefined ? null : (projectConfig as Record<string, unknown>)[key];
+    const sectionValue = key === undefined ? null : projectConfig[key];
     if (key !== undefined && (sectionValue === undefined || sectionValue === null)) {
       continue;
     }
     try {
-      const contributed = (await entry.call("head", sectionValue ?? null, {
+      const contributed = await entry.call("head", sectionValue ?? null, {
         projectConfig,
         root: projectRoot,
-      })) as JxHeadEntry[] | null;
+      });
       out.push(...(contributed ?? []));
     } catch (error) {
-      console.warn(`${entry.name} head capability failed: ${(error as Error).message}`);
+      console.warn(`${entry.name} head capability failed: ${errorMessage(error)}`);
     }
   }
   return out;
 }
 
 /**
- * Resolve template strings in $head entries against the compiled scope.
+ * Resolve template strings anywhere inside a structured data block (a JSON-LD `textContent`).
  *
- * @param {JxHeadEntry[]} headEntries
- * @param {Record<string, unknown>} scope
- * @returns {JxHeadEntry[]}
+ * @param {JsonValue} value
+ * @param {JxScope} scope
+ * @returns {JsonValue}
  */
-function resolveTemplatesDeep(value: unknown, scope: Record<string, unknown>): unknown {
-  if (typeof value === "string") {
-    return isTemplateString(value) ? (evaluateStaticTemplate(value, scope) ?? value) : value;
-  }
+function resolveTemplatesDeep(value: JsonValue, scope: JxScope): JsonValue {
   if (Array.isArray(value)) {
     return value.map((v) => resolveTemplatesDeep(v, scope));
   }
-  if (value !== null && typeof value === "object") {
+  if (isJsonObject(value)) {
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [k, resolveTemplatesDeep(v, scope)]),
     );
   }
+  if (isTemplateString(value)) {
+    /* SAFETY: the block is JSON that `renderHead` serializes with JSON.stringify, and the result
+       takes the place of the string it was written as, so it is serialized exactly as a value
+       authored at that position would be. */
+    return (evaluateStaticTemplate(value, scope) ?? value) as JsonValue;
+  }
   return value;
 }
 
-function resolveHeadTemplates(headEntries: JxHeadEntry[], scope: Record<string, unknown>) {
+/**
+ * Resolve template strings in $head entries against the compiled scope.
+ *
+ * @param {JxHeadEntry[]} headEntries
+ * @param {JxScope} scope
+ * @returns {JxHeadEntry[]}
+ */
+function resolveHeadTemplates(headEntries: JxHeadEntry[], scope: JxScope) {
   return headEntries.map((entry: JxHeadEntry) => {
-    if (!entry || typeof entry !== "object") {
+    // A document's `$head` is authored JSON, so a member is not guaranteed to be an entry object.
+    if (!isNonNullObject(entry)) {
       return entry;
     }
     const resolved = { ...entry };
     if (resolved.attributes) {
       resolved.attributes = { ...resolved.attributes };
       for (const [k, v] of Object.entries(resolved.attributes)) {
-        if (typeof v === "string" && isTemplateString(v)) {
+        if (isTemplateString(v)) {
+          /* SAFETY: the result replaces the attribute value it was written as, and `renderHead`
+             writes every attribute value other than `true` through `String()`. */
           resolved.attributes[k] =
-            (evaluateStaticTemplate(v, scope) as string | boolean | null) ??
-            (v as string | boolean);
+            (evaluateStaticTemplate(v, scope) as string | boolean | null) ?? v;
         }
       }
     }
-    if (typeof resolved.textContent === "string" && isTemplateString(resolved.textContent)) {
+    if (isTemplateString(resolved.textContent)) {
+      /* SAFETY: the result replaces the text it was written as, and `renderHead` interpolates a
+         non-object `textContent` into the markup as text (an object one is serialized as JSON). */
       resolved.textContent =
         (evaluateStaticTemplate(resolved.textContent, scope) as string | null) ??
         resolved.textContent;
-    } else if (resolved.textContent !== null && typeof resolved.textContent === "object") {
-      // A structured data block (§8.5): templates inside it resolve too, or a JSON-LD object could
-      // Never reference the page it describes.
-      resolved.textContent = resolveTemplatesDeep(resolved.textContent, scope) as Record<
-        string,
-        unknown
-      >;
+    } else if (isNonNullObject(resolved.textContent)) {
+      /*
+       * A structured data block (§8.5): templates inside it resolve too, or a JSON-LD object could
+       * never reference the page it describes.
+       *
+       * SAFETY: `resolveTemplatesDeep` keeps a container's shape (an object resolves to an object,
+       * an array to an array, and JSON-LD admits either at the top), and `renderHead` serializes
+       * any object `textContent` with JSON.stringify.
+       */
+      resolved.textContent = resolveTemplatesDeep(resolved.textContent, scope) as JsonObject;
     }
     return resolved;
   });
@@ -1782,13 +1839,14 @@ function resolveHeadBareSpecifiers(
   rewrite: (specifier: string) => string,
 ) {
   return headEntries.map((entry: JxHeadEntry) => {
-    if (!entry || typeof entry !== "object" || !entry.attributes) {
+    // Authored JSON, as in `resolveHeadTemplates`: a member is not guaranteed to be an object.
+    if (!isNonNullObject(entry) || !entry.attributes) {
       return entry;
     }
     const resolved = { ...entry, attributes: { ...entry.attributes } };
     for (const key of ["href", "src"]) {
       const val = resolved.attributes[key];
-      if (typeof val === "string" && isBareSpecifier(val)) {
+      if (isString(val) && isBareSpecifier(val)) {
         resolved.attributes[key] = rewrite(val);
       }
     }
@@ -1843,59 +1901,70 @@ function inertAttribute(resolved: string): string {
  * Deep-clone a map template, resolving template strings and $ref values against the given scope.
  *
  * @param {JxElement} template
- * @param {Record<string, unknown>} scope
+ * @param {JxScope} scope
  * @returns {JxElement}
  */
-function expandMapTemplate(template: JxElement, scope: Record<string, unknown>): JxElement {
-  if (!template || typeof template !== "object") {
+function expandMapTemplate(template: JxElement, scope: JxScope): JxElement {
+  // A map template is authored JSON, so a child reached by recursion may not be an object.
+  if (!isNonNullObject(template)) {
     return template;
   }
-  const node = {} as JxElement;
+  const node: JxElement = {};
   for (const [k, v] of Object.entries(template)) {
-    if (k === "children" && Array.isArray(v)) {
-      node.children = (v as (string | JxElement)[]).map((child) => {
-        if (typeof child === "string") {
+    // Each branch reads `template[k]` through its declared member, which is the same value as `v`.
+    if (k === "children" && Array.isArray(template.children)) {
+      node.children = template.children.map((child) => {
+        if (isString(child)) {
           return child;
         }
         return expandMapTemplate(child, scope);
       });
-    } else if (k === "style" && v && typeof v === "object") {
-      const style: JxStyle = { ...(v as JxStyle) };
+    } else if (k === "style" && isNonNullObject(template.style)) {
+      const style: JxStyle = { ...template.style };
       for (const [sk, sv] of Object.entries(style)) {
         if (isTemplateString(sv)) {
-          // Template evaluation yields a substituted scalar for style values.
+          /* SAFETY: template evaluation yields a substituted scalar for the declaration it was
+             written as, and the style compilers interpolate declaration values into CSS text. */
           style[sk] = (evaluateMapTemplate(sv, scope) as string | number | undefined) ?? sv;
         }
       }
       node.style = style;
-    } else if (k === "attributes" && v && typeof v === "object") {
-      const attrs = { ...(v as Record<string, JxAttributeValue>) };
+    } else if (k === "attributes" && isNonNullObject(template.attributes)) {
+      const attrs = { ...template.attributes };
       for (const [ak, av] of Object.entries(attrs)) {
         if (isTemplateString(av)) {
+          /* SAFETY: the result replaces the attribute value it was written as, and the compile
+             targets write attribute values into markup as their string form. */
           const resolved = evaluateMapTemplate(av, scope) as JxAttributeValue | undefined;
           attrs[ak] =
-            typeof resolved === "string" && resolved.includes("${")
+            isString(resolved) && resolved.includes("${")
               ? inertAttribute(resolved)
               : (resolved ?? av);
         }
       }
       node.attributes = attrs;
-    } else if (k === "$props" && v && typeof v === "object") {
-      const props = { ...(v as Record<string, JsonValue>) };
+    } else if (k === "$props" && isNonNullObject(template.$props)) {
+      const props = { ...template.$props };
       for (const [pk, pv] of Object.entries(props)) {
         if (isTemplateString(pv)) {
+          /* SAFETY: props leave the build only as JSON (`expandComponents` writes them into
+             `data-jx-props` with JSON.stringify), so a result is serialized exactly as a value
+             authored at that prop would be. */
           const resolved = evaluateMapTemplate(pv, scope) as JsonValue | undefined;
           // Null = evaluation error → keep template string; undefined = missing data → use null
           props[pk] = resolved !== null ? (resolved ?? null) : pv;
         }
       }
       node.$props = props;
-    } else if (typeof v === "string" && isTemplateString(v)) {
+    } else if (isTemplateString(v)) {
       const resolved = evaluateMapTemplate(v, scope);
-      if (k === "textContent" && typeof resolved === "string" && resolved.includes("${")) {
+      if (k === "textContent" && isString(resolved) && resolved.includes("${")) {
         node.innerHTML = inertTextHtml(resolved);
       } else {
-        node[k] = resolved ?? v;
+        /* SAFETY: the result takes the place of the template string at the same key, which is the
+           substitution a map template asks for; a member the compile targets emit as text or an
+           attribute is interpolated there as its string form. */
+        node[k] = (resolved ?? v) as JxElement[string];
       }
     } else {
       node[k] = v;
@@ -1909,29 +1978,21 @@ function expandMapTemplate(template: JxElement, scope: Record<string, unknown>):
  * `state`, and `$map` as local variables.
  *
  * @param {string} str
- * @param {Record<string, unknown>} scope
- * @returns {unknown}
+ * @param {JxScope} scope
+ * @returns {JxScope[string]} Whatever the expression yields, or null when it throws
  */
-function evaluateMapTemplate(str: string, scope: Record<string, unknown>) {
+function evaluateMapTemplate(str: string, scope: JxScope): JxScope[string] {
   try {
-    const item = (scope.$map as Record<string, unknown>)?.item;
-    const index = (scope.$map as Record<string, unknown>)?.index;
-    if (isSingleExpression(str)) {
-      const fn = new Function("state", "$map", "item", "index", `return (${str.slice(2, -1)})`) as (
-        state: Record<string, unknown>,
-        $map: unknown,
-        item: unknown,
-        index: unknown,
-      ) => unknown;
-      return fn(scope, scope.$map, item, index);
-    }
-    const fn = new Function("state", "$map", "item", "index", `return \`${str}\``) as (
-      state: Record<string, unknown>,
-      $map: unknown,
-      item: unknown,
-      index: unknown,
-    ) => unknown;
-    return fn(scope, scope.$map, item, index);
+    const frame = scope.$map;
+    const item = isNonNullObject(frame) && "item" in frame ? frame.item : undefined;
+    const index = isNonNullObject(frame) && "index" in frame ? frame.index : undefined;
+    const body = isSingleExpression(str) ? `return (${str.slice(2, -1)})` : `return \`${str}\``;
+    /* SAFETY: `new Function` compiles exactly the four named parameters, and its body returns one
+       expression's value, which may be any scope value. */
+    const fn = new Function("state", "$map", "item", "index", body) as (
+      ...args: JxScope[string][]
+    ) => JxScope[string];
+    return fn(scope, frame, item, index);
   } catch {
     return null;
   }
@@ -1942,14 +2003,15 @@ function evaluateMapTemplate(str: string, scope: Record<string, unknown>) {
  * place — evaluates ${...} in innerHTML, textContent, style values, and attribute values.
  *
  * @param {JxElement | string} node
- * @param {Record<string, unknown>} scope
+ * @param {JxScope} scope
  */
-function resolveDocTemplates(node: JxElement | string, scope: Record<string, unknown>) {
-  if (!node || typeof node !== "object") {
+function resolveDocTemplates(node: JxElement | string, scope: JxScope) {
+  // Children are authored JSON, so a member reached by recursion may be neither node nor string.
+  if (!isNonNullObject(node)) {
     return;
   }
 
-  if (typeof node.innerHTML === "string" && isTemplateString(node.innerHTML)) {
+  if (isTemplateString(node.innerHTML)) {
     const resolved = evaluateStaticTemplate(node.innerHTML, scope);
     if (resolved != null) {
       // Encode any remaining `${` as HTML entities so the compile phase won't
@@ -1958,44 +2020,55 @@ function resolveDocTemplates(node: JxElement | string, scope: Record<string, unk
       node.innerHTML = String(resolved).replaceAll("${", "&#36;{");
     }
   }
-  if (typeof node.textContent === "string" && isTemplateString(node.textContent)) {
-    const resolved = evaluateStaticTemplate(node.textContent, scope);
-    if (typeof resolved === "string" && resolved.includes("${")) {
+  const text = node.textContent;
+  if (isTemplateString(text)) {
+    const resolved = evaluateStaticTemplate(text, scope);
+    if (isString(resolved) && resolved.includes("${")) {
       // The resolved value is data (an excerpt, a heading, a title) that happens to contain `${`, not
       // A template. Left as `textContent` the compile phase would read it as one again and bind it
       // To an expression that throws or renders nothing, so it stays text as escaped `innerHTML`.
       node.innerHTML = inertTextHtml(resolved);
       delete node.textContent;
     } else {
-      node.textContent = (resolved as string | null) ?? (node.textContent as string | null);
+      /* SAFETY: the result is the text the template stands for, and the compile targets
+         interpolate `textContent` into the markup, so a non-string result renders as its string
+         form. */
+      node.textContent = (resolved as string | null) ?? text;
     }
   }
-  if (node.style && typeof node.style === "object") {
+  if (isNonNullObject(node.style)) {
     for (const [k, v] of Object.entries(node.style)) {
-      if (typeof v === "string" && isTemplateString(v)) {
+      if (isTemplateString(v)) {
+        /* SAFETY: the result replaces the declaration value it was written as, and the page style
+           pass interpolates declaration values into CSS text. */
         node.style[k] =
-          (evaluateStaticTemplate(v, scope) as string | number | JxStyle | undefined) ??
-          (v as string | number | JxStyle);
+          (evaluateStaticTemplate(v, scope) as string | number | JxStyle | undefined) ?? v;
       }
     }
   }
-  if (node.attributes && typeof node.attributes === "object") {
+  if (isNonNullObject(node.attributes)) {
     for (const [k, v] of Object.entries(node.attributes)) {
-      if (typeof v === "string" && isTemplateString(v)) {
+      if (isTemplateString(v)) {
+        /* SAFETY: the result replaces the attribute value it was written as, and the compile
+           targets write attribute values into markup as their string form. */
         const resolved = evaluateStaticTemplate(v, scope) as JxAttributeValue | null;
         // A resolved value is data: a `${` left in it must not become a template a second time. An
         // Entity cannot be written into an attribute, so the sequence is split with a zero-width space.
         node.attributes[k] =
-          typeof resolved === "string" && resolved.includes("${")
+          isString(resolved) && resolved.includes("${")
             ? inertAttribute(resolved)
             : (resolved ?? v);
       }
     }
   }
-  if (node.$props && typeof node.$props === "object") {
-    for (const [k, v] of Object.entries(node.$props)) {
-      if (typeof v === "string" && isTemplateString(v)) {
-        node.$props[k] = (evaluateStaticTemplate(v, scope) as JsonValue | null) ?? v;
+  if (isNonNullObject(node.$props)) {
+    const props = node.$props;
+    for (const [k, v] of Object.entries(props)) {
+      if (isTemplateString(v)) {
+        /* SAFETY: props leave the build only as JSON (`expandComponents` writes them into
+           `data-jx-props` with JSON.stringify), so a result is serialized exactly as a value
+           authored at that prop would be. */
+        props[k] = (evaluateStaticTemplate(v, scope) as JsonValue | null) ?? v;
       }
     }
   }
@@ -2013,9 +2086,11 @@ function resolveDocTemplates(node: JxElement | string, scope: Record<string, unk
       return;
     }
   }
-  if (typeof rawChildren === "string" && isTemplateString(rawChildren)) {
+  if (isTemplateString(rawChildren)) {
     const resolved = evaluateStaticTemplate(rawChildren, scope);
     if (Array.isArray(resolved)) {
+      /* SAFETY: a children template that yields an array stands for the child list itself, and
+         every member is walked by `resolveDocTemplates` below, which skips non-objects. */
       const resolvedNodes = resolved as (JxElement | string)[];
       node.children = resolvedNodes;
       for (const child of resolvedNodes) {
@@ -2026,9 +2101,11 @@ function resolveDocTemplates(node: JxElement | string, scope: Record<string, unk
     let i = 0;
     while (i < node.children.length) {
       const child = node.children[i]!;
-      if (typeof child === "string" && isTemplateString(child)) {
+      if (isTemplateString(child)) {
         const resolved = evaluateStaticTemplate(child, scope);
         if (Array.isArray(resolved)) {
+          /* SAFETY: a child template that yields an array stands for the children it splices in,
+             and every member is walked by `resolveDocTemplates` below, which skips non-objects. */
           const resolvedNodes = resolved as (JxElement | string)[];
           node.children.splice(i, 1, ...resolvedNodes);
           for (const spliced of resolvedNodes) {
@@ -2072,26 +2149,25 @@ function referencesStateKey(haystack: string, key: string): boolean {
  * build time, or null otherwise (leave the array node for client-side rendering).
  *
  * @param {JxMappedArray} arrayDef
- * @param {Record<string, unknown>} scope
+ * @param {JxScope} scope
  * @returns {(JxElement | string)[] | null}
  */
 function expandMappedArrayStatic(
   arrayDef: JxMappedArray,
-  scope: Record<string, unknown>,
+  scope: JxScope,
 ): (JxElement | string)[] | null {
   const itemsSrc = arrayDef.items;
-  let items: unknown = null;
-  if (isRef(itemsSrc)) {
-    items = resolveRefValue(itemsSrc.$ref, scope);
-  } else if (Array.isArray(itemsSrc)) {
-    items = itemsSrc;
-  }
+  // A non-array, non-ref `items` falls through to the array check below and expands to nothing.
+  const items = isRef(itemsSrc) ? resolveRefValue(itemsSrc.$ref, scope) : itemsSrc;
   const mapTemplate = arrayDef.map;
   if (!Array.isArray(items) || !mapTemplate) {
     return null;
   }
-  return (items as unknown[]).map((item: unknown, index) => {
-    const childScope = Object.create(scope) as Record<string, unknown>;
+  const rows: readonly JxScope[string][] = items;
+  return rows.map((item, index) => {
+    /* SAFETY: `Object.create(scope)` is a new object with no own keys whose prototype is `scope`,
+       so every key it answers is a binding of `scope` until the row's own are set below. */
+    const childScope = Object.create(scope) as JxScope;
     childScope.$map = { index, item };
     childScope["$map/item"] = item;
     childScope["$map/index"] = index;
@@ -2113,22 +2189,23 @@ interface SlotCssCollector {
  * preRenderComponentHtml, marks static/prerendered. Slot children get their static styles collected
  * into `slotCss` (assigning jxs-N classes) before being serialized to HTML.
  *
- * @param {JxElement | string} node
+ * @param {JxElement | string | (JxElement | string)[]} node - A nested array (authored JSON can
+ *   carry one among children) is walked member by member
  * @param {Map<string, JxElement>} componentDefs
  * @param {SlotCssCollector} [slotCss]
  * @param {ProjectConfig["defaults"]} [defaults] - Read for `defaults.shadow` (spec.md §16.6)
  */
 function expandComponents(
-  node: JxElement | string,
+  node: JxElement | string | (JxElement | string)[],
   componentDefs: Map<string, JxElement>,
   slotCss?: SlotCssCollector,
   defaults?: ProjectConfig["defaults"],
 ) {
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return;
   }
   if (Array.isArray(node)) {
-    for (const n of node as (JxElement | string)[]) {
+    for (const n of node) {
       expandComponents(n, componentDefs, slotCss, defaults);
     }
     return;
@@ -2141,7 +2218,12 @@ function expandComponents(
     }
   }
 
-  const def = componentDefs.get(node.tagName as string);
+  // Only a literal tag can name a registered component; a tag expression never matches one.
+  const { tagName } = node;
+  if (!isString(tagName)) {
+    return;
+  }
+  const def = componentDefs.get(tagName);
   if (def) {
     // Literal `props.*` attribute keys become $props (`liftPropsAttributes` says why) and leave the
     // Attributes, so they do not reach the emitted HTML. Explicit $props wins on key conflicts.
@@ -2164,7 +2246,7 @@ function expandComponents(
       Array.isArray(node.children) && node.children.length > 0
         ? node.children
             .map((c: JxElement | string) => {
-              if (slotCss && c && typeof c === "object") {
+              if (slotCss && isNonNullObject(c)) {
                 collectStyles(c, slotCss.rules, slotCss.media, "", slotCss.counter, "jxs");
               }
               return renderStaticNode(c, {}, null);
@@ -2185,7 +2267,7 @@ function expandComponents(
     const context: ComponentPrerenderContext = {
       componentDefs,
       defaults,
-      path: [{ key: JSON.stringify(props ?? {}), tag: node.tagName as string }],
+      path: [{ key: JSON.stringify(props ?? {}), tag: tagName }],
     };
     const innerHTML = preRenderComponentHtml(def, props, shadow ? null : slotContent, context);
     const isStatic = isComponentFullyStatic(def);
@@ -2198,7 +2280,7 @@ function expandComponents(
      */
     node.innerHTML = shadow
       ? `<template shadowrootmode="${shadow}">` +
-        `<link rel="stylesheet" href="/components/${node.tagName}.css">` +
+        `<link rel="stylesheet" href="/components/${tagName}.css">` +
         `${innerHTML}</template>${slotContent ?? ""}`
       : innerHTML;
     delete node.children;
@@ -2216,6 +2298,9 @@ function expandComponents(
      */
     const resolvedStyle = resolveHostStyle(def.style, buildInstanceScope(def, props));
     if (Object.keys(resolvedStyle).length > 0) {
+      /* SAFETY: every value in `resolvedStyle` replaces a template-string declaration of
+         `def.style`, and the page style pass interpolates declaration values into CSS text, so the
+         merged object is a style in every way the build reads one. */
       node.style = { ...node.style, ...resolvedStyle } as JxStyle;
     }
 
@@ -2293,8 +2378,10 @@ function injectComponentScripts(
    * Emitted last in <head>, exactly where the links were, so the cascade is unchanged.
    */
   const componentCss = usedTags
-    .map((tag: string) => cssMap.get(tag))
-    .filter((css): css is string => css !== undefined && css !== "")
+    .flatMap((tag: string) => {
+      const css = cssMap.get(tag);
+      return css === undefined || css === "" ? [] : [css];
+    })
     .join("\n");
   const styleBlock =
     componentCss === "" ? "" : `<style>\n${escapeStyleText(componentCss)}\n  </style>`;
@@ -2480,25 +2567,41 @@ function routeToOutputPath(urlPattern: string, outDir: string, trailingSlash: st
  * An HTML meta-refresh is a _client-side_ redirect: the browser fetches the source, then navigates.
  * That is a reasonable stand-in for a 301 or a 303 on a host that ignores `_redirects`, and it is
  * actively wrong for everything else.
+ *
+ * Keyed by the status's decimal string so an authored `"status": "301"` (schema-invalid, but
+ * project.json is not validated at build time) still matches the way an object-key lookup would.
  */
-const REDIRECT_HTML_POLICY: Record<number, { html: boolean; canonical: boolean; why: string }> = {
+const REDIRECT_HTML_POLICY = new Map<string, RedirectHtmlPolicy>([
   // The permanent case: a canonical link is exactly the right signal.
-  301: { canonical: true, html: true, why: "" },
+  ["301", { canonical: true, html: true, why: "" }],
   // Temporary — a canonical link would assert the permanence the status denies.
-  302: { canonical: false, html: true, why: "" },
+  ["302", { canonical: false, html: true, why: "" }],
   // "See other, with GET" is what a meta-refresh already does.
-  303: { canonical: false, html: true, why: "" },
-  307: {
-    canonical: false,
-    html: false,
-    why: "307 preserves the request method and body; a meta-refresh silently converts POST to GET",
-  },
-  308: {
-    canonical: false,
-    html: false,
-    why: "308 preserves the request method and body; a meta-refresh silently converts POST to GET",
-  },
-};
+  ["303", { canonical: false, html: true, why: "" }],
+  [
+    "307",
+    {
+      canonical: false,
+      html: false,
+      why: "307 preserves the request method and body; a meta-refresh silently converts POST to GET",
+    },
+  ],
+  [
+    "308",
+    {
+      canonical: false,
+      html: false,
+      why: "308 preserves the request method and body; a meta-refresh silently converts POST to GET",
+    },
+  ],
+]);
+
+/** One redirection status's HTML-fallback rule, in {@link REDIRECT_HTML_POLICY}. */
+interface RedirectHtmlPolicy {
+  html: boolean;
+  canonical: boolean;
+  why: string;
+}
 
 /**
  * Emit `dist/_redirects` plus an HTML fallback for the literal sources whose status has one.
@@ -2508,7 +2611,7 @@ const REDIRECT_HTML_POLICY: Record<number, { html: boolean; canonical: boolean; 
  *   string | { destination: string; status?: number } | { destination: string; rewrite: true }
  * >} redirects
  * @param {string} outDir
- * @param {{ compiledUrls?: Set<string>; trailingSlash?: string }} [opts]
+ * @param {{ compiledUrls?: Set<string>; trailingSlash?: string | null }} [opts]
  * @returns {{ files: number; errors: string[] }}
  */
 function generateRedirects(
@@ -2517,7 +2620,7 @@ function generateRedirects(
     string | { destination: string; status?: number } | { destination: string; rewrite: true }
   >,
   outDir: string,
-  opts: { compiledUrls?: Set<string>; trailingSlash?: string; basePath?: string } = {},
+  opts: { compiledUrls?: Set<string>; trailingSlash?: string | null; basePath?: string } = {},
 ) {
   let files = 0;
   const errors: string[] = [];
@@ -2527,18 +2630,18 @@ function generateRedirects(
   const trailingSlash = opts.trailingSlash ?? "always";
 
   for (const [source, target] of Object.entries(redirects)) {
-    const dest = typeof target === "object" ? target.destination : target;
-    const isRewrite = typeof target === "object" && "rewrite" in target && target.rewrite;
+    const dest = isString(target) ? target : target.destination;
+    const isRewrite = !isString(target) && "rewrite" in target && target.rewrite;
     const status = isRewrite
       ? 200
-      : typeof target === "object" && "status" in target
+      : !isString(target) && "status" in target
         ? (target.status ?? 301)
         : 301;
 
-    if (!isRewrite && REDIRECT_HTML_POLICY[status] === undefined) {
+    if (!isRewrite && !REDIRECT_HTML_POLICY.has(String(status))) {
       errors.push(
         `Redirect "${source}" has status ${status}, which is not an RFC 9110 §15.4 redirection ` +
-          `status. Use one of ${Object.keys(REDIRECT_HTML_POLICY).join(", ")}, or ` +
+          `status. Use one of ${[...REDIRECT_HTML_POLICY.keys()].join(", ")}, or ` +
           `{ destination, rewrite: true } for a proxy.`,
       );
       continue;
@@ -2571,7 +2674,7 @@ function generateRedirects(
     if (isRewrite) {
       continue;
     }
-    const policy = REDIRECT_HTML_POLICY[status]!;
+    const policy = REDIRECT_HTML_POLICY.get(String(status))!;
     if (!policy.html) {
       continue;
     }

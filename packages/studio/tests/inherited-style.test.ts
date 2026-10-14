@@ -254,8 +254,7 @@ describe("computeInheritedSources — naming the donor", () => {
   });
 
   test("an explicitly undefined value becomes the empty string rather than vanishing", () => {
-    const style = { gap: undefined } as unknown as Record<string, string>;
-    expect(computeInheritedSources(style, mediaNames, "--md")).toEqual({
+    expect(computeInheritedSources({ gap: undefined }, mediaNames, "--md")).toEqual({
       gap: { donor: null, value: "" },
     });
   });

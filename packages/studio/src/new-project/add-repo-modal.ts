@@ -35,6 +35,7 @@
 
 import { actIfRequired } from "../account/action-flow";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { isFunction } from "@jxsuite/schema/guards";
 import {
   getAccountStatus,
   getRepoAccessLinks,
@@ -90,7 +91,7 @@ let _resolve: ((result: { root: string } | null) => void) | null = null;
 /** True when the active platform can browse + adopt existing repositories. */
 export function platformSupportsAddRepo(): boolean {
   const platform = getPlatform();
-  return typeof platform.listRepos === "function" && typeof platform.importProject === "function";
+  return isFunction(platform.listRepos) && isFunction(platform.importProject);
 }
 
 /** True when the active platform routes Open Project through this repo picker. */
@@ -207,7 +208,7 @@ function loadRepos(): void {
         requestScan(_selected, "now");
       }
     })
-    .catch((error: unknown) => {
+    .catch((error) => {
       _repos = [];
       _error = errorMessage(error);
     })
@@ -492,11 +493,8 @@ async function adopt(fullName: string, dir: string, retried = false): Promise<vo
   _error = "";
   redraw();
   try {
-    const imported = await getPlatform().importProject?.({
-      name: repo.name,
-      owner: repo.owner,
-      ...(dir ? { dir } : {}),
-    });
+    const request = { name: repo.name, owner: repo.owner };
+    const imported = await getPlatform().importProject?.(dir ? { ...request, dir } : request);
     if (_handle !== handle) {
       return;
     }
@@ -604,13 +602,16 @@ function accessOf(): AddRepoView["access"] {
   ];
 }
 
-/** The chosen repository's pane: its state, its rows, and the sentence under the folder field. */
-function detailOf(repo: RepoInfo | undefined): Pick<
+/** The chosen repository's pane, plus the branch it is read at. */
+interface RepoDetail extends Pick<
   AddRepoView,
   "detailState" | "detailName" | "detailMeta" | "locations" | "folderHelp"
-> & {
+> {
   branch: string;
-} {
+}
+
+/** The chosen repository's pane: its state, its rows, and the sentence under the folder field. */
+function detailOf(repo: RepoInfo | undefined): RepoDetail {
   if (!repo) {
     return {
       branch: "",
@@ -623,12 +624,13 @@ function detailOf(repo: RepoInfo | undefined): Pick<
   }
   const scanned = _scans.get(repo.fullName);
   const branch = scanned?.status === "done" ? scanned.projects.branch : repo.defaultBranch;
+  const noLocations: AddRepoLocation[] = [];
   const base = {
     branch,
     detailMeta: [branch, repo.permission, ...(repo.private ? ["private"] : [])].join(" · "),
     detailName: repo.fullName,
     folderHelp: "The folder that holds project.json. Leave it empty for the repository root.",
-    locations: [] as AddRepoLocation[],
+    locations: noLocations,
   };
   if (!getPlatform().listRepoProjects) {
     return { ...base, detailState: "unlisted" };
@@ -640,17 +642,16 @@ function detailOf(repo: RepoInfo | undefined): Pick<
     return { ...base, detailState: "failed" };
   }
   const { locations, truncated } = scanned.projects;
-  return {
+  const detail: RepoDetail = {
     ...base,
     detailState: locations.length > 0 ? "listed" : "empty",
-    ...(truncated
-      ? {
-          folderHelp:
-            "This repository is too large to scan in full. Name the folder if its project isn't listed.",
-        }
-      : {}),
     locations: locations.map((location) => locationOf(location, repo)),
   };
+  if (truncated) {
+    detail.folderHelp =
+      "This repository is too large to scan in full. Name the folder if its project isn't listed.";
+  }
+  return detail;
 }
 
 /** Everything the dialog draws, as one record. The only place this module's state becomes a view. */

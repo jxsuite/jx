@@ -8,7 +8,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SpecStatus, Status } from "./spec-status.ts";
-import { NUMBERED_HEADING, parseSpecStatuses } from "./spec-status.ts";
+import { CHANGELOG_HEADING, FENCE, NUMBERED_HEADING, parseSpecStatuses } from "./spec-status.ts";
 
 /* ── Vocabulary ─────────────────────────────────────────────────────────────── */
 
@@ -24,7 +24,7 @@ export const CONFORMANCE_VOCAB = [
 export type Conformance = (typeof CONFORMANCE_VOCAB)[number];
 
 export function isConformance(word: string): word is Conformance {
-  return (CONFORMANCE_VOCAB as readonly string[]).includes(word);
+  return CONFORMANCE_VOCAB.some((conformance) => conformance === word);
 }
 
 /**
@@ -53,11 +53,16 @@ export const GAP_TIER_BY_STATUS = {
 export const TIER_ORDER = ["Near", "Next", "Later"] as const;
 export type GapTier = (typeof TIER_ORDER)[number];
 
+/** Whether `status` is one of the statuses that owes a gap tier (a key of GAP_TIER_BY_STATUS). */
+function hasGapTier(status: Status): status is keyof typeof GAP_TIER_BY_STATUS {
+  return Object.hasOwn(GAP_TIER_BY_STATUS, status);
+}
+
 export function tierOf(status: Status | undefined): GapTier | null {
-  if (status === undefined) {
+  if (status === undefined || !hasGapTier(status)) {
     return null;
   }
-  return (GAP_TIER_BY_STATUS as Partial<Record<Status, GapTier>>)[status] ?? null;
+  return GAP_TIER_BY_STATUS[status];
 }
 
 /* ── Grammar ────────────────────────────────────────────────────────────────── */
@@ -336,9 +341,7 @@ export function canonicalUrlProblem(org: Org, url: string): string | null {
 
 /* ── Parsing ────────────────────────────────────────────────────────────────── */
 
-const CHANGELOG_HEADING = /^##\s+Changelog\s*$/;
 const ANY_HEADING = /^(#{1,6})\s+\S/;
-const FENCE = /^\s*(```|~~~)/;
 const BLOCKQUOTE_STATUS = /^>\s*\*\*Status:/;
 
 /** Parse one spec's Standards Alignment section from its source text. */
@@ -601,6 +604,9 @@ export function parseSpecStandards(specsDir: string): SpecStandards[] {
 }
 
 export function readCatalog(path: string): Catalog {
+  /* SAFETY: Every caller passes scripts/docs/standards.json, the committed lexicon. `docs:standards`
+   * (check-standards.ts checkCatalog) reads every entry's id, org and url on each pull request, so
+   * an entry that is not a CatalogEntry is a red check before it can reach a generator. */
   return JSON.parse(readFileSync(path, "utf8")) as Catalog;
 }
 

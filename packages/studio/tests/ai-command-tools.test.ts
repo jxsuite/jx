@@ -15,8 +15,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { CommandUnavailableError, createCommandRegistry } from "../src/commands/registry";
 import type { AnyCommand, CommandRegistry } from "../src/commands/registry";
 import { emptyContext, hasSelection, makeContext } from "../src/commands/context";
-import type { CommandContext } from "../src/commands/context";
+import type { CommandContext, CommandContextPatch } from "../src/commands/context";
 import { argsSchema, stringProperty } from "../src/commands/command-args";
+import type { CommandArgValues } from "../src/commands/command-args";
+import type { Level } from "../src/commands/levels";
 import { setActiveRegistry } from "../src/commands/active-registry";
 import { appCommandSet } from "../src/commands/app-commands";
 import { selectionCommands } from "../src/canvas/canvas-render";
@@ -32,12 +34,13 @@ import {
 import { fileTurn } from "../src/services/ai-writes";
 import { recordingContext } from "./harness/recording-context";
 import { createToolContext } from "@jxsuite/ai/tools";
+import type { JSONSchema, JsonObject, JsonValue } from "@jxsuite/ai/tools";
 import { mutateUpdateProperty, transactDoc } from "../src/tabs/transact";
 import { resetProjectConfigDocument } from "../src/tabs/project-config";
 import { updateSiteConfig } from "../src/site-context";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { createToolRegistry } from "@jxsuite/ai";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
 
 /** The declarations the app ships, keyed by tool name. */
 const DECLARED = new Map(
@@ -66,16 +69,16 @@ const RICH = makeContext({
 });
 
 /** A value of the shape a required property declares — enough to reach `run`, no more. */
-function minimalArgs(parameters: object): Record<string, unknown> {
-  const { properties = {}, required = [] } = parameters as {
-    properties?: Record<string, Record<string, unknown>>;
-    required?: string[];
-  };
-  const args: Record<string, unknown> = {};
+function minimalArgs(parameters: JSONSchema): JsonObject {
+  const { properties = {}, required = [] } = parameters;
+  const args: JsonObject = {};
   for (const key of required) {
     const property = properties[key] ?? {};
-    if (Array.isArray(property.enum) && property.enum.length > 0) {
-      [args[key]] = property.enum as unknown[];
+    const choices = property["enum"];
+    if (Array.isArray(choices) && choices.length > 0) {
+      /* SAFETY: an `enum` lists JSON values, never subschemas (JSON Schema 2020-12 validation §6.1.2),
+         and the length check above makes this one non-empty. */
+      [args[key]] = choices as [JsonValue, ...JsonValue[]];
     } else if (property.type === "array") {
       args[key] = [["children", 0]];
     } else if (property.type === "boolean") {
@@ -92,6 +95,18 @@ function minimalArgs(parameters: object): Record<string, unknown> {
 }
 
 const noDeps = { getTab: () => null, validate: async () => [] };
+
+/** Ask a declared record's `report` about a run from the empty context to `after` with `args`. */
+function reportFor(command: AnyCommand, args: CommandArgValues, after: CommandContext) {
+  const tool = command.aiTool;
+  if (!tool) {
+    throw new Error(`command "${command.id}" declares no aiTool`);
+  }
+  /* SAFETY: `AnyCommand` erases the record's argument type to `never` (see its declaration), so
+     `report` cannot be called without one assertion. Each `args` handed in here is the record the
+     registry's `coerceArgs` pass would accept against that record's own `args` schema. */
+  return tool.report({ after, args: args as never, before: emptyContext() });
+}
 
 beforeEach(() => {
   installMockPlatform();
@@ -200,7 +215,13 @@ describe("level is the tier: a ladder of contexts", () => {
   ];
   /* The rung at which a level's records first appear. `selection` is 2, not 3: the bridge
      supplies the selection itself by running the selector, so a canvas document is enough. */
-  const FIRST_RUNG = { document: 2, project: 1, selection: 2 } as const;
+  const FIRST_RUNG = {
+    // The registry refuses to project an application-level record, so its rung is never reached.
+    application: Number.POSITIVE_INFINITY,
+    document: 2,
+    project: 1,
+    selection: 2,
+  } as const satisfies Record<Level, number>;
 
   test("every projected record is absent below its level's rung and present from it", () => {
     const { registry, setContext } = appRegistry();
@@ -208,8 +229,8 @@ describe("level is the tier: a ladder of contexts", () => {
       setContext(ctx);
       const listed = new Set(advertisedCommandTools(registry).map((t) => t.name));
       for (const [name, command] of DECLARED) {
-        const level = command.level as keyof typeof FIRST_RUNG;
-        expect([rung, name, listed.has(name)]).toEqual([rung, name, rung >= FIRST_RUNG[level]]);
+        const firstRung = FIRST_RUNG[command.level];
+        expect([rung, name, listed.has(name)]).toEqual([rung, name, rung >= firstRung]);
       }
     }
   });
@@ -227,9 +248,7 @@ describe("level is the tier: a ladder of contexts", () => {
   });
 
   test("with Project Settings focused, a selection verb is not advertised even with a selection", () => {
-    const { registry } = appRegistry(
-      makeContext({ ...RICH, editor: { kind: "config" } } as CommandContext),
-    );
+    const { registry } = appRegistry(makeContext({ ...RICH, editor: { kind: "config" } }));
     const listed = advertisedCommandTools(registry).map((t) => t.name);
     expect(listed).not.toContain("delete_node");
     expect(listed).not.toContain("duplicate_node");
@@ -245,7 +264,7 @@ describe("level is the tier: a ladder of contexts", () => {
       editor: { kind: "canvas" },
       selection: { count: 1, paths: [["children", 0]] },
     });
-    const config = makeContext({ ...landed, editor: { kind: "config" } } as CommandContext);
+    const config = makeContext({ ...landed, editor: { kind: "config" } });
     for (const command of DECLARED.values()) {
       if (command.level !== "selection") {
         continue;
@@ -264,8 +283,10 @@ describe("parameters are the record's own args object", () => {
     const { registry } = appRegistry(RICH);
     setActiveRegistry(registry);
     const tools = createCommandToolRegistry(noDeps);
-    const selectorPaths = (registry.get(SELECTOR)!.args as { properties: { paths: object } })
-      .properties.paths;
+    const selectorPaths = registry.get(SELECTOR)?.args?.properties?.paths;
+    if (!selectorPaths) {
+      throw new Error(`${SELECTOR} declares no paths argument`);
+    }
     for (const name of DECLARED.keys()) {
       const { parameters } = tools.getDefinition(name)!;
       // The LIVE record's object, not `DECLARED`'s: `appCommandSet()` builds fresh records per
@@ -299,9 +320,12 @@ describe("parameters are the record's own args object", () => {
       function: { name: string; parameters: object };
     }
     const enumOf = () => {
+      // SAFETY: listForLLM maps every definition to OpenAI's `{ type, function: { name, ... } }`.
       const listed = tools.listForLLM() as Listed[];
       const tool = listed.find((t) => t.function.name === "enable_extension")!;
       const wire = JSON.stringify(tool.function.parameters);
+      /* SAFETY: `wire` serialises enable_extension's own args schema, whose one property `package`
+         is an enum of catalogue package names. */
       const parsed = JSON.parse(wire) as { properties: { package: { enum: string[] } } };
       return parsed.properties.package.enum;
     };
@@ -351,12 +375,12 @@ describe("parameters are the record's own args object", () => {
       id: "selection.tag",
       level: "selection",
       requires: "an element selection",
-      run: (_ctx, args) => {
+      run: (_ctx, args: { tag: string }) => {
         seen.push(args, [...tab.session.selection]);
       },
       title: "Tag",
       when: hasSelection,
-    } as AnyCommand);
+    });
     setActiveRegistry(registry);
     const tools = createCommandToolRegistry(noDeps);
 
@@ -369,7 +393,7 @@ describe("parameters are the record's own args object", () => {
     ctx = makeContext({
       ...ctx,
       selection: { count: 1, paths: [["children", 1]] },
-    } as CommandContext);
+    });
     const ok = await tools.execute("tag_thing", { paths: [["children", 1]], tag: "p" });
     expect(ok).toEqual({ success: true, summary: "Tagged." });
     expect(seen).toEqual([{ tag: "p" }, [["children", 1]]]);
@@ -379,9 +403,9 @@ describe("parameters are the record's own args object", () => {
     const hole = await tools.execute("tag_thing", { paths: [["children", 9]], tag: "p" });
     expect(hole.success).toBe(false);
     expect(hole.error).toContain('command "selection.setPaths" argument "paths": [children, 9]');
-    const shape = await tools.execute("tag_thing", { paths: "children/0", tag: "p" });
-    expect(shape.success).toBe(false);
-    expect(shape.error).toContain('command "selection.setPaths" argument "paths"');
+    const malformed = await tools.execute("tag_thing", { paths: "children/0", tag: "p" });
+    expect(malformed.success).toBe(false);
+    expect(malformed.error).toContain('command "selection.setPaths" argument "paths"');
     expect(seen).toHaveLength(2);
   });
 });
@@ -392,7 +416,7 @@ describe("execution", () => {
   /** A registry of fake records over the harness tab, one per shape the bridge distinguishes. */
   function fakeRegistry(
     tab: ReturnType<typeof resetWorkspaceWithTab>,
-    ctxPatch: Partial<CommandContext> = {},
+    ctxPatch: CommandContextPatch = {},
   ) {
     const registry = createCommandRegistry({
       getContext: () =>
@@ -401,7 +425,7 @@ describe("execution", () => {
           editor: { kind: "canvas" },
           project: { open: true },
           ...ctxPatch,
-        } as never),
+        }),
     });
     registry.registerAll([
       {
@@ -445,7 +469,7 @@ describe("execution", () => {
         /* Through the chokepoint, as every real project record writes: the project witness
            compares the configuration reference the chokepoint holds, so a run that only claims
            to write is exactly what it catches (`proj_phantom` below). */
-        run: () => updateSiteConfig({ name: "written" } as Partial<ProjectConfig>),
+        run: () => updateSiteConfig({ name: "written" }),
         title: "Write Project",
         undo: "project",
       },
@@ -503,7 +527,7 @@ describe("execution", () => {
         category: "Project",
         id: "proj.badReport",
         level: "project",
-        run: () => updateSiteConfig({ name: "written" } as Partial<ProjectConfig>),
+        run: () => updateSiteConfig({ name: "written" }),
         title: "Bad Report",
         undo: "project",
       },
@@ -522,7 +546,7 @@ describe("execution", () => {
         title: "Bad Report No-op",
         undo: "project",
       },
-    ] as AnyCommand[]);
+    ]);
     return registry;
   }
 
@@ -721,7 +745,7 @@ describe("execution", () => {
   });
 
   test("a success verdict's token hints ride on the report's sentence", async () => {
-    const tab = resetWorkspaceWithTab({ style: { color: "#ff0000" }, tagName: "div" } as never);
+    const tab = resetWorkspaceWithTab({ style: { color: "#ff0000" }, tagName: "div" });
     setActiveRegistry(fakeRegistry(tab));
     const tools = createCommandToolRegistry({
       getProjectStyle: () => ({ "--color-accent": "#ff0000" }),
@@ -777,7 +801,7 @@ describe("execution", () => {
       run: () => {},
       title: "Lonely",
       when: hasSelection,
-    } as AnyCommand);
+    });
     setActiveRegistry(registry);
     const tools = createCommandToolRegistry(noDeps);
     expect(tools.list()).toEqual([]);
@@ -823,6 +847,7 @@ describe("a required argument with an empty derived enum withholds the tool", ()
     const { registry } = appRegistry(RICH);
     setActiveRegistry(registry);
     const tools = createCommandToolRegistry(noDeps);
+    // SAFETY: listForLLM maps every definition to OpenAI's `{ type, function: { name, ... } }`.
     const listed = tools.listForLLM() as { function: { name: string } }[];
     expect(listed.map((t) => t.function.name)).not.toContain("enable_extension");
   });
@@ -853,7 +878,7 @@ describe("a required argument with an empty derived enum withholds the tool", ()
       level: "project",
       run: () => {},
       title: "Optional Choice",
-    } as AnyCommand);
+    });
     setActiveRegistry(registry);
     expect(advertisedCommandTools(registry).map((t) => t.name)).toEqual(["optional_choice"]);
   });
@@ -956,27 +981,27 @@ describe("the assistant's tool budget", () => {
   });
 
   test("select_node reports what it pointed at, or that it cleared the selection", () => {
-    const { report } = DECLARED.get("select_node")!.aiTool!;
+    const command = DECLARED.get("select_node")!;
     expect(
-      report({
-        after: makeContext({ selection: { count: 0, kind: "", paths: [] } }),
-        args: { path: null } as never,
-        before: emptyContext(),
-      }),
+      reportFor(
+        command,
+        { path: null },
+        makeContext({ selection: { count: 0, kind: "", paths: [] } }),
+      ),
     ).toBe("Cleared the selection.");
     expect(
-      report({
-        after: makeContext({ selection: { count: 1, kind: "p", paths: [["children", 2]] } }),
-        args: { path: ["children", 2] } as never,
-        before: emptyContext(),
-      }),
+      reportFor(
+        command,
+        { path: ["children", 2] },
+        makeContext({ selection: { count: 1, kind: "p", paths: [["children", 2]] } }),
+      ),
     ).toBe("Selected p at [children, 2]; the Inspector and the Outline now address it.");
     expect(
-      report({
-        after: makeContext({ selection: { count: 1, kind: "", paths: [["children", 0]] } }),
-        args: { path: ["children", 0] } as never,
-        before: emptyContext(),
-      }),
+      reportFor(
+        command,
+        { path: ["children", 0] },
+        makeContext({ selection: { count: 1, kind: "", paths: [["children", 0]] } }),
+      ),
     ).toBe("Selected the element at [children, 0]; the Inspector and the Outline now address it.");
   });
 
@@ -986,12 +1011,8 @@ describe("the assistant's tool budget", () => {
         continue;
       }
       // Reported against the empty state the record can be asked about with no project open.
-      const report = command.aiTool!.report({
-        after: emptyContext(),
-        args: { package: "@jxsuite/parser" } as never,
-        before: emptyContext(),
-      });
-      expect([name, typeof report === "string" ? undefined : report.wrote?.length]).toEqual([
+      const report = reportFor(command, { package: "@jxsuite/parser" }, emptyContext());
+      expect([name, isString(report) ? undefined : report.wrote?.length]).toEqual([
         name,
         expect.any(Number),
       ]);

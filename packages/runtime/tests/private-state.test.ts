@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
+import type { JxDocument } from "@jxsuite/schema/types";
+
 try {
   GlobalRegistrator.register();
 } catch {
@@ -24,7 +26,7 @@ const CHILD = {
   state: { "#cache": "private", count: 0, label: "hi" },
   tagName: "priv-child",
   children: [],
-};
+} satisfies JxDocument;
 
 const warnings: string[] = [];
 const realWarn = console.warn;
@@ -43,7 +45,7 @@ afterEach(() => {
 
 describe("a private entry is still ordinary state", () => {
   test("it builds into scope and is readable and writable from inside", async () => {
-    const state = await buildScope(CHILD as never, {});
+    const state = await buildScope(CHILD, {});
     expect(state["#cache"]).toBe("private");
     state["#cache"] = "changed";
     expect(state["#cache"]).toBe("changed");
@@ -56,22 +58,22 @@ describe("$props cannot reach it", () => {
    * write landed, so a component's private cache was settable by anyone instantiating it.
    */
   test("a $props entry naming a private key is ignored", async () => {
-    const parent = await buildScope({ state: { outer: 1 } } as never, {});
+    const parent = await buildScope({ state: { outer: 1 } }, {});
     const el = renderNode(
       {
         $props: { "#cache": "injected", label: "set" },
         tagName: "div",
         children: [],
-      } as never,
+      },
       parent,
-    ) as HTMLElement;
+    );
     expect(el).toBeDefined();
     expect(warnings.join("\n")).toContain("#cache");
   });
 
   test("the refusal names the section and says what to do", async () => {
-    const parent = await buildScope({ state: {} } as never, {});
-    renderNode({ $props: { "#cache": "x" }, tagName: "div", children: [] } as never, parent);
+    const parent = await buildScope({ state: {} }, {});
+    renderNode({ $props: { "#cache": "x" }, tagName: "div", children: [] }, parent);
     const text = warnings.join("\n");
     expect(text).toContain("§5.6");
     expect(text).toContain("ignored");
@@ -79,19 +81,16 @@ describe("$props cannot reach it", () => {
 
   // A component in a list must not print the same refusal once per row.
   test("warns once per key, not once per instance", async () => {
-    const parent = await buildScope({ state: {} } as never, {});
+    const parent = await buildScope({ state: {} }, {});
     for (let i = 0; i < 20; i++) {
-      renderNode({ $props: { "#cache": i }, tagName: "div", children: [] } as never, parent);
+      renderNode({ $props: { "#cache": i }, tagName: "div", children: [] }, parent);
     }
     expect(warnings.filter((w) => w.includes("#cache"))).toHaveLength(1);
   });
 
   test("a public prop beside a private one still lands", async () => {
-    const parent = await buildScope({ state: {} } as never, {});
-    renderNode(
-      { $props: { "#cache": "no", label: "yes" }, tagName: "div", children: [] } as never,
-      parent,
-    );
+    const parent = await buildScope({ state: {} }, {});
+    renderNode({ $props: { "#cache": "no", label: "yes" }, tagName: "div", children: [] }, parent);
     // The private one was refused; the public one produced no complaint.
     expect(warnings.join("\n")).not.toContain("label");
   });
@@ -99,13 +98,13 @@ describe("$props cannot reach it", () => {
   // A hyphenated tag with $props takes the property-first path (renderCustomElementWithProps),
   // Whether or not the element has upgraded yet — a second route into the same rule.
   test("the property-first path refuses it too, on a not-yet-registered custom tag", async () => {
-    const parent = await buildScope({ state: {} } as never, {});
+    const parent = await buildScope({ state: {} }, {});
     const el = renderNode(
-      { $props: { "#cache": "no", label: "yes" }, tagName: "priv-not-upgraded" } as never,
+      { $props: { "#cache": "no", label: "yes" }, tagName: "priv-not-upgraded" },
       parent,
-    ) as HTMLElement;
-    expect((el as unknown as Record<string, unknown>)["#cache"]).toBeUndefined();
-    expect((el as unknown as Record<string, unknown>)["label"]).toBe("yes");
+    );
+    expect("#cache" in el).toBe(false);
+    expect("label" in el ? el.label : undefined).toBe("yes");
     expect(warnings.join("\n")).toContain("#cache");
   });
 });
@@ -116,7 +115,7 @@ describe("the custom-element interface excludes it", () => {
    * With one, `el["#cache"] = x` would write straight through every guard above it.
    */
   test("no property accessor is defined for a private key", async () => {
-    await defineElement({ ...CHILD, tagName: "priv-accessor" } as never);
+    await defineElement({ ...CHILD, tagName: "priv-accessor" });
     const el = document.createElement("priv-accessor");
     document.body.append(el);
     await new Promise((r) => {
@@ -129,7 +128,7 @@ describe("the custom-element interface excludes it", () => {
   });
 
   test("a props.* attribute naming a private key is refused and stripped", async () => {
-    await defineElement({ ...CHILD, tagName: "priv-attr" } as never);
+    await defineElement({ ...CHILD, tagName: "priv-attr" });
     const el = document.createElement("priv-attr");
     el.setAttribute("props.#cache", "injected");
     document.body.append(el);
@@ -142,7 +141,7 @@ describe("the custom-element interface excludes it", () => {
   });
 
   test("a data-jx-props payload naming a private key is refused", async () => {
-    await defineElement({ ...CHILD, tagName: "priv-payload" } as never);
+    await defineElement({ ...CHILD, tagName: "priv-payload" });
     const el = document.createElement("priv-payload");
     el.dataset.jxProps = JSON.stringify({ "#cache": "injected", count: 7 });
     document.body.append(el);

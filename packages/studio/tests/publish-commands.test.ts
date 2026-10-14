@@ -12,11 +12,11 @@
  */
 import { flush, installMockPlatform, resetStudioState, mountOverlayLayers } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
+import { isString } from "@jxsuite/schema/guards";
 
 const { activities, resetActivities } = await import("../src/panels/activity-panel");
 const { problems, resetNotifications, toasts } = await import("../src/services/notify");
 const { forgetDeployment, observedDeployment } = await import("../src/publish/deploy-checklist");
-const { setProjectState } = await import("../src/store");
 const { dashboardUrl, publishCommands, registerPublishCommands, runDeploy } =
   await import("../src/publish/publish-commands");
 const { createCommandRegistry } = await import("../src/commands/registry");
@@ -41,11 +41,15 @@ function command(id: string) {
   return publishCommands().find((candidate) => candidate.id === id)!;
 }
 
+/** Run a Publish record the way the palette does: an empty context and no arguments. */
+function runCommand(id: string): void | Promise<void> {
+  /* SAFETY: a stored record is `AnyCommand`, whose args are erased to `never`. None of the three
+     Publish records declares `args`, so the registry hands each `run` undefined as well. */
+  return command(id).run(emptyContext(), undefined as never);
+}
+
 function connect() {
-  setProjectState({
-    expanded: new Set(),
-    projectConfig: { build: { deploy: DEPLOY }, name: "My Site" },
-  } as never);
+  resetStudioState({ projectConfig: { build: { deploy: DEPLOY }, name: "My Site" } });
 }
 
 beforeEach(() => {
@@ -68,7 +72,7 @@ describe("the records", () => {
     expect(records.every((record) => record.level === "project")).toBe(true);
     // Always REACHABLE, never silently absent: the palette shows them and states the requirement.
     expect(records.every((record) => (record.menus ?? []).includes("palette"))).toBe(true);
-    expect(records.every((record) => typeof record.requires === "string")).toBe(true);
+    expect(records.every((record) => isString(record.requires))).toBe(true);
   });
 
   test("registering them passes the registry's own placement and id checks", () => {
@@ -149,7 +153,7 @@ describe("the records", () => {
       opened.push(args);
       return null;
     };
-    void command("publish.openDashboard").run(emptyContext(), undefined as never);
+    void runCommand("publish.openDashboard");
     window.open = original;
     expect(opened).toEqual([
       [`https://dash.cloudflare.com/${DEPLOY.accountId}/pages/view/my-site`, "_blank", "noopener"],
@@ -163,7 +167,7 @@ describe("the records", () => {
     mountOverlayLayers(document.body);
     const { initLayers } = await import("../src/ui/layers");
     initLayers();
-    await command("publish.setUp").run(emptyContext(), undefined as never);
+    await runCommand("publish.setUp");
     await flush();
     expect(document.querySelector('#layer-modal jx-dialog[part="publish"]')).toBeTruthy();
   });
@@ -171,10 +175,9 @@ describe("the records", () => {
   test("Deploy's run wrapper drives the same activity the direct call does", async () => {
     connect();
     installMockPlatform({
-      cfApi: async (path: string) =>
-        path.includes("/deployments") ? [DEPLOYMENT_WIRE] : ({} as unknown),
+      cfApi: async (path: string) => (path.includes("/deployments") ? [DEPLOYMENT_WIRE] : {}),
     });
-    await command("publish.deploy").run(emptyContext(), undefined as never);
+    await runCommand("publish.deploy");
     expect(activities).toHaveLength(1);
     expect(activities[0]!.state).toBe("done");
   });
@@ -186,7 +189,7 @@ describe("the records", () => {
       opened.push(args);
       return null;
     };
-    void command("publish.openDashboard").run(emptyContext(), undefined as never);
+    void runCommand("publish.openDashboard");
     window.open = original;
     expect(opened).toEqual([]);
   });
@@ -196,8 +199,7 @@ describe("runDeploy", () => {
   test("pushes, reads the deployment back, and records it for the checklist", async () => {
     connect();
     const { state } = installMockPlatform({
-      cfApi: async (path: string) =>
-        path.includes("/deployments") ? [DEPLOYMENT_WIRE] : ({} as unknown),
+      cfApi: async (path: string) => (path.includes("/deployments") ? [DEPLOYMENT_WIRE] : {}),
     });
     expect(await runDeploy({ attempts: 1, delayMs: 0 })).toBe(true);
     expect(state.calls.some((call) => call[0] === "gitPush")).toBe(true);

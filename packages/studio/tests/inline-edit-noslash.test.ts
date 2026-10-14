@@ -21,10 +21,10 @@ import {
 import { caretAt } from "./harness";
 
 // The slash trigger defers its menu open to the next frame.
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 let el: HTMLElement;
 const commits: { textContent: string | null }[] = [];

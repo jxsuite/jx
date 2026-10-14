@@ -63,13 +63,19 @@ async function openDatabase(config: BunSqliteDialectConfig): Promise<{
     // Ensure the parent directory exists (dev-server convention: <project>/.jx/data/).
     const fsSpecifier = "node:fs";
     const pathSpecifier = "node:path";
+    /* SAFETY: the opaque specifier is the literal "node:fs" (kept out of static analysis only so
+       bundles stay inert), and node:fs has exported mkdirSync(path, { recursive }) since Node 10.12
+       and in every Bun release. */
     const fs = (await import(fsSpecifier)) as {
       mkdirSync: (path: string, options: { recursive: boolean }) => void;
     };
+    // SAFETY: the opaque specifier is the literal "node:path", whose dirname(path) returns a string.
     const path = (await import(pathSpecifier)) as { dirname: (path: string) => string };
     fs.mkdirSync(path.dirname(file), { recursive: true });
   }
   const sqliteSpecifier = "bun:sqlite";
+  /* SAFETY: the opaque specifier is the literal "bun:sqlite", whose Database class opens a file
+     path and structurally satisfies BunSqliteDatabaseLike (prepare/close are a subset of it). */
   const sqlite = (await import(sqliteSpecifier)) as {
     Database: new (file: string) => BunSqliteDatabaseLike;
   };
@@ -88,8 +94,13 @@ function createDriver(config: BunSqliteDialectConfig): Driver {
       }
       const { sql, parameters } = compiledQuery;
       const stmt = db.prepare(sql);
+      /* SAFETY: the parameters are the values this connector's queries bind (toStorage output,
+         ids, filter probes and timestamps: strings, numbers, booleans, bigints and null), every
+         one of which bun:sqlite accepts as a SQLQueryBindings entry. */
       const bindings = parameters as SQLQueryBindings[];
       if (stmt.columnNames.length > 0) {
+        /* SAFETY: Kysely instantiates R with the row shape of the compiled select, and
+           Statement.all() returns one plain object per result row keyed by column name. */
         return { rows: stmt.all(...bindings) as R[] };
       }
       const info = stmt.run(...bindings);

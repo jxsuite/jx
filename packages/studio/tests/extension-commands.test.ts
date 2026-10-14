@@ -19,6 +19,7 @@ import {
   extensionOpInFlight,
 } from "../src/settings/extension-commands";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
+import { isString } from "@jxsuite/schema/guards";
 import type { CommandContext } from "../src/commands/context";
 import type { ExtensionCatalogEntry } from "../src/types";
 
@@ -174,10 +175,9 @@ describe("enable is idempotent; disable refuses what is not on", () => {
   test("the enable enum lists what is already on, which is what keeps that true", () => {
     resetStudioState({ projectConfig: { extensions: ["@jxsuite/parser"] } });
     const registry = registryWith(true);
-    const schema = registry.get("project.enableExtension")?.args as {
-      properties: { package: { enum: string[] } };
-    };
-    expect(schema.properties.package.enum).toEqual(["@jxsuite/parser"]);
+    // `enum` is a getter (`derivedEnumProperty`), so each read below re-derives the list.
+    const packageArg = registry.get("project.enableExtension")?.args?.properties?.package;
+    expect(packageArg?.enum).toEqual(["@jxsuite/parser"]);
   });
 
   test("disabling an extension the project does not have is refused as undeclared", () => {
@@ -205,22 +205,20 @@ describe("the choice lists are derived, not snapshotted", () => {
     setExtensionCatalog([]);
     resetStudioState({ projectConfig: {} });
     const registry = registryWith(true);
-    const schema = registry.get("project.enableExtension")?.args as {
-      properties: { package: { enum: string[] } };
-    };
-    expect(schema.properties.package.enum).toEqual([]);
+    // `enum` is a getter (`derivedEnumProperty`), so each read below re-derives the list.
+    const packageArg = registry.get("project.enableExtension")?.args?.properties?.package;
+    expect(packageArg?.enum).toEqual([]);
 
     setExtensionCatalog([PARSER]);
-    expect(schema.properties.package.enum).toEqual(["@jxsuite/parser"]);
+    expect(packageArg?.enum).toEqual(["@jxsuite/parser"]);
   });
 
   test("disable offers exactly what project.json names", () => {
     resetStudioState({ projectConfig: { extensions: ["@acme/one", "@acme/two"] } });
     const registry = registryWith(true);
-    const schema = registry.get("project.disableExtension")?.args as {
-      properties: { package: { enum: string[] } };
-    };
-    expect(schema.properties.package.enum).toEqual(["@acme/one", "@acme/two"]);
+    // `enum` is a getter (`derivedEnumProperty`), so each read below re-derives the list.
+    const packageArg = registry.get("project.disableExtension")?.args?.properties?.package;
+    expect(packageArg?.enum).toEqual(["@acme/one", "@acme/two"]);
   });
 });
 
@@ -236,7 +234,7 @@ describe("one operation at a time", () => {
       addPackage: () =>
         new Promise<void>((r) => {
           release = r;
-        }) as Promise<unknown>,
+        }),
     });
     setExtensionCatalog([PARSER, { ...PARSER, name: "@jxsuite/feed", title: "Feeds" }]);
     const registry = registryWith(true);
@@ -256,7 +254,7 @@ describe("one operation at a time", () => {
       addPackage: () =>
         new Promise<void>((r) => {
           release = r;
-        }) as Promise<unknown>,
+        }),
     });
     const registry = registryWith(true);
     const first = registry.run("project.enableExtension", { package: "@jxsuite/parser" });
@@ -287,7 +285,7 @@ describe("one operation at a time", () => {
       addPackage: () =>
         new Promise<void>((r) => {
           release = r;
-        }) as Promise<unknown>,
+        }),
     });
     const registry = registryWith(true);
     const first = registry.run("project.enableExtension", { package: "@jxsuite/parser" });
@@ -314,6 +312,9 @@ describe("what the assistant is told afterwards (aiTool.report)", () => {
    */
   const facts = (name: string) => ({
     after: emptyContext(),
+    /* SAFETY: the registry stores records as `Command<never>` (`AnyCommand`), so `report` takes
+       `args: never`; the enable/disable records were declared over `CommandArgValues`, and their
+       reports read only `package`, through `stringArg`, which this record supplies as a string. */
     args: { package: name } as never,
     before: emptyContext(),
   });
@@ -349,7 +350,7 @@ describe("what the assistant is told afterwards (aiTool.report)", () => {
     const report = registry
       .get("project.enableExtension")!
       .aiTool!.report(facts("@jxsuite/parser"));
-    expect(typeof report === "string" ? undefined : report.wrote).toEqual(["project.json"]);
+    expect(isString(report) ? undefined : report.wrote).toEqual(["project.json"]);
   });
 
   test("an extension with no sections still reports the enabled set", async () => {
@@ -363,7 +364,7 @@ describe("what the assistant is told afterwards (aiTool.report)", () => {
     const report = registry
       .get("project.enableExtension")!
       .aiTool!.report(facts("@jxsuite/parser"));
-    expect(typeof report === "string" ? report : report.summary).toBe(
+    expect(isString(report) ? report : report.summary).toBe(
       "Enabled @jxsuite/parser. Enabled extensions: @jxsuite/parser.",
     );
   });
@@ -400,7 +401,7 @@ describe("what the assistant is told afterwards (aiTool.report)", () => {
     const report = registry
       .get("project.enableExtension")!
       .aiTool!.report(facts("@jxsuite/parser"));
-    expect(typeof report === "string" ? undefined : report.wrote).toEqual([]);
+    expect(isString(report) ? undefined : report.wrote).toEqual([]);
   });
 
   test("disable says the package is still installed, and to ask before uninstalling", () => {

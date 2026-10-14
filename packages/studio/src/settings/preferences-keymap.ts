@@ -33,9 +33,11 @@
  * during boot.
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { normalizeChord, overlappingScopes, parseChord } from "../commands/keymap";
 import { SETTINGS } from "../services/settings/definitions";
 import { clearSettings, readStoredSetting, setSetting } from "../services/settings/kernel";
+import type { JsonValue } from "@jxsuite/schema/types";
 import type { KeybindingOverrides } from "../commands/keymap";
 import type { KeyScope } from "../commands/levels";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
@@ -120,13 +122,13 @@ function readRaw(): string {
 }
 
 /** Every chord in one stored entry, canonicalised — or `null` if any of them is not a chord. */
-function canonicalise(chords: unknown): string[] | null {
+function canonicalise(chords: JsonValue): string[] | null {
   if (!Array.isArray(chords)) {
     return null;
   }
   const canonical: string[] = [];
-  for (const chord of chords as unknown[]) {
-    if (typeof chord !== "string") {
+  for (const chord of chords) {
+    if (!isString(chord)) {
       return null;
     }
     try {
@@ -159,10 +161,10 @@ export function loadKeybindingOverrides(): Map<string, string[]> {
     // Corrupt store: the defaults are the whole keymap.
     return layer;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  if (!isJsonObject(parsed)) {
     return layer;
   }
-  for (const [id, chords] of Object.entries(parsed as Record<string, unknown>)) {
+  for (const [id, chords] of Object.entries(parsed)) {
     const canonical = canonicalise(chords);
     if (canonical) {
       layer.set(id, canonical);

@@ -4,7 +4,11 @@ import { notifyModule } from "./notify-mock";
 import { fakeCell, fakeRange, fakeRow, FakeTabulator, tabulatorMockModule } from "./tabulator-mock";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { undo } from "../src/tabs/transact";
-import type { GridSource } from "../src/grid/grid-source";
+import type { GridCellValue, GridSource } from "../src/grid/grid-source";
+import type { CellPopoverArgs } from "../src/grid/cell-popovers";
+import type { FakeCell, FakeRow } from "./tabulator-mock";
+import type { ColumnDefinition } from "tabulator-tables";
+import { isFunction } from "@jxsuite/schema/guards";
 
 void mock.module("tabulator-tables", () => tabulatorMockModule);
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
@@ -19,15 +23,15 @@ void mock.module("../src/ui/progress-modal.js", () => ({
 }));
 void mock.module("../src/services/notify.js", () => notifyModule(() => {}));
 
-const popoverCalls: { column: string; value: unknown; commit: (v: unknown) => void }[] = [];
+const popoverCalls: {
+  column: string;
+  value: GridCellValue;
+  commit: CellPopoverArgs["commit"];
+}[] = [];
 void mock.module("../src/grid/cell-popovers.js", () => ({
   hasPopoverEditor: (column: { kind: string }) =>
     column.kind === "image" || column.kind === "reference",
-  openCellValuePopover: async (args: {
-    column: { field: string };
-    value: unknown;
-    commit: (v: unknown) => void;
-  }) => {
+  openCellValuePopover: async (args: CellPopoverArgs) => {
     popoverCalls.push({ column: args.column.field, commit: args.commit, value: args.value });
   },
   referenceTargetType: () => null,
@@ -62,6 +66,43 @@ function stubSource(overrides: Partial<GridSource> = {}): GridSource {
     }),
     ...overrides,
   };
+}
+
+/**
+ * A column definition as this suite drives it. `createGridView` gives every column a `field`, an
+ * `editable` callback and a `formatter` (src/grid/grid-view.ts); Tabulator would hand those
+ * callbacks its own cell, and this suite hands them the mock's.
+ */
+interface DrivenColumn extends Omit<
+  ColumnDefinition<GridCellValue>,
+  "editable" | "field" | "formatter"
+> {
+  editable: (cell: FakeCell) => boolean;
+  field: string;
+  formatter: (
+    cell: FakeCell,
+    formatterParams: Record<string, never>,
+    onRendered: (fn: () => void) => void,
+  ) => HTMLElement | string;
+}
+
+/** Every column the view built, in the order it handed them to Tabulator. */
+function drivenColumns(table: FakeTabulator): DrivenColumn[] {
+  /* SAFETY: the fake keeps the options object `createGridView` constructed it with, untouched, and
+     its `columns` is `applyGridLayout(columnDefs, layout)`: the view's own records, every one with a
+     `field`, an `editable` and a `formatter`. FakeCell and FakeRow implement every member of the
+     ambient CellComponent and RowComponent (src/grid/tabulator-tables.d.ts), differing only in
+     `getValue` also answering `undefined` for a field the row's data does not hold. */
+  return table.options.columns as DrivenColumn[];
+}
+
+/** The column the view built for `field`. */
+function drivenColumn(table: FakeTabulator, field: string): DrivenColumn {
+  const column = drivenColumns(table).find((candidate) => candidate.field === field);
+  if (!column) {
+    throw new Error(`the view built no "${field}" column`);
+  }
+  return column;
 }
 
 async function setupView(source: GridSource = stubSource()) {
@@ -103,15 +144,15 @@ describe("createGridView — construction", () => {
 
   test("maps columns: readonly gets no editor, pk freezes, filters/sort follow capabilities", async () => {
     const { table } = await setupView();
-    const defs = table.options.columns as Record<string, unknown>[];
-    const byField = new Map(defs.map((d) => [d.field, d]));
-    expect(byField.get("id")!.editor).toBeUndefined();
-    expect(byField.get("id")!.frozen).toBeTrue();
-    expect(typeof byField.get("title")!.editor).toBe("function");
-    expect(byField.get("title")!.headerFilter).toBe("input");
-    expect(byField.get("done")!.headerFilter).toBeUndefined();
-    expect(byField.get("title")!.headerSort).toBeTrue();
-    expect(byField.get("count")!.sorter).toBe("number");
+    const id = drivenColumn(table, "id");
+    const title = drivenColumn(table, "title");
+    expect(id.editor).toBeUndefined();
+    expect(id.frozen).toBeTrue();
+    expect(title.editor).toBeFunction();
+    expect(title.headerFilter).toBe("input");
+    expect(drivenColumn(table, "done").headerFilter).toBeUndefined();
+    expect(title.headerSort).toBeTrue();
+    expect(drivenColumn(table, "count").sorter).toBe("number");
   });
 
   test("remote sources disable header sort and filters", async () => {
@@ -121,7 +162,7 @@ describe("createGridView — construction", () => {
         id: "grid://data/main/users",
       }),
     );
-    const defs = table.options.columns as Record<string, unknown>[];
+    const defs = drivenColumns(table);
     expect(defs.every((d) => d.headerSort === false)).toBeTrue();
     expect(defs.every((d) => d.headerFilter === undefined)).toBeTrue();
   });
@@ -221,18 +262,14 @@ describe("cellEdited → buffer", () => {
     table.emit("cellEdited", cell);
 
     expect(controller.buffer.effectiveValue("a", "count")).toBe(42);
-    expect(row.data.count).toBe(42); // Normalized back into the table.
+    expect(row.getData().count).toBe(42); // Normalized back into the table.
     expect(cell.element.classList.contains("jx-grid-cell--dirty")).toBeTrue();
   });
 
   test("pending-delete rows are not editable", async () => {
     const { controller, table } = await setupView();
     controller.buffer.deleteRow("a");
-    const defs = table.options.columns as {
-      field: string;
-      editable: (cell: ReturnType<typeof fakeCell>) => boolean;
-    }[];
-    const titleDef = defs.find((d) => d.field === "title")!;
+    const titleDef = drivenColumn(table, "title");
     const row = fakeRow({ [ROW_KEY_FIELD]: "a", title: "One" });
     const cell = fakeCell(row, "title", table);
     expect(titleDef.editable(cell)).toBeFalse();
@@ -365,10 +402,8 @@ describe("popover cells and insert-only columns", () => {
 
   test("image/reference columns get no inline editor; dblclick opens the popover", async () => {
     const { controller, table } = await setupView(richSource());
-    const defs = table.options.columns as Record<string, unknown>[];
-    const byField = new Map(defs.map((d) => [d.field, d]));
-    expect(byField.get("cover")!.editor).toBeUndefined();
-    expect(typeof byField.get("title")!.editor).toBe("function");
+    expect(drivenColumn(table, "cover").editor).toBeUndefined();
+    expect(drivenColumn(table, "title").editor).toBeFunction();
 
     controller.buffer.setCell("a", "cover", "/img/a.png");
     const row = fakeRow({ [ROW_KEY_FIELD]: "a", cover: "/img/a.png" });
@@ -395,11 +430,7 @@ describe("popover cells and insert-only columns", () => {
 
   test("insert-only columns are editable only on pending-insert rows", async () => {
     const { controller, table } = await setupView(richSource());
-    const defs = table.options.columns as {
-      field: string;
-      editable: (cell: ReturnType<typeof fakeCell>) => boolean;
-    }[];
-    const pathDef = defs.find((d) => d.field === "__path")!;
+    const pathDef = drivenColumn(table, "__path");
 
     const existing = fakeRow({ [ROW_KEY_FIELD]: "a" });
     expect(pathDef.editable(fakeCell(existing, "__path", table))).toBeFalse();
@@ -418,9 +449,8 @@ describe("column layout persistence", () => {
     saveGridLayout("grid://collection/x", { order: ["count", "title"], widths: { title: 321 } });
 
     const { table } = await setupView();
-    const defs = table.options.columns as { field: string; width?: number }[];
-    expect(defs.map((d) => d.field)).toEqual(["count", "title", "id", "done"]);
-    expect(defs.find((d) => d.field === "title")!.width).toBe(321);
+    expect(drivenColumns(table).map((d) => d.field)).toEqual(["count", "title", "id", "done"]);
+    expect(drivenColumn(table, "title").width).toBe(321);
 
     table.emit("columnResized", { getField: () => "done", getWidth: () => 77 });
     expect(loadGridLayout("grid://collection/x")!.widths!.done).toBe(77);
@@ -437,15 +467,7 @@ describe("column layout persistence", () => {
 describe("formatters and sorters", () => {
   test("the column formatter renders into a host and paints error state on render", async () => {
     const { controller, table } = await setupView();
-    const defs = table.options.columns as {
-      field: string;
-      formatter: (
-        cell: ReturnType<typeof fakeCell>,
-        params: unknown,
-        onRendered: (fn: () => void) => void,
-      ) => HTMLElement;
-    }[];
-    const titleDef = defs.find((d) => d.field === "title")!;
+    const titleDef = drivenColumn(table, "title");
     const row = fakeRow({ [ROW_KEY_FIELD]: "a", title: "One" });
     const cell = fakeCell(row, "title", table);
 
@@ -456,6 +478,9 @@ describe("formatters and sorters", () => {
     });
     const rendered: (() => void)[] = [];
     const host = titleDef.formatter(cell, {}, (fn) => rendered.push(fn));
+    if (!(host instanceof HTMLElement)) {
+      throw new TypeError("the formatter rendered bare text instead of a host element");
+    }
     expect(host.className).toContain("jx-grid-cell-content");
     expect(host.textContent).toBe("One");
     for (const fn of rendered) {
@@ -475,11 +500,10 @@ describe("formatters and sorters", () => {
         id: "grid://collection/arr",
       }),
     );
-    const defs = table.options.columns as { field: string; sorter: unknown }[];
-    const sorter = defs.find((d) => d.field === "tags")!.sorter as (
-      a: unknown,
-      b: unknown,
-    ) => number;
+    const { sorter } = drivenColumn(table, "tags");
+    if (!isFunction(sorter)) {
+      throw new TypeError("the array column sorts by a named sorter instead of its joined text");
+    }
     expect(sorter(["alpha"], ["beta"])).toBeLessThan(0);
     expect(sorter(["beta"], ["alpha"])).toBeGreaterThan(0);
     expect(sorter(["same"], ["same"])).toBe(0);
@@ -531,7 +555,9 @@ describe("event guards and deferred refresh", () => {
 describe("row painting", () => {
   test("rowFormatter applies pending-delete and insert classes from buffer state", async () => {
     const { controller, table } = await setupView();
-    const rowFormatter = table.options.rowFormatter as (row: ReturnType<typeof fakeRow>) => void;
+    /* SAFETY: `createGridView` passes `rowFormatter: paintRow`, which reads a row only through
+       `getData` and `getElement`; FakeRow implements both over the row object the test builds. */
+    const rowFormatter = table.options.rowFormatter as (row: FakeRow) => void;
 
     controller.buffer.deleteRow("a");
     const rowA = fakeRow({ [ROW_KEY_FIELD]: "a" });

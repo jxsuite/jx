@@ -27,6 +27,7 @@
  * @docs studio/publish/cloudflare
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
 import type { DeployConfig, ProjectConfig } from "@jxsuite/schema/types";
 import { activeRegistry } from "../commands/active-registry";
 import { currentDeploy, noteDeployment } from "./deploy-checklist";
@@ -39,7 +40,7 @@ import { layerHost } from "../ui/layers";
 import { normalizeProjectDir } from "../utils/project-dir";
 import { openPublishSurface } from "../surfaces/publish";
 import type { PublishForm, PublishSurfaceHandle, PublishView } from "../surfaces/publish";
-import type { CfAccount, PagesDeploymentInfo } from "./pages-service";
+import type { CfAccount, ConnectOptions, PagesDeploymentInfo } from "./pages-service";
 import {
   connectDeploy,
   latestDeployment,
@@ -59,7 +60,7 @@ let _replacing = false;
 let _form: PublishForm = { accountId: "", branch: "main", owner: "", projectName: "", repo: "" };
 
 function currentConfig(): ProjectConfig | null {
-  return (projectState?.projectConfig as ProjectConfig | undefined) ?? null;
+  return projectState?.projectConfig ?? null;
 }
 
 function deriveSlug(name: string): string {
@@ -122,7 +123,7 @@ function viewOf(): PublishView {
     error: _error,
     form: { ..._form },
     // Asked only of a host that answered `true` above, which is the one that is known to exist.
-    hosted: supported && typeof getPlatform().cfConnect === "function",
+    hosted: supported && isFunction(getPlatform().cfConnect),
     lapsed: connection?.connected === true && connection.needsReconnect === true,
     loading: _connection === "loading",
     replacing: _replacing,
@@ -270,14 +271,17 @@ async function submitConnect(): Promise<void> {
   paint();
   try {
     const rootDir = projectFolder();
-    const deploy = await connectDeploy(config, {
+    const options: ConnectOptions = {
       accountId: _form.accountId,
       owner: _form.owner,
       productionBranch: _form.branch || "main",
       projectName: _form.projectName,
       repo: _form.repo,
-      ...(rootDir ? { rootDir } : {}),
-    });
+    };
+    if (rootDir) {
+      options.rootDir = rootDir;
+    }
+    const deploy = await connectDeploy(config, options);
     _deployment = await latestDeployment(deploy).catch(() => null);
   } catch (error) {
     _error = error instanceof Error ? error.message : String(error);

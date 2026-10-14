@@ -7,6 +7,7 @@
  */
 
 import { jxPathSelector, parseJxPath, serializeJxPath } from "./path-mapping";
+import { isFunction } from "@jxsuite/schema/guards";
 import { rectOf } from "../utils/geometry";
 import { computeInsertZones, insertZonesKey } from "./iframe-insert";
 import { getActiveElement, isEditing } from "../editor/inline-edit";
@@ -32,9 +33,10 @@ function isCanvasLeave(e: Event, doc: Document): boolean {
 
 /** Walk up from an element to the nearest ancestor carrying a `data-jx-path`; null if none. */
 function nearestPathEl(start: Element | null): HTMLElement | null {
-  let el = start instanceof Element ? (start as HTMLElement) : null;
+  let el = start instanceof Element ? start : null;
   while (el) {
-    if (el.dataset?.jxPath) {
+    // Only HTML elements are stamped (`makeStamper` skips everything else), so only they can match.
+    if (el instanceof HTMLElement && el.dataset.jxPath) {
       return el;
     }
     el = el.parentElement;
@@ -57,6 +59,7 @@ export function nearestHit(target: EventTarget | null): NodeHit | null {
   if (!el) {
     return null;
   }
+  // SAFETY: nearestPathEl returns only an element whose `data-jx-path` is a non-empty string.
   return measureHit(el, el.dataset.jxPath as string);
 }
 
@@ -75,8 +78,9 @@ export function nearestHit(target: EventTarget | null): NodeHit | null {
  * from a node that is on screen is a worse failure than drawing one for a node that is not.
  */
 function isRendered(el: Element): boolean {
-  const check = (el as { checkVisibility?: (o?: object) => boolean }).checkVisibility;
-  return typeof check === "function" ? check.call(el, { checkVisibilityCSS: true }) : true;
+  // Absent on engines that predate it, whatever lib.dom says.
+  const check: Element["checkVisibility"] | undefined = el.checkVisibility;
+  return isFunction(check) ? check.call(el, { checkVisibilityCSS: true }) : true;
 }
 
 /**
@@ -92,10 +96,7 @@ function isRendered(el: Element): boolean {
  * The serialized path is the same string the renderer stamps, so a stored selection path
  * round-trips back to its element.
  */
-export function measureHits(
-  paths: (string | number)[][],
-  doc: Document = document,
-): { hits: NodeHit[]; hidden: (string | number)[][] } {
+export function measureHits(paths: (string | number)[][], doc: Document = document) {
   const hits: NodeHit[] = [];
   const hidden: (string | number)[][] = [];
   for (const path of paths) {
@@ -119,8 +120,15 @@ export function measureHits(
  * {@link file://./iframe-drop.ts}'s `startGrabDetector` receives its deps rather than reaching for
  * module state.
  */
+type InvokerAction = Extract<IframeToParent, { kind: "popoverTargetClick" }>["action"];
+
 /** The three `popovertargetaction` keywords. Anything else falls back to the HTML default. */
-const INVOKER_ACTIONS = new Set(["toggle", "show", "hide"]);
+const INVOKER_ACTIONS = new Set<string>(["toggle", "show", "hide"] satisfies InvokerAction[]);
+
+/** Whether an attribute value is one of the {@link INVOKER_ACTIONS} keywords. */
+function isInvokerAction(value: string): value is InvokerAction {
+  return INVOKER_ACTIONS.has(value);
+}
 
 /**
  * Report an invoker click, when the click landed on one and it names an addressable popover.
@@ -152,14 +160,14 @@ function postPopoverInvoke(
      need escaping — a rule this file already keeps in exactly one place (`jxPathSelector`) and
      should not gain a second spelling of. The set scanned is the addressable POPOVERS, which is
      also the set the answer has to come from, so the scan is the test. */
-  const panels = invoker.ownerDocument.querySelectorAll("[data-jx-popover]");
-  const panel = [...panels].find((el) => el.id === id) as HTMLElement | undefined;
+  const panels = invoker.ownerDocument.querySelectorAll<HTMLElement>("[data-jx-popover]");
+  const panel = [...panels].find((el) => el.id === id);
   const serialized = panel?.dataset.jxPath;
   if (!serialized) {
     return;
   }
   const raw = invoker.getAttribute("popovertargetaction") ?? "toggle";
-  const action = INVOKER_ACTIONS.has(raw) ? (raw as "toggle" | "show" | "hide") : "toggle";
+  const action = isInvokerAction(raw) ? raw : "toggle";
   channel.post({ action, kind: "popoverTargetClick", targetPath: parseJxPath(serialized) });
 }
 
@@ -190,10 +198,10 @@ function postCommandInvoke(
   }
   // Scanned, not selected, for the reason `postPopoverInvoke` gives; the addressable overlays are
   // The de-popovered panels and the stamped dialogs.
-  const overlays = invoker.ownerDocument.querySelectorAll(
+  const overlays = invoker.ownerDocument.querySelectorAll<HTMLElement>(
     "[data-jx-popover], dialog[data-jx-path]",
   );
-  const overlay = [...overlays].find((el) => el.id === id) as HTMLElement | undefined;
+  const overlay = [...overlays].find((el) => el.id === id);
   const serialized = overlay?.dataset.jxPath;
   if (!serialized) {
     return;
@@ -270,7 +278,7 @@ export function startInteraction(
     channel.post({ kind: "paneFocus" });
   };
 
-  const onClick = (e: Event) => {
+  const onClick = (e: MouseEvent) => {
     /*
      * Preview keeps anchors live, so a click would navigate this iframe and destroy the render (and
      * the editing session with it). Report the intent so the parent can open the real page in a real
@@ -303,9 +311,8 @@ export function startInteraction(
       // Ctrl/Cmd is the accumulate gesture (studio-ui-guidelines.md §8.1). The iframe reports the
       // Modifier and nothing else — it holds no selection state, so what a modified click MEANS is
       // The parent's to decide, exactly as the unmodified click already was.
-      const mouse = e as MouseEvent;
       channel.post({
-        additive: mouse.ctrlKey === true || mouse.metaKey === true,
+        additive: e.ctrlKey === true || e.metaKey === true,
         hit,
         kind: "hit",
       });
@@ -394,11 +401,10 @@ export function startInteraction(
     reportInsertZones(target, { x: moveX, y: moveY });
   };
 
-  const onMove = (e: Event) => {
-    const pe = e as PointerEvent;
+  const onMove = (e: PointerEvent) => {
     moveTarget = e.target;
-    moveX = pe.clientX;
-    moveY = pe.clientY;
+    moveX = e.clientX;
+    moveY = e.clientY;
     if (movePending) {
       return;
     }
@@ -415,8 +421,7 @@ export function startInteraction(
     }
   };
 
-  const onContextMenu = (e: Event) => {
-    const me = e as MouseEvent;
+  const onContextMenu = (e: MouseEvent) => {
     // Preview keeps the NATIVE menu: the Jx element menu's verbs (duplicate, delete, paste, wrap)
     // Are document edits, and preview does not edit. Copy Link Address does what it says instead.
     if (isPreview()) {
@@ -447,8 +452,8 @@ export function startInteraction(
     channel.post({
       kind: "contextMenu",
       path: hit.path,
-      x: me.clientX,
-      y: me.clientY,
+      x: e.clientX,
+      y: e.clientY,
     });
   };
 

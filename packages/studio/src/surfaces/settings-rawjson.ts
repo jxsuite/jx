@@ -16,10 +16,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import rawJsonDoc from "./settings-rawjson.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("settings-rawjson", rawJsonDoc as unknown as JxDocument);
+registerSurface("settings-rawjson", rawJsonDoc);
 
 /** What the section says the surface should be showing right now. */
 export interface RawJsonValues {
@@ -43,7 +42,7 @@ export interface RawJsonSurfaceHandle {
 }
 
 /** The scope the document reads. */
-interface RawJsonScope extends Record<string, unknown> {
+interface RawJsonScope {
   json: string;
   editAsCode: () => void;
 }
@@ -66,10 +65,10 @@ export function mountRawJsonSurface(
   values: RawJsonValues,
   actions: RawJsonActions,
 ): RawJsonSurfaceHandle {
-  const scope = reactive<RawJsonScope>({
+  const scope: RawJsonScope = reactive<RawJsonScope>({
     editAsCode: actions.editAsCode,
     json: "",
-  }) as RawJsonScope;
+  });
   project(scope, values);
 
   container.replaceChildren();
@@ -96,7 +95,7 @@ export function mountRawJsonSurface(
       !disposed &&
       (mounted === null
         ? container.childNodes.length === 0
-        : (mounted.root as Node).parentNode === container),
+        : mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

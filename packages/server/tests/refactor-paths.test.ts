@@ -9,7 +9,16 @@ import {
   rewriteRef,
   splitQueryHash,
 } from "../src/refactor/paths";
-import type { RemapCtx } from "../src/refactor/paths";
+import type { RefClass, RemapCtx } from "../src/refactor/paths";
+
+/** `classifyRef` held to its path form, which is the only form `rewriteRef` accepts. */
+function pathRef(value: string): Extract<RefClass, { kind: "path" }> {
+  const cls = classifyRef(value);
+  if (cls.kind !== "path") {
+    throw new Error(`Expected "${value}" to classify as a path reference, got "${cls.kind}"`);
+  }
+  return cls;
+}
 
 describe("splitQueryHash", () => {
   test.each([
@@ -140,44 +149,38 @@ const ctx = (over: Partial<RemapCtx>): RemapCtx => ({
 
 describe("rewriteRef", () => {
   test("doc-relative file rename", () => {
-    expect(rewriteRef(classifyRef("../components/counter.json") as never, ctx({}))).toBe(
+    expect(rewriteRef(pathRef("../components/counter.json"), ctx({}))).toBe(
       "../components/button.json",
     );
   });
 
   test("non-matching ref untouched", () => {
-    expect(rewriteRef(classifyRef("../components/other.json") as never, ctx({}))).toBeNull();
+    expect(rewriteRef(pathRef("../components/other.json"), ctx({}))).toBeNull();
   });
 
   test("preserves ./ style", () => {
     const c = ctx({ newAbs: "/p/pages/info.json", oldAbs: "/p/pages/about.json" });
-    expect(rewriteRef(classifyRef("./about.json") as never, c)).toBe("./info.json");
+    expect(rewriteRef(pathRef("./about.json"), c)).toBe("./info.json");
   });
 
   test("$layout bare resolves at root (rootRelativeBare)", () => {
     const c = ctx({ newAbs: "/p/layouts/main.json", oldAbs: "/p/layouts/base.json" });
-    expect(rewriteRef(classifyRef("layouts/base.json") as never, c, true)).toBe(
-      "layouts/main.json",
-    );
+    expect(rewriteRef(pathRef("layouts/base.json"), c, true)).toBe("layouts/main.json");
   });
 
   test("$layout doc-relative still resolves at docDir", () => {
     const c = ctx({ newAbs: "/p/layouts/main.json", oldAbs: "/p/layouts/base.json" });
-    expect(rewriteRef(classifyRef("../layouts/base.json") as never, c, true)).toBe(
-      "../layouts/main.json",
-    );
+    expect(rewriteRef(pathRef("../layouts/base.json"), c, true)).toBe("../layouts/main.json");
   });
 
   test("rooted asset keeps rooted style and suffix", () => {
     const c = ctx({ newAbs: "/p/img/brand.png", oldAbs: "/p/img/logo.png" });
-    expect(rewriteRef(classifyRef("/img/logo.png?v=2") as never, c)).toBe("/img/brand.png?v=2");
+    expect(rewriteRef(pathRef("/img/logo.png?v=2"), c)).toBe("/img/brand.png?v=2");
   });
 
   test("directory move — incoming ref from unmoved doc", () => {
     const c = ctx({ newAbs: "/p/widgets", oldAbs: "/p/components" });
-    expect(rewriteRef(classifyRef("../components/card.json") as never, c)).toBe(
-      "../widgets/card.json",
-    );
+    expect(rewriteRef(pathRef("../components/card.json"), c)).toBe("../widgets/card.json");
   });
 
   test("directory move — outgoing ref from a moved doc to an unmoved target", () => {
@@ -188,7 +191,7 @@ describe("rewriteRef", () => {
       newAbs: "/p/sub/widgets",
       oldAbs: "/p/components",
     });
-    expect(rewriteRef(classifyRef("../layouts/x.json") as never, c)).toBe("../../layouts/x.json");
+    expect(rewriteRef(pathRef("../layouts/x.json"), c)).toBe("../../layouts/x.json");
   });
 });
 
@@ -205,42 +208,40 @@ describe("rewriteRef — site URLs through the lanes", () => {
 
   test("a rename inside public/ re-emits at the site root, never under /public/", () => {
     const c = ctx({ newAbs: "/p/public/images/hero-2.jpg", oldAbs: "/p/public/images/hero.jpg" });
-    expect(rewriteRef(classifyRef("/images/hero.jpg") as never, c)).toBe("/images/hero-2.jpg");
+    expect(rewriteRef(pathRef("/images/hero.jpg"), c)).toBe("/images/hero-2.jpg");
   });
 
   test("the query suffix survives the lane round trip", () => {
     const c = ctx({ newAbs: "/p/public/images/hero-2.jpg", oldAbs: "/p/public/images/hero.jpg" });
-    expect(rewriteRef(classifyRef("/images/hero.jpg?v=2") as never, c)).toBe(
-      "/images/hero-2.jpg?v=2",
-    );
+    expect(rewriteRef(pathRef("/images/hero.jpg?v=2"), c)).toBe("/images/hero-2.jpg?v=2");
   });
 
   test("a file leaving public/ falls back to the root lane", () => {
     // Build-broken either way; the root lane at least keeps the preview loading.
     const c = ctx({ newAbs: "/p/images/hero.jpg", oldAbs: "/p/public/hero.jpg" });
-    expect(rewriteRef(classifyRef("/hero.jpg") as never, c)).toBe("/images/hero.jpg");
+    expect(rewriteRef(pathRef("/hero.jpg"), c)).toBe("/images/hero.jpg");
   });
 
   test("a file entering public/ changes lane without changing the URL", () => {
     // Read through the root lane, re-emitted through the public lane: same URL, so no rewrite.
     const c = ctx({ newAbs: "/p/public/images/hero.jpg", oldAbs: "/p/images/hero.jpg" });
-    expect(rewriteRef(classifyRef("/images/hero.jpg") as never, c)).toBeNull();
+    expect(rewriteRef(pathRef("/images/hero.jpg"), c)).toBeNull();
   });
 
   test("a mount is read and re-emitted through its own prefix", () => {
     const c = ctx({ mounts, newAbs: "/p/assets/media/b.png", oldAbs: "/p/assets/media/a.png" });
-    expect(rewriteRef(classifyRef("/m/a.png") as never, c)).toBe("/m/b.png");
+    expect(rewriteRef(pathRef("/m/a.png"), c)).toBe("/m/b.png");
   });
 
   test("without the mount list the same URL names nothing that moved", () => {
     // `/m/a.png` is `m/a.png` to the root lane and `public/m/a.png` to the public lane.
     const c = ctx({ newAbs: "/p/assets/media/b.png", oldAbs: "/p/assets/media/a.png" });
-    expect(rewriteRef(classifyRef("/m/a.png") as never, c)).toBeNull();
+    expect(rewriteRef(pathRef("/m/a.png"), c)).toBeNull();
   });
 
   test("a file moving from public/ into a mount re-emits at the mount prefix", () => {
     const c = ctx({ mounts, newAbs: "/p/assets/media/a.png", oldAbs: "/p/public/a.png" });
-    expect(rewriteRef(classifyRef("/a.png") as never, c)).toBe("/m/a.png");
+    expect(rewriteRef(pathRef("/a.png"), c)).toBe("/m/a.png");
   });
 
   test("a mount overlapping public/ wins the re-emit", () => {
@@ -252,18 +253,18 @@ describe("rewriteRef — site URLs through the lanes", () => {
       newAbs: "/p/public/media/b.png",
       oldAbs: "/p/public/media/a.png",
     });
-    expect(rewriteRef(classifyRef("/media/a.png") as never, c)).toBe("/m/b.png");
+    expect(rewriteRef(pathRef("/media/a.png"), c)).toBe("/m/b.png");
   });
 
   test("a rooted ref naming a file that did not move is null", () => {
     const c = ctx({ mounts, newAbs: "/p/public/hero-2.jpg", oldAbs: "/p/public/hero.jpg" });
-    expect(rewriteRef(classifyRef("/other.jpg") as never, c)).toBeNull();
-    expect(rewriteRef(classifyRef("/m/other.png") as never, c)).toBeNull();
+    expect(rewriteRef(pathRef("/other.jpg"), c)).toBeNull();
+    expect(rewriteRef(pathRef("/m/other.png"), c)).toBeNull();
   });
 
   test("a rooted ref that names no project file at all is null", () => {
     // Traversal never resolves on any lane, so there is no candidate to compare against.
     const c = ctx({ mounts, newAbs: "/p/public/hero-2.jpg", oldAbs: "/p/public/hero.jpg" });
-    expect(rewriteRef(classifyRef("/../hero.jpg") as never, c)).toBeNull();
+    expect(rewriteRef(pathRef("/../hero.jpg"), c)).toBeNull();
   });
 });

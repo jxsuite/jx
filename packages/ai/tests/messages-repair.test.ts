@@ -34,7 +34,7 @@ function request(id: string, calls: (string | [string, string])[], timestamp = 1
     blocks: [
       { type: "text", text: id },
       ...calls.map((call) => {
-        const [callId, argumentsText] = typeof call === "string" ? [call, "{}"] : call;
+        const [callId, argumentsText] = Array.isArray(call) ? call : [call, "{}"];
         return { type: "tool_call" as const, id: callId, name: "probe", argumentsText };
       }),
     ],
@@ -269,6 +269,9 @@ describe("repairToolPairs", () => {
 
   test("re-derives the v1 corpus's sealed transcript from the transcript without its seal", () => {
     const file = join(import.meta.dir, "fixtures", "v1", "transcripts", "sealed-orphan.json");
+    /* SAFETY: v1-transcripts.test.ts records this file's `messages` from chat-state's own
+       `messages` array (JSON-normalized), and fails unless the stored copy still matches a replay,
+       so it holds LiveMessage records exactly. */
     const fixture = JSON.parse(readFileSync(file, "utf8")) as { messages: LiveMessage[] };
     const expected = toChatMessages(fixture.messages);
     const unsealed = expected.filter((message) => !message.id.startsWith("sealed_"));

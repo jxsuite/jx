@@ -3,12 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
-import type { Message } from "@jxsuite/ai/chat-state";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import { createTab, disposeTab } from "../src/tabs/tab";
 import type { Tab } from "../src/tabs/tab";
 import { registerAiTools } from "../src/services/ai-tools";
+import type { CandidateDocument } from "../src/services/ai-write-report";
 import { EMPTY_TURN_TEXT, runAgentLoop } from "../src/services/tool-executor";
 import { answerAsk, pendingAsk, registerAskTool, resetAsk } from "../src/services/ai-ask";
 import { resetAiWrites, writesForTurn } from "../src/services/ai-writes";
@@ -40,7 +42,7 @@ function fakeClient(
 }
 
 /** Emit the event sequence for one tool call followed by a tool_calls stop. */
-function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
+function toolCallRound(id: string, name: string, args: JsonObject): StreamEvent[] {
   return [
     { type: "tool_call_start", id, name },
     { type: "tool_call_delta", id, args: JSON.stringify(args) },
@@ -49,16 +51,46 @@ function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
   ];
 }
 
-function makeTab(doc?: Record<string, unknown>) {
+/** A frame no StreamEvent variant describes, as a backend newer than this client might send. */
+function unrecognisedEvent(): StreamEvent {
+  const frame = { type: "noop" };
+  /* SAFETY: deliberately outside the union — it exists to reach the reader's default case, which
+     must skip a frame type it does not know. Nothing reads a member beyond `type`. */
+  return frame as StreamEvent;
+}
+
+function makeTab(doc?: JxMutableNode) {
   const document = doc ?? { tagName: "div", children: [{ tagName: "p", textContent: "Hello" }] };
   return createTab({ document, id: "test" });
 }
 
-function harness(tab: Tab, validate?: (doc: unknown) => Promise<string[]>) {
+/** The root's children: an array of nodes and text in every document these tests build. */
+function childrenOf(tab: Tab): (JxMutableNode | string)[] {
+  const { children } = tab.doc.document;
+  if (!Array.isArray(children)) {
+    throw new TypeError("the root's children are not an array");
+  }
+  return children;
+}
+
+/** The root's child element at `index`. */
+function childNode(tab: Tab, index: number): JxMutableNode {
+  const child = childrenOf(tab)[index];
+  if (child === undefined || isString(child)) {
+    throw new Error(`the root has no element at children/${index}`);
+  }
+  return child;
+}
+
+function harness(tab: Tab, validate?: (doc: CandidateDocument) => Promise<string[]>) {
   const chatState = createChatState({ model: "test" });
-  const toolRegistry = createToolRegistry();
-  registerAiTools(toolRegistry, { getTab: () => tab, ...(validate ? { validate } : {}) });
-  return { chatState, toolRegistry: toolRegistry as ToolRegistry };
+  const toolRegistry: ToolRegistry = createToolRegistry();
+  const deps: Parameters<typeof registerAiTools>[1] = { getTab: () => tab };
+  if (validate) {
+    deps.validate = validate;
+  }
+  registerAiTools(toolRegistry, deps);
+  return { chatState, toolRegistry };
 }
 
 describe("ai agent loop — integration", () => {
@@ -77,9 +109,9 @@ describe("ai agent loop — integration", () => {
     chatState.sendMessage("add a span");
     await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
 
-    const children = tab.doc.document.children as (JxMutableNode | string)[];
+    const children = childrenOf(tab);
     expect(children).toHaveLength(2);
-    expect((children[1] as JxMutableNode).tagName).toBe("span");
+    expect(childNode(tab, 1).tagName).toBe("span");
     expect(tab.history.index).toBe(1); // One undoable transaction
     expect(chatState.status).toBe("idle");
     disposeTab(tab);
@@ -101,7 +133,7 @@ describe("ai agent loop — integration", () => {
     chatState.sendMessage("add a span");
     await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
 
-    const children = tab.doc.document.children as (JxMutableNode | string)[];
+    const children = childrenOf(tab);
     expect(children).toHaveLength(2);
     expect(client.calls()).toBe(2); // The result went back to the model
     expect(chatState.status).toBe("idle");
@@ -136,7 +168,7 @@ describe("ai agent loop — integration", () => {
       signal: controller.signal,
     });
 
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = childrenOf(tab);
     expect(children[0]).toEqual({ tagName: "p", textContent: "Hello" });
     expect(client.calls()).toBe(1);
     expect(chatState.messages.some((m) => m.role === "tool")).toBe(false);
@@ -160,7 +192,7 @@ describe("ai agent loop — integration", () => {
       signal: new AbortController().signal,
     });
 
-    expect((tab.doc.document.children as JxMutableNode[])[0]).toEqual({
+    expect(childrenOf(tab)[0]).toEqual({
       tagName: "p",
       textContent: "Hello",
     });
@@ -213,7 +245,7 @@ describe("ai agent loop — integration", () => {
     await runAgentLoop({
       chatState,
       streamingClient: client,
-      toolRegistry: toolRegistry as ToolRegistry,
+      toolRegistry,
       systemPrompt: "",
       signal: controller.signal,
     });
@@ -276,9 +308,12 @@ describe("ai agent loop — integration", () => {
     chatState.sendMessage("add a span");
     await runAgentLoop({ chatState, streamingClient: client, toolRegistry, systemPrompt: "" });
 
+    // SAFETY: the loop sends `chatState.toMessagesArray()`: OpenAI messages, each with its `role`.
     const firstRound = client.sent()[0] as { role: string }[];
     expect(firstRound.map((m) => m.role)).toEqual(["user"]);
 
+    /* SAFETY: the loop sends `chatState.toMessagesArray()`: OpenAI messages, each with its `role`,
+       the assistant's carrying the `reasoning_content` it streamed. */
     const secondRound = client.sent()[1] as { role: string; reasoning_content?: string }[];
     expect(secondRound.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
     expect(secondRound[1]!.reasoning_content).toBe("They want a span. add_child does it.");
@@ -289,8 +324,10 @@ describe("ai agent loop — integration", () => {
     const tab = makeTab();
     // Inject a validator that flags the document while the root tagName is "header" (no hyphen),
     // And is happy once it becomes "site-header" — simulating the schema eval signal.
-    const validate = async (doc: unknown) =>
-      (doc as JxMutableNode).tagName === "header" ? ["(root): invalid custom element tagName"] : [];
+    const validate = async (doc: CandidateDocument) =>
+      isJsonObject(doc) && doc["tagName"] === "header"
+        ? ["(root): invalid custom element tagName"]
+        : [];
     const { chatState, toolRegistry } = harness(tab, validate);
 
     const client = fakeClient([
@@ -340,7 +377,7 @@ describe("ai agent loop — integration", () => {
     expect(tail.content).toContain("ran out of tool-call rounds");
     expect(tail.content).toContain("Changes applied so far");
     // And the edits it is telling you about are really there.
-    expect((tab.doc.document as Record<string, unknown>).id).toBe("v4");
+    expect(tab.doc.document.id).toBe("v4");
     disposeTab(tab);
   });
 
@@ -367,7 +404,7 @@ describe("ai agent loop — integration", () => {
     // Command projection this hand-only registry does not carry.
     const client = fakeClient(
       Array.from({ length: 6 }, () => [
-        { type: "noop" } as unknown as StreamEvent, // Unknown event → default case
+        unrecognisedEvent(), // Unknown event → default case
         { type: "tool_call_start", id: "c", name: "set_text" },
         {
           type: "tool_call_delta",
@@ -437,26 +474,24 @@ describe("cross-tab batching", () => {
     // Between rounds the user (or a tool) moves to the other document.
     const originalStream = client.streamChat.bind(client);
     let round = 0;
-    (client as { streamChat: unknown }).streamChat = async function* streamChat(
-      ...args: unknown[]
-    ) {
+    client.streamChat = async function* streamChat(...args: Parameters<typeof originalStream>) {
       round += 1;
       if (round === 2) {
         current = second;
       }
-      yield* (originalStream as (...a: unknown[]) => AsyncGenerator<StreamEvent>)(...args);
+      yield* originalStream(...args);
     };
 
     chatState.sendMessage("edit both");
     await runAgentLoop({
       chatState,
       getTab: () => current,
-      streamingClient: client as StreamingClient,
+      streamingClient: client,
       systemPrompt: "",
-      toolRegistry: toolRegistry as ToolRegistry,
+      toolRegistry,
     });
 
-    expect((second.doc.document as Record<string, unknown>).id).toBe("two");
+    expect(second.doc.document.id).toBe("two");
     expect(second.history.snapshots.length).toBeGreaterThan(beforeSecond);
     disposeTab(first);
     disposeTab(second);
@@ -515,7 +550,7 @@ describe("ai agent loop — the interactive round budget", () => {
       chatState: h.chatState,
       streamingClient: client,
       systemPrompt: "",
-      toolRegistry: h.toolRegistry as ToolRegistry,
+      toolRegistry: h.toolRegistry,
     });
     h.stop();
 
@@ -528,7 +563,7 @@ describe("ai agent loop — the interactive round budget", () => {
     // The exemption is for rounds that only wait; a round that also edited is ordinary work.
     const h = askHarness();
     const client = fakeClient(
-      Array.from({ length: 10 }, (_, i) => [
+      Array.from({ length: 10 }, (_, i): StreamEvent[] => [
         { type: "tool_call_start", id: `a${i}`, name: "ask_user" },
         { type: "tool_call_delta", id: `a${i}`, args: JSON.stringify({ question: "Which?" }) },
         { type: "tool_call_end", id: `a${i}` },
@@ -536,7 +571,7 @@ describe("ai agent loop — the interactive round budget", () => {
         { type: "tool_call_delta", id: `w${i}`, args: "{}" },
         { type: "tool_call_end", id: `w${i}` },
         { type: "done", stopReason: "tool_calls" },
-      ]) as StreamEvent[][],
+      ]),
     );
 
     h.chatState.sendMessage("ask and work");
@@ -544,7 +579,7 @@ describe("ai agent loop — the interactive round budget", () => {
       chatState: h.chatState,
       streamingClient: client,
       systemPrompt: "",
-      toolRegistry: h.toolRegistry as ToolRegistry,
+      toolRegistry: h.toolRegistry,
     });
     h.stop();
 
@@ -563,7 +598,7 @@ describe("ai agent loop — the interactive round budget", () => {
       chatState: h.chatState,
       streamingClient: client,
       systemPrompt: "",
-      toolRegistry: h.toolRegistry as ToolRegistry,
+      toolRegistry: h.toolRegistry,
     });
     h.stop();
 
@@ -585,7 +620,7 @@ describe("ai agent loop — the interactive round budget", () => {
       signal: controller.signal,
       streamingClient: client,
       systemPrompt: "",
-      toolRegistry: toolRegistry as ToolRegistry,
+      toolRegistry,
     });
 
     // Let the round reach the tool, then stop the turn the way `assistant.stop` does.
@@ -633,12 +668,12 @@ describe("ai agent loop — how a turn ended", () => {
         signal: controller.signal,
         streamingClient: client,
         systemPrompt: "",
-        toolRegistry: toolRegistry as ToolRegistry,
+        toolRegistry,
       });
     return { chatState, run };
   }
 
-  const request = (messages: readonly Message[]) =>
+  const request = (messages: readonly LiveMessage[]) =>
     messages.findLast((m) => (m.toolCalls?.length ?? 0) > 0);
 
   test("a live chip shows the result the loop recorded, and an answered question its answer", async () => {
@@ -654,7 +689,7 @@ describe("ai agent loop — how a turn ended", () => {
       chatState,
       streamingClient: client,
       systemPrompt: "",
-      toolRegistry: toolRegistry as ToolRegistry,
+      toolRegistry,
     });
     await new Promise((r) => {
       setTimeout(r, 0);

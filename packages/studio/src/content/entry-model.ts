@@ -27,7 +27,15 @@ import { collectionInfo } from "../grid/sources/content-source";
 import { projectState } from "../store";
 import { findContentTypeSchema } from "../utils/studio-utils";
 import type { ContentSectionEntry } from "../types";
-import type { ContentTypeSchema, ContentTypeSchemaField } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type {
+  ContentTypeSchema,
+  ContentTypeSchemaField,
+  ContentTypeSchemaValue,
+  JsonObject,
+  JsonValue,
+} from "@jxsuite/schema/types";
+import type { EntryFields } from "./entry-fields";
 
 // ─── Collections ─────────────────────────────────────────────────────────────
 
@@ -44,7 +52,7 @@ export interface EntryCollection {
 
 /** Every content type the project declares, in declaration order. */
 export function collectionNames(): string[] {
-  return Object.keys((projectState?.projectConfig?.content ?? {}) as Record<string, unknown>);
+  return Object.keys(projectState?.projectConfig?.content ?? {});
 }
 
 /**
@@ -94,12 +102,13 @@ export function collectionOfPath(path: string | null): EntryCollection | null {
 // ─── Seeding a new entry ─────────────────────────────────────────────────────
 
 /** Deep copy of a schema `default`, so two entries seeded from one schema never share an object. */
-function cloneDefault(value: unknown): unknown {
-  if (value === null || typeof value !== "object") {
+function cloneDefault(value: ContentTypeSchemaValue): JsonValue {
+  if (value === null || !isNonNullObject(value)) {
     return value;
   }
+  // SAFETY: `JSON.parse` of what `JSON.stringify` just wrote is JSON by construction.
   // oxlint-disable-next-line unicorn/prefer-structured-clone
-  return JSON.parse(JSON.stringify(value)) as unknown;
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
 /**
@@ -109,8 +118,8 @@ function cloneDefault(value: unknown): unknown {
  * and picking an arbitrary entry of the target collection on the author's behalf would be inventing
  * a relationship they never stated.
  */
-function emptyForField(field: ContentTypeSchemaField): unknown {
-  if (typeof field.$ref === "string") {
+function emptyForField(field: ContentTypeSchemaField): JsonValue {
+  if (isString(field.$ref)) {
     return "";
   }
   switch (field.type) {
@@ -125,7 +134,7 @@ function emptyForField(field: ContentTypeSchemaField): unknown {
       return [];
     }
     case "object": {
-      return seedEntry(field as ContentTypeSchema);
+      return seedEntry(field);
     }
     default: {
       return "";
@@ -145,13 +154,13 @@ function emptyForField(field: ContentTypeSchemaField): unknown {
  * author's file full of keys they never asked for, and "the schema mentions it" is not a reason for
  * it to exist on disk — the form still draws a row for it, because the form draws the SCHEMA.
  */
-export function seedEntry(schema: ContentTypeSchema | null | undefined): Record<string, unknown> {
+export function seedEntry(schema: ContentTypeSchema | null | undefined): JsonObject {
   const properties = schema?.properties;
   if (!properties) {
     return {};
   }
-  const required = new Set(Array.isArray(schema?.required) ? schema.required : []);
-  const seed: Record<string, unknown> = {};
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const seed: JsonObject = {};
   for (const [name, field] of Object.entries(properties)) {
     if (field.default !== undefined) {
       seed[name] = cloneDefault(field.default);
@@ -168,7 +177,7 @@ export function seedEntry(schema: ContentTypeSchema | null | undefined): Record<
  */
 export function missingRequired(
   schema: ContentTypeSchema | null | undefined,
-  value: Record<string, unknown>,
+  value: EntryFields,
 ): string[] {
   const required = Array.isArray(schema?.required) ? schema.required : [];
   return required.filter((name) => value[name] === undefined);

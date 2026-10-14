@@ -20,6 +20,7 @@
 
 import { reactive } from "../reactivity";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
+import type { EntryFields } from "./entry-fields";
 
 /** The conventional frontmatter boolean that marks an entry a draft (site-architecture.md §7.6). */
 export const DRAFT_FIELD = "draft";
@@ -44,7 +45,7 @@ export const DRAFT_MEANING =
  * Takes the entry's FIELDS, whichever record they live in — `content/entry-fields.ts` answers that,
  * because a JSON collection's entry has no frontmatter and its `draft` key is on the document.
  */
-export function isDraftEntry(fields: Record<string, unknown> | null | undefined): boolean {
+export function isDraftEntry(fields: EntryFields | null | undefined): boolean {
   return fields?.[DRAFT_FIELD] === true;
 }
 
@@ -63,7 +64,7 @@ export function schemaDeclaresDraft(schema: ContentTypeSchema | null | undefined
  */
 export function hasDraftAxis(
   schema: ContentTypeSchema | null | undefined,
-  fields?: Record<string, unknown> | null,
+  fields?: EntryFields | null,
 ): boolean {
   return schemaDeclaresDraft(schema) || isDraftEntry(fields);
 }
@@ -100,7 +101,7 @@ export function setIncludeDrafts(include: boolean): void {
  */
 export function applyDraftFilter<T>(
   items: readonly T[],
-  fieldsOf: (item: T) => Record<string, unknown> | null | undefined,
+  fieldsOf: (item: T) => EntryFields | null | undefined,
   includeDrafts: boolean,
 ): readonly T[] {
   return includeDrafts ? items : items.filter((item) => !isDraftEntry(fieldsOf(item)));

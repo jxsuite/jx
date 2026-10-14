@@ -25,9 +25,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { refreshFormats, setExtensionCatalog, setExtensions } from "../src/format/format-host";
 import { renderExtensionsSection } from "../src/settings/extensions-section";
 import type { MockPlatformState } from "./harness";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { ExtensionCatalogEntry, PackageInfo, StudioPlatform } from "../src/types";
-
-type AnyConfig = Record<string, any>;
+import type { JsonObject, ProjectConfig } from "@jxsuite/schema/types";
 
 const PARSER: ExtensionCatalogEntry = {
   description: "File-based content collections with Markdown and CSV formats",
@@ -38,7 +38,8 @@ const PARSER: ExtensionCatalogEntry = {
   title: "Content & Markdown",
 };
 
-let container: HTMLElement;
+/* A detached placeholder until the first `mount()` replaces it, so `afterEach` can always remove it. */
+let container: HTMLElement = document.createElement("div");
 
 /**
  * Draw the section into a fresh container and let the surface mount.
@@ -48,7 +49,7 @@ let container: HTMLElement;
  * re-reads the package list before it repaints.
  */
 async function mount(
-  cfg: AnyConfig,
+  cfg: ProjectConfig,
   catalog: ExtensionCatalogEntry[] = [PARSER],
   overrides: Partial<StudioPlatform> = {},
   packages: PackageInfo[] = [],
@@ -57,7 +58,7 @@ async function mount(
     listPackages: async () => packages,
     ...overrides,
   });
-  resetStudioState({ projectConfig: cfg as unknown });
+  resetStudioState({ projectConfig: cfg });
   setExtensionCatalog(catalog);
   setExtensions([]);
   container = document.createElement("div");
@@ -74,7 +75,7 @@ async function redraw(): Promise<void> {
 }
 
 function rows(): HTMLElement[] {
-  return [...container.querySelectorAll('[part="row"]')] as HTMLElement[];
+  return [...container.querySelectorAll('[part="row"]')].filter((el) => el instanceof HTMLElement);
 }
 
 function rowFor(name: string): HTMLElement | undefined {
@@ -82,17 +83,24 @@ function rowFor(name: string): HTMLElement | undefined {
 }
 
 function part(row: HTMLElement | undefined, name: string): HTMLElement | null {
-  return (row?.querySelector(`[part="${name}"]`) ?? null) as HTMLElement | null;
+  const el = row?.querySelector(`[part="${name}"]`);
+  return el instanceof HTMLElement ? el : null;
 }
 
 /** The native checkbox inside a row's `jx-switch` — where a reader actually clicks. */
 function switchIn(row: HTMLElement | undefined): HTMLInputElement {
-  return row?.querySelector('[part="toggle"] [part="input"]') as HTMLInputElement;
+  const input = row?.querySelector('[part="toggle"] [part="input"]');
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("The row has no jx-switch with a native input");
+  }
+  return input;
 }
 
 /** Every row's switch, for the "one operation at a time" assertions. */
 function toggles(): HTMLInputElement[] {
-  return [...container.querySelectorAll('[part="toggle"] [part="input"]')] as HTMLInputElement[];
+  return [...container.querySelectorAll('[part="toggle"] [part="input"]')].filter(
+    (el) => el instanceof HTMLInputElement,
+  );
 }
 
 /**
@@ -119,7 +127,8 @@ function removeButton(row: HTMLElement | undefined): HTMLElement | null {
 
 /** Its inner control, which is what carries `disabled` and the refusal. */
 function removeControl(row: HTMLElement | undefined): HTMLButtonElement | null {
-  return (removeButton(row)?.querySelector('[part="control"]') ?? null) as HTMLButtonElement | null;
+  const control = removeButton(row)?.querySelector('[part="control"]');
+  return control instanceof HTMLButtonElement ? control : null;
 }
 
 /** The order of platform writes, which is what the enable path is really about. */
@@ -134,9 +143,16 @@ function writeOrder(state: MockPlatformState): string[] {
     .map(([name]) => String(name));
 }
 
-function written(state: MockPlatformState): AnyConfig | null {
+function written(state: MockPlatformState): JsonObject | null {
   const raw = state.files.get("project.json");
-  return raw === undefined ? null : (JSON.parse(raw) as AnyConfig);
+  if (raw === undefined) {
+    return null;
+  }
+  const parsed: unknown = JSON.parse(raw);
+  if (!isJsonObject(parsed)) {
+    throw new Error("The section wrote a project.json that is not a JSON object");
+  }
+  return parsed;
 }
 
 /** The failed operation, said under the section title rather than beside a control. */
@@ -150,7 +166,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  container?.remove();
+  container.remove();
   refreshFormats();
 });
 
@@ -191,7 +207,7 @@ describe("what the section shows", () => {
       addPackage: () =>
         new Promise<void>((r) => {
           release = r;
-        }) as Promise<unknown>,
+        }),
     });
     const sw = switchIn(rowFor("@jxsuite/parser"));
     sw.checked = true;
@@ -353,8 +369,8 @@ describe("installed-ness can come from the package list", () => {
      * The package list is then the fallback, which is why the row model takes it: without it a row
      * would offer to install something the project already has.
      */
-    const bare = { ...PARSER };
-    delete (bare as { installed?: boolean }).installed;
+    const bare: ExtensionCatalogEntry = { ...PARSER };
+    delete bare.installed;
     await mount({ extensions: [] }, [bare], {}, [{ name: "@jxsuite/parser", version: "1.7.0" }]);
     const row = rowFor("@jxsuite/parser");
     // No "Not installed" note, and Remove is offered — both derived from the package list.
@@ -452,7 +468,7 @@ describe("one operation at a time", () => {
         addPackage: () =>
           new Promise<void>((r) => {
             release = r;
-          }) as Promise<unknown>,
+          }),
       },
     );
     const input = switchIn(rowFor("@jxsuite/parser"));

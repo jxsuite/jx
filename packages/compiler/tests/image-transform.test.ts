@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import type { ImageConfig } from "../src/site/image-optimizer.ts";
+import type { JxStyle } from "@jxsuite/schema/types";
 
 const TMP = resolve(tmpdir(), `jx-img-transform-test-${Date.now()}`);
 
@@ -381,8 +383,18 @@ describe("image-transform", () => {
       // Actually re-reading: line 40 checks allExist - if not allExist it falls through
       // Line 42: if (!cached) logs; then lines 43-45 run unconditionally
       // So processImage IS called when cached exists but files are gone
-      expect(processImage).toHaveBeenCalled();
-      expect(setCached).toHaveBeenCalled();
+      expect(processImage).toHaveBeenCalledWith(
+        join(TMP, "public/images/hero.png"),
+        `${TMP}/.cache/images`,
+        defaultConfig,
+      );
+      // The fresh manifest replaces the stale entry under the same content/config key.
+      expect(setCached).toHaveBeenCalledWith(
+        cache,
+        "abcd1234:cfg12345",
+        "/images/hero.png",
+        mockManifest,
+      );
     });
 
     test("reuses manifest from imageRefs for duplicate images", async () => {
@@ -762,6 +774,9 @@ describe("image-transform", () => {
       await transformImageNodes(docB, cfConfig, TMP, null, metaCache);
 
       expect(getImageMetadata).toHaveBeenCalledTimes(1);
+      // One memo entry served both documents, so the second got the same candidate list.
+      expect(metaCache.size).toBe(1);
+      expect(docB.attributes.srcset).toBe(docA.attributes.srcset);
     });
 
     test("rewrites innerHTML img tags to transform URLs", async () => {
@@ -993,7 +1008,7 @@ describe("image-transform — sizes derived from the container", () => {
   });
 
   const cache = () => ({ entries: {}, version: 1 });
-  const imgIn = (style: Record<string, unknown>, imgAttrs: Record<string, unknown> = {}) => ({
+  const imgIn = (style: JxStyle, imgAttrs: Record<string, string> = {}) => ({
     children: [{ attributes: { src: "/images/hero.png", ...imgAttrs }, tagName: "img" }],
     style,
     tagName: "div",
@@ -1057,7 +1072,10 @@ describe("image-transform — sizes derived from the container", () => {
   test("no project default and no container leaves sizes off entirely", async () => {
     const doc: any = { attributes: { src: "/images/hero.png" }, tagName: "img" };
     const { sizes: _dropped, ...noSizes } = defaultConfig;
-    await transformImageNodes(doc, noSizes as never, TMP, cache());
+    /* SAFETY: site-build always fills `sizes`, so this config is one only a direct caller can
+       build. transformImageNodes reads `config.sizes` solely as the last `??` fallback, so the
+       absent member is exactly the "no project default" case under test. */
+    await transformImageNodes(doc, noSizes as ImageConfig, TMP, cache());
     expect(sourcesOf(doc)[0].attributes.sizes).toBeUndefined();
   });
 });
@@ -1099,12 +1117,10 @@ describe("image-transform — the <img> fallback src", () => {
     processImage.mockImplementationOnce(async () => withPng);
 
     const doc: any = { attributes: { src: "/images/hero.png" }, tagName: "img" };
-    await transformImageNodes(
-      doc,
-      { ...defaultConfig, formats: ["avif", "webp", "png"] } as never,
-      TMP,
-      { entries: {}, version: 1 },
-    );
+    await transformImageNodes(doc, { ...defaultConfig, formats: ["avif", "webp", "png"] }, TMP, {
+      entries: {},
+      version: 1,
+    });
     // The unresized original is a correct fallback and a terrible one — largest, not original.
     expect(imgOf(doc).attributes.src).toBe("/_optimized/hero-1200-abc.png");
   });

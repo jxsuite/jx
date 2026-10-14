@@ -20,20 +20,24 @@
 export type PageArgs<Params extends unknown[]> = { [K in keyof Params]: Params[K] };
 
 export interface ImportPage {
+  /**
+   * Resolves once navigation settles. Puppeteer resolves with the main response (or `null`), a
+   * stand-in may resolve with nothing; the import never reads the value either way.
+   */
   goto: (
     url: string,
     options?: {
       waitUntil?: "load" | "domcontentloaded" | "networkidle0" | "networkidle2";
       timeout?: number;
     },
-  ) => Promise<unknown>;
-  setViewport: (viewport: { width: number; height: number }) => Promise<unknown>;
+  ) => Promise<object | null> | Promise<void>;
+  setViewport: (viewport: { width: number; height: number }) => Promise<void>;
   evaluate: <Params extends unknown[], R>(
     fn: (...params: PageArgs<Params>) => R,
     ...args: Params
   ) => Promise<Awaited<R>>;
   screenshot: (options?: { fullPage?: boolean; type?: "png" }) => Promise<Uint8Array>;
-  close: () => Promise<unknown>;
+  close: () => Promise<void>;
 }
 
 export interface ImportBrowser {
@@ -126,9 +130,11 @@ export async function capturePage(
 
     const links: string[] = [];
     const { origin } = location;
-    for (const a of document.querySelectorAll("a[href]")) {
+    /* The selector names HTML anchors, whose `href` is the resolved URL string. An SVG `<a href>`
+       also matches and is read the same way; that has always been the case here. */
+    for (const a of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
       try {
-        const { href } = new URL((a as HTMLAnchorElement).href, location.href);
+        const { href } = new URL(a.href, location.href);
         if (href.startsWith(origin) && !href.includes("#")) {
           links.push(href);
         }

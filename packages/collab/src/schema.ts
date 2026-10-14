@@ -29,7 +29,9 @@
  */
 
 import * as Y from "yjs";
-import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import { cloneValue } from "@jxsuite/schema/doc-ops";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 
 export const META_KEY = "meta";
 export const FRONTMATTER_KEY = "frontmatter";
@@ -47,6 +49,33 @@ export const SOURCE_KEY = "source";
  */
 export const COLLAB_SCHEMA_VERSION = 2;
 
+/**
+ * What one slot of the structure tree holds: a node or granular-object `Y.Map`, a children
+ * `Y.Array`, a prose `Y.Text`, or a whole-JSON LWW leaf. Every writer in this package goes through
+ * {@link toYNode}, {@link toYChildren}, {@link toYObject} or a JSON clone, so nothing else is ever
+ * stored there.
+ */
+export type YStructureValue =
+  | Y.Map<YStructureValue>
+  | Y.Array<YStructureValue>
+  | Y.Text
+  | JxDocumentValue;
+
+/**
+ * A plain object read out of, or written into, the structure tree: a node, a style block, an
+ * attribute map. A key an editor cleared may still hold `undefined`, which every writer skips.
+ */
+export type DocumentRecord = Record<string, JxDocumentValue | undefined>;
+
+/**
+ * A plain object (not null, not an array). Only the shape is checked: its values are whatever the
+ * document holds, including the `undefined` a cleared key leaves behind, which is why this narrows
+ * to {@link DocumentRecord} rather than a fully-validated JSON object.
+ */
+function isDocumentRecord(value: JxDocumentValue | undefined): value is DocumentRecord {
+  return isJsonObject(value);
+}
+
 export function metaMap(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(META_KEY);
 }
@@ -55,22 +84,16 @@ export function frontmatterMap(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(FRONTMATTER_KEY);
 }
 
-export function structureMap(doc: Y.Doc): Y.Map<unknown> {
-  return doc.getMap(STRUCTURE_KEY);
+/**
+ * The root node's `Y.Map`. Its type argument is the {@link YStructureValue} invariant the writers in
+ * this module maintain; Yjs itself does not check what a map holds.
+ */
+export function structureMap(doc: Y.Doc): Y.Map<YStructureValue> {
+  return doc.getMap<YStructureValue>(STRUCTURE_KEY);
 }
 
 export function sourceText(doc: Y.Doc): Y.Text {
   return doc.getText(SOURCE_KEY);
-}
-
-/** JSON round-trip clone (normalizes away proxies/undefined; matches the ops applier). */
-function cloneJson<T>(value: T): T {
-  // oxlint-disable-next-line unicorn/prefer-structured-clone -- JSON normalization is the point
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -132,13 +155,13 @@ export function applyTextEdit(text: Y.Text, next: string): boolean {
 }
 
 /** A plain object becomes a Y.Map, recursing into nested objects; other values stay plain JSON. */
-export function toYObject(value: Record<string, unknown>): Y.Map<unknown> {
-  const map = new Y.Map<unknown>();
+export function toYObject(value: DocumentRecord): Y.Map<YStructureValue> {
+  const map = new Y.Map<YStructureValue>();
   for (const [key, entry] of Object.entries(value)) {
     if (entry === undefined) {
       continue;
     }
-    map.set(key, isPlainObject(entry) ? toYObject(entry) : cloneJson(entry));
+    map.set(key, isDocumentRecord(entry) ? toYObject(entry) : cloneValue(entry));
   }
   return map;
 }
@@ -148,7 +171,7 @@ export function toYObject(value: Record<string, unknown>): Y.Map<unknown> {
  * recurse into nested maps. Whole-value replacement would mint a new Y.Map and discard a peer's
  * concurrent edit to an untouched sibling property — the very thing granularity exists to prevent.
  */
-export function mergeYObject(map: Y.Map<unknown>, value: Record<string, unknown>): void {
+export function mergeYObject(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
   // Detached key list: deleting from a Y.Map while iterating its live keys is unsafe.
   // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
   for (const key of [...map.keys()]) {
@@ -161,20 +184,20 @@ export function mergeYObject(map: Y.Map<unknown>, value: Record<string, unknown>
       continue;
     }
     const existing = map.get(key);
-    if (isPlainObject(entry)) {
+    if (isDocumentRecord(entry)) {
       if (existing instanceof Y.Map) {
         mergeYObject(existing, entry);
       } else {
         map.set(key, toYObject(entry));
       }
     } else if (!deepEqualJson(existing, entry)) {
-      map.set(key, cloneJson(entry));
+      map.set(key, cloneValue(entry));
     }
   }
 }
 
 /** Structural equality over plain JSON, used to skip no-op key writes. */
-function deepEqualJson(a: unknown, b: unknown): boolean {
+function deepEqualJson(a: YStructureValue | undefined, b: JxDocumentValue): boolean {
   if (a === b) {
     return true;
   }
@@ -184,14 +207,17 @@ function deepEqualJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
-/** A child value: a bare string becomes a Y.Text (per-character merge), a node becomes a Y.Map. */
-export function toYChild(child: unknown): unknown {
-  return typeof child === "string" ? new Y.Text(child) : toYNode(child);
+/**
+ * A child value: a bare string becomes a Y.Text (per-character merge), a node becomes a Y.Map.
+ * Anything else is not a child, and {@link toYNode} throws for it.
+ */
+export function toYChild(child: JxDocumentValue | undefined): Y.Text | Y.Map<YStructureValue> {
+  return isString(child) ? new Y.Text(child) : toYNode(child);
 }
 
 /** A children array becomes a Y.Array of node Y.Maps and Y.Texts. */
-export function toYChildren(children: readonly unknown[]): Y.Array<unknown> {
-  const arr = new Y.Array<unknown>();
+export function toYChildren(children: readonly JxDocumentValue[]): Y.Array<YStructureValue> {
+  const arr = new Y.Array<YStructureValue>();
   arr.insert(
     0,
     children.map((child) => toYChild(child)),
@@ -204,36 +230,54 @@ export function toYChildren(children: readonly unknown[]): Y.Array<unknown> {
  * `Y.Text` and {@link GRANULAR_OBJECT_KEYS} become nested `Y.Map`s, so the CRDT merges at the
  * granularity edits actually happen at. Everything else stays a whole-JSON LWW value.
  */
-export function toYNode(node: unknown): Y.Map<unknown> {
-  if (!isPlainObject(node)) {
+export function toYNode(node: JxDocumentValue | undefined): Y.Map<YStructureValue> {
+  if (!isDocumentRecord(node)) {
     throw new TypeError("collab-schema: a document node must be a plain object");
   }
-  const map = new Y.Map<unknown>();
+  const map = new Y.Map<YStructureValue>();
   for (const [key, value] of Object.entries(node)) {
     if (value === undefined) {
       continue;
     }
     if (key === "children" && Array.isArray(value)) {
       map.set(key, toYChildren(value));
-    } else if (TEXT_KEYS.has(key) && typeof value === "string") {
+    } else if (TEXT_KEYS.has(key) && isString(value)) {
       map.set(key, new Y.Text(value));
-    } else if (GRANULAR_OBJECT_KEYS.has(key) && isPlainObject(value)) {
+    } else if (GRANULAR_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
       map.set(key, toYObject(value));
     } else {
-      map.set(key, cloneJson(value));
+      map.set(key, cloneValue(value));
     }
   }
   return map;
 }
 
+/** A node or granular-object Y.Map back to its plain object (deep, detached copy). */
+function yMapToJson(map: Y.Map<YStructureValue>): DocumentRecord {
+  return Object.fromEntries(
+    Array.from(map.entries(), ([key, entry]) => [key, yValueToJson(entry)]),
+  );
+}
+
+/**
+ * A children-array member back to JSON: a Y.Text is a bare-string child, a Y.Map a node. A plain
+ * string is a bare-string child written under schema version 1, before prose moved to Y.Text.
+ */
+export function yChildToJson(
+  child: Y.Text | Y.Map<YStructureValue> | string,
+): JxMutableNode | string {
+  if (isString(child)) {
+    return child;
+  }
+  return child instanceof Y.Text ? child.toString() : yMapToJson(child);
+}
+
 /** Convert any structure value (Y.Map, Y.Array, Y.Text, or plain leaf) back to JSON. */
-export function yValueToJson(value: unknown): unknown {
+export function yValueToJson(value: YStructureValue): JxDocumentValue;
+export function yValueToJson(value: YStructureValue | undefined): JxDocumentValue | undefined;
+export function yValueToJson(value: YStructureValue | undefined): JxDocumentValue | undefined {
   if (value instanceof Y.Map) {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of value.entries()) {
-      out[key] = yValueToJson(entry);
-    }
-    return out;
+    return yMapToJson(value);
   }
   if (value instanceof Y.Array) {
     return value.toArray().map((entry) => yValueToJson(entry));
@@ -246,20 +290,20 @@ export function yValueToJson(value: unknown): unknown {
 
 /** The whole structure tree as a plain document (deep, detached copy). */
 export function yDocToJson(doc: Y.Doc): JxMutableNode {
-  return yValueToJson(structureMap(doc)) as JxMutableNode;
+  return yMapToJson(structureMap(doc));
 }
 
 /**
  * Resolve a JxPath against the structure tree. Returns the Y value at the path (a node Y.Map, a
  * children Y.Array, a string child, or a plain leaf) or undefined when any segment is missing.
  */
-export function resolveYPath(doc: Y.Doc, path: JxPath): unknown {
-  let current: unknown = structureMap(doc);
+export function resolveYPath(doc: Y.Doc, path: JxPath): YStructureValue | undefined {
+  let current: YStructureValue | undefined = structureMap(doc);
   for (const segment of path) {
     if (current instanceof Y.Map) {
       current = current.get(String(segment));
     } else if (current instanceof Y.Array) {
-      const index = typeof segment === "number" ? segment : Number(segment);
+      const index = Number(segment);
       if (!Number.isInteger(index) || index < 0 || index >= current.length) {
         return undefined;
       }
@@ -275,7 +319,7 @@ export function resolveYPath(doc: Y.Doc, path: JxPath): unknown {
  * Update the source Y.Text to `next` with a minimal edit (common prefix/suffix trimmed), so mirror
  * refreshes don't ship the whole document over the wire. Returns false when already identical.
  */
-export function updateSourceText(doc: Y.Doc, next: string, origin?: unknown): boolean {
+export function updateSourceText(doc: Y.Doc, next: string, origin?: string): boolean {
   const text = sourceText(doc);
   if (text.toString() === next) {
     return false;
@@ -296,9 +340,9 @@ export function seedStructure(
   doc: Y.Doc,
   document: JxMutableNode,
   opts: {
-    frontmatter?: Record<string, unknown>;
+    frontmatter?: DocumentRecord;
     sourceFormat?: string | null;
-    origin?: unknown;
+    origin?: string;
   } = {},
 ): boolean {
   const meta = metaMap(doc);
@@ -314,13 +358,13 @@ export function seedStructure(
       if (key === "children" && Array.isArray(value)) {
         structure.set(key, toYChildren(value));
       } else {
-        structure.set(key, cloneJson(value));
+        structure.set(key, cloneValue(value));
       }
     }
     const frontmatter = frontmatterMap(doc);
     for (const [key, value] of Object.entries(opts.frontmatter ?? {})) {
       if (value !== undefined) {
-        frontmatter.set(key, cloneJson(value));
+        frontmatter.set(key, cloneValue(value));
       }
     }
     meta.set("schemaVersion", COLLAB_SCHEMA_VERSION);

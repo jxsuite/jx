@@ -10,7 +10,7 @@ import { dereference } from "@apidevtools/json-schema-ref-parser";
 import { collectServerEntries } from "../shared.ts";
 import { localeNegotiationMiddleware } from "../site/locale-negotiation.ts";
 import type { ResolvedI18n } from "../site/i18n.ts";
-import type { JxElement } from "@jxsuite/schema/types";
+import type { JxDocumentValue, JxElement } from "@jxsuite/schema/types";
 
 /**
  * Compile a Jx document to a Hono server handler file. The handler exposes each `timing: "server"`
@@ -21,18 +21,21 @@ import type { JxElement } from "@jxsuite/schema/types";
  *   const server = await compileServer("./dashboard.json");
  *   if (server) fs.writeFileSync("dist/server.js", server);
  *
- * @param {string | object} sourcePath - Path to .json file, URL, or raw object
+ * @param {string | JxElement} sourcePath - Path to .json file, URL, or raw document
  * @param {object} [opts]
  * @param {string} [opts.baseUrl] - Base path for server endpoints. Default is `'/_jx/server'`
  * @returns {Promise<string | null>} Hono server handler source string, or null
  */
 export async function compileServer(
-  sourcePath: string | object,
+  sourcePath: string | JxElement,
   opts: {
     baseUrl?: string;
   } = {},
 ) {
   const { baseUrl = "/_jx/server" } = opts;
+  /* SAFETY: the parameter is a Jx element document or the path of one, and `dereference` only
+     replaces each `$ref` node with the value it points to, so the result is that same document
+     with its references inlined. A file read from disk is not re-validated here. */
   const doc = (await dereference(sourcePath)) as JxElement;
   const entries = collectServerEntries(doc);
   if (entries.length === 0) {
@@ -74,8 +77,11 @@ export interface SiteMountSpec {
   basePath: string;
   /** Mount order (`server.order`, ascending). */
   order: number;
-  /** JSON-inlined mount options (project sections manifest etc.). */
-  options: Record<string, unknown>;
+  /**
+   * JSON-inlined mount options (project sections manifest etc.): project.json data, so document
+   * values, and a cleared (`undefined`) member is dropped by the `JSON.stringify` that inlines it.
+   */
+  options: Record<string, JxDocumentValue | undefined>;
 }
 
 /** A connector provider class the worker imports and hands to mounts via `options.connectors`. */

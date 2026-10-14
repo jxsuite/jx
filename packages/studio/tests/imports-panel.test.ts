@@ -14,16 +14,16 @@
  */
 import { flush, installMockPlatform, pointer, resetStudioState, topDialog } from "./harness";
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { nothing } from "lit-html";
-import { renderImportsPanel, renderImportsTemplate } from "../src/panels/imports-panel";
+import { renderImportsPanel } from "../src/panels/imports-panel";
 import { componentRegistry, loadComponentRegistry } from "../src/files/components";
 import { initLayers } from "../src/ui/layers";
 import { requireProjectState } from "../src/store";
 
 import type { ElementsEntry, ImportsContext } from "../src/panels/imports-panel";
 import type { ComponentEntry } from "../src/files/components";
-import type { JxMutableNode } from "@jxsuite/schema/types";
-import type { StudioPlatform } from "../src/types";
+import type { JsonObject, JsonValue, JxMutableNode } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { ComponentMeta, StudioPlatform } from "../src/types";
 
 const REGISTRY: ComponentEntry[] = [
   { modulePath: "button.js", package: "@acme/kit", source: "npm", tagName: "x-button" },
@@ -59,7 +59,11 @@ beforeEach(async () => {
   const installed = installMockPlatform({
     discoverComponents: async () => {
       discoverCount += 1;
-      return structuredClone(REGISTRY) as never;
+      /* SAFETY: the npm rows in REGISTRY carry no `path` (they resolve through package and
+         modulePath), which is what a real discoverer answers for them; loadComponentRegistry stores
+         the answer as ComponentEntry[], whose `path` is optional, and nothing reads it as the wire
+         type's required `path` before then. */
+      return structuredClone(REGISTRY) as ComponentMeta[];
     },
   });
   ({ platform } = installed);
@@ -76,13 +80,29 @@ beforeEach(async () => {
   for (const stale of document.querySelectorAll("body > div:not([id])")) {
     stale.remove();
   }
-  (document.querySelector("#layer-modal") as HTMLElement).innerHTML = "";
+  document.querySelector("#layer-modal")!.innerHTML = "";
 });
 
-function lastWrittenConfig(): Record<string, unknown> {
+function lastWrittenConfig(): JsonObject {
   const writes = calls.filter((c) => c[0] === "writeFile" && c[1] === "project.json");
   expect(writes.length).toBeGreaterThan(0);
-  return JSON.parse(writes.at(-1)![2] as string);
+  const text = writes.at(-1)?.[2];
+  if (!isString(text)) {
+    throw new Error("the last project.json write carried no text");
+  }
+  const config: JsonValue = JSON.parse(text);
+  if (!isJsonObject(config)) {
+    throw new Error("the last project.json write was not a JSON object");
+  }
+  return config;
+}
+
+/** Narrows a query result to the `<input>` it should be, failing the test when it is not one. */
+function inputOf(el: Element | null): HTMLInputElement {
+  if (!(el instanceof HTMLInputElement)) {
+    throw new Error("expected the panel to draw an <input> here");
+  }
+  return el;
 }
 
 /**
@@ -102,7 +122,7 @@ async function draw(ctx: ImportsContext): Promise<HTMLElement> {
 function siteCtx(): ImportsContext {
   return {
     applyMutation: () => {},
-    documentElements: [] as ElementsEntry[],
+    documentElements: [],
     documentPath: "project.json",
     renderLeftPanel,
   };
@@ -115,9 +135,7 @@ function titles(host: HTMLElement): (string | null)[] {
 
 /** The `<input>` inside one of the panel's fields, which is what a reader types into. */
 function field(host: HTMLElement, name: string): HTMLInputElement {
-  return host.querySelector(
-    `[part="field"][data-field="${name}"] [part="input"]`,
-  ) as HTMLInputElement;
+  return inputOf(host.querySelector(`[part="field"][data-field="${name}"] [part="input"]`));
 }
 
 /** Type into a field the way the reader does: the control moves, then it says so. */
@@ -130,8 +148,8 @@ function type(input: HTMLInputElement, value: string): void {
 function boxes(host: HTMLElement): Map<string, HTMLInputElement> {
   const out = new Map<string, HTMLInputElement>();
   for (const row of host.querySelectorAll('[part="row"][data-component]')) {
-    const label = row.querySelector('[part="component-label"]')?.textContent?.trim() ?? "";
-    out.set(label, row.querySelector('[part="input"]') as HTMLInputElement);
+    const label = row.querySelector('[part="component-label"]')?.textContent.trim() ?? "";
+    out.set(label, inputOf(row.querySelector('[part="input"]')));
   }
   return out;
 }
@@ -141,15 +159,6 @@ function toggle(box: HTMLInputElement, checked: boolean): void {
   box.checked = checked;
   box.dispatchEvent(new Event("change", { bubbles: true }));
 }
-
-describe("the Navigator seam", () => {
-  test("the injected lit renderer draws nothing", () => {
-    /* The panel is a document mounted in `afterRender`; the renderer `NavigatorPanelDeps` still
-       declares and `studio.ts` still passes is a stub, and both go in the change that deletes the
-       declaration. Asserted so the stub cannot quietly grow a template again. */
-    expect(renderImportsTemplate(siteCtx())).toBe(nothing);
-  });
-});
 
 describe("site-level imports (project.json)", () => {
   test("lists imported modules with a count, and one section per package", async () => {
@@ -351,6 +360,9 @@ describe("document-level imports", () => {
   function docCtx(overrides: Partial<ImportsContext> = {}): ImportsContext {
     return {
       applyMutation: (fn: (d: JxMutableNode) => void) => fn(doc),
+      /* SAFETY: every fixture in this block seeds `$elements` with strings and `{ $ref }` objects
+         only, and the panel writes back only those two forms, so no member is a JxMutableNode that
+         ElementsEntry lacks. */
       documentElements: (doc.$elements || []) as ElementsEntry[],
       documentPath: "pages/index.json",
       renderLeftPanel,
@@ -374,7 +386,7 @@ describe("document-level imports", () => {
     doc = {
       $elements: [{ $ref: "./components/hero.json" }, "@acme/kit/button.js", "legacy-pkg"],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
   });
 
   test("lists $ref imports and offers only un-imported project components", async () => {
@@ -384,7 +396,7 @@ describe("document-level imports", () => {
       host.querySelector('[part="row"][data-ref="./components/hero.json"] [part="path"]')
         ?.textContent,
     ).toBe("./components/hero.json");
-    const options = [...picker(host)!.querySelectorAll("option")].map((o) => o.textContent?.trim());
+    const options = [...picker(host)!.querySelectorAll("option")].map((o) => o.textContent.trim());
     // The picker's own empty row is a row: a select always holds one of its options.
     expect(options).toEqual(["Add component…", "<my-card>"]);
   });
@@ -430,7 +442,7 @@ describe("document-level imports", () => {
   });
 
   test("picking a component initializes $elements when missing", async () => {
-    doc = { tagName: "div" } as unknown as JxMutableNode;
+    doc = { tagName: "div" };
     const host = await draw(docCtx());
     choose(host, "my-hero");
     await flush(2);
@@ -455,7 +467,7 @@ describe("document-level imports", () => {
   });
 
   test("documentPath null produces ./-relative refs", async () => {
-    doc = { tagName: "div" } as unknown as JxMutableNode;
+    doc = { tagName: "div" };
     const host = await draw(docCtx({ documentPath: null }));
     choose(host, "my-card");
     await flush(2);
@@ -495,7 +507,7 @@ describe("document-level imports", () => {
   });
 
   test("ticking a component initializes $elements when missing", async () => {
-    doc = { tagName: "div" } as unknown as JxMutableNode;
+    doc = { tagName: "div" };
     const host = await draw(docCtx());
     toggle(boxes(host).get("<x-card>")!, true);
     await flush(2);
@@ -506,20 +518,18 @@ describe("document-level imports", () => {
     const host = await draw(docCtx());
     toggle(boxes(host).get("<x-button>")!, true);
     await flush(2);
-    expect(
-      (doc.$elements as ElementsEntry[]).filter((e) => e === "@acme/kit/button.js").length,
-    ).toBe(1);
+    expect((doc.$elements ?? []).filter((e) => e === "@acme/kit/button.js").length).toBe(1);
   });
 
   test("no $ref imports and no available components renders neither list nor picker", async () => {
     doc = {
       $elements: [{ $ref: "./components/hero.json" }, { $ref: "./components/card.json" }],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const host = await draw(docCtx());
     expect(picker(host)).toBeNull();
 
-    doc = { $elements: [], tagName: "div" } as unknown as JxMutableNode;
+    doc = { $elements: [], tagName: "div" };
     const host2 = await draw(docCtx());
     expect(host2.querySelector('[part="row"][data-ref]')).toBeNull();
     expect(host2.querySelector('[part="empty"]')).not.toBeNull();

@@ -28,29 +28,45 @@ import {
   bodyReturnsValue,
   hasStructuredBody,
   isExpressionDef,
+  isBoolean,
   isFunctionDef,
   isMappedArray,
   isNamedFormulaDef,
+  isNonNullObject,
+  isNumber,
+  isPrototypeDef,
   isRef,
+  isString,
   isTagExpression,
   paramNames,
 } from "@jxsuite/schema/guards";
 import { parseJxDocument } from "@jxsuite/schema/parse";
-import type { ExpressionNode } from "../shared.ts";
 import { resolveShadowMode } from "../shadow.ts";
 import type { ShadowMode } from "../shadow.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import { escapeToken, objectKey, refAccessor, refSegments } from "@jxsuite/runtime/pointer";
 import type {
+  JsonPrimitive,
   JxDocument,
+  JxDocumentValue,
   JxExpressionDef,
+  JxExpressionNode,
   JxFunctionDef,
   JxMappedArray,
   JxMutableNode,
   JxPrototypeDef,
+  JxRef,
+  JxStateDefinition,
   JxStyle,
   ProjectConfig,
 } from "@jxsuite/schema/types";
+
+/**
+ * A member of a node's `children` (or a `$switch` case) as a parsed document holds it: an element,
+ * a text string, or — since the document is JSON — a number, boolean or `null`, rendered as text or
+ * skipped.
+ */
+type LitChild = JxMutableNode | JsonPrimitive;
 
 /** Options accepted by compileElement. */
 export interface CompileElementOptions {
@@ -67,7 +83,6 @@ export interface CompileElementOptions {
   basePath?: string | null;
   /** Project `defaults`, read for `defaults.shadow` (spec.md §16.6). */
   defaults?: ProjectConfig["defaults"];
-  [key: string]: unknown;
 }
 
 /**
@@ -93,7 +108,7 @@ export async function compileElement(
   async function processElement(srcPath: string | JxDocument, parentDir: string | null) {
     let doc: JxDocument;
     let filePath: string | null;
-    if (typeof srcPath === "string") {
+    if (isString(srcPath)) {
       const { readFileSync } = await import("node:fs");
       const { resolve } = await import("node:path");
       filePath = parentDir ? resolve(parentDir, srcPath) : resolve(srcPath);
@@ -106,13 +121,12 @@ export async function compileElement(
       } else {
         const { extname } = await import("node:path");
         const ext = extname(filePath).toLowerCase();
-        const entry = formats?.byExtension?.(ext, "parse");
+        const entry = formats?.byExtension(ext, "parse");
         if (!entry) {
           const { unknownFormatError } = await import("../site/format-host.ts");
           throw unknownFormatError(filePath, ext);
         }
-        // Format plugins contractually parse source text into a Jx document.
-        doc = (await entry.call("parse", readFileSync(filePath, "utf8"))) as JxDocument;
+        doc = await entry.parseDocument(readFileSync(filePath, "utf8"));
       }
     } else {
       doc = srcPath;
@@ -138,7 +152,7 @@ export async function compileElement(
     if (Array.isArray(doc.$elements)) {
       for (const elRef of doc.$elements) {
         const refPath = isRef(elRef) ? elRef.$ref : elRef;
-        if (typeof refPath !== "string") {
+        if (!isString(refPath)) {
           continue;
         }
 
@@ -174,12 +188,19 @@ export async function compileElement(
   return { files };
 }
 
+/** Options accepted by compileElementPage: the page shell's, plus everything compileElement takes. */
+export interface CompileElementPageOptions extends CompileElementOptions {
+  title?: string;
+  reactivitySrc?: string;
+  litHtmlSrc?: string;
+}
+
 /**
  * Compile a Jx custom element document to a complete HTML page with an import map for CDN
  * dependencies.
  *
- * @param {string | any} sourcePath
- * @param {Record<string, unknown>} [opts]
+ * @param {string | JxDocument} sourcePath
+ * @param {CompileElementPageOptions} [opts]
  * @returns {Promise<{
  *   html: string;
  *   files: { path: string; content: string; tagName: string }[];
@@ -187,12 +208,7 @@ export async function compileElement(
  */
 export async function compileElementPage(
   sourcePath: string | JxDocument,
-  opts: {
-    title?: string;
-    reactivitySrc?: string;
-    litHtmlSrc?: string;
-    [key: string]: unknown;
-  } = {},
+  opts: CompileElementPageOptions = {},
 ) {
   const {
     title = "Jx App",
@@ -240,11 +256,11 @@ export async function compileElementPage(
  * like { type, default, description } now correctly extract the `default` value instead of dumping
  * the whole object.
  *
- * @param {JxMutableNode} def
+ * @param {JxStateDefinition} def
  * @returns {string | undefined}
  */
-function extractInitialValue(def: JxMutableNode) {
-  if (def === null || typeof def !== "object" || Array.isArray(def)) {
+function extractInitialValue(def: JxStateDefinition) {
+  if (!isNonNullObject(def) || Array.isArray(def)) {
     return JSON.stringify(def);
   }
   // Expanded signal with explicit default
@@ -286,21 +302,25 @@ function collectCallableRefs(doc: JxDocument) {
   const keys = new Set<string>();
   const seen = new Set<object>();
 
-  const addStateRef = (ref: unknown) => {
-    if (typeof ref === "string" && ref.startsWith("#/state/")) {
+  const addStateRef = (ref: string) => {
+    if (ref.startsWith("#/state/")) {
+      /* SAFETY: `String.prototype.split` always returns at least one element (the whole string
+         when the separator is absent), so index 0 is present. */
       keys.add(ref.slice("#/state/".length).split("/")[0] as string);
     }
   };
 
-  const visit = (node: unknown) => {
-    if (typeof node === "string") {
+  const visit = (node: JxDocumentValue | undefined) => {
+    if (isString(node)) {
       // `${state.formatDate(d)}` in a template, or `state.helper(x)` in another function's body.
       for (const call of node.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*\(/g)) {
+        /* SAFETY: the pattern's one capture group is not optional, so every match fills
+           index 1 with the called member's name. */
         keys.add(call[1] as string);
       }
       return;
     }
-    if (!node || typeof node !== "object" || seen.has(node)) {
+    if (!isNonNullObject(node) || seen.has(node)) {
       return;
     }
     seen.add(node);
@@ -310,10 +330,13 @@ function collectCallableRefs(doc: JxDocument) {
       }
       return;
     }
-    const record = node as Record<string, unknown>;
+    /* SAFETY: `node` is a non-null, non-array object reached from `doc.children` or `doc.state`,
+       and every such object in a parsed Jx document is a JSON object whose members are document
+       values; the view only reads members, and each is checked before use. */
+    const record = node as Readonly<Record<string, JxDocumentValue | undefined>>;
     // An `$expression` `call` node names its callee in `target` (spec.md §19.4c).
     if (record.operator === "call" && isRef(record.target)) {
-      addStateRef((record.target as { $ref: string }).$ref);
+      addStateRef(record.target.$ref);
     }
     for (const [key, val] of Object.entries(record)) {
       if (key.startsWith("on") && key !== "observedAttributes" && isRef(val)) {
@@ -360,10 +383,9 @@ export function emitElementModule(
   const defs = doc.state ?? {};
   const callableRefs = collectCallableRefs(doc);
   for (const [key, def] of Object.entries(defs)) {
-    const d = def as JxMutableNode;
-    if (d && typeof d === "object" && !Array.isArray(d) && d.$prototype === "Function" && d.$src) {
-      const srcPath = d.$src;
-      if (d.$lazy === true) {
+    if (isFunctionDef(def) && def.$src) {
+      const srcPath = def.$src;
+      if (def.$lazy === true) {
         /*
          * A computed reads its value synchronously, and a lazy binding can only ever hand back a
          * promise. Silently producing `computed(() => Promise)` would render "[object Promise]" in
@@ -376,19 +398,20 @@ export function emitElementModule(
               `Remove "$lazy", or call ${key}() from a handler instead of binding its value.`,
           );
         }
-        if (!lazySrcMap.has(srcPath)) {
-          lazySrcMap.set(srcPath, []);
+        let lazyBindings = lazySrcMap.get(srcPath);
+        if (!lazyBindings) {
+          lazyBindings = [];
+          lazySrcMap.set(srcPath, lazyBindings);
         }
-        (lazySrcMap.get(srcPath) as { binding: string; exportName: string }[]).push({
-          binding: key,
-          exportName: srcExportName(key, d),
-        });
+        lazyBindings.push({ binding: key, exportName: srcExportName(key, def) });
         continue;
       }
-      if (!srcImportMap.has(srcPath)) {
-        srcImportMap.set(srcPath, []);
+      let bindings = srcImportMap.get(srcPath);
+      if (!bindings) {
+        bindings = [];
+        srcImportMap.set(srcPath, bindings);
       }
-      (srcImportMap.get(srcPath) as string[]).push(srcImportBinding(key, d));
+      bindings.push(srcImportBinding(key, def));
     }
   }
   for (const [srcPath, names] of srcImportMap) {
@@ -401,10 +424,9 @@ export function emitElementModule(
   // `$prototype: "Request"` entries each get an auto-fetch effect in connectedCallback, plus the
   // Machinery to stop those effects again on disconnect. Both are emitted only when one exists, so
   // Documents without a Request produce exactly the same module as before.
-  const requestEntries = Object.entries(defs).filter(([, def]) => {
-    const d = def as JxMutableNode;
-    return Boolean(d) && typeof d === "object" && !Array.isArray(d) && d.$prototype === "Request";
-  });
+  const requestEntries = Object.entries(defs).flatMap(([key, def]): [string, JxPrototypeDef][] =>
+    isPrototypeDef(def) && def.$prototype === "Request" ? [[key, def]] : [],
+  );
 
   lines.push(
     `import { reactive, computed, effect, stop } from '@vue/reactivity';`,
@@ -460,32 +482,30 @@ export function emitElementModule(
   /** `"${…}"` state entries — computed, exactly as the runtime treats them. */
   const templateEntries: [string, string][] = [];
   for (const [key, def] of Object.entries(defs)) {
-    const d = def as JxMutableNode;
-    if (isExpressionDef(d)) {
-      const node = d.$expression as ExpressionNode;
-      if (isNamedFormulaDef(d)) {
-        formulaEntries.push([key, d]);
-      } else if (isMutating(node.operator)) {
-        functionEntries.push([key, d]);
+    if (isExpressionDef(def)) {
+      if (isNamedFormulaDef(def)) {
+        formulaEntries.push([key, def]);
+      } else if (isMutating(def.$expression.operator)) {
+        functionEntries.push([key, def]);
       } else {
-        computedEntries.push([key, d]);
+        computedEntries.push([key, def]);
       }
-    } else if (isFunctionDef(d)) {
-      if (d.$src && typeof d.body !== "string") {
+    } else if (isFunctionDef(def)) {
+      if (def.$src && !isString(def.body)) {
         // Bodyless `$src` entry — classify by document usage, not by an absent body. `body` and
         // `$src` are mutually exclusive (spec.md §5.3 4d), so this is the only shape a
         // Spec-conformant external Function takes.
         if (callableRefs.has(key) || LIFECYCLE_KEYS.has(key)) {
-          functionEntries.push([key, d]);
+          functionEntries.push([key, def]);
         } else {
-          computedEntries.push([key, d]);
+          computedEntries.push([key, def]);
         }
-      } else if (typeof d.body === "string" && bodyReturnsValue(d.body)) {
-        computedEntries.push([key, d]);
+      } else if (isString(def.body) && bodyReturnsValue(def.body)) {
+        computedEntries.push([key, def]);
       } else {
-        functionEntries.push([key, d]);
+        functionEntries.push([key, def]);
       }
-    } else if (typeof def === "string" && def.includes("${")) {
+    } else if (isString(def) && def.includes("${")) {
       /* A TEMPLATE STRING IS A COMPUTED, and the runtime has always said so — `runtime.ts`'s
          second state pass is `if (typeof def === "string" && def.includes("${")) state[key] =
          computed(() => evaluateTemplate(def, state))`, and `StateEntry`'s own schema description
@@ -501,7 +521,7 @@ export function emitElementModule(
       templateEntries.push([key, def]);
     } else {
       // Use extractInitialValue to get the correct initial value
-      const initVal = extractInitialValue(d);
+      const initVal = extractInitialValue(def);
       if (initVal !== undefined) {
         stateEntries.push([key, initVal]);
       }
@@ -523,7 +543,7 @@ export function emitElementModule(
   for (const [key, def] of functionEntries) {
     lines.push("");
     if (isExpressionDef(def)) {
-      const compiled = compileExpression(def.$expression as ExpressionNode, {
+      const compiled = compileExpression(def.$expression, {
         eventParam: "e",
         statePrefix: "s",
       });
@@ -547,7 +567,7 @@ export function emitElementModule(
     } else {
       const args = def.parameters ? paramNames(def.parameters) : (def.arguments ?? ["state"]);
       const paramList = args.join(", ");
-      const body = typeof def.body === "string" ? def.body : "";
+      const body = isString(def.body) ? def.body : "";
       // Every call site invokes a state function as `(state, event)` — the template's
       // `s.fn(s, e)`, `onMount`, `onUnmount`. Declared names that already start with `state` line
       // Up positionally, so they are emitted directly. Any other declaration — including the
@@ -591,7 +611,7 @@ export function emitElementModule(
   // Emit named formulas — scope callables mapping positional args onto declared parameters
   for (const [key, def] of formulaEntries) {
     lines.push("");
-    const compiled = compileExpression(def.$expression as ExpressionNode, {
+    const compiled = compileExpression(def.$expression, {
       eventParam: "e",
       statePrefix: "this.state",
     });
@@ -614,7 +634,7 @@ export function emitElementModule(
   for (const [key, def] of computedEntries) {
     lines.push("");
     if (isExpressionDef(def)) {
-      const compiled = compileExpression(def.$expression as ExpressionNode, {
+      const compiled = compileExpression(def.$expression, {
         eventParam: "e",
         statePrefix: "this.state",
       });
@@ -627,10 +647,7 @@ export function emitElementModule(
       );
     } else {
       lines.push(`    ${refAccessor("this.state", escapeToken(key))} = computed(() => {`);
-      const body = (typeof def.body === "string" ? def.body : "").replaceAll(
-        "state.",
-        "this.state.",
-      );
+      const body = (isString(def.body) ? def.body : "").replaceAll("state.", "this.state.");
       lines.push(`      ${body}`, "    });");
     }
   }
@@ -742,14 +759,14 @@ export function emitElementModule(
   // Keep fetching after removal, and every re-insertion would stack another effect on top.
   for (const [key, def] of requestEntries) {
     lines.push(
-      emitRequestFetch(key, def as unknown as JxPrototypeDef, {
+      emitRequestFetch(key, def, {
         collect: "this.#effects",
         indent: "    ",
         statePrefix: "this.state",
       }),
     );
   }
-  if (doc.style && typeof doc.style === "object") {
+  if (isNonNullObject(doc.style)) {
     const dynamicStyles: [string, string][] = [];
     for (const [prop, value] of Object.entries(doc.style)) {
       if (
@@ -761,12 +778,9 @@ export function emitElementModule(
       ) {
         continue;
       }
-      if (value === null || typeof value === "object") {
-        continue;
-      }
-      const cssProp = camelToKebab(prop);
-      if (typeof value === "string" && value.includes("${")) {
-        dynamicStyles.push([cssProp, value]);
+      // Only a template declaration is dynamic; nested blocks and literal values are static CSS.
+      if (isString(value) && value.includes("${")) {
+        dynamicStyles.push([camelToKebab(prop), value]);
       }
     }
     if (dynamicStyles.length > 0) {
@@ -938,7 +952,7 @@ function emitLitChildren(
 
   // Mixed children: elements/text plus array pseudo-elements expanded inline among siblings.
   return children
-    .map((child: JxMutableNode | string) =>
+    .map((child) =>
       isMappedArray(child)
         ? emitMappedArray(child, indent)
         : emitLitNode(child, preformatted ? "" : indent, preformatted, inMap, scope),
@@ -947,13 +961,13 @@ function emitLitChildren(
 }
 
 /**
- * @param {JxMutableNode | string} def
+ * @param {LitChild} def
  * @param {string} indent
  * @param {boolean} [preformatted]
  * @returns {string}
  */
 function emitLitNode(
-  def: JxMutableNode | string,
+  def: LitChild,
   indent: string,
   preformatted = false,
   inMap = false,
@@ -962,16 +976,16 @@ function emitLitNode(
   innerOverride: string | null = null,
 ): string {
   // String children are text nodes
-  if (typeof def === "string") {
+  if (isString(def)) {
     if (def.includes("${")) {
       return `${indent}${toLitTextContent(def)}`;
     }
     return `${indent}${escapeHtml(def)}`;
   }
-  if (typeof def === "number" || typeof def === "boolean") {
+  if (isNumber(def) || isBoolean(def)) {
     return `${indent}${escapeHtml(String(def))}`;
   }
-  if (!def || typeof def !== "object") {
+  if (!isNonNullObject(def)) {
     return "";
   }
 
@@ -992,7 +1006,7 @@ function emitLitNode(
       eventParam: "e",
       statePrefix: "s",
     });
-    const branches =
+    const branches: [string | boolean, string][] =
       expression.operator === "?:"
         ? [
             [true, expression.value],
@@ -1002,7 +1016,7 @@ function emitLitNode(
     // The inner content is identical across candidates — only the tag differs — so it is emitted
     // Once and every branch references it. Skipped when the candidates disagree about being
     // Preformatted, because `white-space` decides how the subtree itself is indented.
-    const candidateTags = branches.map(([, candidate]) => String(candidate));
+    const candidateTags = branches.map(([, candidate]) => candidate);
     const sharedPre = candidateTags.map((t) => preformatted || PREFORMATTED_TAGS.has(t));
     let innerRef: string | null = null;
     if (scope && sharedPre.every((p) => p === sharedPre[0])) {
@@ -1011,8 +1025,8 @@ function emitLitNode(
         innerRef = hoistSubtree(scope, sharedInner);
       }
     }
-    const rendered: [string | boolean | undefined, string][] = branches.map(([key, candidate]) => {
-      const asLiteral = { ...def, tagName: candidate as string };
+    const rendered: [string | boolean, string][] = branches.map(([key, candidate]) => {
+      const asLiteral = { ...def, tagName: candidate };
       return [key, emitLitNode(asLiteral, `${indent}  `, preformatted, inMap, scope, innerRef)];
     });
     if (expression.operator === "?:") {
@@ -1026,9 +1040,9 @@ ${yes}
 ${no}
   \`}`;
     }
-    const entries = rendered
-      .filter(([key]) => key !== "__default__")
-      .map(([key, text]) => `  ${JSON.stringify(key)}: html\`\n${text}\n  \``);
+    const entries = rendered.flatMap(([key, text]) =>
+      key === "__default__" ? [] : [`  ${JSON.stringify(key)}: html\`\n${text}\n  \``],
+    );
     const [, fallback] = rendered.at(-1)!;
     return (
       `${indent}${"$"}{{\n${entries.join(",\n")}\n}` +
@@ -1049,17 +1063,17 @@ ${no}
          §8.3). A LITERAL boolean is decided now; a BOUND one cannot be, because its resolved type
          is not known until the effect runs — so it goes through the emitted helper, whose `null`
          becomes lit's `nothing` and takes the attribute off. */
-      if (val && typeof val === "object" && isRef(val)) {
+      if (isRef(val)) {
         parts.push(`${key}="\${${ATTR_HELPER}('${key}', ${refToExpr(val.$ref)}) ?? nothing}"`);
-      } else if (typeof val === "string" && isWholeTemplate(val)) {
+      } else if (isString(val) && isWholeTemplate(val)) {
         parts.push(
           `${key}="\${${ATTR_HELPER}('${key}', ${toLitExpr(val).slice(2, -1)}) ?? nothing}"`,
         );
-      } else if (typeof val === "string" && val.includes("${")) {
+      } else if (isString(val) && val.includes("${")) {
         /* A template with literal text around it — `"page ${n}"` — is a string by construction, so
            there is no boolean to decide and wrapping it would only add a call. */
         parts.push(`${key}="${toLitExpr(val)}"`);
-      } else if (typeof val === "boolean") {
+      } else if (isBoolean(val)) {
         const text = booleanAttrValue(key, val);
         if (text !== null) {
           parts.push(text === "" ? key : `${key}="${text}"`);
@@ -1097,9 +1111,9 @@ ${no}
       continue;
     }
 
-    if (val && typeof val === "object" && (val as JxMutableNode).$ref) {
-      parts.push(`.${key}="\${${refToExpr((val as JxMutableNode).$ref as string)}}"`);
-    } else if (typeof val === "string" && val.includes("${")) {
+    if (isBoundRef(val)) {
+      parts.push(`.${key}="\${${refToExpr(val.$ref)}}"`);
+    } else if (isString(val) && val.includes("${")) {
       parts.push(`.${key}="${toLitExpr(val)}"`);
     } else {
       // A literal IDL value (`value: "a"`, `checked: true`) is still a property the author asked
@@ -1112,9 +1126,9 @@ ${no}
 
   if (def.$props) {
     for (const [key, val] of Object.entries(def.$props)) {
-      if (val && typeof val === "object" && (val as JxMutableNode).$ref) {
-        parts.push(`.${key}="\${${refToExpr((val as JxMutableNode).$ref as string)}}"`);
-      } else if (typeof val === "string" && val.includes("${")) {
+      if (isBoundRef(val)) {
+        parts.push(`.${key}="\${${refToExpr(val.$ref)}}"`);
+      } else if (isString(val) && val.includes("${")) {
         // A template value is a binding, not text. JSON-quoting it emitted the template's own source
         // As the prop value (`.label="${"${state.x}"}"`), so the component received the literal
         // String `${state.x}` forever.
@@ -1134,20 +1148,20 @@ ${no}
       continue;
     }
     const eventName = key.slice(2).toLowerCase();
-    if (val && typeof val === "object" && (val as JxMutableNode).$ref) {
+    if (isBoundRef(val)) {
       parts.push(
         mapCtx
-          ? `@${eventName}="\${(e) => { ${mapCtx}${refToExpr((val as JxMutableNode).$ref as string)}(s, e); }}"`
-          : `@${eventName}="\${(e) => ${refToExpr((val as JxMutableNode).$ref as string)}(s, e)}"`,
+          ? `@${eventName}="\${(e) => { ${mapCtx}${refToExpr(val.$ref)}(s, e); }}"`
+          : `@${eventName}="\${(e) => ${refToExpr(val.$ref)}(s, e)}"`,
       );
-    } else if (val && typeof val === "object" && "$expression" in /** @type {any} */ val) {
-      const compiled = compileExpression(
-        (val as Record<string, unknown>).$expression as ExpressionNode,
-        {
-          eventParam: "e",
-          statePrefix: "s",
-        },
-      );
+    } else if (isNonNullObject(val) && "$expression" in val) {
+      /* SAFETY: an `on*` binding object carrying `$expression` is a declarative handler, and the
+         document schema types that member as an expression node (spec.md §19). It is passed on
+         unvalidated, exactly as authored, so a malformed node fails inside compileExpression. */
+      const compiled = compileExpression(val.$expression as JxExpressionNode, {
+        eventParam: "e",
+        statePrefix: "s",
+      });
       parts.push(`@${eventName}="\${(e) => { ${mapCtx}${compiled}; }}"`);
     } else if (isFunctionDef(val)) {
       parts.push(`@${eventName}="\${(e) => { ${mapCtx}${inlineHandlerBody(val)} }}"`);
@@ -1195,11 +1209,11 @@ function emitNodeInner(
   scope: HoistScope | null,
 ): string {
   if (def.$switch) {
-    const switchRef = isRef(def.$switch) ? def.$switch.$ref : (def.$switch as string);
+    const switchRef = isRef(def.$switch) ? def.$switch.$ref : def.$switch;
     const switchExpr = refToExpr(switchRef);
-    const cases = (def.cases ?? {}) as Record<string, JxMutableNode>;
     const rendered: [string, string][] = [];
-    for (const [key, caseDef] of Object.entries(cases)) {
+    // A case value is document data, so a `null` or empty one can reach here and is skipped.
+    for (const [key, caseDef] of Object.entries<LitChild>(def.cases ?? {})) {
       if (!caseDef || isRef(caseDef)) {
         continue;
       }
@@ -1207,10 +1221,9 @@ function emitNodeInner(
     }
     // Cases that emit byte-identical subtrees share one hoisted `const` rather than repeating it
     // Once per case — the authored document names the subtree once (#126).
+    const texts = rendered.map(([, text]) => text);
     const repeated = new Set(
-      rendered
-        .map(([, text]) => text)
-        .filter((text, i, all) => all.indexOf(text) !== i && text.trim() !== ""),
+      texts.filter((text, i) => texts.indexOf(text) !== i && text.trim() !== ""),
     );
     const caseEntries = rendered.map(([key, text]) => {
       const body = scope && repeated.has(text) ? hoistSubtree(scope, text) : text;
@@ -1252,9 +1265,9 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
   // `${item…}`/`${index…}` templates resolve against the map callback's own parameters.
   if (mapDef.attributes) {
     for (const [key, val] of Object.entries(mapDef.attributes)) {
-      if (val && typeof val === "object" && isRef(val)) {
+      if (isRef(val)) {
         parts.push(`${key}="\${${mapRefToExpr(val.$ref)}}"`);
-      } else if (typeof val === "string" && val.includes("${")) {
+      } else if (isString(val) && val.includes("${")) {
         parts.push(`${key}="${toLitExpr(val)}"`);
       } else {
         parts.push(`${key}="${val}"`);
@@ -1290,9 +1303,9 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
       continue;
     }
 
-    if (val && typeof val === "object" && (val as JxMutableNode).$ref) {
-      parts.push(`.${key}="\${${mapRefToExpr((val as JxMutableNode).$ref as string)}}"`);
-    } else if (typeof val === "string" && val.includes("${")) {
+    if (isBoundRef(val)) {
+      parts.push(`.${key}="\${${mapRefToExpr(val.$ref)}}"`);
+    } else if (isString(val) && val.includes("${")) {
       parts.push(`.${key}="${toLitExpr(val)}"`);
     } else {
       parts.push(`.${key}="\${${JSON.stringify(val)}}"`);
@@ -1303,7 +1316,7 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     for (const [key, val] of Object.entries(mapDef.$props)) {
       if (isRef(val)) {
         parts.push(`.${key}="\${${mapRefToExpr(val.$ref)}}"`);
-      } else if (typeof val === "string" && val.includes("${")) {
+      } else if (isString(val) && val.includes("${")) {
         // `$props: { label: "${$map.item.name}" }` is the ordinary way to pass per-item data to a
         // Component in a list; JSON-quoting it handed over the template source instead.
         parts.push(`.${key}="${toLitExpr(val)}"`);
@@ -1326,7 +1339,7 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     if (isRef(val)) {
       parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${refToExpr(val.$ref)}(s, e); }}"`);
     } else if (isExpressionDef(val)) {
-      const compiled = compileExpression(val.$expression as ExpressionNode, {
+      const compiled = compileExpression(val.$expression, {
         eventParam: "e",
         statePrefix: "s",
       });
@@ -1364,6 +1377,17 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     : `(item, index) => ${body}`;
 
   return `${indent}\${${itemsExpr}.map(${callback})}`;
+}
+
+/**
+ * Whether a document value binds through a non-empty `$ref` pointer. An empty pointer names no
+ * state, so the emitters treat that object as a literal value rather than a binding.
+ *
+ * @param {JxDocumentValue | undefined} value
+ * @returns {boolean}
+ */
+function isBoundRef(value: JxDocumentValue | undefined): value is JxRef {
+  return isRef(value) && value.$ref !== "";
 }
 
 /**
@@ -1445,19 +1469,15 @@ function isWholeTemplate(str: string): boolean {
  * Convert textContent value to lit-html text content. Bug fix: handles $ref objects, which
  * previously produced [object Object].
  *
- * @param {unknown} value
+ * @param {string | null | JxRef} value
  * @returns {string}
  */
-function toLitTextContent(value: unknown) {
+function toLitTextContent(value: string | null | JxRef) {
   // Handle $ref objects → emit as lit expression
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    typeof (value as JxMutableNode).$ref === "string"
-  ) {
-    return `\${${refToExpr((value as JxMutableNode).$ref as string)}}`;
+  if (isRef(value)) {
+    return `\${${refToExpr(value.$ref)}}`;
   }
-  if (typeof value === "string" && value.includes("${")) {
+  if (isString(value) && value.includes("${")) {
     return toLitExpr(value);
   }
   return String(value);
@@ -1475,7 +1495,7 @@ function inlineHandlerBody(def: JxFunctionDef) {
       statePrefix: "s",
     });
   }
-  const body = typeof def.body === "string" ? def.body : "";
+  const body = isString(def.body) ? def.body : "";
   const declared = def.parameters ? paramNames(def.parameters) : (def.arguments ?? []);
   if (declared.length > 0) {
     // The call site supplies only `(e)`, so map the declared names onto the arguments the handler
@@ -1493,7 +1513,7 @@ function inlineHandlerBody(def: JxFunctionDef) {
  * @returns {string}
  */
 function emitStyleString(styleDef: JxStyle | null | undefined) {
-  if (!styleDef || typeof styleDef !== "object") {
+  if (!isNonNullObject(styleDef)) {
     return "";
   }
 
@@ -1509,11 +1529,8 @@ function emitStyleString(styleDef: JxStyle | null | undefined) {
       continue;
     }
 
-    if (value === null || typeof value === "object") {
-      continue;
-    }
-
-    if (typeof value === "string" && value.includes("${")) {
+    // Only a template declaration is dynamic; nested blocks and literal values are static CSS.
+    if (isString(value) && value.includes("${")) {
       const cssProp = camelToKebab(prop);
       parts.push(`${cssProp}: ${toLitExpr(value)}`);
     }
@@ -1533,7 +1550,7 @@ function treeHasSlot(children: JxMutableNode["children"]): boolean {
     return false;
   }
   for (const child of children) {
-    if (!child || typeof child !== "object") {
+    if (!isNonNullObject(child)) {
       continue;
     }
     if (child.tagName === "slot") {

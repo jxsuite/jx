@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, jest, mock, test } from "bun:test";
-import type { UpdateStatus } from "../src/updater";
+import type { UpdateStatus } from "../src/rpc-schema";
 
 const mockGetLocalInfo = mock(() => ({
   baseUrl: "https://updates.example.com",
@@ -118,9 +118,23 @@ describe("downloadUpdate", () => {
 // ─── applyUpdate ───────────────────────────────────────────────────────────
 
 describe("applyUpdate", () => {
-  test("delegates to Updater.applyUpdate", async () => {
+  test("delegates to Updater.applyUpdate, and lets its failure reach the caller", async () => {
     await applyUpdate();
     expect(mockApplyUpdate).toHaveBeenCalledTimes(1);
+
+    // Unlike a failed check, which lands in the status, a failed apply rejects.
+    mockApplyUpdate.mockImplementationOnce(() => {
+      throw new Error("apply failed");
+    });
+    let failure: Error | undefined;
+    try {
+      await applyUpdate();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        failure = error;
+      }
+    }
+    expect(failure?.message).toBe("apply failed");
   });
 });
 
@@ -134,16 +148,6 @@ describe("getStatus", () => {
     expect(status).toHaveProperty("updateAvailable");
     expect(status).toHaveProperty("updateReady");
     expect(status).toHaveProperty("error");
-  });
-});
-
-// ─── setNotifyWebview ──────────────────────────────────────────────────────
-
-describe("setNotifyWebview", () => {
-  test("sets the notification callback (no-op until backgroundCheck triggers)", () => {
-    const callback = mock(() => {});
-    setNotifyWebview(callback);
-    expect(callback).not.toHaveBeenCalled();
   });
 });
 
@@ -178,6 +182,12 @@ describe("startBackgroundChecks", () => {
 
     expect(mockCheckForUpdate).toHaveBeenCalled();
     expect(mockDownloadUpdate).toHaveBeenCalled();
+    expect(getStatus()).toEqual({
+      error: null,
+      updateAvailable: true,
+      updateReady: false,
+      version: "2.0.0",
+    });
   });
 
   test("notifies webview when update is ready", async () => {
@@ -237,6 +247,14 @@ describe("startBackgroundChecks", () => {
 
     // Once from the 5s timeout, once from the 4-hour interval.
     expect(mockCheckForUpdate).toHaveBeenCalledTimes(2);
+    // Nothing available, so neither check went on to download.
+    expect(mockDownloadUpdate).not.toHaveBeenCalled();
+    expect(getStatus()).toEqual({
+      error: null,
+      updateAvailable: false,
+      updateReady: false,
+      version: "1.0.0",
+    });
   });
 });
 

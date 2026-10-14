@@ -431,11 +431,20 @@ function report(files: string[]): void {
   );
 }
 
+/** The committed rules, budgets and allowlist in `scripts/docs/prose.json`. */
+export function readProseConfig(): ProseConfig {
+  /* SAFETY: prose.json is this gate's own committed configuration; check-prose.test.ts reads it
+   * through this function, finds every declared rule by id, holds `budgets` to the measured debt
+   * and fails when a rule is never exercised, so a file that stopped being a `ProseConfig` fails
+   * those tests before it reaches `main()`. */
+  return JSON.parse(readFileSync(RULES_PATH, "utf8")) as ProseConfig;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const named = args.filter((a) => !a.startsWith("--")).map((p) => relative(ROOT, resolve(p)));
   const files = named.length > 0 ? named : corpusFiles();
-  const config = JSON.parse(readFileSync(RULES_PATH, "utf8")) as ProseConfig;
+  const config = readProseConfig();
 
   if (args.includes("--report")) {
     report(files);

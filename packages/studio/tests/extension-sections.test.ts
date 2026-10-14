@@ -42,7 +42,11 @@ async function navLabels(): Promise<(string | undefined)[]> {
 
 /** The island a section renders into. */
 function body(): HTMLElement {
-  return host.querySelector('[part="body"]') as HTMLElement;
+  const island = host.querySelector('[part="body"]');
+  if (!(island instanceof HTMLElement)) {
+    throw new Error('The settings pane rendered no [part="body"] island');
+  }
+  return island;
 }
 
 const guestbookContribution: ExtensionContributionInfo = {
@@ -68,7 +72,7 @@ function extensionsWith(contributions: ExtensionContributionInfo[]): ExtensionsI
 beforeEach(() => {
   resetExtensionSettingsSections();
   refreshFormats();
-  resetStudioState({ projectConfig: { guestbook: {} } as unknown });
+  resetStudioState({ projectConfig: { guestbook: {} } });
   host = document.createElement("div");
   document.body.append(host);
 });
@@ -259,7 +263,7 @@ describe("syncExtensionSettingsSections", () => {
     installMockPlatform({
       listExtensions: async () => extensionsWith([guestbookContribution]),
     });
-    resetStudioState({ projectConfig: { guestbook: { moderation: true } } as unknown });
+    resetStudioState({ projectConfig: { guestbook: { moderation: true } } });
     await syncExtensionSettingsSections();
     expect(settingsSectionKeys()).toContain("guestbook");
     setSettingsSection("guestbook");

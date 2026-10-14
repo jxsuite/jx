@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { ExtensionRegistry, FormatEntry } from "@jxsuite/schema/extension-registry";
 import type { FormatHostIO } from "@jxsuite/schema/format-registry";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
 import { collectAssetRefs, copyMountedAssets, loadAssetMounts } from "../src/site/asset-mounts.ts";
 
 let TMP: string;
@@ -27,28 +27,46 @@ afterEach(() => {
 });
 
 /**
+ * One slot of a provider's `assets` answer as the host receives it, before decoding: the fixtures
+ * below include slots missing a member, or carrying a `filter` that is not a function.
+ */
+interface DeclaredMount {
+  dir?: string;
+  urlPrefix?: string;
+  filter?: AssetMount["filter"] | string;
+}
+
+/** A provider's `assets` implementation: the project section it owns in, its mount list out. */
+type AssetsImpl = (
+  sectionValue: JxDocumentValue | null,
+  ctx: { root: string },
+) => readonly (DeclaredMount | null)[] | null;
+
+/** A project that declares no extension section. */
+const NO_SECTIONS: ProjectConfig = {};
+
+/**
  * A class entry declaring the `assets` capability, optionally owning a project section.
  *
  * @param {string} name
- * @param {(sectionValue: unknown, ctx: { root: string }) => unknown} impl
+ * @param {AssetsImpl} impl
  * @param {string} [sectionKey]
  */
-function makeAssetEntry(
-  name: string,
-  impl: (sectionValue: unknown, ctx: { root: string }) => unknown,
-  sectionKey?: string,
-) {
+function makeAssetEntry(name: string, impl: AssetsImpl, sectionKey?: string) {
   const io: FormatHostIO = {
     importModule: () => Promise.resolve({ [name]: { assets: impl } }),
     loadJson: () => Promise.reject(new Error("not used")),
     resolvePath: (_base, ref) => ref,
   };
-  const classDef = {
-    $defs: { methods: { assets: { identifier: "assets", role: "assets" } } },
-    $implementation: "./fake.js",
-    title: name,
-    ...(sectionKey ? { project: { key: sectionKey } } : {}),
-  };
+  const methods = { assets: { identifier: "assets", role: "assets" } };
+  const classDef = sectionKey
+    ? {
+        $defs: { methods },
+        $implementation: "./fake.js",
+        project: { key: sectionKey },
+        title: name,
+      }
+    : { $defs: { methods }, $implementation: "./fake.js", title: name };
   return new FormatEntry(name, "/virtual/fake.class.json", classDef, io);
 }
 
@@ -71,7 +89,7 @@ describe("loadAssetMounts", () => {
       makeAssetEntry("Other", () => [{ dir: "/repo/media", urlPrefix: "/media" }]),
     );
 
-    const { errors, mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    const { errors, mounts } = await loadAssetMounts(registry, NO_SECTIONS, TMP);
 
     expect(errors).toEqual([]);
     expect(mounts).toEqual([
@@ -88,13 +106,13 @@ describe("loadAssetMounts", () => {
         { dir: "/repo/media", filter: "not a function", urlPrefix: "/media" },
       ]),
     );
-    const { mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    const { mounts } = await loadAssetMounts(registry, NO_SECTIONS, TMP);
     expect(mounts[0]!.filter).toBe(filter);
     expect(mounts[1]).toEqual({ dir: "/repo/media", urlPrefix: "/media" });
   });
 
   it("passes the section value and skips a section the project never declares", async () => {
-    const seen: unknown[] = [];
+    const seen: (JxDocumentValue | null)[] = [];
     const registry = makeRegistry(
       makeAssetEntry(
         "Content",
@@ -108,14 +126,14 @@ describe("loadAssetMounts", () => {
 
     const declared = await loadAssetMounts(
       registry,
-      { content: { docs: { source: "../../docs" } } } as unknown as ProjectConfig,
+      { content: { docs: { source: "../../docs" } } },
       TMP,
     );
     expect(declared.mounts).toHaveLength(1);
     expect(seen).toEqual([{ docs: { source: "../../docs" } }]);
 
-    const absent = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
-    const empty = await loadAssetMounts(registry, { content: {} } as ProjectConfig, TMP);
+    const absent = await loadAssetMounts(registry, NO_SECTIONS, TMP);
+    const empty = await loadAssetMounts(registry, { content: {} }, TMP);
     expect(absent.mounts).toEqual([]);
     expect(empty.mounts).toEqual([]);
     expect(seen).toHaveLength(1);
@@ -127,7 +145,7 @@ describe("loadAssetMounts", () => {
       makeAssetEntry("B", () => [{ dir: "/repo/two", urlPrefix: "/content/docs" }]),
     );
 
-    const { errors, mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    const { errors, mounts } = await loadAssetMounts(registry, NO_SECTIONS, TMP);
 
     expect(mounts).toEqual([{ dir: "/repo/one", urlPrefix: "/content/docs" }]);
     expect(errors[0]).toContain("Asset mount conflict");
@@ -139,7 +157,7 @@ describe("loadAssetMounts", () => {
       makeAssetEntry("B", () => [{ dir: "/repo/one", urlPrefix: "/content/docs" }]),
     );
 
-    const { errors, mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    const { errors, mounts } = await loadAssetMounts(registry, NO_SECTIONS, TMP);
 
     expect(mounts).toHaveLength(1);
     expect(errors).toEqual([]);
@@ -152,7 +170,7 @@ describe("loadAssetMounts", () => {
       }),
     );
 
-    const { errors, mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    const { errors, mounts } = await loadAssetMounts(registry, NO_SECTIONS, TMP);
 
     expect(mounts).toEqual([]);
     expect(errors[0]).toContain("Broken.assets: no source dir");
@@ -164,7 +182,7 @@ describe("loadAssetMounts", () => {
       makeAssetEntry("Partial", () => [{ dir: "" }, { urlPrefix: "/x" }, null]),
     );
 
-    const { errors, mounts } = await loadAssetMounts(registry, {} as ProjectConfig, TMP);
+    const { errors, mounts } = await loadAssetMounts(registry, NO_SECTIONS, TMP);
 
     expect(mounts).toEqual([]);
     expect(errors).toEqual([]);

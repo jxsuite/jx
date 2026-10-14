@@ -7,18 +7,33 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue, JxElement } from "@jxsuite/schema/types";
 import { DEFAULT_ALERT_TITLES, inlineText, normalizeAlerts } from "../src/alerts.ts";
 import { processMarkdown } from "../src/md.ts";
 import { transpileJxMarkdown } from "../src/transpile.ts";
 
-/** Render markdown to the Jx children a content entry carries. */
-function render(source: string, alerts?: unknown): JxElement[] {
-  return processMarkdown(source, "/x/entry.md", alerts === undefined ? {} : { alerts })
-    .$children as JxElement[];
+/** The elements of a Jx child list; a text node or a missing list where elements belong fails. */
+function elements(nodes: JxElement["children"]): JxElement[] {
+  if (!Array.isArray(nodes)) {
+    throw new TypeError(`expected a child list, got ${JSON.stringify(nodes)}`);
+  }
+  return nodes.map((node) => {
+    if (isString(node)) {
+      throw new TypeError(`expected an element, got the text ${JSON.stringify(node)}`);
+    }
+    return node;
+  });
 }
 
-const kids = (el: JxElement) => el.children as (JxElement | string)[];
+/** Render markdown to the Jx children a content entry carries. */
+function render(source: string, alerts?: JsonValue): JxElement[] {
+  return elements(
+    processMarkdown(source, "/x/entry.md", alerts === undefined ? {} : { alerts }).$children,
+  );
+}
+
+const kids = (el: JxElement) => elements(el.children);
 
 describe("built-in callouts", () => {
   it("renders each GitHub alert type as an accessible note with a visible title", () => {
@@ -27,7 +42,7 @@ describe("built-in callouts", () => {
       expect(el!.tagName).toBe("div");
       expect(el!.className).toBe(`jx-alert jx-alert-${type}`);
       expect(el!.attributes).toEqual({ "data-alert": type, role: "note" });
-      const [titleEl, body] = kids(el!) as JxElement[];
+      const [titleEl, body] = kids(el!);
       expect(titleEl).toEqual({ className: "jx-alert-title", tagName: "p", textContent: title });
       expect(body).toEqual({ tagName: "p", textContent: "Body text." });
     }
@@ -35,7 +50,7 @@ describe("built-in callouts", () => {
 
   it("the title is a paragraph, never a heading", () => {
     const [el] = render("> [!NOTE]\n> x\n");
-    expect((kids(el!)[0] as JxElement).tagName).toBe("p");
+    expect(kids(el!)[0]!.tagName).toBe("p");
   });
 
   it("recognises the marker in any case", () => {
@@ -47,7 +62,7 @@ describe("built-in callouts", () => {
     const [el] = render(
       "> [!TIP]\n> Use **bold** and `code`.\n>\n> Second paragraph.\n>\n> - one\n",
     );
-    const [, first, second, list] = kids(el!) as JxElement[];
+    const [, first, second, list] = kids(el!);
     expect(first!.children).toEqual([
       "Use ",
       { tagName: "strong", textContent: "bold" },
@@ -74,7 +89,7 @@ describe("built-in callouts", () => {
 describe("custom titles", () => {
   it("takes the rest of the marker line, with its inline formatting, as the title", () => {
     const [el] = render("> [!TIP] A **custom** title\n> Body");
-    const [title, body] = kids(el!) as JxElement[];
+    const [title, body] = kids(el!);
     expect(title!.className).toBe("jx-alert-title");
     expect(title!.children).toEqual(["A ", { tagName: "strong", textContent: "custom" }, " title"]);
     expect(body).toEqual({ tagName: "p", textContent: "Body" });
@@ -82,25 +97,25 @@ describe("custom titles", () => {
 
   it("a plain-text title is the title element's text", () => {
     const [el] = render("> [!WARNING] Back up first\n> Body");
-    expect((kids(el!)[0] as JxElement).textContent).toBe("Back up first");
+    expect(kids(el!)[0]!.textContent).toBe("Back up first");
   });
 
   it("a hard break ends the title line", () => {
     const [el] = render("> [!NOTE] Title\\\n> body after the break\n");
-    const [title, body] = kids(el!) as JxElement[];
+    const [title, body] = kids(el!);
     expect(title!.textContent).toBe("Title");
     expect(body!.textContent).toBe("body after the break");
   });
 
   it("a marker followed by a hard break uses the default title", () => {
     const [el] = render("> [!NOTE]\\\n> body\n");
-    expect((kids(el!)[0] as JxElement).textContent).toBe("Note");
+    expect(kids(el!)[0]!.textContent).toBe("Note");
   });
 
   it("accepts and ignores Obsidian's fold markers", () => {
     for (const marker of ["+", "-"]) {
       const [el] = render(`> [!NOTE]${marker} Folded\n> Body`);
-      expect((kids(el!)[0] as JxElement).textContent).toBe("Folded");
+      expect(kids(el!)[0]!.textContent).toBe("Folded");
     }
   });
 });
@@ -108,23 +123,21 @@ describe("custom titles", () => {
 describe("nesting", () => {
   it("finds an alert inside a list item", () => {
     const [ul] = render("- item\n  > [!WARNING]\n  > careful\n");
-    const li = kids(ul!)[0] as JxElement;
-    const alert = kids(li)[1] as JxElement;
+    const li = kids(ul!)[0]!;
+    const alert = kids(li)[1]!;
     expect(alert.className).toBe("jx-alert jx-alert-warning");
   });
 
   it("finds an alert inside an ordinary blockquote", () => {
     const [quote] = render("> quoted\n>\n> > [!TIP]\n> > inner\n");
     expect(quote!.tagName).toBe("blockquote");
-    const inner = (kids(quote!) as JxElement[]).find((c) => c.className?.includes("jx-alert"));
+    const inner = kids(quote!).find((c) => c.className?.includes("jx-alert"));
     expect(inner?.attributes?.["data-alert"]).toBe("tip");
   });
 
   it("finds an alert inside another alert", () => {
     const [outer] = render("> [!NOTE]\n> outer\n>\n> > [!WARNING]\n> > inner\n");
-    const inner = (kids(outer!) as JxElement[]).find(
-      (c) => c.attributes?.["data-alert"] === "warning",
-    );
+    const inner = kids(outer!).find((c) => c.attributes?.["data-alert"] === "warning");
     expect(inner).toBeDefined();
   });
 });
@@ -146,7 +159,7 @@ describe("what is left alone", () => {
   it("a type with no meaning stays a blockquote with its text intact", () => {
     const [el] = render("> [!BUG]\n> unknown\n");
     expect(el!.tagName).toBe("blockquote");
-    expect((kids(el!)[0] as JxElement).textContent).toBe("[!BUG]\nunknown");
+    expect(kids(el!)[0]!.textContent).toBe("[!BUG]\nunknown");
   });
 
   it("a blockquote that begins with something other than a paragraph is untouched", () => {
@@ -155,20 +168,18 @@ describe("what is left alone", () => {
   });
 
   it("jxsuite's :::doc-note directives still work beside callouts", () => {
-    const out = processMarkdown(
-      ":::doc-note\nDirective.\n:::\n\n> [!NOTE]\n> Alert.\n",
-      "/x/a.md",
-      {
+    const out = elements(
+      processMarkdown(":::doc-note\nDirective.\n:::\n\n> [!NOTE]\n> Alert.\n", "/x/a.md", {
         directiveOptions: { allowedNames: ["doc-note"] },
-      },
-    ).$children as JxElement[];
+      }).$children,
+    );
     expect(out[0]!.tagName).toBe("doc-note");
     expect(out[1]!.className).toBe("jx-alert jx-alert-note");
   });
 
   it("the component path (what Studio parses) never rewrites alerts", () => {
     const doc = transpileJxMarkdown("> [!NOTE]\n> Body\n");
-    const [quote] = doc.children as JxElement[];
+    const [quote] = elements(doc.children);
     expect(quote!.tagName).toBe("blockquote");
   });
 
@@ -209,7 +220,7 @@ describe("alerts option", () => {
     expect(render("> [!info]\n> a\n")[0]!.tagName).toBe("blockquote");
     const [el] = render("> [!info]\n> a\n", { INFO: true });
     expect(el!.className).toBe("jx-alert jx-alert-info");
-    expect((kids(el!)[0] as JxElement).textContent).toBe("Info");
+    expect(kids(el!)[0]!.textContent).toBe("Info");
   });
 
   it("adds a type the author defines, mapped to an element", () => {
@@ -282,14 +293,14 @@ describe("Windows line endings", () => {
   it("recognises a bare marker followed by a CRLF line end", () => {
     const [el] = render("> [!NOTE]\r\n> crlf body\r\n");
     expect(el!.className).toBe("jx-alert jx-alert-note");
-    const [title, body] = kids(el!) as JxElement[];
+    const [title, body] = kids(el!);
     expect(title).toEqual({ className: "jx-alert-title", tagName: "p", textContent: "Note" });
     expect(body).toEqual({ tagName: "p", textContent: "crlf body" });
   });
 
   it("a titled callout's title has no trailing carriage return", () => {
     const [el] = render("> [!TIP] Titled\r\n> Body text.\r\n");
-    const [title, body] = kids(el!) as JxElement[];
+    const [title, body] = kids(el!);
     expect(title!.textContent).toBe("Titled");
     expect(body!.textContent).toBe("Body text.");
   });
@@ -309,12 +320,14 @@ describe("Windows line endings", () => {
 });
 
 describe("a marker of a type nobody enabled", () => {
-  const heard = (source: string, alerts?: unknown) => {
+  const heard = (source: string, alerts?: JsonValue) => {
     const types: string[] = [];
-    processMarkdown(source, "/x/entry.md", {
-      ...(alerts === undefined ? {} : { alerts }),
-      onUnknownAlert: (type) => types.push(type),
-    });
+    const onUnknownAlert = (type: string) => types.push(type);
+    processMarkdown(
+      source,
+      "/x/entry.md",
+      alerts === undefined ? { onUnknownAlert } : { alerts, onUnknownAlert },
+    );
     return types;
   };
 

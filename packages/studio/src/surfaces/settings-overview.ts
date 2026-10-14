@@ -24,10 +24,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import overviewDoc from "./settings-overview.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("settings-overview", overviewDoc as unknown as JxDocument);
+registerSurface("settings-overview", overviewDoc);
 
 /** Which control a failure belongs under. `"section"` puts it at the top of the section. */
 export type OverviewErrorField = "name" | "description" | "url" | "favicon" | "section";
@@ -74,7 +73,7 @@ export interface OverviewSurfaceHandle {
  * The scope the document reads: one field per binding, because `$switch` is the only conditional a
  * document has and `error.field === "name"` is not a value it can switch on.
  */
-interface OverviewScope extends Record<string, unknown> {
+interface OverviewScope {
   nameValue: string;
   nameError: string;
   nameInvalid: boolean;
@@ -157,7 +156,7 @@ export function mountOverviewSurface(
   values: OverviewValues,
   actions: OverviewActions,
 ): OverviewSurfaceHandle {
-  const scope = reactive<OverviewScope>({
+  const scope: OverviewScope = reactive<OverviewScope>({
     descriptionError: "",
     descriptionInvalid: false,
     descriptionValue: "",
@@ -180,7 +179,7 @@ export function mountOverviewSurface(
     urlError: "",
     urlInvalid: false,
     urlValue: "",
-  }) as OverviewScope;
+  });
   project(scope, values);
 
   container.replaceChildren();
@@ -208,7 +207,7 @@ export function mountOverviewSurface(
       !disposed &&
       (mounted === null
         ? container.childNodes.length === 0
-        : (mounted.root as Node).parentNode === container),
+        : mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

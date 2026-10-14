@@ -9,8 +9,14 @@ import {
   isBlessedGlobal,
   isMutating,
 } from "../src/expression.ts";
-import type { ExpressionNode } from "../src/expression.ts";
+import type { ExpressionTrace } from "../src/expression.ts";
 import type { JxScope } from "../src/types.ts";
+import type {
+  JsonPrimitive,
+  JsonValue,
+  JxExpressionNode,
+  JxExpressionOperand,
+} from "@jxsuite/schema/types";
 
 // Expression.ts has no import-time DOM side effects, so registering after import is safe.
 try {
@@ -88,7 +94,7 @@ describe("evaluateExpression — unary", () => {
 });
 
 describe("evaluateExpression — binary", () => {
-  const cases: [string, unknown, unknown, unknown][] = [
+  const cases: [string, JxExpressionOperand, JxExpressionOperand, JsonPrimitive][] = [
     ["+", 2, 3, 5],
     ["+", "a", "b", "ab"],
     ["-", 7, 2, 5],
@@ -116,9 +122,7 @@ describe("evaluateExpression — binary", () => {
     test(`${JSON.stringify(target)} ${operator} ${JSON.stringify(value)} -> ${JSON.stringify(
       expected,
     )}`, () => {
-      expect(evaluateExpression({ operator, target, value } as ExpressionNode, {}, null)).toBe(
-        expected as never,
-      );
+      expect(evaluateExpression({ operator, target, value }, {}, null)).toBe(expected);
     });
   }
 
@@ -127,7 +131,7 @@ describe("evaluateExpression — binary", () => {
   });
 
   test("nested expression operands", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "*",
       target: { operator: "+", target: 1, value: 2 },
       value: { operator: "-", target: 10, value: 6 },
@@ -186,7 +190,11 @@ describe("evaluateExpression — $ref resolution", () => {
   });
 
   test("event#/path reads from the event object", () => {
-    const event = { target: { value: "hello" } } as unknown as Event;
+    // A dispatched event keeps its target afterwards; only currentTarget is reset.
+    const input = document.createElement("input");
+    input.value = "hello";
+    const event = new Event("input");
+    input.dispatchEvent(event);
     expect(
       evaluateExpression(
         { operator: "+", target: ref("event#/target/value"), value: "!" },
@@ -197,7 +205,7 @@ describe("evaluateExpression — $ref resolution", () => {
   });
 
   test("window#/ and document#/ refs resolve against globals", () => {
-    (globalThis.window as unknown as Record<string, unknown>).__exprTest = { n: 4 };
+    Object.assign(globalThis.window, { __exprTest: { n: 4 } });
     globalThis.document.title = "expr-title";
     expect(
       evaluateExpression(
@@ -260,29 +268,29 @@ describe("evaluateExpression — assignment", () => {
 
   test("= writes a deep state path", () => {
     const state: JxScope = { form: { user: { name: "old" } } };
-    evaluateExpression(
+    void evaluateExpression(
       { operator: "=", target: ref("#/state/form/user/name"), value: "new" },
       state,
       null,
     );
-    expect((state.form as { user: { name: string } }).user.name).toBe("new");
+    expect(state.form).toEqual({ user: { name: "new" } });
   });
 
   test("+= -= *= /= compound assignments", () => {
     const state: JxScope = { n: 10 };
-    evaluateExpression({ operator: "+=", target: ref("#/state/n"), value: 5 }, state, null);
+    void evaluateExpression({ operator: "+=", target: ref("#/state/n"), value: 5 }, state, null);
     expect(state.n).toBe(15);
-    evaluateExpression({ operator: "-=", target: ref("#/state/n"), value: 3 }, state, null);
+    void evaluateExpression({ operator: "-=", target: ref("#/state/n"), value: 3 }, state, null);
     expect(state.n).toBe(12);
-    evaluateExpression({ operator: "*=", target: ref("#/state/n"), value: 2 }, state, null);
+    void evaluateExpression({ operator: "*=", target: ref("#/state/n"), value: 2 }, state, null);
     expect(state.n).toBe(24);
-    evaluateExpression({ operator: "/=", target: ref("#/state/n"), value: 4 }, state, null);
+    void evaluateExpression({ operator: "/=", target: ref("#/state/n"), value: 4 }, state, null);
     expect(state.n).toBe(6);
   });
 
   test("= with rhs resolved from a ref", () => {
     const state: JxScope = { a: 1, b: 99 };
-    evaluateExpression(
+    void evaluateExpression(
       { operator: "=", target: ref("#/state/a"), value: ref("#/state/b") },
       state,
       null,
@@ -292,21 +300,25 @@ describe("evaluateExpression — assignment", () => {
 
   test("= to a bare ref writes the state key directly", () => {
     const state: JxScope = {};
-    evaluateExpression({ operator: "=", target: ref("plain"), value: 1 }, state, null);
+    void evaluateExpression({ operator: "=", target: ref("plain"), value: 1 }, state, null);
     expect(state.plain).toBe(1);
   });
 
   test("= to $map/item deep path mutates the item", () => {
     const item = { done: false };
     const state: JxScope = { $map: { index: 0, item } };
-    evaluateExpression({ operator: "=", target: ref("$map/item/done"), value: true }, state, null);
+    void evaluateExpression(
+      { operator: "=", target: ref("$map/item/done"), value: true },
+      state,
+      null,
+    );
     expect(item.done).toBe(true);
   });
 
   test("= to $map/item nested path navigates before assignment", () => {
     const item = { meta: { tag: "a" } };
     const state: JxScope = { $map: { index: 0, item } };
-    evaluateExpression(
+    void evaluateExpression(
       { operator: "=", target: ref("$map/item/meta/tag"), value: "b" },
       state,
       null,
@@ -315,22 +327,22 @@ describe("evaluateExpression — assignment", () => {
   });
 
   test("= to $map/item without path writes the map context slot", () => {
-    const map: Record<string, unknown> = { index: 0, item: "old" };
+    const map: JxScope = { index: 0, item: "old" };
     const state: JxScope = { $map: map };
-    evaluateExpression({ operator: "=", target: ref("$map/item"), value: "new" }, state, null);
+    void evaluateExpression({ operator: "=", target: ref("$map/item"), value: "new" }, state, null);
     expect(map["$map/item"]).toBe("new");
   });
 
   test("= to a custom $map key deep path mutates the aliased object", () => {
     const row = { id: 1 };
     const state: JxScope = { $map: { row } };
-    evaluateExpression({ operator: "=", target: ref("$map/row/id"), value: 2 }, state, null);
+    void evaluateExpression({ operator: "=", target: ref("$map/row/id"), value: 2 }, state, null);
     expect(row.id).toBe(2);
   });
 
   test("= to $map/index without map context falls back to state", () => {
     const state: JxScope = {};
-    evaluateExpression({ operator: "=", target: ref("$map/index"), value: 3 }, state, null);
+    void evaluateExpression({ operator: "=", target: ref("$map/index"), value: 3 }, state, null);
     expect(state["$map/index"]).toBe(3);
   });
 });
@@ -398,7 +410,7 @@ describe("evaluateExpression — array methods", () => {
 describe("evaluateExpression — aggregates", () => {
   test("reduce sums with $reduce/acc and $map/item", () => {
     const state: JxScope = { nums: [1, 2, 3, 4] };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: 0,
       operator: "reduce",
       target: ref("#/state/nums"),
@@ -409,7 +421,7 @@ describe("evaluateExpression — aggregates", () => {
 
   test("reduce supports named $reduce/<alias> refs and ref initial", () => {
     const state: JxScope = { nums: [5, 6], seed: 100 };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: ref("#/state/seed"),
       operator: "reduce",
       target: ref("#/state/nums"),
@@ -420,7 +432,7 @@ describe("evaluateExpression — aggregates", () => {
 
   test("map transforms items, exposing $map/index in iterCtx", () => {
     const state: JxScope = { nums: [10, 20] };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "map",
       target: ref("#/state/nums"),
       value: { operator: "+", target: ref("$map/item"), value: ref("$map/index") },
@@ -430,7 +442,7 @@ describe("evaluateExpression — aggregates", () => {
 
   test("map over items with deep paths", () => {
     const state: JxScope = { rows: [{ v: 1 }, { v: 2 }] };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "map",
       target: ref("#/state/rows"),
       value: { operator: "*", target: ref("$map/item/v"), value: 10 },
@@ -440,7 +452,7 @@ describe("evaluateExpression — aggregates", () => {
 
   test("filter keeps matching items", () => {
     const state: JxScope = { nums: [1, 2, 3, 4, 5] };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "filter",
       target: ref("#/state/nums"),
       value: { operator: ">", target: ref("$map/item"), value: 2 },
@@ -489,7 +501,7 @@ describe("compileExpression — unary and binary", () => {
   });
 
   test("nested expression operands compile recursively", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "*",
       target: { operator: "+", target: 1, value: 2 },
       value: 3,
@@ -664,7 +676,7 @@ describe("compileExpression — array methods", () => {
 
 describe("compileExpression — aggregates", () => {
   test("reduce compiles with seed", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: 0,
       operator: "reduce",
       target: ref("#/state/nums"),
@@ -676,14 +688,14 @@ describe("compileExpression — aggregates", () => {
   });
 
   test("map and filter compile to arrow callbacks", () => {
-    const mapNode: ExpressionNode = {
+    const mapNode: JxExpressionNode = {
       operator: "map",
       target: ref("#/state/nums"),
       value: { operator: "*", target: ref("$map/item"), value: 2 },
     };
     expect(compileExpression(mapNode)).toBe("state.nums.map((_item, _index) => (_item * 2))");
 
-    const filterNode: ExpressionNode = {
+    const filterNode: JxExpressionNode = {
       operator: "filter",
       target: ref("#/state/nums"),
       value: { operator: ">", target: ref("$map/index"), value: 0 },
@@ -694,7 +706,7 @@ describe("compileExpression — aggregates", () => {
   });
 
   test("compiled aggregates evaluate correctly", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: 0,
       operator: "reduce",
       target: ref("#/state/nums"),
@@ -724,7 +736,7 @@ describe("conditional operators — ?:, ??, switch", () => {
   });
 
   test("?: selects consequent or alternate", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: "keep shopping",
       operator: "?:",
       target: { operator: ">", target: ref("#/state/count"), value: 10 },
@@ -735,7 +747,7 @@ describe("conditional operators — ?:, ??, switch", () => {
   });
 
   test("?: chains else-if by nesting in initial", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: {
         initial: "low",
         operator: "?:",
@@ -765,7 +777,7 @@ describe("conditional operators — ?:, ??, switch", () => {
   });
 
   test("switch matches case by string form of discriminant", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       cases: { error: ref("#/state/message"), loading: "please wait" },
       default: "ready",
       operator: "switch",
@@ -777,7 +789,7 @@ describe("conditional operators — ?:, ??, switch", () => {
   });
 
   test("switch on a numeric discriminant matches its string key", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       cases: { "1": "one", "2": "two" },
       operator: "switch",
       target: ref("#/state/n"),
@@ -786,12 +798,12 @@ describe("conditional operators — ?:, ??, switch", () => {
   });
 
   test("switch without default and no match yields undefined", () => {
-    const node: ExpressionNode = { cases: { a: 1 }, operator: "switch", target: "z" };
+    const node: JxExpressionNode = { cases: { a: 1 }, operator: "switch", target: "z" };
     expect(evaluateExpression(node, {}, null)).toBeUndefined();
   });
 
   test("?: compiles to a ternary; compiled === interpreted", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: "no",
       operator: "?:",
       target: { operator: ">=", target: ref("#/state/n"), value: 5 },
@@ -801,22 +813,22 @@ describe("conditional operators — ?:, ??, switch", () => {
     expect(source).toBe('((state.n >= 5) ? "yes" : "no")');
     const fn = new Function("state", `return ${source}`);
     for (const n of [3, 5, 9]) {
-      expect(fn({ n })).toBe(evaluateExpression(node, { n }, null) as string);
+      expect(fn({ n })).toBe(evaluateExpression(node, { n }, null));
     }
   });
 
   test("?? compiles as a parenthesized binary; compiled === interpreted", () => {
-    const node: ExpressionNode = { operator: "??", target: ref("#/state/a"), value: "d" };
+    const node: JxExpressionNode = { operator: "??", target: ref("#/state/a"), value: "d" };
     const source = compileExpression(node);
     expect(source).toBe('(state.a ?? "d")');
     const fn = new Function("state", `return ${source}`);
     for (const a of [null, undefined, "", 0, "v"]) {
-      expect(fn({ a })).toBe(evaluateExpression(node, { a } as JxScope, null) as string);
+      expect(fn({ a })).toBe(evaluateExpression(node, { a }, null));
     }
   });
 
   test("switch compiles to a bound-discriminant chain; compiled === interpreted", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       cases: { error: ref("#/state/message"), loading: "wait" },
       default: "ready",
       operator: "switch",
@@ -832,7 +844,7 @@ describe("conditional operators — ?:, ??, switch", () => {
       { status: "loading" },
       { status: "anything" },
     ]) {
-      expect(fn(state)).toBe(evaluateExpression(node, state as JxScope, null) as string);
+      expect(fn(state)).toBe(evaluateExpression(node, state, null));
     }
   });
 
@@ -847,17 +859,13 @@ describe("conditional operators — ?:, ??, switch", () => {
 describe("evaluateExpression — trace reporting", () => {
   const collect = () => {
     const seen = new Map<string, unknown>();
-    return {
-      seen,
-      trace: {
-        report: (path: (string | number)[], value: unknown) => seen.set(path.join("/"), value),
-      },
-    };
+    const trace: ExpressionTrace = { report: (path, value) => seen.set(path.join("/"), value) };
+    return { seen, trace };
   };
 
   test("reports the root and operand values", () => {
     const { seen, trace } = collect();
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "+",
       target: ref("#/state/a"),
       value: { operator: "*", target: ref("#/state/b"), value: 2 },
@@ -871,7 +879,7 @@ describe("evaluateExpression — trace reporting", () => {
 
   test("?: reports BOTH branches under trace but returns the taken one", () => {
     const { seen, trace } = collect();
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: ref("#/state/no"),
       operator: "?:",
       target: true,
@@ -884,7 +892,7 @@ describe("evaluateExpression — trace reporting", () => {
 
   test("switch reports every case and the default under trace", () => {
     const { seen, trace } = collect();
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       cases: { a: ref("#/state/a"), b: ref("#/state/b") },
       default: ref("#/state/d"),
       operator: "switch",
@@ -898,7 +906,7 @@ describe("evaluateExpression — trace reporting", () => {
 
   test("aggregates report a first-iteration sample only", () => {
     const { seen, trace } = collect();
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "map",
       target: ref("#/state/nums"),
       value: { operator: "*", target: ref("$map/item"), value: 10 },
@@ -914,7 +922,7 @@ describe("evaluateExpression — trace reporting", () => {
   test("assignment reports the written value; state still mutates", () => {
     const { seen, trace } = collect();
     const state: JxScope = { n: 1 };
-    evaluateExpression(
+    void evaluateExpression(
       { operator: "=", target: ref("#/state/n"), value: 42 },
       state,
       null,
@@ -927,7 +935,7 @@ describe("evaluateExpression — trace reporting", () => {
 
   test("reporting stops beyond MAX_REPORT_DEPTH but evaluation completes", () => {
     const { seen, trace } = collect();
-    let node: ExpressionNode = { operator: "!", target: ref("#/state/flag") };
+    let node: JxExpressionNode = { operator: "!", target: ref("#/state/flag") };
     for (let i = 0; i < 70; i++) {
       node = { operator: "!", target: node };
     }
@@ -949,7 +957,7 @@ describe("evaluateExpression — trace reporting", () => {
         return 1;
       },
     });
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       initial: ref("window#/__traceProbe"),
       operator: "?:",
       target: true,
@@ -979,7 +987,7 @@ describe("call operator — named formulas and blessed globals", () => {
 
   test("calls a named formula def with positional args mapped to parameters", () => {
     const state: JxScope = { lineTotal };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "call",
       target: ref("#/state/lineTotal"),
       value: [3, 4],
@@ -989,7 +997,7 @@ describe("call operator — named formulas and blessed globals", () => {
 
   test("omitted args fall back to CemParameter defaults", () => {
     const state: JxScope = { lineTotal };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "call",
       target: ref("#/state/lineTotal"),
       value: [5],
@@ -1004,7 +1012,7 @@ describe("call operator — named formulas and blessed globals", () => {
         parameters: ["user"],
       },
     };
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "call",
       target: ref("#/state/firstName"),
       value: [{ $ref: "#/state/person" }],
@@ -1016,7 +1024,7 @@ describe("call operator — named formulas and blessed globals", () => {
 
   test("calls a plain scope function with positional args", () => {
     const state: JxScope = { sum: (a: number, b: number) => a + b };
-    const node: ExpressionNode = { operator: "call", target: ref("#/state/sum"), value: [2, 3] };
+    const node: JxExpressionNode = { operator: "call", target: ref("#/state/sum"), value: [2, 3] };
     expect(evaluateExpression(node, state, null)).toBe(5);
   });
 
@@ -1102,7 +1110,7 @@ describe("call operator — named formulas and blessed globals", () => {
       'new Intl.NumberFormat("en-US" ?? (state?.$page?.locale ?? "en-US"), undefined)' +
         ".format(state.total)",
     );
-    const fn = new Function("state", `return ${js}`) as (s: unknown) => string;
+    const fn = new Function("state", `return ${js}`);
     expect(fn({ total: 1234.5 })).toBe("1,234.5");
 
     const dateJs = compileExpression({
@@ -1111,7 +1119,7 @@ describe("call operator — named formulas and blessed globals", () => {
       value: [ref("#/state/when"), "en-US", { dateStyle: "medium", timeZone: "UTC" }],
     });
     expect(dateJs).toContain("new Intl.DateTimeFormat(");
-    const dateFn = new Function("state", `return ${dateJs}`) as (s: unknown) => string;
+    const dateFn = new Function("state", `return ${dateJs}`);
     expect(dateFn({ when: "2026-01-15T12:00:00Z" })).toBe("Jan 15, 2026");
 
     // The relative helper takes its locale in the THIRD slot, after the value and the unit.
@@ -1121,7 +1129,7 @@ describe("call operator — named formulas and blessed globals", () => {
       value: [ref("#/state/delta"), "day", "en-US"],
     });
     expect(relativeJs).toContain("new Intl.RelativeTimeFormat(");
-    const relativeFn = new Function("state", `return ${relativeJs}`) as (s: unknown) => string;
+    const relativeFn = new Function("state", `return ${relativeJs}`);
     expect(relativeFn({ delta: -3 })).toBe("3 days ago");
   });
 
@@ -1168,7 +1176,7 @@ describe("call operator — named formulas and blessed globals", () => {
 
     // And the compiled half agrees with the interpreted one.
     const js = compileExpression(node);
-    const fn = new Function("state", `return ${js}`) as (s: unknown) => string;
+    const fn = new Function("state", `return ${js}`);
     expect(fn({ $page: { locale: "fr-FR" }, total: 1234.5 })).toBe(french);
     expect(fn({ total: 1234.5 })).toBe("1,234.5");
   });
@@ -1185,7 +1193,7 @@ describe("call operator — named formulas and blessed globals", () => {
     );
     expect(js).toContain("s?.$page?.locale");
     expect(js).not.toContain("state?.$page");
-    const fn = new Function("s", `return ${js}`) as (s: unknown) => string;
+    const fn = new Function("s", `return ${js}`);
     expect(fn({ total: 1234.5 })).toBe("1,234.5");
   });
 
@@ -1201,7 +1209,7 @@ describe("call operator — named formulas and blessed globals", () => {
       value: [ref("#/state/total")],
     });
     expect(numberJs).toContain('"en-US"');
-    const numberFn = new Function("state", `return ${numberJs}`) as (s: unknown) => string;
+    const numberFn = new Function("state", `return ${numberJs}`);
     expect(numberFn({ total: 1234.5 })).toBe("1,234.5");
 
     const dateJs = compileExpression({
@@ -1210,13 +1218,13 @@ describe("call operator — named formulas and blessed globals", () => {
       value: [ref("#/state/when")],
     });
     expect(dateJs).toContain('timeZone: "UTC"');
-    const dateFn = new Function("state", `return ${dateJs}`) as (s: unknown) => string;
+    const dateFn = new Function("state", `return ${dateJs}`);
     // 02:00 UTC is the 15th in New York; UTC is what keeps the published HTML the same everywhere.
     expect(dateFn({ when: "2026-01-16T02:00:00Z" })).toBe("1/16/2026");
   });
 
   test("the new Intl helpers evaluate and compile to the same answer", () => {
-    const cases: { node: Parameters<typeof compileExpression>[0]; expected: unknown }[] = [
+    const cases: { node: Parameters<typeof compileExpression>[0]; expected: JsonValue }[] = [
       {
         expected: "a, b, and c",
         node: {
@@ -1250,7 +1258,7 @@ describe("call operator — named formulas and blessed globals", () => {
     for (const { node, expected } of cases) {
       expect(evaluateExpression(node, scope, null)).toEqual(expected);
       const js = compileExpression(node);
-      const fn = new Function("state", `return ${js}`) as (s: unknown) => unknown;
+      const fn = new Function("state", `return ${js}`);
       expect(fn(scope)).toEqual(expected);
     }
   });
@@ -1303,7 +1311,7 @@ describe("call operator — named formulas and blessed globals", () => {
   });
 
   test("compiles blessed global calls; compiled === interpreted", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "call",
       target: ref("window#/Math/max"),
       value: [ref("#/state/a"), ref("#/state/b"), 0],
@@ -1311,7 +1319,7 @@ describe("call operator — named formulas and blessed globals", () => {
     const source = compileExpression(node);
     expect(source).toBe("window.Math.max(state.a, state.b, 0)");
     const fn = new Function("state", `return ${source}`);
-    expect(fn({ a: 3, b: 7 })).toBe(evaluateExpression(node, { a: 3, b: 7 } as JxScope, null));
+    expect(fn({ a: 3, b: 7 })).toBe(evaluateExpression(node, { a: 3, b: 7 }, null));
   });
 
   test("compiles non-blessed global calls as a build error", () => {
@@ -1321,7 +1329,7 @@ describe("call operator — named formulas and blessed globals", () => {
   });
 
   test("compiles named-formula call sites against formulaParams", () => {
-    const node: ExpressionNode = {
+    const node: JxExpressionNode = {
       operator: "call",
       target: ref("#/state/lineTotal"),
       value: [ref("$map/item/price"), 2],
@@ -1331,7 +1339,7 @@ describe("call operator — named formulas and blessed globals", () => {
   });
 
   test("emitted formula fn + call site round-trips to the interpreted result", () => {
-    const bodySource = compileExpression(lineTotal.$expression as ExpressionNode, {
+    const bodySource = compileExpression(lineTotal.$expression, {
       formulaParams: { lineTotal: ["price", "qty"] },
     });
     const decl = `const ${formulaFnName("lineTotal")} = (state, _args) => ${bodySource};`;
@@ -1454,7 +1462,7 @@ describe("pure standard-library method operators (spec §19.4d)", () => {
   });
 
   test("compiled === interpreted, including the null-safe cases", () => {
-    const cases: ExpressionNode[] = [
+    const cases: JxExpressionNode[] = [
       { operator: "toUpperCase", target: ref("#/state/name") },
       { operator: "split", target: ref("#/state/name"), value: " " },
       { operator: "toSorted", target: ref("#/state/scores") },
@@ -1466,7 +1474,7 @@ describe("pure standard-library method operators (spec §19.4d)", () => {
     for (const node of cases) {
       const fn = new Function("state", `return ${compileExpression(node)}`);
       expect(fn(structuredClone(state))).toEqual(
-        evaluateExpression(node, structuredClone(state) as JxScope, null) as never,
+        evaluateExpression(node, structuredClone(state), null),
       );
     }
   });

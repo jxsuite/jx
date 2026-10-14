@@ -39,6 +39,15 @@ function el(path: Path, rect: { top: number; height: number; left?: number; widt
 
 const blockSrc = { type: "block" as const };
 
+/** A node's children as the plain array a drop writes into (never the mapped-array repeater form). */
+function childArray(node: JxMutableNode): (JxMutableNode | string)[] {
+  const { children } = node;
+  if (!Array.isArray(children)) {
+    throw new TypeError("expected the node's children to be a plain array");
+  }
+  return children;
+}
+
 function makeDoc(): JxMutableNode {
   return {
     children: [
@@ -185,10 +194,9 @@ describe("targetPath parity through REAL applyDropInstruction", () => {
     );
 
     // Reorder-below idx 2 → inserted at index 3 (end). Doc had 3 children.
-    const liveDoc = activeTab.value!.doc.document as JxMutableNode;
-    const children = liveDoc.children as JxMutableNode[];
+    const children = childArray(activeTab.value!.doc.document);
     expect(children.length).toBe(4);
-    expect(children[3]!.tagName).toBe("hr");
+    expect(children[3]).toMatchObject({ tagName: "hr" });
   });
 
   test("container make-child targetPath appends the block as the last child", () => {
@@ -208,12 +216,14 @@ describe("targetPath parity through REAL applyDropInstruction", () => {
       out.targetPath,
     );
 
-    const liveDoc = activeTab.value!.doc.document as JxMutableNode;
-    const section = getNodeAtPath(liveDoc, ["children", 0]) as JxMutableNode;
-    const kids = section.children as JxMutableNode[];
+    const section = getNodeAtPath(activeTab.value!.doc.document, ["children", 0]);
+    if (!section) {
+      throw new Error("the fixture's section is missing");
+    }
+    const kids = childArray(section);
     // Section had 1 child (h2) → now 2, the span appended last.
     expect(kids.length).toBe(2);
-    expect(kids[1]!.tagName).toBe("span");
+    expect(kids[1]).toMatchObject({ tagName: "span" });
   });
 });
 

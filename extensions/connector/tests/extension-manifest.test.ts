@@ -10,21 +10,46 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const require = createRequire(import.meta.url);
 
 const MANIFEST_PATH = resolve(import.meta.dir, "../jx-extension.json");
 
-function loadJson(path: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+/** The value at `keys` under `value`, or `undefined` where a step is not an object: `?.` for JSON. */
+function at(value: JsonValue | undefined, ...keys: string[]): JsonValue | undefined {
+  let current = value;
+  for (const key of keys) {
+    current = isJsonObject(current) ? current[key] : undefined;
+  }
+  return current;
 }
 
-const manifest = loadJson(MANIFEST_PATH) as {
-  name: string;
-  title: string;
-  classes: Record<string, string>;
-  schemas: { project: string };
-};
+function objectOf(value: JsonValue | undefined, label: string): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new Error(`${label} is not a JSON object`);
+  }
+  return value;
+}
+
+function stringOf(value: JsonValue | undefined, label: string): string {
+  if (!isString(value)) {
+    throw new Error(`${label} is not a string`);
+  }
+  return value;
+}
+
+function loadJson(path: string): JsonObject {
+  const parsed: JsonValue = JSON.parse(readFileSync(path, "utf8"));
+  return objectOf(parsed, path);
+}
+
+const manifest = loadJson(MANIFEST_PATH);
+const manifestClasses = objectOf(manifest.classes, "manifest.classes");
+const classRefs = Object.entries(manifestClasses).map(([name, ref]) =>
+  stringOf(ref, `manifest.classes.${name}`),
+);
 
 /** An ajv instance with the shipped core + field-union defaults registered. */
 function makeAjv() {
@@ -43,29 +68,24 @@ describe("jx-extension.json manifest", () => {
   });
 
   test("carries the package name and is wired through package.json", () => {
-    const pkg = loadJson(resolve(import.meta.dir, "../package.json")) as {
-      name: string;
-      jx: string;
-      exports: Record<string, string>;
-      files: string[];
-    };
+    const pkg = loadJson(resolve(import.meta.dir, "../package.json"));
     expect(manifest.name).toBe(pkg.name);
     expect(pkg.jx).toBe("./jx-extension.json");
-    expect(pkg.exports["./jx-extension.json"]).toBe("./jx-extension.json");
-    expect(pkg.exports["./worker"]).toBe("./src/worker.ts");
-    expect(pkg.exports["./types"]).toBe("./src/types.ts");
-    expect(pkg.exports["./schemas/project.fragment.schema.json"]).toBeDefined();
+    expect(at(pkg, "exports", "./jx-extension.json")).toBe("./jx-extension.json");
+    expect(at(pkg, "exports", "./worker")).toBe("./src/worker.ts");
+    expect(at(pkg, "exports", "./types")).toBe("./src/types.ts");
+    expect(at(pkg, "exports", "./schemas/project.fragment.schema.json")).toBeDefined();
     expect(pkg.files).toContain("jx-extension.json");
     expect(pkg.files).toContain("schemas/");
     // Every class descriptor is addressable through the exports map.
-    for (const ref of Object.values(manifest.classes)) {
+    for (const ref of classRefs) {
       const exportKey = ref.replace("./src/", "./");
-      expect(pkg.exports[exportKey]).toBe(ref);
+      expect(at(pkg, "exports", exportKey)).toBe(ref);
     }
   });
 
   test("every classes entry points at an existing descriptor", () => {
-    expect(Object.keys(manifest.classes).toSorted()).toEqual([
+    expect(Object.keys(manifestClasses).toSorted()).toEqual([
       "Connections",
       "D1",
       "Data",
@@ -77,7 +97,7 @@ describe("jx-extension.json manifest", () => {
       "TableQuery",
       "TableUpdate",
     ]);
-    for (const ref of Object.values(manifest.classes)) {
+    for (const ref of classRefs) {
       const classPath = resolve(dirname(MANIFEST_PATH), ref);
       expect(existsSync(classPath)).toBe(true);
     }
@@ -85,30 +105,31 @@ describe("jx-extension.json manifest", () => {
 
   test("admission blocks: connector providers, section owners, and the data mount", () => {
     const classDef = (name: string) =>
-      loadJson(resolve(dirname(MANIFEST_PATH), manifest.classes[name]!));
+      loadJson(
+        resolve(
+          dirname(MANIFEST_PATH),
+          stringOf(manifestClasses[name], `manifest.classes.${name}`),
+        ),
+      );
 
     for (const provider of ["D1", "Supabase", "Sqlite"]) {
-      const def = classDef(provider) as { connector: Record<string, unknown> };
-      expect(def.connector.serve).toBe("@jxsuite/connector/worker");
-      expect(typeof def.connector.provider).toBe("string");
-      expect(["sqlite", "postgres"]).toContain(String(def.connector.kind));
+      const connector = at(classDef(provider), "connector");
+      expect(at(connector, "serve")).toBe("@jxsuite/connector/worker");
+      expect(at(connector, "provider")).toBeTypeOf("string");
+      expect(["sqlite", "postgres"]).toContain(String(at(connector, "kind")));
     }
-    expect((classDef("D1") as { connector: { local?: string } }).connector.local).toBe("sqlite");
+    expect(at(classDef("D1"), "connector", "local")).toBe("sqlite");
 
-    const data = classDef("Data") as {
-      project: { key: string; referenceable: boolean };
-      server: { basePath: string; order: number; module: string };
-    };
-    expect(data.project.key).toBe("data");
-    expect(data.project.referenceable).toBe(true);
+    const data = classDef("Data");
+    expect(at(data, "project", "key")).toBe("data");
+    expect(at(data, "project", "referenceable")).toBe(true);
     expect(data.server).toEqual({
       basePath: "/_jx/data",
       module: "@jxsuite/connector/worker",
       order: 20,
     });
 
-    const connections = classDef("Connections") as { project: { key: string } };
-    expect(connections.project.key).toBe("connections");
+    expect(at(classDef("Connections"), "project", "key")).toBe("connections");
 
     for (const stateClass of [
       "TableQuery",
@@ -117,13 +138,11 @@ describe("jx-extension.json manifest", () => {
       "TableUpdate",
       "TableDelete",
     ]) {
-      const def = classDef(stateClass) as {
-        $studio: { stateDefaults: Record<string, unknown> };
-        $defs: { methods: Record<string, { role?: string; timing?: string[] }> };
-      };
-      expect(def.$studio.stateDefaults).toEqual({ timing: "client" });
-      expect(def.$defs.methods.lower!.role).toBe("lower");
-      expect(def.$defs.methods.lower!.timing).toEqual(["compiler"]);
+      const def = classDef(stateClass);
+      const lower = at(def, "$defs", "methods", "lower");
+      expect(at(def, "$studio", "stateDefaults")).toEqual({ timing: "client" });
+      expect(at(lower, "role")).toBe("lower");
+      expect(at(lower, "timing")).toEqual(["compiler"]);
     }
   });
 });
@@ -134,7 +153,7 @@ describe("project fragment", () => {
   test("is a standalone-valid 2020-12 document contributing connections + data", () => {
     expect(fragment.$id).toBe("https://jxsuite.com/schema/ext/connector/project/v1");
     expect(fragment.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
-    const properties = fragment.properties as Record<string, unknown>;
+    const properties = objectOf(fragment.properties, "fragment.properties");
     expect(Object.keys(properties).toSorted()).toEqual(["connections", "data"]);
     expect(() => makeAjv().compile(fragment)).not.toThrow();
   });

@@ -25,7 +25,11 @@ import {
   resolveRegion,
 } from "../src/ui/regions";
 
-import type { JxStatement } from "@jxsuite/schema/types";
+import type { JsonObject, JxStatement } from "@jxsuite/schema/types";
+import type { attachInstruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
+import type { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
+import type { openMenu } from "../src/surfaces/menu";
+import type { StatementEditorOpts } from "../src/panels/statement-editor";
 
 // ─── DnD adapter mock ────────────────────────────────────────────────────────
 /**
@@ -34,18 +38,44 @@ import type { JxStatement } from "@jxsuite/schema/types";
  * registration. The tree-item hitbox and combine stay real.
  */
 
-type AnyRec = Record<string, any>;
+/** What the tree-item hitbox attaches to, and reads an instruction back out of. */
+type DropData = ReturnType<typeof attachInstruction>;
 
-const draggables: AnyRec[] = [];
-const dropTargets: AnyRec[] = [];
-const previewsDisabled: AnyRec[] = [];
+/*
+ * The configs registerStatementsDnD hands the adapter, typed as far as these tests drive them. The
+ * payloads are the subsets the module's callbacks read: getInitialData, onDragStart and onDrop read
+ * nothing, onGenerateDragPreview reads `nativeSetDragImage`, canDrop reads `source.data`, getData
+ * hands `element` and `input` (of which the hitbox reads the pointer position) to the hitbox, and
+ * the drop-target onDrag/onDrop read `self.data` and `source.data`.
+ */
+interface RecordedDraggable {
+  element: HTMLElement;
+  dragHandle?: Element;
+  getInitialData: () => JsonObject;
+  onGenerateDragPreview: (args: Parameters<typeof disableNativeDragPreview>[0]) => void;
+  onDragStart: () => void;
+  onDrop: () => void;
+}
+
+interface RecordedDropTarget {
+  element: HTMLElement;
+  canDrop: (args: { source: { data: JsonObject } }) => boolean;
+  getData: (args: { element: Element; input: { clientX: number; clientY: number } }) => DropData;
+  onDrag: (args: { self: { data: DropData } }) => void;
+  onDragLeave: () => void;
+  onDrop: (args: { self: { data: DropData }; source: { data: JsonObject } }) => void;
+}
+
+const draggables: RecordedDraggable[] = [];
+const dropTargets: RecordedDropTarget[] = [];
+const previewsDisabled: Parameters<typeof disableNativeDragPreview>[0][] = [];
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: (cfg: AnyRec) => {
+  draggable: (cfg: RecordedDraggable) => {
     draggables.push(cfg);
     return () => {};
   },
-  dropTargetForElements: (cfg: AnyRec) => {
+  dropTargetForElements: (cfg: RecordedDropTarget) => {
     dropTargets.push(cfg);
     return () => {};
   },
@@ -54,7 +84,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 // The real helper is inert under the harness (its 1x1 image is only created when `window` exists
 // At npm-module evaluation time, which precedes happy-dom registration) — record calls instead.
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview", () => ({
-  disableNativeDragPreview: (args: AnyRec) => {
+  disableNativeDragPreview: (args: Parameters<typeof disableNativeDragPreview>[0]) => {
     previewsDisabled.push(args);
   },
 }));
@@ -65,9 +95,9 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-
  * back, which a document's skip-an-equal-write makes impossible. The menu is a settled surface, so
  * the assertions here are about what it is OFFERED and what a pick commits.
  */
-const menus: AnyRec[] = [];
+const menus: Parameters<typeof openMenu>[0][] = [];
 void mock.module("../src/surfaces/menu", () => ({
-  openMenu: (options: AnyRec) => {
+  openMenu: (options: Parameters<typeof openMenu>[0]) => {
     menus.push(options);
     return { close: () => {} };
   },
@@ -78,7 +108,7 @@ const { flattenStatements, laneListAt, mountStatementEditor, statementKind, with
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_OPTS = {
+const DEFAULT_OPTS: StatementEditorOpts = {
   allowEventRef: true,
   region: NAVIGATOR_STATEMENTS_REGION,
   stateDefs: ["count", "items"],
@@ -111,13 +141,13 @@ interface Mounted {
  */
 async function mount(
   statements: JxStatement[],
-  opts: Record<string, unknown> = {},
+  opts: Partial<StatementEditorOpts> = {},
 ): Promise<Mounted> {
   const changes: JxStatement[][] = [];
   const host = document.createElement("div");
   document.body.append(host);
   hosts.push(host);
-  const options = { ...DEFAULT_OPTS, ...opts } as never;
+  const options: StatementEditorOpts = { ...DEFAULT_OPTS, ...opts };
   const push = (next: JxStatement[]) => changes.push(next);
   mountStatementEditor(host, statements, push, options);
   await flush(6);
@@ -131,33 +161,52 @@ async function mount(
   };
 }
 
-const cards = (host: HTMLElement) => [...host.querySelectorAll('[part="card"]')] as HTMLElement[];
-const lanes = (host: HTMLElement) => [...host.querySelectorAll('[part="lane"]')] as HTMLElement[];
-const adds = (host: HTMLElement) =>
-  [...host.querySelectorAll('[part="add-statement"]')] as HTMLElement[];
+const cards = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>('[part="card"]')];
+const lanes = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>('[part="lane"]')];
+const adds = (host: HTMLElement) => [
+  ...host.querySelectorAll<HTMLElement>('[part="add-statement"]'),
+];
 
 /** Press a kit control the way a reader does: the click lands on the button inside it. */
 function press(el: Element | null): void {
   pointer(el!.querySelector('[part="control"]') ?? el!, "click");
 }
 
+/** The native control inside a kit element, failing the test by selector when there is none. */
+function controlIn(el: Element | null, selector: string): HTMLInputElement | HTMLSelectElement {
+  const control = el?.querySelector<HTMLInputElement | HTMLSelectElement>(selector);
+  if (!control) {
+    throw new Error(`no control matches ${selector}`);
+  }
+  return control;
+}
+
+/** The text or checkbox input inside a kit element. */
+function inputIn(el: Element | null): HTMLInputElement {
+  const input = el?.querySelector<HTMLInputElement>('[part="input"]');
+  if (!input) {
+    throw new Error('no [part="input"] inside the control');
+  }
+  return input;
+}
+
 /** Type into a control: it reports, and the event bubbles to the element that owns the handler. */
 function type(el: Element | null, value: string): void {
-  const input = el!.querySelector('[part="input"]') as HTMLInputElement;
+  const input = inputIn(el);
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /** Commit a control: the value is set and `change` fires, as a blur or a pick does. */
 function commit(el: Element | null, value: string): void {
-  const input = el!.querySelector('[part="input"], [part="control"]') as HTMLInputElement;
+  const input = controlIn(el, '[part="input"], [part="control"]');
   input.value = value;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /** Toggle a checkbox the way a reader does. */
 function check(el: Element | null, next: boolean): void {
-  const input = el!.querySelector('[part="input"]') as HTMLInputElement;
+  const input = inputIn(el);
   input.checked = next;
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -165,7 +214,11 @@ function check(el: Element | null, next: boolean): void {
 /** Open a lane's add menu and pick one of its rows. */
 function addStatement(m: Mounted, laneIndex: number, kind: string): void {
   press(adds(m.host)[laneIndex]!);
-  menus.at(-1)!.run(kind);
+  const run = menus.at(-1)?.run;
+  if (!run) {
+    throw new Error("pressing Add statement opened no menu with a run handler");
+  }
+  run(kind);
 }
 
 // ─── statementKind ───────────────────────────────────────────────────────────
@@ -230,7 +283,11 @@ describe("lane addressing", () => {
     const next = withLaneList(tree, [1, "then"], []);
     expect(tree).toEqual(before);
     expect(next).not.toBe(tree);
-    expect((next[1] as { then: JxStatement[] }).then).toEqual([]);
+    expect(next[1]).toEqual({
+      else: [{ dispatchEvent: "no" }],
+      if: { $ref: "#/state/count" },
+      then: [],
+    });
     // Untouched siblings keep their identity
     expect(next[0]).toBe(tree[0]);
     expect(next[2]).toBe(tree[2]);
@@ -238,9 +295,11 @@ describe("lane addressing", () => {
 
   test("withLaneList replaces a case lane without disturbing other keys", () => {
     const next = withLaneList(tree, [2, "cases", "a"], [{ dispatchEvent: "z" }]);
-    const sw = next[2] as { cases: Record<string, JxStatement[]>; default: JxStatement[] };
-    expect(sw.cases.a).toEqual([{ dispatchEvent: "z" }]);
-    expect(sw.default).toEqual([{ dispatchEvent: "d" }]);
+    expect(next[2]).toEqual({
+      $switch: { $ref: "#/state/count" },
+      cases: { a: [{ dispatchEvent: "z" }] },
+      default: [{ dispatchEvent: "d" }],
+    });
   });
 
   test("withLaneList with the empty path returns the replacement list", () => {
@@ -261,7 +320,7 @@ describe("flattenStatements", () => {
     const { rows } = flattenStatements(
       [{ else: [], if: { $ref: "#/state/count" }, then: [{ dispatchEvent: "x" }] }],
       () => {},
-      DEFAULT_OPTS as never,
+      DEFAULT_OPTS,
     );
     expect(rows.map((r) => `${r.kind}:${r.label}`)).toEqual([
       "card:If / Else",
@@ -278,7 +337,7 @@ describe("flattenStatements", () => {
     const { rows } = flattenStatements(
       [{ if: { $ref: "#/state/count" }, then: [{ dispatchEvent: "x" }] }],
       () => {},
-      DEFAULT_OPTS as never,
+      DEFAULT_OPTS,
     );
     expect(rows[0]!.indent).toBe("0");
     expect(rows[1]!.indent).toBe("calc(var(--jx-space-3) * 1)");
@@ -289,7 +348,7 @@ describe("flattenStatements", () => {
     const { rows } = flattenStatements(
       [{ if: { $ref: "#/state/count" }, then: [{ dispatchEvent: "x" }, { dispatchEvent: "y" }] }],
       () => {},
-      DEFAULT_OPTS as never,
+      DEFAULT_OPTS,
     );
     const keys = rows.filter((r) => r.kind === "card").map((r) => r.key);
     expect(keys).toEqual(["[]#0", '[0,"then"]#0', '[0,"then"]#1']);
@@ -299,7 +358,7 @@ describe("flattenStatements", () => {
     const { rows } = flattenStatements(
       [{ $switch: { $ref: "#/state/count" }, cases: { a: [], b: [] } }],
       () => {},
-      DEFAULT_OPTS as never,
+      DEFAULT_OPTS,
     );
     expect(rows.filter((r) => r.kind === "lane").map((r) => r.label)).toEqual([
       "a",
@@ -314,11 +373,7 @@ describe("flattenStatements", () => {
   });
 
   test("a Then lane is neither editable nor removable; an Else lane is removable", () => {
-    const { rows } = flattenStatements(
-      [{ else: [], if: null, then: [] }],
-      () => {},
-      DEFAULT_OPTS as never,
-    );
+    const { rows } = flattenStatements([{ else: [], if: null, then: [] }], () => {}, DEFAULT_OPTS);
     const [then, otherwise] = rows.filter((r) => r.kind === "lane");
     expect(then).toMatchObject({ editable: false, label: "Then", removable: false });
     expect(otherwise).toMatchObject({ editable: false, label: "Else", removable: true });
@@ -367,12 +422,12 @@ describe("the document draws the four kinds", () => {
 
   test("an expression card's operand is an ISLAND filled with the expression editor", async () => {
     const m = await mount([{ operator: "=", target: { $ref: "#/state/count" }, value: 1 }]);
-    const host = cards(m.host)[0]!.querySelector('[part="control-host"]') as HTMLElement;
+    const host = cards(m.host)[0]!.querySelector<HTMLElement>('[part="control-host"]');
     expect(host).toBeTruthy();
     // The document renders the host node and NOTHING inside it; the flow fills it
     // (studio-ui-guidelines.md §9.4).
-    expect(host.dataset.field).toBe("[]#0::expression");
-    expect(host.querySelector('[part="expression"]')).toBeTruthy();
+    expect(host?.dataset.field).toBe("[]#0::expression");
+    expect(host?.querySelector('[part="expression"]')).toBeTruthy();
   });
 
   test("if card renders the test operand, a Then lane, and an Add else action", async () => {
@@ -394,8 +449,7 @@ describe("the document draws the four kinds", () => {
       { $switch: { $ref: "#/state/count" }, cases: { a: [{ dispatchEvent: "x" }] } },
     ]);
     expect(m.host.querySelector('[data-prop="$switch"] [part="control-host"]')).toBeTruthy();
-    const key = m.host.querySelector('[part="lane-key"] [part="input"]') as HTMLInputElement;
-    expect(key.value).toBe("a");
+    expect(inputIn(m.host.querySelector('[part="lane-key"]')).value).toBe("a");
     expect(lanes(m.host).map((l) => l.textContent!.trim())).toContain("Default");
     expect(m.host.querySelector('[data-action="act:[]#0:case"]')).toBeTruthy();
     // The case's nested statement is a sibling card, addressed at its own lane.
@@ -404,11 +458,11 @@ describe("the document draws the four kinds", () => {
 
   test("dispatch card renders a name field, a detail operand and the two init flags", async () => {
     const m = await mount([{ dispatchEvent: "saved" }]);
-    const name = m.host.querySelector('[data-prop="dispatchEvent"] [part="text"]') as HTMLElement;
-    expect(name.tagName.toLowerCase()).toBe("jx-textfield");
-    expect((name.querySelector('[part="input"]') as HTMLInputElement).value).toBe("saved");
+    const name = m.host.querySelector('[data-prop="dispatchEvent"] [part="text"]');
+    expect(name?.tagName.toLowerCase()).toBe("jx-textfield");
+    expect(inputIn(name).value).toBe("saved");
     expect(m.host.querySelector('[data-prop="detail"] [part="control-host"]')).toBeTruthy();
-    const flags = [...m.host.querySelectorAll('[part="flag"]')] as HTMLElement[];
+    const flags = [...m.host.querySelectorAll<HTMLElement>('[part="flag"]')];
     expect(flags.map((f) => f.dataset.flag)).toEqual([
       "[]#0::eventInit::bubbles",
       "[]#0::eventInit::composed",
@@ -417,9 +471,9 @@ describe("the document draws the four kinds", () => {
 
   test("every field row is a labelled kit field carrying its own data-prop", async () => {
     const m = await mount([{ dispatchEvent: "x" }]);
-    const row = m.host.querySelector('[data-prop="dispatchEvent"]') as HTMLElement;
-    expect(row.tagName.toLowerCase()).toBe("jx-field");
-    expect(row.querySelector('[part="label"]')!.textContent).toBe("Event");
+    const row = m.host.querySelector('[data-prop="dispatchEvent"]');
+    expect(row?.tagName.toLowerCase()).toBe("jx-field");
+    expect(row?.querySelector('[part="label"]')?.textContent).toBe("Event");
   });
 
   test("the whole surface emits no class at all — structure and style are the document's", async () => {
@@ -446,14 +500,8 @@ describe("add statement", () => {
     press(adds(m.host)[0]!);
     expect(menus).toHaveLength(1);
     expect(menus[0]!.label).toBe("Add statement");
-    expect(menus[0]!.rows.map((r: AnyRec) => r.id)).toEqual([
-      "set",
-      "call",
-      "if",
-      "switch",
-      "dispatch",
-    ]);
-    expect(menus[0]!.rows.map((r: AnyRec) => r.title)).toEqual([
+    expect(menus[0]!.rows.map((r) => r.id)).toEqual(["set", "call", "if", "switch", "dispatch"]);
+    expect(menus[0]!.rows.map((r) => r.title)).toEqual([
       "Set state",
       "Call function",
       "If / Else",
@@ -462,17 +510,18 @@ describe("add statement", () => {
     ]);
   });
 
-  test.each([
+  const seeds: [string, JxStatement][] = [
     ["set", { operator: "=", target: { $ref: "" }, value: null }],
     ["call", { operator: "call", target: { $ref: "" }, value: [] }],
     ["if", { if: { operator: "===", target: { $ref: "" }, value: null }, then: [] }],
     ["switch", { $switch: { $ref: "" }, cases: {} }],
     ["dispatch", { dispatchEvent: "" }],
-  ])("appends the %s seed (spec.md §20 shape)", async (kind, seed) => {
+  ];
+  test.each(seeds)("appends the %s seed (spec.md §20 shape)", async (kind, seed) => {
     const existing: JxStatement[] = [{ dispatchEvent: "first" }];
     const m = await mount(existing);
-    addStatement(m, 0, kind as string);
-    expect(m.changes[0]).toEqual([{ dispatchEvent: "first" }, seed as JxStatement]);
+    addStatement(m, 0, kind);
+    expect(m.changes[0]).toEqual([{ dispatchEvent: "first" }, seed]);
     // Immutable: the input list was not appended to
     expect(existing.length).toBe(1);
   });
@@ -491,7 +540,8 @@ describe("add statement", () => {
     expect(m.changes[0]).toEqual([
       { if: { $ref: "#/state/count" }, then: [{ dispatchEvent: "" }] },
     ]);
-    expect((stmt as { then: JxStatement[] }).then.length).toBe(0);
+    // The mounted statement itself was not appended to.
+    expect(stmt).toEqual({ if: { $ref: "#/state/count" }, then: [] });
   });
 });
 
@@ -527,7 +577,10 @@ describe("statement editing", () => {
     expect(m.changes[0]).toEqual([
       { $switch: { $ref: "#/state/count" }, cases: { b: [], z: [{ dispatchEvent: "x" }] } },
     ]);
-    expect(Object.keys((m.changes[0]![0] as { cases: object }).cases)).toEqual(["z", "b"]);
+    // `toEqual` cannot see key order, and the rename's point is that "z" keeps "a"'s place.
+    const renamed = m.changes[0]?.[0];
+    const caseOrder = renamed && "cases" in renamed ? Object.keys(renamed.cases) : [];
+    expect(caseOrder).toEqual(["z", "b"]);
   });
 
   test("add case generates a fresh key; case remove deletes it", async () => {
@@ -628,7 +681,7 @@ describe("drag reorder", () => {
   const dropFor = (el: Element) => dropTargets.findLast((d) => d.element === el)!;
 
   /** Real tree-item hitbox data for a drag hovering the row at `clientY` (row rect 0–32px). */
-  function dropDataFor(row: HTMLElement, clientY: number): AnyRec {
+  function dropDataFor(row: HTMLElement, clientY: number): DropData {
     stubRect(row, { height: 32, top: 0 });
     return dropFor(row).getData({ element: row, input: { clientX: 10, clientY } });
   }
@@ -681,7 +734,7 @@ describe("drag reorder", () => {
     const m = await mountDnD(three);
     const row = cards(m.host)[1]!;
     const above = dropDataFor(row, 4);
-    expect(above.index).toBe(1);
+    expect(above["index"]).toBe(1);
     expect(extractInstruction(above)?.type).toBe("reorder-above");
     expect(extractInstruction(dropDataFor(row, 30))?.type).toBe("reorder-below");
     // The middle zone would be make-child — blocked for statement rows.
@@ -729,11 +782,7 @@ describe("drag reorder", () => {
       { dispatchEvent: "a" },
     ]);
     // The mounted list itself was never mutated.
-    expect(three.map((s) => (s as { dispatchEvent: string }).dispatchEvent)).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    expect(three).toEqual([{ dispatchEvent: "a" }, { dispatchEvent: "b" }, { dispatchEvent: "c" }]);
   });
 
   test("no-op drops: blocked instruction, same row, and a same-position reorder", async () => {
@@ -769,10 +818,10 @@ describe("drag reorder", () => {
     expect(m.changes[0]).toEqual([
       { if: { $ref: "#/state/count" }, then: [{ dispatchEvent: "y" }, { dispatchEvent: "x" }] },
     ]);
-    expect((stmt as { then: JxStatement[] }).then).toEqual([
-      { dispatchEvent: "x" },
-      { dispatchEvent: "y" },
-    ]);
+    expect(stmt).toEqual({
+      if: { $ref: "#/state/count" },
+      then: [{ dispatchEvent: "x" }, { dispatchEvent: "y" }],
+    });
   });
 });
 
@@ -800,7 +849,7 @@ describe("the region id names the HOST, not the control", () => {
       host,
       [{ operator: "=", target: { $ref: "#/state/count" }, value: 1 }],
       () => {},
-      { ...DEFAULT_OPTS, region } as never,
+      { ...DEFAULT_OPTS, region },
     );
     await flush(6);
     return host;

@@ -12,7 +12,9 @@
  */
 
 import * as Y from "yjs";
-import type { JxPath } from "@jxsuite/schema/types";
+import { cloneValue } from "@jxsuite/schema/doc-ops";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxPath } from "@jxsuite/schema/types";
 import type { JxDocOp } from "./ops.ts";
 import {
   applyTextEdit,
@@ -23,8 +25,10 @@ import {
   toYChild,
   toYChildren,
   toYObject,
+  yChildToJson,
   yValueToJson,
 } from "./schema.ts";
+import type { YStructureValue } from "./schema.ts";
 
 /** Origin of Y transactions produced by mirroring the local tab's ops. */
 export const LOCAL_ORIGIN = "jx-local";
@@ -41,7 +45,7 @@ export class CollabPathError extends Error {
   }
 }
 
-function requireNode(doc: Y.Doc, path: JxPath): Y.Map<unknown> {
+function requireNode(doc: Y.Doc, path: JxPath): Y.Map<YStructureValue> {
   const target = resolveYPath(doc, path);
   if (!(target instanceof Y.Map)) {
     throw new CollabPathError(path);
@@ -49,28 +53,18 @@ function requireNode(doc: Y.Doc, path: JxPath): Y.Map<unknown> {
   return target;
 }
 
-function childrenOf(doc: Y.Doc, parentPath: JxPath, create: boolean): Y.Array<unknown> {
+function childrenOf(doc: Y.Doc, parentPath: JxPath, create: boolean): Y.Array<YStructureValue> {
   const parent = requireNode(doc, parentPath);
   const children = parent.get("children");
   if (children instanceof Y.Array) {
     return children;
   }
   if (create && children === undefined) {
-    const fresh = new Y.Array<unknown>();
+    const fresh = new Y.Array<YStructureValue>();
     parent.set("children", fresh);
     return fresh;
   }
   throw new CollabPathError([...parentPath, "children"]);
-}
-
-/** JSON round-trip clone (matches the ops applier's normalization). */
-function cloneJson<T>(value: T): T {
-  // oxlint-disable-next-line unicorn/prefer-structured-clone -- JSON normalization is the point
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -87,13 +81,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * change — string text becoming a `$ref`, an object becoming a scalar — falls back to replacement,
  * because then there is no shared structure left to preserve.
  */
-function setNodeKey(node: Y.Map<unknown>, key: string, value: unknown): void {
+function setNodeKey(node: Y.Map<YStructureValue>, key: string, value: JxDocumentValue): void {
   const existing = node.get(key);
   if (key === "children" && Array.isArray(value)) {
     node.set(key, toYChildren(value));
     return;
   }
-  if (TEXT_KEYS.has(key) && typeof value === "string") {
+  if (TEXT_KEYS.has(key) && isString(value)) {
     if (existing instanceof Y.Text) {
       applyTextEdit(existing, value);
     } else {
@@ -101,7 +95,7 @@ function setNodeKey(node: Y.Map<unknown>, key: string, value: unknown): void {
     }
     return;
   }
-  if (GRANULAR_OBJECT_KEYS.has(key) && isPlainObject(value)) {
+  if (GRANULAR_OBJECT_KEYS.has(key) && isJsonObject(value)) {
     if (existing instanceof Y.Map) {
       mergeYObject(existing, value);
     } else {
@@ -109,10 +103,12 @@ function setNodeKey(node: Y.Map<unknown>, key: string, value: unknown): void {
     }
     return;
   }
-  node.set(key, cloneJson(value));
+  node.set(key, cloneValue(value));
 }
 
 function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
+  // Read before the switch: an op from outside may carry a kind the union does not name.
+  const { op: kind } = op;
   switch (op.op) {
     case "set-key": {
       const node = requireNode(doc, op.path);
@@ -148,7 +144,7 @@ function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
       // Whole element and discard a peer's concurrent characters, which is the same clobber
       // `setNodeKey` avoids for `textContent` — bare-string children are the other half of prose.
       const existing = children.get(op.index);
-      if (existing instanceof Y.Text && typeof op.node === "string") {
+      if (existing instanceof Y.Text && isString(op.node)) {
         applyTextEdit(existing, op.node);
         return;
       }
@@ -176,7 +172,7 @@ function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
       return;
     }
     default: {
-      throw new Error(`unknown-doc-op:${(op as JxDocOp).op}`);
+      throw new Error(`unknown-doc-op:${kind}`);
     }
   }
 }
@@ -186,7 +182,7 @@ function applyOneOp(doc: Y.Doc, op: JxDocOp): void {
  * when any op's path does not resolve — the transaction still commits the ops applied before the
  * failure, so callers catching it must reconcile by diff (which corrects any partial state).
  */
-export function applyDocOpsToY(doc: Y.Doc, ops: readonly JxDocOp[], origin: unknown): void {
+export function applyDocOpsToY(doc: Y.Doc, ops: readonly JxDocOp[], origin: string): void {
   doc.transact(() => {
     for (const op of ops) {
       applyOneOp(doc, op);
@@ -209,7 +205,7 @@ export function applyDocOpsToY(doc: Y.Doc, ops: readonly JxDocOp[], origin: unkn
 function granularOwner(path: JxPath): { nodePath: JxPath; key: string } | null {
   for (let i = 0; i < path.length; i++) {
     const segment = path[i];
-    if (typeof segment !== "string") {
+    if (!isString(segment)) {
       continue;
     }
     if (GRANULAR_OBJECT_KEYS.has(segment)) {
@@ -222,8 +218,17 @@ function granularOwner(path: JxPath): { nodePath: JxPath; key: string } | null {
   return null;
 }
 
+/**
+ * Whether a remote children-array item has a shape this package writes: a node Y.Map or a Y.Text
+ * (`toYChild`), or a plain string from a peer still on schema version 1. Anything else came from an
+ * off-contract peer, so the inbound fast path bails and the caller reconciles by diffing.
+ */
+function isChildItem(item: unknown): item is Y.Text | Y.Map<YStructureValue> | string {
+  return item instanceof Y.Text || item instanceof Y.Map || isString(item);
+}
+
 function isStructurePath(segments: readonly (string | number)[]): segments is JxPath {
-  return segments.every((seg) => typeof seg === "string" || typeof seg === "number");
+  return segments.every((seg) => isString(seg) || isNumber(seg));
 }
 
 /**
@@ -232,7 +237,9 @@ function isStructurePath(segments: readonly (string | number)[]): segments is Jx
  * overlapping events, more than one array event, or non-contiguous delete runs — and the caller
  * must reconcile by diffing instead.
  */
-export function yEventsToDocOps(events: readonly Y.YEvent<never>[]): JxDocOp[] | null {
+export function yEventsToDocOps(
+  events: readonly Y.YEvent<Y.AbstractType<unknown>>[],
+): JxDocOp[] | null {
   if (events.length === 0) {
     return [];
   }
@@ -261,7 +268,7 @@ export function yEventsToDocOps(events: readonly Y.YEvent<never>[]): JxDocOp[] |
 
   const ops: JxDocOp[] = [];
   for (const event of events) {
-    const path = event.path as JxPath;
+    const { path } = event;
     /*
      * A remote edit inside a granular container (a `Y.Text` for prose, a nested `Y.Map` for
      * style/attributes/$props) reports its event at the CONTAINER's path, not the node's. Studio's op
@@ -271,7 +278,7 @@ export function yEventsToDocOps(events: readonly Y.YEvent<never>[]): JxDocOp[] |
      */
     const granular = granularOwner(path);
     if (granular) {
-      const { doc } = event.target as { doc?: Y.Doc | null };
+      const { doc } = event.target;
       if (!doc) {
         return null;
       }
@@ -290,10 +297,10 @@ export function yEventsToDocOps(events: readonly Y.YEvent<never>[]): JxDocOp[] |
     if (event instanceof Y.YTextEvent) {
       // A bare-string child: the text IS the child, so it round-trips as a child replacement.
       const index = path.at(-1);
-      if (path.at(-2) === "children" && typeof index === "number") {
+      if (path.at(-2) === "children" && isNumber(index)) {
         ops.push({
           index,
-          node: (event.target as Y.Text).toString(),
+          node: event.target.toString(),
           op: "set-child",
           parentPath: path.slice(0, -2),
         });
@@ -302,7 +309,10 @@ export function yEventsToDocOps(events: readonly Y.YEvent<never>[]): JxDocOp[] |
       return null;
     }
     if (event instanceof Y.YMapEvent) {
-      const target = event.target as Y.Map<unknown>;
+      /* SAFETY: these events come from observing the structure map, and a map event that reached
+         here is not inside a granular container (handled above), so its target is a node Y.Map,
+         which the writers in ./schema.ts fill only with YStructureValue entries. */
+      const target = event.target as Y.Map<YStructureValue>;
       for (const [key, change] of event.changes.keys) {
         if (change.action === "delete") {
           ops.push({ key, op: "set-key", path });
@@ -327,7 +337,10 @@ export function yEventsToDocOps(events: readonly Y.YEvent<never>[]): JxDocOp[] |
         } else if (delta.insert !== undefined) {
           const items = Array.isArray(delta.insert) ? delta.insert : [delta.insert];
           for (const item of items) {
-            ops.push({ index, node: yValueToJson(item), op: "insert-child", parentPath });
+            if (!isChildItem(item)) {
+              return null;
+            }
+            ops.push({ index, node: yChildToJson(item), op: "insert-child", parentPath });
             index += 1;
           }
         }

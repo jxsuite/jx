@@ -11,21 +11,11 @@
  */
 import { flush } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { STORAGE_KEY } from "../src/github/github-auth-status";
 import { notifyModule } from "./notify-mock";
 import { REGION_ATTR } from "../src/ui/regions";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { NotifyCall } from "./notify-mock";
-
-if (globalThis.localStorage === undefined) {
-  const store = new Map();
-  globalThis.localStorage = {
-    clear: () => store.clear(),
-    getItem: (k: string) => store.get(k) ?? null,
-    removeItem: (k: string) => store.delete(k),
-    setItem: (k: string, v: string) => store.set(k, v),
-  } as any;
-}
-
-const STORAGE_KEY = "jx_github_token";
 
 /** The dialog layer, standing in for `#layer-dialog` without a shell to hang it off. */
 const dialogLayer = document.createElement("div");
@@ -64,7 +54,7 @@ function installFetch() {
 }
 
 const jsonResp =
-  (json: unknown, ok = true): FetchImpl =>
+  (json: JsonObject, ok = true): FetchImpl =>
   async () => ({ json: async () => json, ok, status: ok ? 200 : 500 });
 
 /** Device-code response with a controllable poll interval (seconds). */
@@ -116,7 +106,7 @@ async function openedDialog(): Promise<HTMLElement> {
 
 /** One part's text, trimmed the way a reader would read it. */
 function partText(dialog: HTMLElement, part: string): string {
-  return dialog.querySelector(`[part="${part}"]`)?.textContent?.trim() ?? "";
+  return dialog.querySelector(`[part="${part}"]`)?.textContent.trim() ?? "";
 }
 
 beforeEach(() => {
@@ -272,7 +262,7 @@ describe("the device-flow dialog", () => {
       deviceResp(0),
       ...Array.from(
         { length: MAX_POLL_FAILURES },
-        () => (() => Promise.reject(new TypeError("Failed to fetch"))) as FetchImpl,
+        (): FetchImpl => () => Promise.reject(new TypeError("Failed to fetch")),
       ),
     ];
     expect(await authenticateGithub()).toBeNull();

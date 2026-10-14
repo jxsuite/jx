@@ -10,6 +10,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { buildSite } from "@jxsuite/compiler/site";
 
 void mock.module("electrobun/main", () => ({
   BrowserWindow: class {},
@@ -17,8 +18,9 @@ void mock.module("electrobun/main", () => ({
   Utils: { openFileDialog: async () => [] },
 }));
 
-const compilerBuild = mock(async (..._args: unknown[]) => ({
-  errors: [] as string[],
+/** The compiler's site build, typed as the real one so the result the session reads cannot drift. */
+const compilerBuild = mock<typeof buildSite>(async () => ({
+  errors: [],
   files: 7,
   routes: 3,
 }));
@@ -32,7 +34,7 @@ void mock.module("@jxsuite/server/site-preview", () => ({ startSitePreview }));
 
 const { createProjectSession } = await import("../src/project-session");
 
-function withProject(): { root: string; session: ReturnType<typeof createProjectSession> } {
+function withProject() {
   const root = mkdtempSync(join(tmpdir(), "jx-build-site-"));
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, "project.json"), JSON.stringify({ name: "p", version: "1.0.0" }));

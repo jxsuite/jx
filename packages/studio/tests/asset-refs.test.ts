@@ -27,9 +27,28 @@ import { withVersion } from "../src/canvas/asset-resolve";
 import { beginListing, noteListing, resetAssetVersions } from "../src/files/asset-versions";
 import { BUILD_LANES } from "@jxsuite/schema/asset-paths";
 import type { AssetContext } from "../src/canvas/asset-refs";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import { POSTS } from "./shared-fixtures";
 
-const POSTS = { posts: { format: "Markdown", source: "./content/posts/" } };
 const MOUNT = { dir: "content/posts", urlPrefix: "/content/posts" };
+
+/*
+ * Version values arrive unchecked: the map is parsed from a listing and structured-cloned into the
+ * canvas frame, and nothing validates its values on the way. These two present such values under
+ * the types the resolvers declare, so a case can pin the runtime refusal.
+ */
+
+/** A version value as an unchecked map can hold it, under `withVersion`'s declared type. */
+function uncheckedVersion(value: JsonValue | (() => void)): string {
+  // SAFETY: withVersion re-checks with isString before it reads the value, which is what is tested.
+  return value as string;
+}
+
+/** A version map as a listing can deliver it, under `AssetContext.versions`'s declared type. */
+function uncheckedVersions(value: JsonObject): Readonly<Record<string, string>> {
+  // SAFETY: ownVersion re-checks each own value with isString before it reads it as a version.
+  return value as Readonly<Record<string, string>>;
+}
 
 /** The context the canvas builds for an entry in POSTS, in whichever space. */
 function ctxFor(documentDir: string, over: Partial<AssetContext> = {}): AssetContext {
@@ -177,13 +196,17 @@ describe("previewAssetSrc", () => {
 
   test("a repo-space value carries the version a listing vouched for", async () => {
     const { installMockPlatform } = await import("./harness");
-    const { happyDOM } = globalThis as unknown as { happyDOM?: { setURL: (u: string) => void } };
+    /* SAFETY: the harness registers happy-dom's GlobalRegistrator, which copies the window's members
+       onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+    const { happyDOM } = globalThis as typeof globalThis & {
+      happyDOM?: { setURL: (u: string) => void };
+    };
     happyDOM?.setURL("https://studio.example.com/");
     installMockPlatform({
       assetSpace: "repo",
       canvasUrl: "https://studio.example.com/canvas.html",
       documentBaseUrl: "https://studio.example.com/p/o/r/main/raw/",
-    } as never);
+    });
     resetWorkspaceWithTab(undefined, { documentPath: "content/posts/hello.md" });
     resetAssetVersions();
     noteListing(
@@ -269,7 +292,7 @@ describe("withVersion", () => {
      authored one naming anything else gets the ordinary revalidating response. */
   test("with no version, the URL comes back exactly, an authored v included", () => {
     const oldBlob = "c".repeat(40);
-    const none = ({} as Record<string, string>)["a.png"];
+    const none = new Map<string, string>().get("a.png");
     expect(withVersion(`https://h/raw/a.png?v=${oldBlob}`, none)).toBe(
       `https://h/raw/a.png?v=${oldBlob}`,
     );
@@ -280,8 +303,13 @@ describe("withVersion", () => {
   });
 
   test("a version that is not a non-empty string is no version", () => {
-    expect(withVersion("https://h/raw/a.png", (() => {}) as never)).toBe("https://h/raw/a.png");
-    expect(withVersion("https://h/raw/a.png", {} as never)).toBe("https://h/raw/a.png");
+    expect(
+      withVersion(
+        "https://h/raw/a.png",
+        uncheckedVersion(() => {}),
+      ),
+    ).toBe("https://h/raw/a.png");
+    expect(withVersion("https://h/raw/a.png", uncheckedVersion({}))).toBe("https://h/raw/a.png");
   });
 
   test("encodes the opaque version", () => {
@@ -439,10 +467,15 @@ describe("resolveAssetRef", () => {
         resolveAssetRef("constructor", { ...root, versions: structuredClone(root.versions) }),
       ).toBe(`${base}constructor`);
       // An inherited STRING is still not this map's to vouch for.
-      const inherited = { ...root, versions: Object.create({ "b.png": "inherited" }) as never };
+      /* SAFETY: Object.create returns `any`; this object has no own keys and a prototype holding one
+         string, so every key it reads is a string or undefined, as a Record<string, string> reads. */
+      const inheritedMap = Object.create({ "b.png": "inherited" }) as Readonly<
+        Record<string, string>
+      >;
+      const inherited = { ...root, versions: inheritedMap };
       expect(resolveAssetRef("b.png", inherited)).toBe(`${base}b.png`);
       // And a non-string own value is no version either.
-      const odd = { ...root, versions: { "c.png": 7 } as never };
+      const odd = { ...root, versions: uncheckedVersions({ "c.png": 7 }) };
       expect(resolveAssetRef("c.png", odd)).toBe(`${base}c.png`);
     });
 

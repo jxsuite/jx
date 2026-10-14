@@ -16,6 +16,8 @@
  * @docs framework/site/content-collections
  */
 
+import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
+import type { ContentFieldValue, ContentLoaderEntry, JsonValue } from "@jxsuite/schema/types";
 import { readField } from "./content-rules.ts";
 
 // ─── slugs ──────────────────────────────────────────────────────────────────
@@ -56,7 +58,18 @@ export function slugifyPath(text: string): string {
 
 // ─── templates ──────────────────────────────────────────────────────────────
 
-const TRANSFORMS: Record<string, (value: string) => string> = {
+/**
+ * The transforms a placeholder may name, looked up by the name a template spells. The four built-in
+ * transforms are always present; any other name is checked with `in` before it is applied.
+ */
+interface RouteTransforms extends Readonly<Record<string, (value: string) => string>> {
+  readonly lower: (value: string) => string;
+  readonly raw: (value: string) => string;
+  readonly slug: (value: string) => string;
+  readonly upper: (value: string) => string;
+}
+
+const TRANSFORMS: RouteTransforms = {
   lower: (value) => value.toLowerCase(),
   raw: (value) => value,
   slug: slugifyPath,
@@ -85,8 +98,8 @@ export interface RouteSpec {
  * `project.json` fails the build on the first entry rather than producing routes with the
  * placeholder text in them.
  */
-export function parseRouteTemplate(source: unknown, where: string): RouteTemplate {
-  if (typeof source !== "string" || !source.startsWith("/")) {
+export function parseRouteTemplate(source: JsonValue, where: string): RouteTemplate {
+  if (!isString(source) || !source.startsWith("/")) {
     throw new TypeError(
       `${where}: a route template is a site-absolute path starting with "/", got ${JSON.stringify(source)}`,
     );
@@ -94,7 +107,7 @@ export function parseRouteTemplate(source: unknown, where: string): RouteTemplat
   const tokens: Token[] = [];
   let last = 0;
   for (const match of source.matchAll(/\{([^{}]*)\}/g)) {
-    const index = match.index ?? 0;
+    const { index } = match;
     if (index > last) {
       tokens.push({ literal: source.slice(last, index) });
     }
@@ -128,8 +141,8 @@ export function parseRouteTemplate(source: unknown, where: string): RouteTemplat
  * entry template would route the READMEs and leave every other document without a URL.
  */
 export function parseRouteConfig(
-  route: unknown,
-  indexRoute: unknown,
+  route: JsonValue | undefined,
+  indexRoute: JsonValue | undefined,
   typeName: string,
 ): RouteSpec | null {
   const where = `Content type "${typeName}"`;
@@ -152,7 +165,7 @@ export interface RouteSubject {
   /** The entry id (after `idField`). */
   id: string;
   /** Frontmatter / entry data. */
-  data: Record<string, unknown>;
+  data: ContentLoaderEntry["data"];
   /** The source file, relative to the source root, `/`-separated, with its extension. */
   path: string;
 }
@@ -178,11 +191,11 @@ export function directoryOf(path: string): string {
 }
 
 /** A field value as route text, or null when it cannot name a path segment. */
-function textOf(value: unknown): string | null {
-  if (typeof value === "string") {
+function textOf(value: ContentFieldValue | undefined): string | null {
+  if (isString(value)) {
     return value.trim() === "" ? null : value;
   }
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (isNumber(value) || isBoolean(value)) {
     return String(value);
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) {

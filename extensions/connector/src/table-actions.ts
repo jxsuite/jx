@@ -8,7 +8,9 @@
  * an equivalent real function.
  */
 
+import { isFunction, isString } from "@jxsuite/schema/guards";
 import { jsObjectSource, jsValueSource, resolveIdValue } from "./table-shared.ts";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type { LowerContext } from "./table-state.ts";
 
 export type ActionMethod = "POST" | "PATCH" | "DELETE";
@@ -16,12 +18,22 @@ export type ActionMethod = "POST" | "PATCH" | "DELETE";
 /** The def shape all three action classes accept. */
 export interface ActionDef {
   table?: string;
-  id?: unknown;
+  id?: JsonValue;
   /** Literal payload columns merged over the submitting form's FormData. */
-  values?: Record<string, unknown>;
+  values?: JsonObject;
   _document?: { route?: { _pathParams?: Record<string, string> } };
-  [key: string]: unknown;
 }
+
+/**
+ * The live state scope an action handler runs against (interpreter path): `${...}` values are
+ * evaluated against it as `state`, and a successful write bumps its `_v` read-after-write counter.
+ */
+export interface ActionScope {
+  _v?: number;
+}
+
+/** A `values` entry compiled to a template function over the live state scope. */
+type ValueTemplate = (state: ActionScope) => string;
 
 /** Build the /_jx/data URL JS-source expression for a lowered action. */
 function urlSource(method: ActionMethod, def: ActionDef, context: LowerContext): string {
@@ -39,13 +51,13 @@ function urlSource(method: ActionMethod, def: ActionDef, context: LowerContext):
  * @param {ActionMethod} method
  * @param {ActionDef} def
  * @param {LowerContext} [context]
- * @returns {Record<string, unknown>} A core Function def with an `event` parameter
+ * @returns {JsonObject} A core Function def with an `event` parameter
  */
 export function lowerActionDef(
   method: ActionMethod,
   def: ActionDef,
   context: LowerContext = {},
-): Record<string, unknown> {
+): JsonObject {
   const url = urlSource(method, def, context);
   const lines: string[] = [
     "if (event && typeof event.preventDefault === 'function') event.preventDefault();",
@@ -82,17 +94,14 @@ export function lowerActionDef(
 }
 
 /** Evaluate a `${...}`-bearing values object against a live scope (interpreter path). */
-function evaluateValues(
-  values: Record<string, unknown> | undefined,
-  scope: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+function evaluateValues(values: JsonObject | undefined, scope: ActionScope): JsonObject {
+  const out: JsonObject = {};
   for (const [key, value] of Object.entries(values ?? {})) {
-    if (typeof value === "string" && value.includes("${")) {
+    if (isString(value) && value.includes("${")) {
       try {
-        const fn = new Function("state", `return \`${value}\`;`) as (
-          state: Record<string, unknown>,
-        ) => unknown;
+        /* SAFETY: the body is a single `return` of a template literal, so the compiled function
+           takes the state scope as its one parameter and always returns a string. */
+        const fn = new Function("state", `return \`${value}\`;`) as ValueTemplate;
         out[key] = fn(scope);
       } catch {
         out[key] = value;
@@ -109,12 +118,12 @@ function evaluateValues(
  *
  * @param {ActionMethod} method
  * @param {ActionDef} config
- * @returns {(scope: Record<string, unknown>, event?: Event) => Promise<boolean>} Resolves true when
- *   the write succeeded (and `scope._v` was bumped)
+ * @returns {(scope: ActionScope, event?: Event) => Promise<boolean>} Resolves true when the write
+ *   succeeded (and `scope._v` was bumped)
  */
 export function makeActionHandler(method: ActionMethod, config: ActionDef) {
-  return async (scope: Record<string, unknown>, event?: Event): Promise<boolean> => {
-    if (event && typeof event.preventDefault === "function") {
+  return async (scope: ActionScope, event?: Event): Promise<boolean> => {
+    if (event && isFunction(event.preventDefault)) {
       event.preventDefault();
     }
     const table = config.table ?? "";
@@ -129,10 +138,15 @@ export function makeActionHandler(method: ActionMethod, config: ActionDef) {
     if (method === "DELETE") {
       init = { method };
     } else {
+      /* SAFETY: the handler is bound as an element's event listener (onsubmit/onclick), so the
+         event's target is the HTML element that dispatched it; `form` is read optionally because
+         only form-associated controls carry it. */
       const target = event?.target as
         | (HTMLElement & { form?: HTMLFormElement | null })
         | null
         | undefined;
+      /* SAFETY: Element.tagName reads "FORM" exactly for the HTML <form> element (HTML-namespace
+         tag names are reported uppercase), which is an HTMLFormElement. */
       form =
         target && target.tagName === "FORM" ? (target as HTMLFormElement) : (target?.form ?? null);
       const formData = form ? Object.fromEntries(new FormData(form)) : {};
@@ -146,10 +160,10 @@ export function makeActionHandler(method: ActionMethod, config: ActionDef) {
 
     const response = await fetch(url, init);
     if (response.ok) {
-      if (method === "POST" && form && typeof form.reset === "function") {
+      if (method === "POST" && form && isFunction(form.reset)) {
         form.reset();
       }
-      scope._v = ((scope._v as number) || 0) + 1;
+      scope._v = (scope._v || 0) + 1;
     }
     return response.ok;
   };

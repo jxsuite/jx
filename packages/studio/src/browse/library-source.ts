@@ -93,7 +93,7 @@ export function createLibrarySource(dirs?: () => readonly string[]): LibrarySour
   let scan: LibraryScan | null = null;
   let inFlight: Promise<LibraryScan> | null = null;
 
-  const projectDirs = dirs ?? (() => (projectState?.projectDirs ?? []) as readonly string[]);
+  const projectDirs = dirs ?? (() => projectState?.projectDirs ?? []);
 
   async function ensureScan(): Promise<LibraryScan> {
     if (scan) {

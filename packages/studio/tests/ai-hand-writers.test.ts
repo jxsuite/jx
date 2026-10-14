@@ -47,8 +47,8 @@ const HAND_WRITERS = new Map<string, string>([
   ],
 ]);
 
-/** The shapes that make a module a writer. Each is a regex over its source text. */
-const WRITER_SHAPES: readonly [string, RegExp][] = [
+/** The patterns that make a module a writer. Each is a regex over its source text. */
+const WRITER_PATTERNS: readonly [string, RegExp][] = [
   [
     "a transact mutator import",
     /import\s*\{[^}]*\b(?:transactDoc|mutate[A-Z]\w*)\b[^}]*\}\s*from\s*"\.\.\/tabs\/transact"/,
@@ -57,8 +57,8 @@ const WRITER_SHAPES: readonly [string, RegExp][] = [
   ["adoptProjectConfig", /\badoptProjectConfig\(/],
 ];
 
-function writerShapesOf(text: string): string[] {
-  return WRITER_SHAPES.filter(([, shape]) => shape.test(text)).map(([label]) => label);
+function writerPatternsIn(text: string): string[] {
+  return WRITER_PATTERNS.flatMap(([label, pattern]) => (pattern.test(text) ? [label] : []));
 }
 
 function aiServiceFiles(): string[] {
@@ -72,11 +72,11 @@ describe("the hand-writers table", () => {
     const writers: string[] = [];
     for (const name of aiServiceFiles()) {
       const text = readFileSync(join(SERVICES, name), "utf8");
-      const shapes = writerShapesOf(text);
-      if (shapes.length > 0) {
+      const matched = writerPatternsIn(text);
+      if (matched.length > 0) {
         writers.push(name);
       }
-      expect([name, shapes, HAND_WRITERS.has(name)]).toEqual([name, shapes, shapes.length > 0]);
+      expect([name, matched, HAND_WRITERS.has(name)]).toEqual([name, matched, matched.length > 0]);
     }
     // The table only ratchets: a row for a file that no longer writes is a stale reason.
     expect(writers.toSorted()).toEqual([...HAND_WRITERS.keys()].toSorted());
@@ -92,7 +92,7 @@ describe("the hand-writers table", () => {
 
   test("the bridge itself imports no writer: its only write is registry.run", () => {
     const text = readFileSync(join(SERVICES, "ai-command-tools.ts"), "utf8");
-    expect(writerShapesOf(text)).toEqual([]);
+    expect(writerPatternsIn(text)).toEqual([]);
     expect(text).not.toContain("mutateRemoveNode");
     // The one door to a write it holds is the registry's.
     expect(text).toContain("registry.run(");

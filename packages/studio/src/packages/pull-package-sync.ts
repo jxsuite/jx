@@ -10,11 +10,13 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { showConfirmDialog } from "../ui/layers";
 import { showProgressModal } from "../ui/progress-modal";
 import { notify } from "../services/notify";
-import { applyJxsuiteUpdate, checkJxsuiteUpdate } from "./jxsuite-update";
+import { JXSUITE_PREFIX, applyJxsuiteUpdate, checkJxsuiteUpdate } from "./jxsuite-update";
 import type { GitStatusResult } from "../types";
 
 const PKG_PATHS = ["package.json", "bun.lock", "bun.lockb"];
@@ -29,20 +31,16 @@ const UNTRACKED_STATUSES = new Set(["??", "U"]);
 /** Above this many dirty files, skip the per-file upstream comparison and leave the error as-is. */
 const MAX_CONFLICT_SCAN = 25;
 
-const JXSUITE_PREFIX = "@jxsuite/";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function sortKeys(value: unknown): unknown {
+/** A copy of a JSON value with every object's keys in sorted order, so equal data prints equal. */
+function sortKeys(value: JsonValue): JsonValue {
   if (Array.isArray(value)) {
     return value.map((entry) => sortKeys(entry));
   }
-  if (isRecord(value)) {
-    const out: Record<string, unknown> = {};
-    for (const key of Object.keys(value).toSorted()) {
-      out[key] = sortKeys(value[key]);
+  if (isJsonObject(value)) {
+    const out: JsonObject = {};
+    // Keys are unique, so the comparator never sees a tie; `<` is the default sort's code-unit order.
+    for (const [key, entry] of Object.entries(value).toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+      out[key] = sortKeys(entry);
     }
     return out;
   }
@@ -50,11 +48,11 @@ function sortKeys(value: unknown): unknown {
 }
 
 /** Replace every @jxsuite/* version in dependencies/devDependencies so they compare equal. */
-function maskJxsuiteVersions(pkg: Record<string, unknown>): Record<string, unknown> {
+function maskJxsuiteVersions(pkg: JsonObject): JsonObject {
   const out = { ...pkg };
   for (const section of ["dependencies", "devDependencies"]) {
     const deps = out[section];
-    if (!isRecord(deps)) {
+    if (!isJsonObject(deps)) {
       continue;
     }
     const masked = { ...deps };
@@ -88,7 +86,7 @@ export function isAutomatedPackageDiff(
   } catch {
     return false;
   }
-  if (!isRecord(head) || !isRecord(working)) {
+  if (!isJsonObject(head) || !isJsonObject(working)) {
     return false;
   }
   return (
@@ -251,20 +249,20 @@ async function discardPullAndSync(plan: PackagePullPlan): Promise<void> {
   await syncPackagesAfterPull();
 }
 
-async function recoverAfterFailedPull(original: unknown): Promise<void> {
+async function recoverAfterFailedPull(cause: unknown): Promise<void> {
   const platform = getPlatform();
   let status: GitStatusResult;
   try {
     status = await platform.gitStatus();
   } catch {
-    throw original;
+    throw cause;
   }
   if (!(status.behind > 0)) {
-    throw original;
+    throw cause;
   }
   const plan = await planPackageDiscard(status);
   if (planIsEmpty(plan) || (await otherFilesConflict(status))) {
-    throw original;
+    throw cause;
   }
   if (!plan.automated) {
     const confirmed = await showConfirmDialog(
@@ -273,7 +271,7 @@ async function recoverAfterFailedPull(original: unknown): Promise<void> {
       { confirmLabel: "Discard and pull", destructive: true },
     );
     if (!confirmed) {
-      throw original;
+      throw cause;
     }
   }
   await discardPullAndSync(plan);
@@ -346,13 +344,16 @@ export async function pullWithPackageSync(): Promise<void> {
  */
 export async function autoSyncProjectOnOpen(): Promise<void> {
   const platform = getPlatform();
-  let status: GitStatusResult;
   try {
-    status = await platform.gitStatus();
+    /* The status is host wire data. A host may leave `remotes` out (as `deploy-checklist.ts` and
+       `git-panel.ts` also allow), which reads as "nothing to sync"; a host that sends no status at
+       all throws on the first read and is caught below the same way, so a malformed status never
+       aborts the project open that awaits this. */
+    const status = await platform.gitStatus();
+    if (!status.isRepo || !Array.isArray(status.remotes) || status.remotes.length === 0) {
+      return;
+    }
   } catch {
-    return;
-  }
-  if (!status?.isRepo || (status.remotes?.length ?? 0) === 0) {
     return;
   }
   notify.info("Syncing project…", { key: "project.sync", source: "Source Control" });

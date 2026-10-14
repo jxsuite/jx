@@ -16,6 +16,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { buildSite } from "../src/site/site-build";
 
 const TMP = resolve(import.meta.dir, "__test-nav-docs__");
@@ -33,15 +35,11 @@ const ARIA_CURRENT =
   "${(state.$page.url.endsWith('/') ? state.$page.url.slice(0, -1) : state.$page.url)" +
   " === '/docs/' + item.path ? 'page' : 'false'}";
 
-/** @param {string} relPath @param {string | object} content */
-function writeFile(relPath: string, content: string | object) {
+/** Writes `content` verbatim when it is a string, as pretty-printed JSON otherwise. */
+function writeFile(relPath: string, content: JsonValue) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 /** One `<a class="nav-link">`, the leaf of both the section and the group maps. */
@@ -188,12 +186,14 @@ describe("nav-manifest sidebar via layout ContentEntry + nested mapped arrays", 
   });
 
   it("marks only the current page with aria-current=page", () => {
-    expect(guideHtml().match(/aria-current="page"/g)).toHaveLength(1);
-    expect(guideHtml()).toContain('aria-current="page" class="nav-link" href="/docs/guide/"');
-    expect(canvasHtml()).toContain(
+    const guide = guideHtml();
+    const canvas = canvasHtml();
+    expect(guide.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(guide).toContain('aria-current="page" class="nav-link" href="/docs/guide/"');
+    expect(canvas).toContain(
       'aria-current="page" class="nav-link" href="/docs/guide/studio/canvas/"',
     );
-    expect(canvasHtml()).toContain('aria-current="false" class="nav-link" href="/docs/guide/"');
+    expect(canvas).toContain('aria-current="false" class="nav-link" href="/docs/guide/"');
   });
 });
 

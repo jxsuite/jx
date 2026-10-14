@@ -76,12 +76,6 @@ export function endsInHardBreak(line: string): boolean {
   return (/\\*$/.exec(line)?.[0].length ?? 0) % 2 === 1;
 }
 
-/** Minimal structural surface of the unified processor — the ESM-only types read as `any`. */
-interface MarkdownProcessor {
-  use: (plugin: unknown, ...options: unknown[]) => MarkdownProcessor;
-  parse: (source: string) => MdNode;
-}
-
 interface MdNode {
   type: string;
   children?: MdNode[];
@@ -91,15 +85,16 @@ interface MdNode {
   };
 }
 
-const processor = (unified as unknown as () => MarkdownProcessor)()
+const processor = unified()
   .use(remarkParse)
   .use(remarkFrontmatter, ["yaml"])
   .use(remarkGfm)
   .use(remarkDirective);
 
-export interface UnwrapResult {
+/** A Markdown source after a rewrite pass, with the lines the pass touched. */
+export interface MarkdownRewrite {
   text: string;
-  /** 1-based lines that moved, for a `--check` report that points somewhere. */
+  /** 1-based lines that changed, for a `--check` report that points somewhere. */
   lines: number[];
 }
 
@@ -167,9 +162,9 @@ function soloDirectiveLines(node: MdNode, lines: string[], found = new Set<numbe
  * Join every hard-wrapped paragraph in one document onto a single line.
  *
  * @param {string} source
- * @returns {UnwrapResult}
+ * @returns {MarkdownRewrite}
  */
-export function unwrapProse(source: string): UnwrapResult {
+export function unwrapProse(source: string): MarkdownRewrite {
   const lines = source.split("\n");
   /** 1-based lines to fold into the line above. */
   const join = new Set<number>();

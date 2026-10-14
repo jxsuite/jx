@@ -45,6 +45,8 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+
 /** The reactive scope a popover-shaped document hands its handlers. */
 export interface PopoverState {
   open?: boolean;
@@ -56,7 +58,6 @@ export interface PopoverState {
   x?: number;
   y?: number;
   floor?: number;
-  [key: string]: unknown;
 }
 
 /**
@@ -66,28 +67,23 @@ export interface PopoverState {
  * stub it either way.
  */
 export function supportsAnchorPositioning(): boolean {
-  const css = (globalThis as { CSS?: { supports?: (property: string, value: string) => boolean } })
-    .CSS;
-  return typeof css?.supports === "function" && css.supports("position-area", "block-end");
+  return (
+    typeof CSS !== "undefined" &&
+    isFunction(CSS.supports) &&
+    CSS.supports("position-area", "block-end")
+  );
 }
 
-/**
- * The popover API as this module calls it.
- *
- * Declared here rather than reached for through the DOM types because an engine may not have it at
- * all — the kit publishes to site authors, and every call site guards on `typeof`.
- */
-interface PopoverApi {
-  showPopover?: (options?: { source?: HTMLElement }) => void;
-  hidePopover?: () => void;
-}
+/** A `jx-popover` element, with the `x` and `y` coordinates its document declares as props. */
+export type PlacedPopover = HTMLElement & { x: number; y: number };
 
-/** An element that may be a popover: every method the behaviour calls is optional. */
-export type PopoverElement = HTMLElement;
-
-/** The popover API of an element, whether or not this engine implements it. */
-function apiOf(host: HTMLElement): PopoverApi {
-  return host as unknown as PopoverApi;
+/** Run `callback` in the next frame, or now on an engine with no frames to wait for. */
+function inFrame(callback: () => void): void {
+  if (isFunction(globalThis.requestAnimationFrame)) {
+    requestAnimationFrame(callback);
+  } else {
+    callback();
+  }
 }
 
 /**
@@ -126,13 +122,12 @@ export function anchorOf(host: HTMLElement): Element | null {
  * @param host The panel element.
  * @param anchor The element the panel was opened from, if any.
  */
-export function openAt(host: PopoverElement, anchor?: Element | null): void {
-  const api = apiOf(host);
-  if (typeof api.showPopover !== "function") {
+export function openAt(host: HTMLElement, anchor?: Element | null): void {
+  if (!isFunction(host.showPopover)) {
     return;
   }
   if (!anchor) {
-    api.showPopover();
+    host.showPopover();
     return;
   }
   /* BEFORE the call, because `beforetoggle` fires inside it and {@link onBeforeToggle} reads the
@@ -141,7 +136,7 @@ export function openAt(host: PopoverElement, anchor?: Element | null): void {
      open. */
   anchors.set(host, anchor);
   try {
-    show(api, anchor);
+    show(host, anchor);
   } catch (error) {
     anchors.delete(host);
     throw error;
@@ -157,16 +152,16 @@ export function openAt(host: PopoverElement, anchor?: Element | null): void {
  * that one bare throws the same error a second time, out of `openAt` and into whatever bound the
  * handler. So it is re-raised from the FIRST call, unswallowed.
  */
-function show(api: PopoverApi, anchor: Element): void {
+function show(host: HTMLElement, anchor: Element): void {
   try {
-    /* `ShowPopoverOptions.source` is typed `HTMLElement`, but any element can be a
+    /* SAFETY: `ShowPopoverOptions.source` is typed `HTMLElement`, but any element can be a
        trigger and the platform only reads it as a focus origin. */
-    api.showPopover?.({ source: anchor as HTMLElement });
+    host.showPopover({ source: anchor as HTMLElement });
   } catch (error) {
     if (!(error instanceof TypeError)) {
       throw error;
     }
-    api.showPopover?.();
+    host.showPopover();
   }
 }
 
@@ -175,10 +170,9 @@ function show(api: PopoverApi, anchor: Element): void {
  *
  * @param host The panel element.
  */
-export function close(host: PopoverElement): void {
-  const api = apiOf(host);
-  if (typeof api.hidePopover === "function") {
-    api.hidePopover();
+export function close(host: HTMLElement): void {
+  if (isFunction(host.hidePopover)) {
+    host.hidePopover();
   }
 }
 
@@ -210,7 +204,7 @@ function invokerOf(host: HTMLElement): Element | null {
  * {@link openAt} recorded, then the invoker that names the panel.
  */
 function toggleSourceOf(host: HTMLElement, event: Event): Element | null {
-  const { source } = event as Event & { source?: unknown };
+  const source = "source" in event ? event.source : null;
   if (source instanceof Element) {
     return source;
   }
@@ -250,16 +244,12 @@ export function measureAnchor(
  */
 function clearWhenStill(state: PopoverState, host: HTMLElement): void {
   const settle = (): void => {
-    if (typeof host.getAnimations === "function" && host.getAnimations().length > 0) {
+    if (isFunction(host.getAnimations) && host.getAnimations().length > 0) {
       return;
     }
     state.settling = false;
   };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(settle);
-  } else {
-    settle();
-  }
+  inFrame(settle);
 }
 
 /**
@@ -278,7 +268,7 @@ export function onBeforeToggle(state: PopoverState, event: Event): void {
   if (!host) {
     return;
   }
-  const opening = (event as { newState?: string }).newState === "open";
+  const opening = "newState" in event && event.newState === "open";
   const floor = Number(state.floor ?? 0);
   state.anchored = opening && floor <= 0 && toggleSourceOf(host, event) !== null;
 }
@@ -297,7 +287,7 @@ export function onToggle(state: PopoverState, event: Event): void {
   if (!host) {
     return;
   }
-  const opening = (event as { newState?: string }).newState === "open";
+  const opening = "newState" in event && event.newState === "open";
   state.open = opening;
   state.settling = true;
   if (opening) {
@@ -391,9 +381,5 @@ export function clampIntoViewport(
       state.y = Math.max(margin, Math.round(floor - box.height - blockOffsetOf(panel)));
     }
   };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(measure);
-  } else {
-    measure();
-  }
+  inFrame(measure);
 }

@@ -8,18 +8,19 @@
 import { describe, expect, test } from "bun:test";
 import { READ_FILES_MAX_PATHS } from "@jxsuite/protocol";
 import type { ReadFilesResult } from "@jxsuite/protocol";
+import type { JsonValue } from "@jxsuite/schema/types";
 import { createReadBatcher } from "../src/platforms/read-batcher";
 import type { BatchAnswer, ReadBatcherOptions } from "../src/platforms/read-batcher";
 
 interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
-  reject: (error: unknown) => void;
+  reject: (reason: Error) => void;
 }
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
+  let reject!: (reason: Error) => void;
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
@@ -37,6 +38,20 @@ async function settle(): Promise<void> {
 /** Answer every requested path with content derived from its name. */
 function answerAll(paths: string[]): ReadFilesResult {
   return { files: paths.map((path) => [path, { content: `<${path}>` }]), omitted: [] };
+}
+
+/**
+ * A batch answer that breaks the `BatchAnswer` contract, as a real one can.
+ *
+ * `fetchBatch` is an injected seam, and the one adapter that fills it (`cloud.ts`) checks only that
+ * a 200 is an object with a `files` array, so `settleAnswer` must survive whatever JSON arrives in
+ * that slot.
+ */
+function unchecked(body: JsonValue | undefined): BatchAnswer {
+  /* SAFETY: deliberately a lie. Every caller passes a shape the batcher checks for at run time
+     (a non-object answer, a missing `omitted`, a row that is not a tuple), and the assertion that
+     follows is that its readers fall back to single reads instead of trusting the shape. */
+  return body as BatchAnswer;
 }
 
 interface Harness {
@@ -133,7 +148,7 @@ describe("coalescing", () => {
     });
     const read = h.read("a.json");
     h.flush();
-    expect(String(await read.catch((error: unknown) => error))).toBe("Error: No such file: a.json");
+    expect(await read.catch(String)).toBe("Error: No such file: a.json");
   });
 
   test("defaults to queueMicrotask, so a Promise.all needs no help to coalesce", async () => {
@@ -351,7 +366,7 @@ describe("partial answers", () => {
     h.flush();
     const [okOutcome, ...rest] = await Promise.allSettled([ok, ...gone, binary]);
     expect(okOutcome).toEqual({ status: "fulfilled", value: "{}" });
-    expect(rest.map((o) => String((o as PromiseRejectedResult).reason))).toEqual([
+    expect(rest.map((o) => (o.status === "rejected" ? String(o.reason) : o.status))).toEqual([
       "Error: No such file",
       "Error: No such file",
       "Error: Binary file",
@@ -371,14 +386,14 @@ describe("partial answers", () => {
     const a = h.read("a");
     const b = h.read("b");
     h.flush();
-    expect(String(await a.catch((error: unknown) => error))).toBe("Error: Failed to read file: a");
+    expect(await a.catch(String)).toBe("Error: Failed to read file: a");
     expect(await b).toBe("<b>");
   });
 
   test("a malformed answer never hangs a reader: unaccounted paths are read singly", async () => {
     // `{}` at 200 — no files, no omitted. Rows naming paths nobody asked for are ignored.
     const h = harness({
-      batch: async () => ({ files: [["stranger", { content: "?" }]] }) as unknown as BatchAnswer,
+      batch: async () => unchecked({ files: [["stranger", { content: "?" }]] }),
     });
     const reads = [h.read("a"), h.read("b")];
     h.flush();
@@ -390,7 +405,7 @@ describe("partial answers", () => {
     const h = harness({
       batch: async (paths) => {
         calls += 1;
-        return calls === 1 ? (null as never) : answerAll(paths);
+        return calls === 1 ? unchecked(null) : answerAll(paths);
       },
     });
     const reads = [h.read("a"), h.read("b")];
@@ -403,7 +418,7 @@ describe("partial answers", () => {
 
   test("any non-object answer — a string, a number — is read singly rather than trusted", async () => {
     for (const answer of ["surprise", 42, undefined]) {
-      const h = harness({ batch: async () => answer as never });
+      const h = harness({ batch: async () => unchecked(answer) });
       const reads = [h.read("a"), h.read("b")];
       h.flush();
       expect(await Promise.all(reads)).toEqual(["single:a", "single:b"]);
@@ -414,12 +429,13 @@ describe("partial answers", () => {
     /* A getter that throws stands in for any bug inside settleAnswer: nothing it had not already
        settled may be left pending, and nothing it HAD settled is read a second time. */
     const h = harness({
-      batch: async () =>
-        ({
-          get files(): never {
-            throw new Error("boom");
-          },
-        }) as unknown as BatchAnswer,
+      // `files` is read first, so its throw lands before `omitted` is ever looked at.
+      batch: async () => ({
+        get files(): never {
+          throw new Error("boom");
+        },
+        omitted: [],
+      }),
     });
     const reads = [h.read("a"), h.read("b")];
     h.flush();
@@ -429,13 +445,12 @@ describe("partial answers", () => {
 
   test("a throw part-way through settling re-reads only the paths still unsettled", async () => {
     const h = harness({
-      batch: async () =>
-        ({
-          files: [["a", { content: "<a>" }]],
-          get omitted(): never {
-            throw new Error("boom");
-          },
-        }) as unknown as BatchAnswer,
+      batch: async () => ({
+        files: [["a", { content: "<a>" }]],
+        get omitted(): never {
+          throw new Error("boom");
+        },
+      }),
     });
     const reads = [h.read("a"), h.read("b")];
     h.flush();
@@ -446,10 +461,10 @@ describe("partial answers", () => {
   test("a non-array row or a duplicated row is skipped rather than trusted", async () => {
     const h = harness({
       batch: async () =>
-        ({
+        unchecked({
           files: ["junk", ["a", { content: "<a>" }], ["a", { content: "second" }]],
           omitted: [],
-        }) as unknown as BatchAnswer,
+        }),
     });
     const reads = [h.read("a"), h.read("b")];
     h.flush();
@@ -515,7 +530,9 @@ describe("fallbacks", () => {
     const outcomes = await Promise.allSettled(failed);
     expect(outcomes.map((o) => o.status)).toEqual(["rejected", "rejected", "rejected"]);
     for (const outcome of outcomes) {
-      expect(String((outcome as PromiseRejectedResult).reason)).toContain("Failed to fetch");
+      expect(outcome.status === "rejected" ? String(outcome.reason) : outcome.status).toContain(
+        "Failed to fetch",
+      );
     }
     expect(await fine).toBe("<c>");
     // Not a verdict on the route: the next window batches again.

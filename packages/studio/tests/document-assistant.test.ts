@@ -15,54 +15,76 @@ import {
   seedSettings,
 } from "./harness";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
-import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type {
+  ProxyStreamingClientOptions,
+  StreamEvent,
+  StreamingClient,
+} from "@jxsuite/ai/streaming-client";
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 let nextRounds: StreamEvent[][] = [];
 let createErrorMessage: string | null = null;
-let lastClientOpts: Record<string, unknown> | null = null;
+let lastClientOpts: ProxyStreamingClientOptions | null = null;
 let capturedTools: string[][] = [];
 let capturedSystemPrompts: string[] = [];
 
-function fakeClient(rounds: StreamEvent[][], chatUrl?: unknown): StreamingClient {
+/** An OpenAI function-calling tool definition, as far as the fake client reads one. */
+function isFunctionTool(value: unknown): value is { function: { name: string } } {
+  return (
+    isNonNullObject(value) &&
+    "function" in value &&
+    isNonNullObject(value.function) &&
+    "name" in value.function &&
+    isString(value.function.name)
+  );
+}
+
+function fakeClient(
+  rounds: StreamEvent[][],
+  chatUrl: ProxyStreamingClientOptions["chatUrl"],
+): StreamingClient {
   let call = 0;
-  let url: Promise<unknown> | null = null;
+  let url: Promise<string> | null = null;
   return {
     async *streamChat(
-      _messages: unknown,
-      tools?: unknown,
-      systemPrompt?: unknown,
-      signal?: AbortSignal,
-    ) {
+      _messages: object[],
+      tools: object[],
+      systemPrompt: string,
+      signal: AbortSignal | undefined,
+    ): AsyncGenerator<StreamEvent> {
       /* The real proxy client's contract: a lazy URL is resolved once, inside the first stream,
          and a stream stopped by then sends nothing. The resolved URL is what the options record. */
-      url ??= Promise.resolve(
-        typeof chatUrl === "function" ? (chatUrl as () => unknown)() : chatUrl,
-      );
+      url ??= Promise.resolve(isFunction(chatUrl) ? chatUrl() : chatUrl);
       const resolved = await url;
       if (lastClientOpts) {
         lastClientOpts = { ...lastClientOpts, chatUrl: resolved };
       }
       if (signal?.aborted) {
-        yield { stopReason: "cancelled", type: "done" } as StreamEvent;
+        yield { stopReason: "cancelled", type: "done" };
         return;
       }
       capturedTools.push(
-        ((tools as { function: { name: string } }[]) ?? []).map((t) => t.function.name),
+        tools.map((t) => {
+          if (!isFunctionTool(t)) {
+            throw new TypeError("expected an OpenAI function tool definition");
+          }
+          return t.function.name;
+        }),
       );
-      capturedSystemPrompts.push(String(systemPrompt ?? ""));
+      capturedSystemPrompts.push(systemPrompt);
       const events = rounds[call] ?? [{ stopReason: "stop", type: "done" }];
       call += 1;
       for (const e of events) {
         yield e;
       }
     },
-  } as unknown as StreamingClient;
+  };
 }
 
 /** One tool call followed by a tool_calls stop. */
-function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
+function toolCallRound(id: string, name: string, args: JsonObject): StreamEvent[] {
   return [
     { id, name, type: "tool_call_start" },
     { args: JSON.stringify(args), id, type: "tool_call_delta" },
@@ -73,7 +95,7 @@ function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
 
 void mock.module("@jxsuite/ai", () => ({
   createChatState,
-  createProxyStreamingClient: (opts: Record<string, unknown>) => {
+  createProxyStreamingClient: (opts: ProxyStreamingClientOptions) => {
     lastClientOpts = opts;
     if (createErrorMessage) {
       throw new Error(createErrorMessage);
@@ -214,7 +236,7 @@ describe("document-assistant", () => {
     expect(listSessions("")[0]!.title).toBe("hi");
     // The persisted session's id rides along, so the backend can derive a prompt-cache key from it.
     expect(lastClientOpts?.sessionId).toBe(listSessions("")[0]!.id);
-    expect(lastClientOpts?.sessionId).toBe(a.activeSessionId());
+    expect<string | null | undefined>(lastClientOpts?.sessionId).toBe(a.activeSessionId());
   });
 
   test("executes a tool call that mutates the document as a single undo step", async () => {
@@ -234,9 +256,9 @@ describe("document-assistant", () => {
     });
     await a.sendMessage("add a span");
 
-    const children = tab.doc.document.children as (JxMutableNode | string)[];
+    const { children } = tab.doc.document;
     expect(children).toHaveLength(2);
-    expect((children[1] as JxMutableNode).tagName).toBe("span");
+    expect(Array.isArray(children) ? children[1] : null).toHaveProperty("tagName", "span");
     expect(tab.history.index).toBe(1); // One undoable transaction (batched)
     expect(a.chatState.status).toBe("idle");
   });
@@ -453,7 +475,7 @@ describe("document-assistant", () => {
     expect(a.chatState.messages.map((m) => writesForTurn(m.id))).toEqual([[], []]);
     expect(loadSession("", firstId)!.map((m) => m.role)).toEqual(["user", "assistant"]);
     // The edit itself landed, and stays in the document's history like any other.
-    expect((tab.doc.document.children as unknown[]).length).toBe(2);
+    expect(tab.doc.document.children).toHaveLength(2);
   });
 
   test("restores the last-active session on creation", () => {
@@ -626,7 +648,7 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
     const a = createDocumentAssistant();
     await a.sendMessage("delete it");
 
-    expect((tab.doc.document.children as unknown[]).length).toBe(1);
+    expect(tab.doc.document.children).toHaveLength(1);
     expect(tab.doc.dirty).toBe(false);
     const reply = a.chatState.messages.find((m) => m.role === "tool");
     expect(JSON.parse(reply!.content)).toEqual({
@@ -708,10 +730,11 @@ describe("document-assistant — state-gated tools & bootstrap", () => {
        every tab in the workspace. That is what makes the tool's `getTab` seam load-bearing: the
        batch has to be re-opened on whatever tab adoption left active, not on the disposed one. */
     installMockPlatform({
-      importSite: (async () => ({
-        result: { pages: 2, warnings: [] },
+      importSite: async () => ({
+        config: { name: "Imported" },
+        result: { pages: [], warnings: [] },
         root: "/abs/imported-site",
-      })) as never,
+      }),
     });
     setProjectAdopter(async (root: string) => {
       setWorkspaceProject(root, { name: "Imported" });
@@ -869,8 +892,8 @@ describe("document-assistant — cross-file wiring", () => {
     const a = createDocumentAssistant();
     await a.sendMessage("rename the project");
 
-    expect((workspace.projectConfig as { name?: string } | null)?.name).toBe("New Name");
-    expect((store.projectState?.projectConfig as { name?: string } | null)?.name).toBe("New Name");
+    expect(workspace.projectConfig?.name).toBe("New Name");
+    expect(store.projectState?.projectConfig?.name).toBe("New Name");
     // The file inventory section rode along in the system prompt, files only (no directories).
     const filesSection = capturedSystemPrompts[0]!.split("## Project Files")[1]!;
     expect(filesSection.split("\n\n---\n\n")[0]!.trim()).toBe("pages/index.json");
@@ -903,7 +926,7 @@ describe("document-assistant — cross-file wiring", () => {
     await a.sendMessage("rename the project");
 
     // The settings form's shape: mutate the live configuration in place, then commit.
-    (store.projectState!.projectConfig as { description?: string }).description = "from Settings";
+    store.projectState!.projectConfig!.description = "from Settings";
     const result = await commitProjectConfig();
 
     expect(result.ok).toBe(true);
@@ -940,7 +963,7 @@ describe("document-assistant — cross-file wiring", () => {
     await a.sendMessage("rename the project and add a variable");
     expect(state.files.get("project.json")).toBe(written);
 
-    (store.projectState!.projectConfig as { description?: string }).description = "from Settings";
+    store.projectState!.projectConfig!.description = "from Settings";
     const result = await commitProjectConfig();
 
     expect(result.ok).toBe(true);

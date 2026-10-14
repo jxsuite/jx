@@ -11,21 +11,29 @@ const remeasureFonts = mock(() => {});
 
 installMonacoSetupMocks({ editorApi: { editor: { remeasureFonts } } });
 
-(globalThis as any).self ??= globalThis;
+if (typeof self === "undefined") {
+  Object.assign(globalThis, { self: globalThis });
+}
 
 let resolveReady!: () => void;
-(document as any).fonts = {
-  ready: new Promise<void>((resolve) => {
-    resolveReady = resolve;
-  }),
-};
+// Plain assignment semantics, as `document.fonts = …` would be: happy-dom ships no font set.
+Object.assign(document, {
+  fonts: {
+    ready: new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    }),
+  },
+});
 
 await import("../src/services/monaco-setup");
 
 describe("monaco-setup — font remeasure on fonts.ready", () => {
   test("remeasures Monaco glyph widths once vendored webfonts finish loading", async () => {
+    // Nothing is remeasured while the webfonts are still loading.
+    expect(remeasureFonts.mock.calls).toEqual([]);
     resolveReady();
     await flush();
-    expect(remeasureFonts).toHaveBeenCalledTimes(1);
+    // Exactly one remeasure, with no arguments, once `fonts.ready` settles.
+    expect(remeasureFonts.mock.calls).toEqual([[]]);
   });
 });

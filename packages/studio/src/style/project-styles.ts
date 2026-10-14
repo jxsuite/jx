@@ -24,6 +24,7 @@
  * `style["--token"]` and `style["@--ctx"]["--token"]` shapes the compiler already consumes.
  */
 
+import { ensureNestedStyle, getNestedStyle, isNumber, isString } from "@jxsuite/schema/guards";
 import { parseMediaEntries, schemeOfQuery } from "../utils/canvas-media";
 import { varDisplayName } from "../utils/studio-utils";
 
@@ -140,7 +141,7 @@ export function listTokens(style: JxStyle | null | undefined): ProjectToken[] {
     if (!name.startsWith("--")) {
       continue;
     }
-    if (typeof value !== "string" && typeof value !== "number") {
+    if (!isString(value) && !isNumber(value)) {
       continue;
     }
     out.push({ group: groupIdOfToken(name), label: tokenLabel(name), name, value });
@@ -242,9 +243,8 @@ export interface TokenOverride {
  * @param {JxStyle} style
  * @param {TokenContext} context
  */
-function overrideBlock(style: JxStyle, context: TokenContext): Record<string, unknown> | undefined {
-  const block = style[context.key];
-  return block && typeof block === "object" ? (block as Record<string, unknown>) : undefined;
+function overrideBlock(style: JxStyle, context: TokenContext): JxStyle | undefined {
+  return getNestedStyle(style, context.key);
 }
 
 /**
@@ -261,7 +261,7 @@ export function readTokenOverride(
   token: string,
 ): string | number | undefined {
   const value = overrideBlock(style, context)?.[token];
-  return typeof value === "string" || typeof value === "number" ? value : undefined;
+  return isString(value) || isNumber(value) ? value : undefined;
 }
 
 /**
@@ -284,8 +284,7 @@ export function writeTokenOverride(
   value: string,
 ): void {
   if (value) {
-    const block = (style[context.key] ??= {}) as Record<string, unknown>;
-    block[token] = value;
+    ensureNestedStyle(style, context.key)[token] = value;
     return;
   }
   const block = overrideBlock(style, context);

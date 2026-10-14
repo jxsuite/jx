@@ -19,6 +19,8 @@
 
 import { BUILD_LANES, projectPathsForSiteUrl, siteUrlForPath } from "@jxsuite/schema/asset-paths";
 import type { AssetLane, AssetMount } from "@jxsuite/schema/asset-paths";
+import { isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 /**
  * The lanes a rewritten site URL is re-emitted through, most-publishable first.
@@ -43,6 +45,12 @@ const AUTHORED_LANES: readonly AssetLane[] = [...BUILD_LANES, "root"];
  */
 const READ_LANES: readonly AssetLane[] = ["mounts", "root", "public"];
 
+/** A path-like value split at its first `?` or `#`: the path itself, and what trails it. */
+export interface RefParts {
+  core: string;
+  suffix: string;
+}
+
 /** Classification of a reference string value. */
 export type RefClass =
   | { kind: "none" }
@@ -51,7 +59,7 @@ export type RefClass =
   | { kind: "path"; core: string; suffix: string; rooted: boolean };
 
 /** Split a trailing `?query` or `#fragment` off a path-like value. */
-export function splitQueryHash(value: string): { core: string; suffix: string } {
+export function splitQueryHash(value: string): RefParts {
   for (let i = 0; i < value.length; i += 1) {
     const ch = value[i];
     if (ch === "?" || ch === "#") {
@@ -68,8 +76,8 @@ export function splitQueryHash(value: string): { core: string; suffix: string } 
  * actual precision, so bare npm specifiers (which never resolve to the renamed file) are simply
  * never matched.
  */
-export function classifyRef(value: unknown): RefClass {
-  if (typeof value !== "string" || value.length === 0) {
+export function classifyRef(value: JsonValue | undefined): RefClass {
+  if (!isString(value) || value.length === 0) {
     return { kind: "none" };
   }
   if (

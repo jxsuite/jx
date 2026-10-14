@@ -19,11 +19,14 @@
  * The dialog itself is `src/surfaces/cf-account-picker.json`, a `jx-dialog`; this module is the
  * flow around it. It used to be a lit template rendered through `showDialog`, with its own
  * `repaint()` re-rendering the whole body into the slot's parent whenever anything landed — the
- * surface is reactive now, so a listing that arrives late, or a refusal, changes only what it names.
+ * surface is reactive now, so a listing that arrives late, or a refusal, changes only what it
+ * names.
  *
- * @docs studio/ai
  * @license MIT
+ * @docs studio/ai
  */
+
+import { errorMessage } from "@jxsuite/schema/parse";
 
 import { getPlatform, hasPlatform } from "../platform";
 import { notifyCredentialsChanged } from "../settings/preferences-accounts";
@@ -38,11 +41,6 @@ function canPick(): boolean {
   }
   const platform = getPlatform();
   return Boolean(platform.cfAccounts && platform.cfSelectAccount);
-}
-
-/** What a thrown thing says, for a line the reader has to act on. */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -83,7 +81,7 @@ export function openCfAccountPicker(): Promise<CfAccountSummary | null> {
         accounts = (await getPlatform().cfAccounts?.()) ?? [];
       } catch (error) {
         accounts = [];
-        failure = reasonOf(error);
+        failure = errorMessage(error);
       }
       /* `done` released the slot, so a late listing landing after a dismissal would otherwise be a
          write into a disposed surface. The lit version guarded the same moment by resolving its
@@ -108,7 +106,7 @@ export function openCfAccountPicker(): Promise<CfAccountSummary | null> {
         if (!settled) {
           /* The list survives a refusal, and the reason sits above it: listing again is not what
              would fix an account the broker will not accept, so this state offers no retry. */
-          handle.update({ choosing: "", failure: reasonOf(error) });
+          handle.update({ choosing: "", failure: errorMessage(error) });
         }
         return;
       }

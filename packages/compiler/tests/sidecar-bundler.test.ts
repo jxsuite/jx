@@ -21,18 +21,16 @@ import {
 } from "../src/site/bundler";
 import { buildSite } from "../src/site/site-build";
 import { compileElement } from "../src/targets/compile-element";
-import type { JxDocument } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxDocument, JxStateDefinition } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-sidecar-bundler__");
 
-function writeFile(relPath: string, content: string | object) {
+/** Writes `content` verbatim when it is a string (source files), as pretty-printed JSON otherwise. */
+function writeFile(relPath: string, content: JsonValue) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(
-    abs,
-    typeof content === "string" ? content : JSON.stringify(content, null, 2),
-    "utf8",
-  );
+  writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
 }
 
 const PROJECT = {
@@ -277,10 +275,12 @@ describe("buildSite sidecar bundling + emit", () => {
   });
 
   test("extension emit writes section-gated assets into dist", () => {
-    const index = JSON.parse(readFileSync(resolve(TMP, "dist/stuff-index.json"), "utf8")) as {
-      keys: string[];
-      routes: number;
-    };
+    const index: JsonValue = JSON.parse(
+      readFileSync(resolve(TMP, "dist/stuff-index.json"), "utf8"),
+    );
+    if (!isJsonObject(index)) {
+      throw new TypeError("stuff-index.json is not a JSON object");
+    }
     expect(index.keys).toEqual(["a", "b"]);
     expect(index.routes).toBeGreaterThan(0);
   });
@@ -293,7 +293,7 @@ describe("buildSite emit gating and traversal guard", () => {
     rmSync(GATED, { force: true, recursive: true });
   });
 
-  function scaffold(project: object) {
+  function scaffold(project: JsonObject) {
     rmSync(GATED, { force: true, recursive: true });
     mkdirSync(resolve(GATED, "ext"), { recursive: true });
     for (const f of [
@@ -344,14 +344,10 @@ describe("buildSite sidecar/worker failure reporting", () => {
 
   beforeAll(() => {
     rmSync(ERRS, { force: true, recursive: true });
-    const write = (rel: string, content: string | object) => {
+    const write = (rel: string, content: JsonValue) => {
       const abs = resolve(ERRS, rel);
       mkdirSync(resolve(abs, ".."), { recursive: true });
-      writeFileSync(
-        abs,
-        typeof content === "string" ? content : JSON.stringify(content, null, 2),
-        "utf8",
-      );
+      writeFileSync(abs, isString(content) ? content : JSON.stringify(content, null, 2), "utf8");
     };
     write("project.json", {
       build: { adapter: "cloudflare-workers", format: "directory", outDir: "./dist" },
@@ -493,7 +489,7 @@ describe("bundleEntry failure reporting", () => {
 
 describe("compiled element onMount/onUnmount", () => {
   test("emitted module invokes state.onMount on a microtask and onUnmount on disconnect", async () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ tagName: "p", textContent: "${state.n}" }],
       state: {
         n: 0,
@@ -501,7 +497,7 @@ describe("compiled element onMount/onUnmount", () => {
         onUnmount: { $prototype: "Function", arguments: ["state"], body: "state.n = 2;" },
       },
       tagName: "life-cycle",
-    } as unknown as JxDocument;
+    };
     const result = await compileElement(doc);
     const module = result.files[0]!.content;
     expect(module).toContain("queueMicrotask(() => this.state.onMount(this.state));");
@@ -601,7 +597,7 @@ describe("bundle minification", () => {
 // ─── Lazy $src (spec.md §5.3) ────────────────────────────────────────────────
 
 describe("$lazy $src", () => {
-  function lazyDoc(extra: Record<string, unknown> = {}): JxDocument {
+  function lazyDoc(extra: Record<string, JxStateDefinition> = {}): JxDocument {
     return {
       children: [{ tagName: "p", textContent: "x" }],
       state: {
@@ -609,7 +605,7 @@ describe("$lazy $src", () => {
         ...extra,
       },
       tagName: "lazy-el",
-    } as unknown as JxDocument;
+    };
   }
 
   test("emits a memoized dynamic import instead of a static one", async () => {
@@ -629,7 +625,7 @@ describe("$lazy $src", () => {
   });
 
   test("$export still selects the export, off the module namespace", async () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ tagName: "p", textContent: "x" }],
       state: {
         onMount: {
@@ -640,7 +636,7 @@ describe("$lazy $src", () => {
         },
       },
       tagName: "lazy-alias",
-    } as unknown as JxDocument;
+    };
     const result = await compileElement(doc);
     const module = result.files[0]!.content;
     expect(module).toContain("m.boot(...args)");
@@ -648,14 +644,14 @@ describe("$lazy $src", () => {
   });
 
   test("two entries from one module share a single dynamic import", async () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ tagName: "p", textContent: "x" }],
       state: {
         onMount: { $lazy: true, $prototype: "Function", $src: "/lib/search.js" },
         onUnmount: { $lazy: true, $prototype: "Function", $src: "/lib/search.js" },
       },
       tagName: "lazy-pair",
-    } as unknown as JxDocument;
+    };
     const result = await compileElement(doc);
     const module = result.files[0]!.content;
     expect(module.match(/import\('\/lib\/search\.js'\)/g)).toHaveLength(1);
@@ -664,11 +660,11 @@ describe("$lazy $src", () => {
   });
 
   test("a static $src is still a static import — $lazy is opt-in", async () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [{ tagName: "p", textContent: "x" }],
       state: { onMount: { $prototype: "Function", $src: "/lib/search.js" } },
       tagName: "eager-el",
-    } as unknown as JxDocument;
+    };
     const result = await compileElement(doc);
     const module = result.files[0]!.content;
     expect(module).toContain("import { onMount } from '/lib/search.js';");
@@ -676,12 +672,12 @@ describe("$lazy $src", () => {
   });
 
   test("$lazy on a value-bound entry is a build error, not a promise in the DOM", async () => {
-    const doc = {
+    const doc: JxDocument = {
       // `total` is bound as a value, so it classifies as a computed — which cannot await.
       children: [{ tagName: "p", textContent: "${state.total}" }],
       state: { total: { $lazy: true, $prototype: "Function", $src: "/lib/sum.js" } },
       tagName: "lazy-computed",
-    } as unknown as JxDocument;
+    };
     expect(compileElement(doc)).rejects.toThrow(/\$lazy/);
   });
 });

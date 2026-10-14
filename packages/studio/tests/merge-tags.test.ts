@@ -30,8 +30,9 @@ describe("buildMergeTags", () => {
 
   test("skips $-prefixed def names", () => {
     const tags = buildMergeTags({ $internal: 1, visible: 2 }, { $internal: 1, visible: 2 });
-    expect(tokens(tags)).toContain("state.visible");
-    expect(tokens(tags)).not.toContain("state.$internal");
+    const names = tokens(tags);
+    expect(names).toContain("state.visible");
+    expect(names).not.toContain("state.$internal");
   });
 
   test("skips function/handler defs (not text-insertable)", () => {
@@ -91,8 +92,9 @@ describe("buildMergeTags", () => {
   test("skips $-prefixed keys inside walked objects", () => {
     const scope = { post: { $children: [], title: "x" } };
     const tags = buildMergeTags({ post: {} }, scope);
-    expect(tokens(tags)).toContain("state.post.title");
-    expect(tokens(tags)).not.toContain("state.post.$children");
+    const names = tokens(tags);
+    expect(names).toContain("state.post.title");
+    expect(names).not.toContain("state.post.$children");
   });
 
   test("emits item/item.*/index when a repeater scope is supplied", () => {
@@ -108,8 +110,9 @@ describe("buildMergeTags", () => {
 
   test("omits item/index without a repeater scope", () => {
     const tags = buildMergeTags({ title: "x" }, { title: "x" });
-    expect(tokens(tags)).not.toContain("item");
-    expect(tokens(tags)).not.toContain("index");
+    const names = tokens(tags);
+    expect(names).not.toContain("item");
+    expect(names).not.toContain("index");
   });
 
   test("hints fall back to pending/null when the live value is absent", () => {

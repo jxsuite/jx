@@ -22,12 +22,11 @@ import {
   tierOf,
 } from "./standards.ts";
 import { parseSpecSource, STATUS_VOCAB } from "./spec-status.ts";
+import { HEADER } from "../test-fixtures.ts";
 
 const ROOT = resolve(import.meta.dir, "../../..");
 const SPECS_DIR = resolve(ROOT, "specs");
 const CATALOG = resolve(ROOT, "scripts/docs/standards.json");
-
-const HEADER = "| Standard | Class | Binds | Evidence | Note |\n| --- | --- | --- | --- | --- |";
 
 function spec(body: string): string {
   return `# Fixture Specification\n\n## 1. Overview\n\n> **Status: Partial.** …\n\n## 2. Later\n\n${body}\n\n## Changelog\n\n- **0.1.0-draft** (2026-01-01) — x.\n`;
@@ -258,7 +257,11 @@ describe("pure helpers", () => {
     expect(tierOf("Future")).toBe("Later");
     expect(tierOf("Implemented")).toBeNull();
     expect(tierOf("Removed")).toBeNull();
-    expect(tierOf(([] as (typeof STATUS_VOCAB)[number][])[0])).toBeNull();
+    // A section with no status marker has no tier.
+    const [unmarked] = parseSpecSource("## 1. Overview\n\nProse.\n", "x.md").sections;
+    expect(unmarked?.title).toBe("Overview");
+    expect(unmarked?.status).toBeUndefined();
+    expect(tierOf(unmarked?.status)).toBeNull();
   });
 
   /*
@@ -267,7 +270,7 @@ describe("pure helpers", () => {
    */
   test("every tier key is in the status vocabulary", () => {
     for (const key of Object.keys(GAP_TIER_BY_STATUS)) {
-      expect(STATUS_VOCAB as readonly string[]).toContain(key);
+      expect<readonly string[]>(STATUS_VOCAB).toContain(key);
     }
   });
 

@@ -12,6 +12,10 @@
  * Pure and DOM-free — no reactivity/runtime imports — so it stays trivially unit-testable.
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
+
 /**
  * Per-value size cap (in JSON-string chars). A single large content collection can be tens of KB;
  * past this cap we store a small placeholder so one big data source can't bloat every render's
@@ -34,18 +38,21 @@ const LARGE_VALUE_PLACEHOLDER = "[large value omitted]";
  * @param defs The resolved `$defs` scope (may be a Vue reactive proxy).
  * @returns A plain object safe to `postMessage` (every value is JSON-round-trippable).
  */
-export function serializeDataScope(defs: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+export function serializeDataScope(defs: JxScope): JsonObject {
+  const out: JsonObject = {};
   for (const key of Object.keys(defs)) {
     try {
       // Reading through the reactive proxy auto-unwraps a top-level ref/computed to its value, and
       // Can THROW (a computed getter that throws) — done inside the try so that maps the key to null
       // Rather than aborting the whole snapshot.
       const value = defs[key];
-      if (typeof value === "function") {
+      if (isFunction(value)) {
         continue; // Data sources only — a resolved server/handler fn isn't a "value".
       }
-      const json = JSON.stringify(value);
+      /* SAFETY: a widening of lib.d.ts's `string` to the real range. JSON.stringify answers
+       * undefined for a top-level undefined, a symbol, or a value whose toJSON() returns undefined
+       * (ECMA-262 SerializeJSONProperty), and the branch below depends on seeing that. */
+      const json = JSON.stringify(value) as string | undefined;
       if (json === undefined) {
         // JSON.stringify returns undefined for a bare function/symbol/undefined at the top level.
         out[key] = null;
@@ -55,7 +62,8 @@ export function serializeDataScope(defs: Record<string, unknown>): Record<string
         out[key] = LARGE_VALUE_PLACEHOLDER;
         continue;
       }
-      out[key] = JSON.parse(json) as unknown;
+      // SAFETY: `json` is JSON.stringify's own output above, so it parses back to JSON data.
+      out[key] = JSON.parse(json) as JsonValue;
     } catch {
       // A circular structure or a throwing getter → the key exists but carries no serializable value.
       out[key] = null;

@@ -31,22 +31,17 @@
  * @docs studio/projects/create
  */
 
+import { isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import newProjectDoc from "./new-project.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
+import type { JxElement } from "@jxsuite/schema/types";
 
-registerSurface("new-project", newProjectDoc as unknown as JxDocument);
-
-/** One row of a kit `jx-select`, and of the tab strip: a value and what it reads. */
-export interface NewProjectRow {
-  value: string;
-  label: string;
-}
+registerSurface("new-project", newProjectDoc);
 
 /** One card in the starter gallery — including the one that is not a starter. */
 export interface NewProjectCard {
@@ -80,7 +75,7 @@ export interface NewProjectView {
   showTabs: boolean;
   /** The chosen tab's value, and the strip's rows. */
   tab: string;
-  tabs: NewProjectRow[];
+  tabs: SurfaceOption[];
   /** Which body to draw. */
   body: NewProjectBody;
   /** The sentence above a closed AI gate: the two tabs ask for the same thing differently. */
@@ -110,10 +105,10 @@ export interface NewProjectView {
   browsing: boolean;
   browseLabel: string;
   owner: string;
-  owners: NewProjectRow[];
+  owners: SurfaceOption[];
   /** `"private"` or `"public"` — a value rather than a flag, because a select holds one. */
   visibility: string;
-  visibilities: NewProjectRow[];
+  visibilities: SurfaceOption[];
   /** The owner already has a repository of this name. Empty says nothing. */
   repoTaken: string;
   /** `Creates` or `Repository`, and the destination itself. */
@@ -127,12 +122,12 @@ export interface NewProjectView {
   maxDepth: string;
   maxPages: string;
   breakpointMode: string;
-  breakpointModes: NewProjectRow[];
+  breakpointModes: SurfaceOption[];
   breakpointCount: string;
   maxBreakpoints: string;
   breakpointWidths: string;
   breakpointRounding: string;
-  roundings: NewProjectRow[];
+  roundings: SurfaceOption[];
   /** What the chosen mode says will happen. */
   breakpointHint: string;
   aiNaming: boolean;
@@ -233,8 +228,7 @@ interface NewProjectFlags {
   hasInstallUrl: boolean;
 }
 
-interface NewProjectScope
-  extends Record<string, unknown>, NewProjectView, NewProjectFlags, NewProjectActions {}
+interface NewProjectScope extends NewProjectView, NewProjectFlags, NewProjectActions {}
 
 /** The view plus the flags the document renders from. */
 function derive(view: NewProjectView): NewProjectView & NewProjectFlags {
@@ -260,8 +254,8 @@ function derive(view: NewProjectView): NewProjectView & NewProjectFlags {
 
 /** A node's authored `part`, which is how an island announces which one it is. */
 function partOf(def: JxElement | string): string {
-  const part = typeof def === "string" ? undefined : def.attributes?.["part"];
-  return typeof part === "string" ? part : "";
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /**
@@ -294,6 +288,10 @@ export function openNewProjectSurface(options: NewProjectSurfaceOptions): NewPro
     closed = true;
     options.actions.closed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
   /** The island boxes the document has announced, by part. Replaced as the bodies come and go. */
   const boxes = new Map<string, HTMLElement>();
@@ -325,14 +323,14 @@ export function openNewProjectSurface(options: NewProjectSurfaceOptions): NewPro
     }
   };
 
-  const scope = reactive({
+  const scope: NewProjectScope = reactive<NewProjectScope>({
     ...derive(options.view),
     ...options.actions,
     browse: () => {
       options.actions.browse();
     },
     closed: finish,
-  }) as NewProjectScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("new-project", scope, slot, {
@@ -345,13 +343,16 @@ export function openNewProjectSurface(options: NewProjectSurfaceOptions): NewPro
     },
   }).then(async (surface) => {
     mounted = surface;
+    /* SAFETY: `new-project.json`'s root definition carries `tagName: "jx-dialog"`, so the runtime
+       mounts an HTMLElement; a `Text` root only comes from a document whose root is a bare
+       string. */
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     /* The region goes on the platform's own `<dialog>`, which is the one element here that HAS a
@@ -375,7 +376,7 @@ export function openNewProjectSurface(options: NewProjectSurfaceOptions): NewPro
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();
@@ -394,8 +395,8 @@ export function openNewProjectSurface(options: NewProjectSurfaceOptions): NewPro
          move. Measurement and a focus move are the two imperative things a surface may still do
          (ui.md §2 rule 5). */
       requestAnimationFrame(() => {
-        element.querySelector('[part="dialog"]')?.scrollTo?.(0, 0);
-        element.querySelector<HTMLElement>('[part="name"] [part="input"]')?.focus?.();
+        element.querySelector('[part="dialog"]')?.scrollTo(0, 0);
+        element.querySelector<HTMLElement>('[part="name"] [part="input"]')?.focus();
       });
     },
     host: slot,

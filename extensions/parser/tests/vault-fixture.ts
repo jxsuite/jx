@@ -15,8 +15,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+/** A frontmatter value the fixture writes: a scalar, or a flow sequence of tags. */
+type FrontmatterValue = string | boolean | string[];
+
+/** A document's frontmatter, as the key/value pairs {@link doc} writes as YAML. */
+type Frontmatter = Record<string, FrontmatterValue>;
+
 /** Frontmatter block from key/value pairs; arrays and booleans are written as YAML. */
-function doc(front: Record<string, unknown> | null, body: string): string {
+function doc(front: Frontmatter | null, body: string): string {
   if (front === null) {
     return `${body.trim()}\n`;
   }
@@ -27,12 +33,7 @@ function doc(front: Record<string, unknown> | null, body: string): string {
 }
 
 /** The frontmatter a published knowledge-base document carries. */
-function page(
-  category: string,
-  slug: string,
-  title: string,
-  extra: Record<string, unknown> = {},
-): Record<string, unknown> {
+function page(category: string, slug: string, title: string, extra: Frontmatter = {}) {
   return {
     title,
     description: `${title}, written for the fixture.`,
@@ -48,7 +49,7 @@ function page(
 }
 
 /** Every file of the fixture vault: relative path → file text. */
-export const VAULT_FILES: Record<string, string> = {
+export const VAULT_FILES = {
   // ── Not documents ────────────────────────────────────────────────────────────
   "README.md": doc(null, "# Vault\n\nIndex of sections. See [Frappe](Frappe/README.md)."),
   "STYLE.md": doc({ title: "Style Guide", slug: "style-guide", publish: false }, "Conventions."),
@@ -196,7 +197,7 @@ SELECT 1;
     page("WordPress", "woocommerce", "WooCommerce", { status: "draft" }),
     "Held back.",
   ),
-};
+} satisfies Record<string, string>;
 
 /** Write {@link VAULT_FILES} under `root`. */
 export function writeVault(root: string): void {

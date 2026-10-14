@@ -15,6 +15,7 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Glob } from "bun";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import { STUDIO_ASSETS, STUDIO_CANVAS, STUDIO_SHELL } from "./layout";
 import type { AssetBase, StudioAsset, StudioAssetKind, StudioLayoutMode } from "./layout";
 import { canvasShellHtml } from "./document";
@@ -193,11 +194,10 @@ export async function writeAssetManifest(
 ): Promise<void> {
   const out = manifestPath(root);
   await mkdir(dirname(out), { recursive: true });
-  const manifest = {
-    assets: STUDIO_ASSETS,
-    ...(extra.preload === undefined ? {} : { preload: extra.preload }),
-    shell: STUDIO_SHELL,
-  };
+  const manifest =
+    extra.preload === undefined
+      ? { assets: STUDIO_ASSETS, shell: STUDIO_SHELL }
+      : { assets: STUDIO_ASSETS, preload: extra.preload, shell: STUDIO_SHELL };
   await writeFile(out, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
@@ -231,8 +231,8 @@ export async function studioPreload(root: string = STUDIO_PACKAGE_DIR): Promise<
   if (!existsSync(path)) {
     return [];
   }
-  const manifest = JSON.parse(await readFile(path, "utf8")) as { preload?: unknown };
-  const { preload } = manifest;
+  const manifest: unknown = JSON.parse(await readFile(path, "utf8"));
+  const preload = isNonNullObject(manifest) && "preload" in manifest ? manifest.preload : undefined;
   if (!Array.isArray(preload)) {
     return [];
   }

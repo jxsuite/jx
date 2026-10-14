@@ -213,10 +213,14 @@ describe("fragments", () => {
 
   test("fragments mint in landing order, then by name, and an unlanded one goes last", () => {
     const f = (name: string): Fragment => ({ level: "patch", name, spec: "ui.md", summary: name });
-    const landed: Record<string, number> = { "ui-b.md": 10, "ui-a.md": 20, "ui-c.md": 10 };
+    const landed = new Map([
+      ["ui-b.md", 10],
+      ["ui-a.md", 20],
+      ["ui-c.md", 10],
+    ]);
     const ordered = orderFragments(
       [f("ui-a.md"), f("ui-z.md"), f("ui-c.md"), f("ui-b.md")],
-      (x) => landed[x.name] ?? Number.POSITIVE_INFINITY,
+      (x) => landed.get(x.name) ?? Number.POSITIVE_INFINITY,
     ).map((x) => x.name);
     expect(ordered).toEqual(["ui-b.md", "ui-c.md", "ui-a.md", "ui-z.md"]);
   });

@@ -38,7 +38,7 @@ function installDataPlatform(total = 120): Calls {
     },
     dataInsertRow: async (req) => {
       calls.inserts.push(req);
-      return { row: { id: 999, ...(req as { values: Record<string, unknown> }).values } };
+      return { row: { id: 999, ...req.values } };
     },
     dataRows: async (query: DataRowsQuery) => {
       calls.rows.push(query);

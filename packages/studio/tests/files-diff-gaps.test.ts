@@ -26,7 +26,8 @@ import { MARKDOWN_FORMAT, mockFormatAction, seedMarkdownFormat } from "./format-
 import { disableElement } from "../src/files/elements";
 import type { ElementsEntry } from "../src/files/elements";
 import type { ComponentEntry } from "../src/files/components";
-import type { DirEntry, StudioPlatform } from "../src/types";
+import type { DirEntry, ProjectState } from "../src/types";
+import type { JsonObject } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
@@ -59,12 +60,12 @@ void mock.module("../src/grid/grid-open", () => ({
 
 /** Tabs this file has declared to be grid tabs, keyed by the raw tab `openTab` handed back. */
 const gridTabs = new Map<
-  object,
+  Tab,
   { save: () => Promise<void>; serializeForSource: () => string | null }
 >();
 void mock.module("../src/grid/grid-controller", () => ({
   ROW_KEY_FIELD: "__key",
-  getGridController: (tab: object | null) => (tab === null ? null : (gridTabs.get(tab) ?? null)),
+  getGridController: (tab: Tab | null) => (tab === null ? null : (gridTabs.get(tab) ?? null)),
 }));
 
 const { mountFilesPanel, openFileInTab, openLastSessionOrHome, unmountFilesPanel } =
@@ -102,7 +103,7 @@ function installFsPlatform(seed: Record<string, string> = {}) {
     {
       formatAction: mockFormatAction,
       listFormats: async () => [MARKDOWN_FORMAT],
-    } as Partial<StudioPlatform>,
+    },
     seed,
   );
   handle.platform.listDirectory = async (dir: string) => {
@@ -112,7 +113,7 @@ function installFsPlatform(seed: Record<string, string> = {}) {
   return handle;
 }
 
-function siteState(overrides: Record<string, unknown> = {}) {
+function siteState(overrides: Partial<ProjectState> = {}) {
   setProjectState({
     dirs: new Map(),
     expanded: new Set(),
@@ -124,11 +125,11 @@ function siteState(overrides: Record<string, unknown> = {}) {
     searchQuery: "",
     selectedPath: null,
     ...overrides,
-  } as never);
+  });
 }
 
 /** Write the per-project record `persistedSession` reads, for `root`. */
-function storeSession(root: string, session: Record<string, unknown>): void {
+function storeSession(root: string, session: JsonObject): void {
   localStorage.setItem(
     `jx-studio-project::${root}`,
     JSON.stringify({ activeLayout: null, layouts: [], session }),
@@ -318,16 +319,22 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     mountFilesPanel(host, () => {});
     await flush(3);
 
-    const tree = host.querySelector('[part="tree"]') as HTMLElement;
+    const tree = host.querySelector('[part="tree"]');
+    if (!(tree instanceof HTMLElement)) {
+      throw new Error("the Files panel drew no tree");
+    }
     // Model: assets · Loading… · one.json · two.json
     expect(
       [...tree.querySelectorAll('[part="row"], [part="loading-row"]')].map((el) =>
-        el.textContent?.trim(),
+        el.textContent.trim(),
       ),
     ).toContain("Loading…");
     // The placeholder is not a `treeitem`, so the keyboard cannot land on it at all.
     expect(tree.querySelector('[part="loading-row"]')?.getAttribute("role")).toBe("none");
-    const assets = tree.querySelector('[part="row"][data-value="assets"]') as HTMLElement;
+    const assets = tree.querySelector('[part="row"][data-value="assets"]');
+    if (!(assets instanceof HTMLElement)) {
+      throw new Error("the tree drew no assets row");
+    }
     assets.focus();
 
     assets.dispatchEvent(
@@ -335,7 +342,8 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     );
     await flush();
 
-    expect((document.activeElement as HTMLElement).dataset.value).toBe("one.json");
+    const focused = document.activeElement;
+    expect(focused instanceof HTMLElement ? focused.dataset.value : null).toBe("one.json");
     unmountFilesPanel();
     host.remove();
   });
@@ -428,7 +436,7 @@ describe("disableElement", () => {
     // The registry entry is unusable, and there is nothing to look for: `computeRelativePath` would
     // Be handed `undefined` as the component's path and throw on a real importing document.
     const before: ElementsEntry[] = ["@acme/ui", { $ref: "./components/card.json" }];
-    const ghost = { tagName: "x-ghost" } as unknown as ComponentEntry;
+    const ghost: ComponentEntry = { tagName: "x-ghost" };
 
     const after = disableElement(before, ghost, "pages/index.md");
 

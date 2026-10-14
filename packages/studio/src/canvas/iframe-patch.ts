@@ -15,7 +15,8 @@
  */
 
 import { reapplyStyle } from "@jxsuite/runtime";
-import { getNodeAtPath } from "../state";
+import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { applyDocOpToDoc } from "../tabs/doc-op-apply";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
 import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
@@ -25,7 +26,7 @@ import {
   templateToEditDisplay,
 } from "../utils/edit-display";
 import type { IframeRenderCtx } from "./iframe-render";
-import type { WireDocOp } from "./iframe-protocol";
+import type { JxDocOp } from "../tabs/patch-ops";
 import type { JxPath } from "../state";
 import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 
@@ -36,7 +37,7 @@ import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
  */
 export function applyIframePatch(
   shadowDoc: JxMutableNode,
-  forwardOps: WireDocOp[],
+  forwardOps: JxDocOp[],
   container: HTMLElement,
   ctx?: IframeRenderCtx,
   echoPaths?: JxPath[],
@@ -98,7 +99,7 @@ function requireCtx(ctx: IframeRenderCtx | undefined): IframeRenderCtx {
 
 function applyOpToDom(
   doc: JxMutableNode,
-  op: WireDocOp,
+  op: JxDocOp,
   container: HTMLElement,
   ctx: IframeRenderCtx | undefined,
 ): void {
@@ -138,7 +139,7 @@ function applyOpToDom(
       return;
     }
     default: {
-      // The WireDocOp union is exhaustively handled above; this guards a future op kind.
+      // The JxDocOp union is exhaustively handled above; this guards a future op kind.
       throw new Error(`iframe-patch-unsupported-op:${JSON.stringify(op)}`);
     }
   }
@@ -292,7 +293,7 @@ function remapChildPaths(
       continue;
     }
     const idx = p[depth + 1];
-    if (typeof idx !== "number" || idx < fromIndex) {
+    if (!isNumber(idx) || idx < fromIndex) {
       continue;
     }
     if (!parentPath.every((seg, i) => p[i] === seg)) {
@@ -338,7 +339,9 @@ function patchStyle(
 ): void {
   const el = requireElement(container, path);
   const node = getNodeAtPath(doc, path);
-  const mediaQueries = (ctx?.defs?.["$media"] as Record<string, string> | undefined) ?? {};
+  /* SAFETY: buildScope writes `$media` only from the document's own `$media` map or the runtime's
+   * root media map, both Record<string, string>, and the host scope may not supply the key. */
+  const mediaQueries = (ctx?.defs["$media"] as Record<string, string> | undefined) ?? {};
   reapplyStyle(el, editModeStyle(node?.style), mediaQueries);
 }
 
@@ -372,20 +375,20 @@ function findElement(container: HTMLElement, path: (string | number)[]): HTMLEle
  * top-level template-string values are blanked so no reactive bindings are created for them.
  */
 function editModeStyle(style: JxStyle | undefined): JxStyle | undefined {
-  if (!style || typeof style !== "object") {
+  if (!style || !isNonNullObject(style)) {
     return undefined;
   }
-  const out: Record<string, unknown> = {};
+  const out: JxStyle = {};
   for (const [k, v] of Object.entries(style)) {
     /* OMITTED, not blanked. It used to be written as `""`, which was a silent no-op while a
        declaration went to `el.style` and is a malformed declaration now that it goes into a rule.
        Dropping the key is what blanking always meant: the property falls back to the cascade. */
-    if (typeof v === "string" && v.includes("${")) {
+    if (isString(v) && v.includes("${")) {
       continue;
     }
     out[k] = v;
   }
-  return out as JxStyle;
+  return out;
 }
 
 /**
@@ -393,15 +396,15 @@ function editModeStyle(style: JxStyle | undefined): JxStyle | undefined {
  * template-string and $ref display rules (and the legacy patcher's textDisplayValue).
  */
 function textDisplayValue(node: JxMutableNode | undefined): string {
-  const v = (node as { textContent?: unknown } | undefined)?.textContent;
+  const v = node?.textContent;
   if (v == null) {
     return "";
   }
-  if (typeof v === "string") {
+  if (isString(v)) {
     return v.includes("${") ? templateToEditDisplay(v) : v;
   }
-  if (typeof v === "object" && (v as Record<string, unknown>).$ref) {
-    const ref = String((v as Record<string, unknown>).$ref);
+  if (isNonNullObject(v) && v.$ref) {
+    const ref = String(v.$ref);
     const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
     return `{${label}}`;
   }

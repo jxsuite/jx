@@ -9,7 +9,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { lstatSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Stats } from "node:fs";
 import { createWatchIgnore } from "../src/watch-policy";
 
 const ROOT = join(import.meta.dir, "_fixtures_watch_policy", "project");
@@ -62,12 +61,11 @@ describe("createWatchIgnore", () => {
   });
 
   test("drops entries that are neither a directory nor a regular file", () => {
-    // A unix socket — fs.watch answers ENXIO, which chokidar raises as an `error` event.
-    const socketish = {
-      isDirectory: () => false,
-      isFile: () => false,
-      isSymbolicLink: () => false,
-    } as unknown as Stats;
+    /* A unix socket — fs.watch answers ENXIO, which chokidar raises as an `error` event. Modelled
+       as a regular file's real lstat with `isFile` turned off: not a directory, not a symlink, not
+       a file, which is exactly the kind answer a socket gives. */
+    const file = join(ROOT, "project.json");
+    const socketish = Object.assign(lstatSync(file), { isFile: () => false });
     expect(ignore(join(ROOT, "app.sock"), socketish)).toBe(true);
   });
 

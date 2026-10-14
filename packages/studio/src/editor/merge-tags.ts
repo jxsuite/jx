@@ -9,8 +9,10 @@
  * Pure and DOM-free: callers pass the data in, this returns plain descriptors.
  */
 
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { defCategory } from "../panels/signals-panel";
 import { dataTypeLabel, unwrapSignal } from "../panels/data-explorer";
+import type { JsonPrimitive, JxStateDefinition } from "@jxsuite/schema/types";
 
 export interface MergeTag {
   /** Insertion token placed between `${` and `}`, e.g. `state.user.name`, `item.title`, `index`. */
@@ -23,20 +25,50 @@ export interface MergeTag {
   category: string;
 }
 
+/**
+ * A value in a live render scope, as far as the merge-tag walk reads it: document data, a handler,
+ * a pending (`undefined`) entry, or an object — a plain record, a fetched payload, a Vue ref —
+ * whose own keys hold further scope values.
+ */
+export type ScopeValue =
+  | JsonPrimitive
+  | undefined
+  | bigint
+  | symbol
+  | ((...args: never[]) => void)
+  | ScopeValue[]
+  | ScopeRecord;
+
+/** A render scope, or any object inside one, read key by key. */
+export interface ScopeRecord {
+  readonly [key: string]: ScopeValue;
+}
+
 /** Levels of nesting walked beneath each root name. */
 const DEPTH_CAP = 3;
 /** Maximum object keys enumerated per level (mirrors the data-explorer tree cap). */
 const BREADTH_CAP = 30;
 
+/** Whether a scope value is an object read by key: non-null, not an array, not a function. */
+function isScopeRecord(value: ScopeValue): value is ScopeRecord {
+  return isNonNullObject(value) && !Array.isArray(value);
+}
+
+/** The value behind a Vue ref, or the value itself. */
+function unwrapScopeValue(value: ScopeValue): ScopeValue {
+  /* SAFETY: unwrapSignal returns its argument unchanged, or a ref's `.value`; a ref is a scope record,
+     so its `.value` member is itself a scope value. */
+  return unwrapSignal(value) as ScopeValue;
+}
+
 /** Type label plus a short value preview for primitives. */
-function previewHint(value: unknown): string {
-  const v = unwrapSignal(value);
+function previewHint(value: ScopeValue): string {
+  const v = unwrapScopeValue(value);
   const typeLabel = dataTypeLabel(v);
-  if (v === null || v === undefined || typeof v === "object") {
+  if (v === null || v === undefined || isNonNullObject(v)) {
     return typeLabel; // Null / pending / Array(n) / {n}
   }
-  const text =
-    typeof v === "string" ? (v.length > 24 ? `"${v.slice(0, 24)}…"` : `"${v}"`) : String(v);
+  const text = isString(v) ? (v.length > 24 ? `"${v.slice(0, 24)}…"` : `"${v}"`) : String(v);
   return `${typeLabel} · ${text}`;
 }
 
@@ -44,17 +76,17 @@ function previewHint(value: unknown): string {
  * Walk a resolved value, appending nested-path tags to `out`. Arrays contribute a `.length` tag and
  * stop (index access is context-dependent); plain objects recurse up to the depth/breadth caps.
  */
-function walk(value: unknown, prefix: string, category: string, depth: number, out: MergeTag[]) {
+function walk(value: ScopeValue, prefix: string, category: string, depth: number, out: MergeTag[]) {
   if (depth >= DEPTH_CAP) {
     return;
   }
-  const v = unwrapSignal(value);
-  if (v === null || v === undefined || typeof v !== "object") {
-    return;
-  }
+  const v = unwrapScopeValue(value);
   if (Array.isArray(v)) {
     const token = `${prefix}.length`;
     out.push({ category, hint: `number · ${v.length}`, label: token, token });
+    return;
+  }
+  if (!isScopeRecord(v)) {
     return;
   }
   const keys = Object.keys(v).slice(0, BREADTH_CAP);
@@ -62,7 +94,7 @@ function walk(value: unknown, prefix: string, category: string, depth: number, o
     if (key.startsWith("$")) {
       continue; // Internal keys ($children, $ref, reactive plumbing) are not author-facing
     }
-    const childVal = (v as Record<string, unknown>)[key];
+    const childVal = v[key];
     const childPrefix = `${prefix}.${key}`;
     out.push({ category, hint: previewHint(childVal), label: childPrefix, token: childPrefix });
     walk(childVal, childPrefix, category, depth + 1, out);
@@ -80,9 +112,9 @@ function walk(value: unknown, prefix: string, category: string, depth: number, o
  *   carries a `$map` (repeater) context, `item` / `item.*` / `index` tags are appended.
  */
 export function buildMergeTags(
-  state: Record<string, unknown> | null | undefined,
-  scope: Record<string, unknown> | null | undefined,
-  localScope: Record<string, unknown> | null = null,
+  state: Readonly<Record<string, JxStateDefinition>> | null | undefined,
+  scope: ScopeRecord | null | undefined,
+  localScope: ScopeRecord | null = null,
 ): MergeTag[] {
   const out: MergeTag[] = [];
   const defs = state ?? {};
@@ -103,13 +135,20 @@ export function buildMergeTags(
   }
 
   if (localScope) {
-    const map = unwrapSignal(localScope.$map) as { item?: unknown; index?: unknown } | undefined;
-    if (map && typeof map === "object") {
-      out.push({ category: "repeater", hint: previewHint(map.item), label: "item", token: "item" });
-      walk(map.item, "item", "repeater", 0, out);
+    const map = unwrapScopeValue(localScope.$map);
+    if (isNonNullObject(map)) {
+      // An array `$map` has no `item` / `index` members, so it reads as an empty row.
+      const row = isScopeRecord(map) ? map : undefined;
       out.push({
         category: "repeater",
-        hint: previewHint(map.index),
+        hint: previewHint(row?.item),
+        label: "item",
+        token: "item",
+      });
+      walk(row?.item, "item", "repeater", 0, out);
+      out.push({
+        category: "repeater",
+        hint: previewHint(row?.index),
         label: "index",
         token: "index",
       });

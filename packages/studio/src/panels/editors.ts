@@ -33,9 +33,10 @@
 import type * as monaco from "monaco-editor";
 import { loadMonaco, mountStillWanted } from "../services/monaco-lazy";
 import { monacoTheme } from "../shell";
-import { isJsonObject } from "@jxsuite/schema/guards";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 
-import { getNodeAtPath, renderOnly, updateUi } from "../store";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { renderOnly, updateUi } from "../store";
 import { activeTab, tabIsLive } from "../workspace/workspace";
 import { mutateUpdateDef, mutateUpdateProperty, transactDoc } from "../tabs/transact";
 import { view } from "../view";
@@ -50,11 +51,12 @@ import {
 } from "../services/monaco-buffer";
 import { globalEntries, namedFormulaEntries } from "../ui/formula-catalog";
 import { notify } from "../services/notify";
+import type { NotifyOptions } from "../services/notify";
 
 import type { BufferWrites } from "../services/monaco-buffer";
 import { noteTyping } from "../tabs/typing";
 import type { OxLintDiagnostic } from "../services/code-services";
-import type { JxPrototypeDef } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocumentValue } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 
@@ -78,8 +80,8 @@ type FunctionEditor = NonNullable<typeof view.functionEditor>;
 function getFunctionBody(tab: Tab | null | undefined, editing: EditingTarget | null | undefined) {
   const document = tab?.doc.document;
   // Read body off any object-shaped def (covers legacy entries without $prototype).
-  const bodyOf = (def: unknown) =>
-    isJsonObject(def) && typeof def.body === "string" ? def.body : "";
+  const bodyOf = (def: JxDocumentValue | undefined) =>
+    isJsonObject(def) && isString(def.body) ? def.body : "";
   if (editing?.type === "def") {
     return bodyOf(document?.state?.[editing.defName]);
   } else if (editing?.type === "event") {
@@ -87,6 +89,27 @@ function getFunctionBody(tab: Tab | null | undefined, editing: EditingTarget | n
     return node ? bodyOf(node[editing.eventKey]) : "";
   }
   return "";
+}
+
+/**
+ * Whether one entry of a "lint" answer is an oxlint diagnostic.
+ *
+ * The code service forwards oxlint's own `--format=json` output (`code-api.ts`), whose every
+ * diagnostic carries a string `message` and `severity` and, where it points somewhere, a `labels`
+ * array. Those are the members checked here; `setLintMarkers` reads the rest as optional.
+ */
+function isLintDiagnostic(value: unknown): value is OxLintDiagnostic {
+  return (
+    isJsonObject(value) &&
+    isString(value.message) &&
+    isString(value.severity) &&
+    (value.labels === undefined || Array.isArray(value.labels))
+  );
+}
+
+/** The entries of a "lint" answer that are oxlint diagnostics, in the order they came. */
+function lintDiagnostics(entries: readonly JsonValue[]): OxLintDiagnostic[] {
+  return entries.flatMap((entry) => (isLintDiagnostic(entry) ? [entry] : []));
 }
 
 /**
@@ -110,6 +133,10 @@ export const CODE_HOST_SELECTOR = '[part="code-host"]';
  */
 export function syncFunctionEditor(host: HTMLElement): void {
   const tab = activeTab.value;
+  /* SAFETY: `editingFunction` is written only by openLogicTarget, and every caller that opens the
+     function surface (formula.editDef, formula.editEvent, the Data panel, the Logic tab's Open)
+     passes `{ type: "def", defName }` or `{ type: "event", path, eventKey }`, exactly the two
+     EditingTarget members. */
   const editing = tab?.session.ui.editingFunction as EditingTarget | null | undefined;
   const container = editing && tab ? host.querySelector<HTMLElement>(CODE_HOST_SELECTOR) : null;
   if (!container || !tab || !editing) {
@@ -120,7 +147,7 @@ export function syncFunctionEditor(host: HTMLElement): void {
   }
 
   const current = view.functionEditor;
-  const attached = Boolean(current && container.contains(current.getDomNode() as Node | null));
+  const attached = Boolean(current && container.contains(current.getDomNode()));
   /* THE TAB IS HALF OF THE IDENTITY, and the half that used to be missing.
      `_editingTarget` is a JSON string built from the target alone, and the ordinary target
      `{"eventKey":"onclick","path":["children",0],"type":"event"}` is the SAME string for the first
@@ -261,7 +288,7 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
     let wrote = false;
     if (editing.type === "def") {
       wrote = transactDoc(tab, (t) => mutateUpdateDef(t, editing.defName, { body: newBody }));
-    } else if (editing.type === "event") {
+    } else {
       const node = getNodeAtPath(tab.doc.document, editing.path);
       /* THE ELEMENT THE HANDLER HANGS OFF CAN GO WHILE THE EDITOR IS OPEN — a collaborator's
          delete arriving over the wire, or the author's own ⌘Z. `editing.path` then resolves to
@@ -275,6 +302,9 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
         return false;
       }
       const current = node[editing.eventKey] || {};
+      /* SAFETY: an `on*` key holds an event binding, which the schema makes an object (a `$ref`, a
+         function def or an expression def), so the spread copies that binding's fields; `|| {}`
+         covers a key with no binding yet. */
       wrote = transactDoc(tab, (t) =>
         mutateUpdateProperty(t, editing.path, editing.eventKey, {
           ...(current as object),
@@ -334,6 +364,8 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
  */
 export async function closeFunctionEditor(): Promise<void> {
   const tab = activeTab.value;
+  /* SAFETY: `editingFunction` is written only by openLogicTarget, whose callers pass one of the two
+     EditingTarget shapes (see syncFunctionEditor). */
   const editing = tab?.session.ui.editingFunction as EditingTarget | null | undefined;
   if (!tab || !editing) {
     return;
@@ -350,13 +382,13 @@ export async function closeFunctionEditor(): Promise<void> {
     cancelBufferWrites(editor);
     const write = editor._commitBody ?? bodyWriter(tab, editing);
     if (!write(minResult?.code ?? currentCode)) {
+      const options: NotifyOptions = { key: "logic.close-refused", source: "Logic" };
+      if (tab.documentPath) {
+        options.path = tab.documentPath;
+      }
       notify.warn(
         "The handler could not be saved — source editing holds this document. Your code is still in the editor.",
-        {
-          key: "logic.close-refused",
-          source: "Logic",
-          ...(tab.documentPath ? { path: tab.documentPath } : {}),
-        },
+        options,
       );
       return;
     }
@@ -487,7 +519,7 @@ async function mountFunctionEditor(
       tabIsLive(tab) &&
       bufferIsLive(editor)
     ) {
-      setLintMarkers(editor, result.diagnostics as OxLintDiagnostic[]);
+      setLintMarkers(editor, lintDiagnostics(result.diagnostics));
     }
   });
 
@@ -527,7 +559,7 @@ async function mountFunctionEditor(
           return;
         }
         if (result?.diagnostics) {
-          setLintMarkers(editor, result.diagnostics as OxLintDiagnostic[]);
+          setLintMarkers(editor, lintDiagnostics(result.diagnostics));
         }
       });
     });
@@ -546,7 +578,7 @@ export async function registerFunctionCompletions() {
       if (!activeTab.value) {
         return { suggestions: [] };
       }
-      const defs = activeTab.value.doc.document?.state || {};
+      const defs = activeTab.value.doc.document.state || {};
       const word = model.getWordUntilPosition(position);
       const range = {
         endColumn: word.endColumn,
@@ -561,13 +593,12 @@ export async function registerFunctionCompletions() {
       const suggestions: monaco.languages.CompletionItem[] = Object.entries(defs).map(
         ([key, def]) => {
           let kind = monacoNs.languages.CompletionItemKind.Variable;
-          if (
-            (def as JxPrototypeDef)?.$prototype === "Function" ||
-            (def as Record<string, unknown>)?.$handler ||
-            formulaDocs.has(key)
-          ) {
+          // A primitive or array entry carries neither field, which is what reading them off it gave.
+          const prototype = isJsonObject(def) ? def.$prototype : undefined;
+          const handler = isJsonObject(def) ? def.$handler : undefined;
+          if (prototype === "Function" || handler || formulaDocs.has(key)) {
             kind = monacoNs.languages.CompletionItemKind.Function;
-          } else if ((def as JxPrototypeDef)?.$prototype) {
+          } else if (prototype) {
             kind = monacoNs.languages.CompletionItemKind.Property;
           }
           const item: monaco.languages.CompletionItem = {

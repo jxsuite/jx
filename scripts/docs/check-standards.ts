@@ -28,6 +28,7 @@ import {
   STANDARD_ID,
   statusOfAnchor,
 } from "./lib/standards.ts";
+import type { GateViolation } from "./lib/violation.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SPECS_DIR = resolve(ROOT, "specs");
@@ -104,12 +105,7 @@ export const VIOLATION_CODES = [
 
 export type ViolationCode = (typeof VIOLATION_CODES)[number];
 
-export interface Violation {
-  code: ViolationCode;
-  file: string;
-  line?: number;
-  message: string;
-}
+export type Violation = GateViolation<ViolationCode>;
 
 export interface UncitedEntry {
   file: string;

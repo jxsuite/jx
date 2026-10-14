@@ -1,5 +1,8 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
 import { afterAll, describe, expect, test } from "bun:test";
+import type { JsonValue } from "@jxsuite/schema/types";
+import { decodeRequest } from "./_rpc-frame";
+import type { ReceivedMessage } from "./_rpc-frame";
 
 // Covers the parts of src/chromium/platform.ts not exercised by
 // Chromium-platform.test.ts: gitShow/gitInit/gitAddRemote, search, formats,
@@ -8,7 +11,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 
 // ─── Embedded mock RPC server ──────────────────────────────────────────────
 
-const responses: Record<string, unknown> = {
+const responses = {
   addPackage: { added: "left-pad" },
   createProject: {
     config: { name: "Fresh" },
@@ -23,12 +26,10 @@ const responses: Record<string, unknown> = {
   listStarters: [{ id: "restaurant", name: "Bistro & Café", tagline: "A menu-driven site." }],
   removePackage: { removed: "left-pad" },
   searchFiles: [{ name: "found.json", path: "a/found.json", type: "file" }],
-};
+} satisfies Record<string, JsonValue>;
 
-interface ReceivedMessage {
-  method: string;
-  params?: Record<string, unknown>;
-}
+/** The same replies, looked up by the method name a request frame carries. */
+const responseByMethod = new Map(Object.entries<JsonValue>(responses));
 
 const received: ReceivedMessage[] = [];
 
@@ -42,12 +43,13 @@ const server = Bun.serve({
   port: 0,
   websocket: {
     message(ws, raw) {
-      const msg = JSON.parse(raw as string) as {
-        id: number;
-        method: string;
-        params?: Record<string, unknown>;
-      };
-      received.push({ method: msg.method, ...(msg.params ? { params: msg.params } : {}) });
+      const msg = decodeRequest(raw);
+      // Recorded the way the assertions read it: method first, `params` only when sent.
+      const entry: ReceivedMessage = { method: msg.method };
+      if (msg.params) {
+        entry.params = msg.params;
+      }
+      received.push(entry);
 
       // Exercise the dispatcher's unknown-id guard: send an unsolicited
       // Message before the real response.
@@ -55,8 +57,8 @@ const server = Bun.serve({
         ws.send(JSON.stringify({ id: 999_999, result: "nobody is waiting for this" }));
       }
 
-      if (msg.method in responses) {
-        ws.send(JSON.stringify({ id: msg.id, result: responses[msg.method] }));
+      if (responseByMethod.has(msg.method)) {
+        ws.send(JSON.stringify({ id: msg.id, result: responseByMethod.get(msg.method) }));
       } else {
         ws.send(JSON.stringify({ error: `Unknown method: ${msg.method}`, id: msg.id }));
       }
@@ -73,7 +75,7 @@ Object.defineProperty(globalThis, "location", {
 });
 
 // If a DOM shim replaced WebSocket, restore Bun's native implementation.
-const wsStr = globalThis.WebSocket?.toString() ?? "";
+const wsStr = globalThis.WebSocket.toString();
 if (wsStr.includes("WebSocketImplementation") || wsStr.includes("DOMException")) {
   // @ts-expect-error -- deleting a required global; Bun re-exposes its built-in WebSocket
   delete globalThis.WebSocket;
@@ -81,16 +83,10 @@ if (wsStr.includes("WebSocketImplementation") || wsStr.includes("DOMException"))
 
 // ─── Fetch stub for the AI assistant endpoints ─────────────────────────────
 
-interface FetchCall {
-  url: string;
-  init?: RequestInit;
-}
-
-const fetchCalls: FetchCall[] = [];
 const realFetch = globalThis.fetch;
 
-globalThis.fetch = ((url: string, init?: RequestInit) => {
-  fetchCalls.push({ url, ...(init ? { init } : {}) });
+function answerFetch(input: string | URL | Request): Promise<Response> {
+  const url = String(input);
   if (url === "/studio/ai/auth-status") {
     return Promise.resolve(Response.json({ authenticated: true }));
   }
@@ -98,7 +94,9 @@ globalThis.fetch = ((url: string, init?: RequestInit) => {
     return Promise.resolve(Response.json({ id: "sess-1" }));
   }
   return Promise.resolve(new Response(null, { status: 204 }));
-}) as typeof fetch;
+}
+
+globalThis.fetch = Object.assign(answerFetch, { preconnect: realFetch.preconnect });
 
 /* The platform installs a `pagehide` listener so its RPC transport stops reconnecting to a server
    that is going away with the window. This file loads no DOM, so `window` gets the one member the
@@ -169,7 +167,7 @@ describe("chromium platform: search, formats and packages", () => {
 
   test("listFormats returns registered formats", async () => {
     const formats = await platform.listFormats();
-    expect(formats).toEqual([{ extensions: [".md"], format: "markdown" }]);
+    expect(formats).toEqual<JsonValue>([{ extensions: [".md"], format: "markdown" }]);
     expect(lastRequest()).toEqual({ method: "listFormats", params: {} });
   });
 
@@ -188,13 +186,13 @@ describe("chromium platform: search, formats and packages", () => {
 
   test("addPackage sends package name", async () => {
     const result = await platform.addPackage("left-pad");
-    expect(result).toEqual({ added: "left-pad" });
+    expect(result).toEqual<JsonValue>({ added: "left-pad" });
     expect(lastRequest()).toEqual({ method: "addPackage", params: { name: "left-pad" } });
   });
 
   test("removePackage sends package name", async () => {
     const result = await platform.removePackage("left-pad");
-    expect(result).toEqual({ removed: "left-pad" });
+    expect(result).toEqual<JsonValue>({ removed: "left-pad" });
     expect(lastRequest()).toEqual({ method: "removePackage", params: { name: "left-pad" } });
   });
 
@@ -248,7 +246,7 @@ describe("chromium platform: search, formats and packages", () => {
 
   test("listStarters returns the starter template list", async () => {
     const starters = await platform.listStarters!();
-    expect(starters).toEqual(responses.listStarters as never);
+    expect(starters).toEqual<JsonValue>(responses.listStarters);
     expect(lastRequest()!.method).toBe("listStarters");
   });
 

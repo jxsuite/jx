@@ -1,19 +1,18 @@
 /**
  * Ai-import-tools.ts — `import_site`, the assistant's other way to bootstrap a project.
  *
- * A sibling of `create_project` (`ai-project-tools.ts`) with a different backend: it drives whatever
- * import pipeline the platform's `importSite` reaches — a local headless Chrome, or a hosted one —
- * streams its progress into a record the transcript draws, and then adopts the result exactly as a
- * scaffold is adopted. Its own module
- * rather than an eighth tool in `ai-project-tools.ts`, which is already 650 lines under a per-file
- * coverage bar.
+ * A sibling of `create_project` (`ai-project-tools.ts`) with a different backend: it drives
+ * whatever import pipeline the platform's `importSite` reaches — a local headless Chrome, or a
+ * hosted one — streams its progress into a record the transcript draws, and then adopts the result
+ * exactly as a scaffold is adopted. Its own module rather than an eighth tool in
+ * `ai-project-tools.ts`, which is already 650 lines under a per-file coverage bar.
  *
  * Two things it does NOT do are the point:
  *
  * - **It does not invent a destination.** `create_project` requires the model to supply `location`
  *   and refuses without one — correct when a bare chat bootstraps a project, a regression on the
- *   wizard path where the Location field already has a folder picker, validation and a live preview.
- *   The destination comes from the pending brief; a model-supplied one must match it.
+ *   wizard path where the Location field already has a folder picker, validation and a live
+ *   preview. The destination comes from the pending brief; a model-supplied one must match it.
  * - **It does not decide what the crawl found.** The pipeline is one-way: it reports and finishes.
  *   Everything worth a human's opinion — which skipped pages matter, whether the components it
  *   extracted are really components — is in the summary for the model to raise with `ask_user`
@@ -23,23 +22,26 @@
  */
 
 import { createToolDefinition, toolError, toolSuccess } from "@jxsuite/ai/tools";
+import { IMPORT_MAX_PAGES } from "@jxsuite/protocol";
+import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { workspace } from "../workspace/workspace";
 import { getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
-import { clearPendingImportBrief, pendingImportBrief } from "./import-seed";
+import { MAX_IMPORT_DEPTH, clearPendingImportBrief, pendingImportBrief } from "./import-seed";
 import type { ImportBrief } from "./import-seed";
 import { abortImportRun, beginImportRun, finishImportRun, importRun } from "./import-run";
 import { adoptCreatedProject } from "./project-adoption";
-import type { AdoptOutcome } from "./project-adoption";
+import type { AdoptCreatedOptions, AdoptOutcome } from "./project-adoption";
 
 import type { JsonValue, ToolRegistry } from "@jxsuite/ai/tools";
 import type { Tab } from "../tabs/tab";
-import type { ImportBreakpointPolicy, ImportReadyEvent, ImportSiteSummary } from "../types";
-
-/** The same bounds `packages/server/src/import-api.ts` clamps to. */
-const MAX_DEPTH = 5;
-const MAX_PAGES = 100;
+import type {
+  ImportBreakpointPolicy,
+  ImportReadyEvent,
+  ImportSiteOptions,
+  ImportSiteSummary,
+} from "../types";
 
 /** Log lines quoted back on a hard failure — enough to see WHICH phase died. */
 const FAILURE_TAIL = 5;
@@ -73,6 +75,15 @@ export interface ImportToolsCtx {
   brief?: { read: () => ImportBrief | null; clear: () => void };
 }
 
+/**
+ * The adoption a `ready` line started, if one did. A holder rather than a `let`, because the
+ * assignment happens inside the `onReady` callback and control-flow analysis cannot see it: a plain
+ * `let` reads as always-`null` after the run.
+ */
+interface EarlyAdoption {
+  pending: Promise<AdoptOutcome> | null;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
@@ -89,7 +100,11 @@ function clamp(value: number, min: number, max: number): number {
  * @returns {ImportBreakpointPolicy | undefined}
  */
 function breakpointPolicyFor(
-  args: { maxBreakpoints?: unknown; widths?: unknown; rounding?: unknown },
+  args: {
+    maxBreakpoints: JsonValue | undefined;
+    widths: JsonValue | undefined;
+    rounding: JsonValue | undefined;
+  },
   fromBrief: ImportBreakpointPolicy | undefined,
 ): ImportBreakpointPolicy | undefined {
   const rounding =
@@ -100,7 +115,7 @@ function breakpointPolicyFor(
   if (Array.isArray(args.widths) && args.widths.length > 0) {
     return { mode: "explicit", rounding, widths: args.widths.map(Number) };
   }
-  if (typeof args.maxBreakpoints === "number" && Number.isFinite(args.maxBreakpoints)) {
+  if (isNumber(args.maxBreakpoints) && Number.isFinite(args.maxBreakpoints)) {
     // Zero is the only spelling a count has for "keep all", and it is worth accepting: it is what
     // A model reaches for when a person says "keep them all".
     return args.maxBreakpoints <= 0
@@ -346,18 +361,7 @@ export function registerImportTools(
           maxBreakpoints,
           breakpointWidths,
           breakpointRounding,
-        } = args as {
-          url?: unknown;
-          directory?: unknown;
-          depth?: unknown;
-          maxPages?: unknown;
-          aiComponents?: unknown;
-          verify?: unknown;
-          minFidelity?: unknown;
-          maxBreakpoints?: unknown;
-          breakpointWidths?: unknown;
-          breakpointRounding?: unknown;
-        };
+        } = args;
 
         if (workspace.projectRoot) {
           return toolError(
@@ -386,7 +390,7 @@ export function registerImportTools(
         }
 
         const brief = briefStore.read();
-        const requested = typeof directory === "string" ? directory.trim() : "";
+        const requested = isString(directory) ? directory.trim() : "";
         if (requested && brief && requested !== brief.directory) {
           /* The wizard's Location field is the user's answer to "where does this go". A model that
              disagrees with it is guessing at a decision that was already made in front of them. */
@@ -450,44 +454,56 @@ export function registerImportTools(
          * failure here is not the run's failure: the import continues either way, and the terminal
          * path below reports honestly on whichever state the window ended up in.
          */
-        let adoption: Promise<AdoptOutcome> | null = null;
+        const adoptOptions: AdoptCreatedOptions = { getTab };
+        if (adoptProject) {
+          adoptOptions.adopt = adoptProject;
+        }
+        const early: EarlyAdoption = { pending: null };
         const onReady = ({ root }: ImportReadyEvent) => {
-          adoption ??= adoptCreatedProject(root, {
-            getTab,
-            ...(adoptProject ? { adopt: adoptProject } : {}),
-          });
+          early.pending ??= adoptCreatedProject(root, adoptOptions);
         };
+
+        const options: ImportSiteOptions = {
+          aiComponents: isBoolean(aiComponents) ? aiComponents : (brief?.aiComponents ?? true),
+          depth: clamp(Number(depth ?? brief?.depth ?? 1) || 0, 0, MAX_IMPORT_DEPTH),
+          directory: destination,
+          maxPages: clamp(Number(maxPages ?? brief?.maxPages ?? 20) || 1, 1, IMPORT_MAX_PAGES),
+          name: brief?.name || target.hostname.replace(/^www\./, ""),
+          url: target.href,
+        };
+        if (breakpoints !== undefined) {
+          options.breakpoints = breakpoints;
+        }
+        if (isBoolean(verify)) {
+          options.verify = verify;
+        } else if (brief?.verify !== undefined) {
+          options.verify = brief.verify;
+        }
+        /* The wizard's number is the user's own answer to "how close is close enough"; the model
+           may only override it when it was told to. */
+        options.verifyMinFidelity = clamp(
+          Number(minFidelity ?? brief?.minFidelity ?? DEFAULT_MIN_FIDELITY) || 0,
+          0,
+          MAX_FIDELITY,
+        );
+        if (apiKey) {
+          options.apiKey = apiKey;
+        }
+        if (baseUrl) {
+          options.baseUrl = baseUrl;
+        }
+        if (model) {
+          options.model = model;
+        }
 
         let result: { root: string; result?: ImportSiteSummary };
         try {
           result = await platform.importSite(
-            {
-              aiComponents:
-                typeof aiComponents === "boolean" ? aiComponents : (brief?.aiComponents ?? true),
-              depth: clamp(Number(depth ?? brief?.depth ?? 1) || 0, 0, MAX_DEPTH),
-              directory: destination,
-              maxPages: clamp(Number(maxPages ?? brief?.maxPages ?? 20) || 1, 1, MAX_PAGES),
-              name: brief?.name || target.hostname.replace(/^www\./, ""),
-              url: target.href,
-              ...(breakpoints === undefined ? {} : { breakpoints }),
-              ...(typeof verify === "boolean"
-                ? { verify }
-                : brief?.verify === undefined
-                  ? {}
-                  : { verify: brief.verify }),
-              /* The wizard's number is the user's own answer to "how close is close enough"; the
-                 model may only override it when it was told to. */
-              verifyMinFidelity: clamp(
-                Number(minFidelity ?? brief?.minFidelity ?? DEFAULT_MIN_FIDELITY) || 0,
-                0,
-                MAX_FIDELITY,
-              ),
-              ...(apiKey ? { apiKey } : {}),
-              ...(baseUrl ? { baseUrl } : {}),
-              ...(model ? { model } : {}),
-            },
+            options,
             (evt) => {
-              ctx.progress(evt as unknown as JsonValue);
+              /* The spread is the event's own fields as an object literal, which TypeScript lets
+                 stand as a JSON object where the named interface cannot. */
+              ctx.progress({ ...evt });
             },
             signal,
             onReady,
@@ -522,15 +538,12 @@ export function registerImportTools(
 
         /* The early adoption if there was one, otherwise adopt now: a backend that sends no `ready`
            line is not broken, it is older, and the project must still open. */
-        const { adopted, error: adoptionError } = await (adoption ??
-          adoptCreatedProject(result.root, {
-            getTab,
-            ...(adoptProject ? { adopt: adoptProject } : {}),
-          }));
+        const { adopted, error: adoptionError } = await (early.pending ??
+          adoptCreatedProject(result.root, adoptOptions));
         if (adopted) {
           onProjectAdopted?.(result.root);
           return toolSuccess(
-            { root: result.root, ...(result.result ? { summary: result.result } : {}) },
+            result.result ? { root: result.root, summary: result.result } : { root: result.root },
             describeRun(id, result.root, result.result),
           );
         }

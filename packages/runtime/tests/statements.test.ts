@@ -3,7 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describe, expect, test } from "bun:test";
 import { compileStatements, runStatements } from "../src/statements.ts";
 
-import type { JxStatement } from "@jxsuite/schema/types";
+import type { JxDispatchStatement, JxStatement } from "@jxsuite/schema/types";
 import type { JxScope } from "../src/types.ts";
 
 try {
@@ -123,7 +123,9 @@ describe("runStatements — dispatchEvent", () => {
     const el = document.createElement("div");
     let seen: CustomEvent | null = null;
     el.addEventListener("cart-changed", (e) => {
-      seen = e as CustomEvent;
+      if (e instanceof CustomEvent) {
+        seen = e;
+      }
     });
     await runStatements(
       [
@@ -150,7 +152,8 @@ describe("runStatements — dispatchEvent", () => {
     el.addEventListener("done", () => {
       seen = true;
     });
-    const event = { currentTarget: el } as unknown as Event;
+    // A real Event whose `currentTarget` reads as `el`, as it does while a listener on `el` runs.
+    const event = Object.defineProperty(new Event("click"), "currentTarget", { value: el });
     await runStatements([{ dispatchEvent: "done" }], {}, event);
     expect(seen).toBe(true);
     // Without event or target, nothing throws.
@@ -293,7 +296,13 @@ describe("statements — an unrecognised shape", () => {
    * dispatch path is what a malformed body actually gets. What a caller can observe is that the body
    * neither throws on it nor halts at it, and that the emitter agrees with the interpreter.
    */
-  const unknown = { frobnicate: true } as unknown as JxStatement;
+  // A dispatch statement missing its required `dispatchEvent`, which is what a keyless one reads as.
+  const malformed: Partial<JxDispatchStatement> & { frobnicate: boolean } = { frobnicate: true };
+  /* SAFETY: deliberately unsound. A body arrives as unvalidated document JSON, and the only way to
+     hand the interpreter and the emitter a statement with no discriminating key is to claim the
+     missing `dispatchEvent` is there; both must still classify it without throwing, which is
+     exactly what the tests below assert. */
+  const unknown: JxStatement = malformed as JxDispatchStatement;
   const body: JxStatement[] = [unknown, { operator: "=", target: ref("#/state/n"), value: 1 }];
 
   test("the interpreter treats it as a no-op and runs the rest of the body", async () => {

@@ -7,6 +7,7 @@
 import "./with-dom.js";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SlashCommand, SlashController } from "../src/editor/inline-edit";
+import type { IframeChannel } from "../src/canvas/iframe-channel";
 import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
 let controller: SlashController | null = null;
@@ -22,7 +23,7 @@ const { startIframeSlashBridge } = await import("../src/canvas/iframe-slash");
 function fakeChannel() {
   const posts: IframeToParent[] = [];
   let handler: ((m: ParentToIframe) => void) | null = null;
-  const channel = {
+  const channel: IframeChannel<IframeToParent, ParentToIframe> = {
     dispose() {
       // Unused by these tests.
     },
@@ -35,7 +36,7 @@ function fakeChannel() {
     post(m: IframeToParent) {
       posts.push(m);
     },
-  } as never;
+  };
   return { channel, deliver: (m: ParentToIframe) => handler?.(m), posts };
 }
 
@@ -72,12 +73,16 @@ describe("iframe slash bridge", () => {
     expect(controller!.isOpen()).toBe(false);
     show("");
     expect(controller!.isOpen()).toBe(true);
-    const posted = ch.posts.find((p) => p.kind === "slashShow");
+    const posted = ch.posts.find(
+      (p): p is Extract<IframeToParent, { kind: "slashShow" }> => p.kind === "slashShow",
+    );
     expect(posted).toMatchObject({ filter: "", kind: "slashShow" });
-    const { rect } = posted as unknown as { rect: Record<string, number> };
-    for (const k of ["x", "y", "width", "height"]) {
-      expect(typeof rect[k]).toBe("number");
-    }
+    expect(posted?.rect).toEqual({
+      height: expect.any(Number),
+      width: expect.any(Number),
+      x: expect.any(Number),
+      y: expect.any(Number),
+    });
   });
 
   test("re-showing with the SAME filter is deduped; a new filter re-posts", () => {

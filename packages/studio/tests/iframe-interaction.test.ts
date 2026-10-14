@@ -20,15 +20,25 @@ async function movePointer(target: EventTarget, init: MouseEventInit = {}): Prom
   });
 }
 
-// A channel stub that only needs `post` (startInteraction never reads incoming messages).
+// A channel stub that records `post` (startInteraction never reads incoming messages).
 function fakeChannel() {
   const posts: IframeToParent[] = [];
-  const channel = {
+  const channel: IframeChannel<IframeToParent, ParentToIframe> = {
     dispose: () => {},
     onMessage: () => () => {},
-    post: (m: IframeToParent) => posts.push(m),
-  } as unknown as IframeChannel<IframeToParent, ParentToIframe>;
+    post: (m) => {
+      posts.push(m);
+    },
+  };
   return { channel, posts };
+}
+
+/** The first message of one `kind` the frame posted, narrowed to that variant. */
+function firstOfKind<K extends IframeToParent["kind"]>(
+  posts: IframeToParent[],
+  kind: K,
+): Extract<IframeToParent, { kind: K }> | undefined {
+  return posts.find((m): m is Extract<IframeToParent, { kind: K }> => m.kind === kind);
 }
 
 /** Build `<div data-jx-path><span></span></div>`, both stubbed with rects, appended to the body. */
@@ -65,7 +75,7 @@ describe("nearestHit", () => {
 
   test("returns null for a non-Element target", () => {
     expect(nearestHit(null)).toBeNull();
-    expect(nearestHit(document.createTextNode("x") as unknown as EventTarget)).toBeNull();
+    expect(nearestHit(document.createTextNode("x"))).toBeNull();
   });
 });
 
@@ -98,7 +108,7 @@ describe("measureHits", () => {
 
   test("a node hidden by an ANCESTOR is hidden too — the closed-popover case", () => {
     const { outer } = stampedTree('["children",0]', { height: 8, width: 40, x: 1, y: 2 });
-    (outer.parentElement as HTMLElement).style.display = "none";
+    outer.parentElement!.style.display = "none";
     expect(measureHits([["children", 0]]).hits).toEqual([]);
   });
 });
@@ -210,7 +220,7 @@ describe("startInteraction — insertion '+' zones (deps)", () => {
     stop = undefined;
   });
 
-  const SHADOW = { children: [], tagName: "div" } as unknown as JxMutableNode;
+  const SHADOW: JxMutableNode = { children: [], tagName: "div" };
 
   /** A stamped sibling whose DOM parent is a block container (column layout → top/bottom edges). */
   function stampedSibling(path: string, rect: Partial<DOMRect>) {
@@ -496,7 +506,7 @@ describe("preview suppresses the editing affordances", () => {
     const { channel, posts } = fakeChannel();
     stop = startInteraction(channel, document, {
       getMode: () => "preview",
-      getShadowDoc: () => ({ children: [{ tagName: "p" }], tagName: "div" }) as JxMutableNode,
+      getShadowDoc: (): JxMutableNode => ({ children: [{ tagName: "p" }], tagName: "div" }),
     });
     return posts;
   }
@@ -599,19 +609,16 @@ describe("command invoker clicks", () => {
   }
 
   function clickAndCollect(button: HTMLElement) {
-    const posted: { kind: string; command?: string; targetPath?: unknown }[] = [];
-    const stop = startInteraction(
-      { post: (m: { kind: string }) => posted.push(m) } as never,
-      document,
-    );
+    const { channel, posts } = fakeChannel();
+    const stop = startInteraction(channel, document);
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     stop();
-    return posted;
+    return posts;
   }
 
   test("a dialog invoker reports the dialog's path and its command, beside the hit", () => {
     const posted = clickAndCollect(invokerAnd("dialog", "show-modal"));
-    const invoke = posted.find((m) => m.kind === "commandTargetClick");
+    const invoke = firstOfKind(posted, "commandTargetClick");
     expect(invoke?.targetPath).toEqual(["children", 1]);
     expect(invoke?.command).toBe("show-modal");
     expect(posted.some((m) => m.kind === "hit")).toBe(true);
@@ -622,13 +629,14 @@ describe("command invoker clicks", () => {
     // Button's own selection would reopen the dialog it just closed.
     const posted = clickAndCollect(invokerAnd("dialog", "close"));
     const kinds = posted.map((m) => m.kind);
-    expect(kinds.indexOf("hit")).toBeGreaterThanOrEqual(0);
-    expect(kinds.indexOf("hit")).toBeLessThan(kinds.indexOf("commandTargetClick"));
+    const hitAt = kinds.indexOf("hit");
+    expect(hitAt).toBeGreaterThanOrEqual(0);
+    expect(hitAt).toBeLessThan(kinds.indexOf("commandTargetClick"));
   });
 
   test("a popover invoker is reported the same way, with its command normalised", () => {
     const posted = clickAndCollect(invokerAnd("nav", " Toggle-Popover "));
-    expect(posted.find((m) => m.kind === "commandTargetClick")?.command).toBe("toggle-popover");
+    expect(firstOfKind(posted, "commandTargetClick")?.command).toBe("toggle-popover");
   });
 
   test("an invoker naming an overlay the studio cannot address, or carrying no command, posts nothing", () => {
@@ -662,17 +670,12 @@ describe("popovertarget clicks", () => {
   }
 
   test("a click on the trigger reports the panel's path alongside the hit", () => {
-    const posted: { kind: string }[] = [];
+    const { channel, posts: posted } = fakeChannel();
     const { button } = invokerAndPanel();
-    const stop = startInteraction(
-      { post: (m: { kind: string }) => posted.push(m) } as never,
-      document,
-    );
+    const stop = startInteraction(channel, document);
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     stop();
-    const invoke = posted.find((m) => m.kind === "popoverTargetClick") as
-      | { targetPath: unknown; action: string }
-      | undefined;
+    const invoke = firstOfKind(posted, "popoverTargetClick");
     expect(invoke?.targetPath).toEqual(["children", 1]);
     // Both halves: selecting the button AND opening its panel is what an author expects from a
     // Control they can also style.
@@ -687,42 +690,33 @@ describe("popovertarget clicks", () => {
       ["nonsense", "toggle"],
     ] as const) {
       document.body.innerHTML = "";
-      const posted: { kind: string; action?: string }[] = [];
+      const { channel, posts: posted } = fakeChannel();
       const { button } = invokerAndPanel(attr);
-      const stop = startInteraction(
-        { post: (m: { kind: string }) => posted.push(m) } as never,
-        document,
-      );
+      const stop = startInteraction(channel, document);
       button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       stop();
-      expect(posted.find((m) => m.kind === "popoverTargetClick")?.action).toBe(expected);
+      expect(firstOfKind(posted, "popoverTargetClick")?.action).toBe(expected);
     }
   });
 
   test("a trigger naming a popover the studio cannot address posts nothing", () => {
     // A component's own internal popover is never stamped, so it stays native and is not ours.
-    const posted: { kind: string }[] = [];
+    const { channel, posts: posted } = fakeChannel();
     const button = document.createElement("button");
     button.setAttribute("popovertarget", "not-here");
     document.body.append(button);
-    const stop = startInteraction(
-      { post: (m: { kind: string }) => posted.push(m) } as never,
-      document,
-    );
+    const stop = startInteraction(channel, document);
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     stop();
     expect(posted.some((m) => m.kind === "popoverTargetClick")).toBe(false);
   });
 
   test("an ordinary click reports no invoker", () => {
-    const posted: { kind: string }[] = [];
+    const { channel, posts: posted } = fakeChannel();
     const el = document.createElement("div");
     el.dataset.jxPath = '["children",0]';
     document.body.append(el);
-    const stop = startInteraction(
-      { post: (m: { kind: string }) => posted.push(m) } as never,
-      document,
-    );
+    const stop = startInteraction(channel, document);
     el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     stop();
     expect(posted.some((m) => m.kind === "popoverTargetClick")).toBe(false);

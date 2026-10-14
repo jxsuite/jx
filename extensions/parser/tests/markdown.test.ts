@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { join, resolve as resolvePath } from "node:path";
+import { join, resolve } from "node:path";
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { MarkdownFileResult, TocEntry } from "../src/types";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement, JxPrototypeDef } from "@jxsuite/schema/types";
 
 import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jxsuite/runtime";
@@ -29,8 +30,9 @@ const FIXTURE_DIR = join(__dirname, "..", "..", "..", "examples", "content", "po
  */
 function setupClassJsonFetchMock(fileMap: Record<string, string>) {
   const originalFetch = globalThis.fetch;
-  const mockFn = spyOn(globalThis, "fetch").mockImplementation((async (url: any, opts: any) => {
-    const urlStr = typeof url === "string" ? url : url.toString();
+  const { preconnect } = originalFetch;
+  const stub = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlStr = String(input);
     for (const [pattern, filePath] of Object.entries(fileMap)) {
       if (urlStr.includes(pattern)) {
         const content = readFileSync(filePath, "utf8");
@@ -40,11 +42,22 @@ function setupClassJsonFetchMock(fileMap: Record<string, string>) {
         });
       }
     }
-    return originalFetch(url, opts);
-  }) as any);
+    return originalFetch(input, init);
+  };
+  // Keeping Bun's `preconnect` makes the stub a whole `fetch`.
+  const mockFn = spyOn(globalThis, "fetch").mockImplementation(Object.assign(stub, { preconnect }));
   return () => {
     mockFn.mockRestore();
   };
+}
+
+/** Resolve one prototype entry, failing the test unless it yields a signal. */
+async function resolveSignal(def: JxPrototypeDef, key: string) {
+  const sig = await resolvePrototype(def, {}, key);
+  if (!isSignal(sig)) {
+    throw new Error(`resolvePrototype did not return a signal for ${key}`);
+  }
+  return sig;
 }
 
 // ─── MarkdownFile ─────────────────────────────────────────────────────────────
@@ -65,7 +78,7 @@ describe("Markdown", () => {
   });
 
   test("resolve returns an object", () => {
-    expect(typeof result).toBe("object");
+    expect(result).toBeTypeOf("object");
     expect(result).not.toBeNull();
   });
 
@@ -125,7 +138,7 @@ describe("Markdown", () => {
   });
 
   test("$excerpt is the first paragraph as plain text", () => {
-    expect(typeof result.$excerpt).toBe("string");
+    expect(result.$excerpt).toBeTypeOf("string");
     expect(result.$excerpt!.length).toBeGreaterThan(0);
   });
 
@@ -139,9 +152,9 @@ describe("Markdown", () => {
     expect(entry).toHaveProperty("depth");
     expect(entry).toHaveProperty("text");
     expect(entry).toHaveProperty("id");
-    expect(typeof entry.depth).toBe("number");
-    expect(typeof entry.text).toBe("string");
-    expect(typeof entry.id).toBe("string");
+    expect(entry.depth).toBeTypeOf("number");
+    expect(entry.text).toBeTypeOf("string");
+    expect(entry.id).toBeTypeOf("string");
   });
 
   test('$toc contains "Installation" heading', () => {
@@ -150,12 +163,12 @@ describe("Markdown", () => {
   });
 
   test("$readingTime is a positive integer", () => {
-    expect(typeof result.$readingTime).toBe("number");
+    expect(result.$readingTime).toBeTypeOf("number");
     expect(result.$readingTime).toBeGreaterThanOrEqual(1);
   });
 
   test("$wordCount is a positive integer", () => {
-    expect(typeof result.$wordCount).toBe("number");
+    expect(result.$wordCount).toBeTypeOf("number");
     expect(result.$wordCount).toBeGreaterThan(0);
   });
 
@@ -164,7 +177,7 @@ describe("Markdown", () => {
       basePath: FIXTURE_DIR,
       src: "getting-started.md",
     });
-    const r = (await mf.resolve()) as any;
+    const r = await mf.resolve();
     expect(r.slug).toBe("getting-started");
   });
 });
@@ -216,9 +229,8 @@ describe("Markdown with directives", () => {
       (n): n is JxElement => typeof n !== "string" && n.tagName === "info-box",
     );
     expect(infoBox).toBeTruthy();
-    const hasChildren =
-      ((infoBox!.children as (JxElement | string)[] | undefined)?.length ?? 0) > 0 ||
-      infoBox!.textContent;
+    const kids = infoBox!.children;
+    const hasChildren = (Array.isArray(kids) ? kids.length : 0) > 0 || infoBox!.textContent;
     expect(hasChildren).toBeTruthy();
   });
 });
@@ -316,7 +328,7 @@ describe("MarkdownCollection", () => {
     });
     const results = await mc.resolve();
     for (const item of results) {
-      expect((item as any).frontmatter.author).toBe("Jane Smith");
+      expect(item.frontmatter.author).toBe("Jane Smith");
     }
     expect(results.length).toBe(2);
   });
@@ -340,7 +352,8 @@ describe("MarkdownCollection", () => {
     });
     const results = await mc.resolve();
     expect(results.length).toBe(2);
-    expect((results[0] as any).frontmatter.date >= (results[1] as any).frontmatter.date).toBe(true);
+    const [newest, next] = results;
+    expect(String(newest?.frontmatter.date) >= String(next?.frontmatter.date)).toBe(true);
   });
 
   test("directives option applies to all files", async () => {
@@ -350,7 +363,7 @@ describe("MarkdownCollection", () => {
     });
     const results = await mc.resolve();
     expect(results.length).toBe(1);
-    const infoBox = (results[0] as any).$children.find((n: any) => n.tagName === "info-box");
+    const infoBox = results[0]?.$children.find((n) => !isString(n) && n.tagName === "info-box");
     expect(infoBox).toBeTruthy();
   });
 });
@@ -360,12 +373,12 @@ describe("MarkdownCollection", () => {
 describe("External class contract", () => {
   test("Markdown has resolve() method", () => {
     const mf = new Markdown({ src: "test.md" });
-    expect(typeof mf.resolve).toBe("function");
+    expect(mf.resolve).toBeTypeOf("function");
   });
 
   test("MarkdownCollection has resolve() method", () => {
     const mc = new MarkdownCollection({ src: "*.md" });
-    expect(typeof mc.resolve).toBe("function");
+    expect(mc.resolve).toBeTypeOf("function");
   });
 
   test("Markdown constructor accepts single config object", () => {
@@ -384,7 +397,7 @@ describe("External class contract", () => {
     const mf = new Markdown({
       src: join(FIXTURE_DIR, "getting-started.md"),
     });
-    const result = (await mf.resolve()) as any;
+    const result = await mf.resolve();
     const serialized = JSON.stringify(result);
     const deserialized = JSON.parse(serialized);
     expect(deserialized.slug).toBe(result.slug);
@@ -400,16 +413,16 @@ describe("External class contract", () => {
     const results = await mc.resolve();
     const serialized = JSON.stringify(results);
     const deserialized = JSON.parse(serialized);
-    expect(deserialized[0].slug).toBe((results[0] as any).slug);
+    expect(deserialized[0].slug).toBe(results[0]?.slug);
   });
 });
 
 // ─── Runtime integration ($src external prototype) ────────────────────────────
 
 describe("Runtime external prototype ($src)", () => {
-  const parserDir = resolvePath(__dirname, "..");
-  const mdFilePath = resolvePath(parserDir, "src", "Markdown.class.json");
-  const mdCollPath = resolvePath(parserDir, "src", "MarkdownCollection.class.json");
+  const parserDir = resolve(__dirname, "..");
+  const mdFilePath = resolve(parserDir, "src", "Markdown.class.json");
+  const mdCollPath = resolve(parserDir, "src", "MarkdownCollection.class.json");
 
   /** @type {() => void} */
   let _restore: (() => void) | undefined;
@@ -441,11 +454,11 @@ describe("Runtime external prototype ($src)", () => {
       $src: `file://${mdFilePath}`,
       src: join(FIXTURE_DIR, "getting-started.md"),
     };
-    const sig = (await resolvePrototype(def, {}, "$post")) as any;
-    expect(isSignal(sig)).toBe(true);
-    const val = sig.value;
-    expect(val.slug).toBe("getting-started");
-    expect(val.frontmatter.title).toBe("Getting Started with Jx");
+    const sig = await resolveSignal(def, "$post");
+    expect(sig.value).toMatchObject({
+      frontmatter: { title: "Getting Started with Jx" },
+      slug: "getting-started",
+    });
   });
 
   test("resolvePrototype with $src loads MarkdownCollection", async () => {
@@ -457,25 +470,22 @@ describe("Runtime external prototype ($src)", () => {
       sortOrder: "desc",
       src: join(FIXTURE_DIR, "*.md"),
     };
-    const sig = (await resolvePrototype(def, {}, "$posts")) as any;
-    expect(isSignal(sig)).toBe(true);
-    const val = sig.value;
-    expect(Array.isArray(val)).toBe(true);
-    expect(val.length).toBe(2);
+    const sig = await resolveSignal(def, "$posts");
+    expect(Array.isArray(sig.value)).toBe(true);
+    expect(sig.value).toHaveLength(2);
   });
 
   test("resolvePrototype strips reserved keys from config", async () => {
-    const def = {
+    const def: JxPrototypeDef = {
       $prototype: "Markdown",
       $src: `file://${mdFilePath}`,
       description: "test",
       src: join(FIXTURE_DIR, "getting-started.md"),
       timing: "client",
     };
-    const sig = (await resolvePrototype(def as unknown as JxPrototypeDef, {}, "$test")) as any;
-    expect(isSignal(sig)).toBe(true);
+    const sig = await resolveSignal(def, "$test");
     // If reserved keys leaked in, the constructor would get them — but resolve() still works
-    expect(sig.value.slug).toBe("getting-started");
+    expect(sig.value).toMatchObject({ slug: "getting-started" });
   });
 
   test("resolvePrototype with $export override", async () => {
@@ -487,17 +497,15 @@ describe("Runtime external prototype ($src)", () => {
       limit: 1,
       src: join(FIXTURE_DIR, "*.md"),
     };
-    const sig = (await resolvePrototype(def, {}, "$posts")) as any;
-    expect(isSignal(sig)).toBe(true);
-    const val = sig.value;
-    expect(Array.isArray(val)).toBe(true);
-    expect(val.length).toBe(1);
+    const sig = await resolveSignal(def, "$posts");
+    expect(Array.isArray(sig.value)).toBe(true);
+    expect(sig.value).toHaveLength(1);
   });
 
   test("rejects non-Function $src pointing to .js", async () => {
     const def = {
       $prototype: "Markdown",
-      $src: resolvePath(__dirname, "..", "md.js"),
+      $src: resolve(__dirname, "..", "md.js"),
     };
     // oxlint-disable-next-line typescript/await-thenable -- bun:test's `.rejects.toThrow()` returns a Promise at runtime but oxlint's type-aware engine types it as non-thenable; the await is required for the assertion to settle.
     await expect(resolvePrototype(def, {}, "$x")).rejects.toThrow(".class.json");
@@ -515,13 +523,12 @@ describe("Runtime external prototype ($src)", () => {
     };
     const scope = await buildScope(doc, {}, "http://localhost/");
     // Vue reactive() unwraps refs, so scope.$post is the raw value
-    expect((scope.$post as { slug: string }).slug).toBe("getting-started");
+    expect(scope.$post).toMatchObject({ slug: "getting-started" });
   });
 
   test("unknown $prototype without $src warns with helpful message", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    const sig = (await resolvePrototype({ $prototype: "UnknownThing" }, {}, "$u")) as any;
-    expect(isSignal(sig)).toBe(true);
+    const sig = await resolveSignal({ $prototype: "UnknownThing" }, "$u");
     expect(sig.value).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Did you mean to add '$src'?"));
     warn.mockRestore();

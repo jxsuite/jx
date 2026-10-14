@@ -37,10 +37,16 @@ import { resolve } from "node:path";
 import { createChatState as liveCreateChatState } from "@jxsuite/ai/chat-state";
 import { createToolDefinition, createToolRegistry } from "@jxsuite/ai/tools";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
-import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type {
+  ProxyStreamingClientOptions,
+  StreamEvent,
+  StreamingClient,
+} from "@jxsuite/ai/streaming-client";
+import { isFunction, isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 import type { StudioPlatform } from "../src/types";
+import type { CandidateDocument } from "../src/services/ai-write-report";
 import {
   buildTrace,
   createChatCallLog,
@@ -48,11 +54,11 @@ import {
   installAiWritesSpy,
   jsonSafe,
   matchGolden,
-  messageShape,
+  messageRecord,
   recordChatState,
   spyStreamingClient,
 } from "./harness/trace-recorder";
-import type { ChatCallLog, ClientCallLog, Json } from "./harness/trace-recorder";
+import type { ChatCallLog, ClientCallLog, TraceParts } from "./harness/trace-recorder";
 
 // ─── Instruments, installed before anything under test is imported ──────────
 
@@ -69,7 +75,7 @@ let recording: Recording | null = null;
 /* The document-assistant suite's knobs, exactly as it declares them. */
 let nextRounds: StreamEvent[][] = [];
 let createErrorMessage: string | null = null;
-let lastClientOpts: Record<string, unknown> | null = null;
+let lastClientOpts: ProxyStreamingClientOptions | null = null;
 
 /**
  * A scripted streaming client: `rounds[n]` is what the nth `streamChat` call yields, and any call
@@ -95,18 +101,19 @@ function scripted(rounds: StreamEvent[][]): StreamingClient & { calls: () => num
  * the first stream, and a stream stopped by then sends nothing. The resolved URL is what the
  * recorded options show, as it was when the send path resolved it before building the client.
  */
-function lazyUrl(inner: StreamingClient, chatUrl: unknown): StreamingClient {
-  let url: Promise<unknown> | null = null;
+function lazyUrl(
+  inner: StreamingClient,
+  chatUrl: ProxyStreamingClientOptions["chatUrl"],
+): StreamingClient {
+  let url: Promise<string> | null = null;
   return {
     async *streamChat(messages, tools, systemPrompt, signal) {
-      url ??= Promise.resolve(
-        typeof chatUrl === "function" ? (chatUrl as () => unknown)() : chatUrl,
-      );
+      url ??= Promise.resolve(isFunction(chatUrl) ? chatUrl() : chatUrl);
       const resolved = await url;
       if (lastClientOpts) {
         lastClientOpts = { ...lastClientOpts, chatUrl: resolved };
       }
-      if (signal?.aborted) {
+      if (signal.aborted) {
         yield { stopReason: "cancelled", type: "done" };
         return;
       }
@@ -116,13 +123,23 @@ function lazyUrl(inner: StreamingClient, chatUrl: unknown): StreamingClient {
 }
 
 /** One tool call followed by a tool_calls stop. */
-function toolCallRound(id: string, name: string, args: object): StreamEvent[] {
+function toolCallRound(id: string, name: string, args: JsonObject): StreamEvent[] {
   return [
     { id, name, type: "tool_call_start" },
     { args: JSON.stringify(args), id, type: "tool_call_delta" },
     { id, type: "tool_call_end" },
     { stopReason: "tool_calls", type: "done" },
   ];
+}
+
+/**
+ * A provider event this client version has no member for. The loop must skip it rather than fail on
+ * it, so the stream is handed one on purpose.
+ */
+function foreignEvent(event: { type: string }): StreamEvent {
+  /* SAFETY: deliberately NOT a member of StreamEvent — that is the case under test. The loop reads
+     only `type` and drops a value it has no case for, so no member a real event carries is read. */
+  return event as StreamEvent;
 }
 
 /* Captured by VALUE, before the barrel is mocked: Bun patches a mocked module's exports in place,
@@ -137,7 +154,7 @@ void mock.module("@jxsuite/ai", () => ({
   ...realAi,
   createChatState: (opts?: { model?: string }) =>
     recordChatState(createChatState(opts), recording?.chatLog ?? createChatCallLog()),
-  createProxyStreamingClient: (opts: Record<string, unknown>) => {
+  createProxyStreamingClient: (opts: ProxyStreamingClientOptions) => {
     lastClientOpts = opts;
     if (createErrorMessage) {
       throw new Error(createErrorMessage);
@@ -183,9 +200,10 @@ type Suite = "dat" | "loopt" | "recon";
 /** What a scenario hands back: the chat whose transcript is final, and what else it touched. */
 interface Observed {
   chat: Chat;
-  finalDocument?: unknown;
-  historyIndex?: unknown;
-  extra?: Record<string, unknown>;
+  finalDocument?: JsonValue;
+  historyIndex?: JsonValue;
+  /** The scenario's own observations; `undefined` members are dropped from the trace, as JSON does. */
+  extra?: Record<string, JsonValue | undefined>;
 }
 
 interface Scenario {
@@ -215,18 +233,18 @@ function goldenFile(scenario: Scenario): string {
   return `${scenario.suite}--${slug(scenario.name)}.json`;
 }
 
-async function traceOf(scenario: Scenario): Promise<Json> {
+async function traceOf(scenario: Scenario): Promise<JsonValue> {
   writesSpy.reset();
   const rec: Recording = { chatLog: createChatCallLog(), clientLog: createClientCallLog() };
   recording = rec;
   try {
     const seen = await scenario.run(rec);
-    return buildTrace({
+    const parts: TraceParts = {
       aiWrites: writesSpy.events,
       chatCalls: rec.chatLog.calls,
       clientCalls: rec.clientLog.calls,
       finalDocument: seen.finalDocument ?? null,
-      finalMessages: seen.chat.messages.map((message) => messageShape(message)),
+      finalMessages: seen.chat.messages.map((message) => messageRecord(message)),
       finalState: {
         contextWarning: seen.chat.contextWarning,
         error: seen.chat.error,
@@ -236,8 +254,11 @@ async function traceOf(scenario: Scenario): Promise<Json> {
         usage: seen.chat.usage,
       },
       historyIndex: seen.historyIndex ?? null,
-      ...(seen.extra ? { extra: seen.extra } : {}),
-    });
+    };
+    if (seen.extra) {
+      parts.extra = seen.extra;
+    }
+    return buildTrace(parts);
   } finally {
     recording = null;
   }
@@ -253,17 +274,25 @@ function registerScenarios(scenarios: Scenario[]): void {
 
 // ─── loopt: ai-loop.test.ts ──────────────────────────────────────────────────
 
-function makeTab(doc?: Record<string, unknown>): Tab {
+function makeTab(doc?: JxMutableNode): Tab {
   const document = doc ?? { children: [{ tagName: "p", textContent: "Hello" }], tagName: "div" };
   return createTab({ document, id: "test" });
 }
 
 /** The suite's `harness()`: a recorded chat store and a registry of the hand document tools. */
-function loopHarness(rec: Recording, tab: Tab, validate?: (doc: unknown) => Promise<string[]>) {
+function loopHarness(
+  rec: Recording,
+  tab: Tab,
+  validate?: (doc: CandidateDocument) => Promise<string[]>,
+) {
   const chatState = recordChatState(createChatState({ model: "test" }), rec.chatLog);
   const toolRegistry = createToolRegistry();
-  registerAiTools(toolRegistry, { getTab: () => tab, ...(validate ? { validate } : {}) });
-  return { chatState, toolRegistry: toolRegistry as ToolRegistry };
+  const deps: Parameters<typeof registerAiTools>[1] = { getTab: () => tab };
+  if (validate) {
+    deps.validate = validate;
+  }
+  registerAiTools(toolRegistry, deps);
+  return { chatState, toolRegistry };
 }
 
 /** `runAgentLoop` with the client behind the spy. */
@@ -278,24 +307,31 @@ function loop(
     getTab?: () => Tab | null;
   },
 ): Promise<void> {
-  return runAgentLoop({
+  const run: Parameters<typeof runAgentLoop>[0] = {
     chatState: opts.chatState,
     streamingClient: spyStreamingClient(opts.client, rec.clientLog),
     systemPrompt: opts.systemPrompt ?? "",
     toolRegistry: opts.toolRegistry,
-    ...(opts.signal ? { signal: opts.signal } : {}),
-    ...(opts.getTab ? { getTab: opts.getTab } : {}),
-  });
+  };
+  if (opts.signal) {
+    run.signal = opts.signal;
+  }
+  if (opts.getTab) {
+    run.getTab = opts.getTab;
+  }
+  return runAgentLoop(run);
 }
 
 /** Snapshot a tab, dispose it, and hand back the observation. */
-function settleTab(chat: Chat, tab: Tab, extra?: Record<string, unknown>): Observed {
+function settleTab(chat: Chat, tab: Tab, extra?: Record<string, JsonValue | undefined>): Observed {
   const observed: Observed = {
     chat,
     finalDocument: jsonSafe(tab.doc.document),
     historyIndex: tab.history.index,
-    ...(extra ? { extra } : {}),
   };
+  if (extra) {
+    observed.extra = extra;
+  }
   disposeTab(tab);
   return observed;
 }
@@ -307,7 +343,11 @@ const ADD_SPAN = {
 };
 
 function childrenOf(tab: Tab): (JxMutableNode | string)[] {
-  return tab.doc.document.children as (JxMutableNode | string)[];
+  const { children } = tab.doc.document;
+  if (!Array.isArray(children)) {
+    throw new TypeError("every document these scenarios build holds its children as a plain array");
+  }
+  return children;
 }
 
 /**
@@ -338,7 +378,7 @@ function editHarness(rec: Recording, opts: { ok?: boolean; stopDuring?: boolean 
       chatState,
       client,
       signal: controller.signal,
-      toolRegistry: toolRegistry as ToolRegistry,
+      toolRegistry,
     });
   return { chatState, run };
 }
@@ -367,7 +407,7 @@ function askHarness(rec: Recording, reply: (n: number) => string = () => "yes") 
       resetAsk();
       return observed;
     },
-    toolRegistry: toolRegistry as ToolRegistry,
+    toolRegistry,
   };
 }
 
@@ -493,7 +533,7 @@ const LOOPT = inSuite("loopt", [
         chatState,
         client,
         signal: controller.signal,
-        toolRegistry: toolRegistry as ToolRegistry,
+        toolRegistry,
       });
       expect(ran).toEqual(["first"]);
       expect(client.calls()).toBe(1);
@@ -536,7 +576,7 @@ const LOOPT = inSuite("loopt", [
       chatState.sendMessage("add a span");
       await loop(rec, { chatState, client, toolRegistry });
       const sent = rec.clientLog.calls.map((call) =>
-        (call.messages as { role: string }[]).map((m) => m.role),
+        call.messages.map((m) => (isJsonObject(m) ? m.role : undefined)),
       );
       expect(sent).toEqual([["user"], ["user", "assistant", "tool"]]);
       return settleTab(chatState, tab);
@@ -546,8 +586,8 @@ const LOOPT = inSuite("loopt", [
     name: "feeds schema errors back so the model can self-correct",
     async run(rec) {
       const tab = makeTab();
-      const validate = async (doc: unknown) =>
-        (doc as JxMutableNode).tagName === "header"
+      const validate = async (doc: CandidateDocument) =>
+        isJsonObject(doc) && doc.tagName === "header"
           ? ["(root): invalid custom element tagName"]
           : [];
       const { chatState, toolRegistry } = loopHarness(rec, tab, validate);
@@ -603,7 +643,7 @@ const LOOPT = inSuite("loopt", [
       const { chatState, toolRegistry } = loopHarness(rec, tab, async () => []);
       const client = scripted(
         Array.from({ length: 6 }, () => [
-          { type: "noop" } as unknown as StreamEvent,
+          foreignEvent({ type: "noop" }),
           { id: "c", name: "set_text", type: "tool_call_start" },
           {
             args: JSON.stringify({ path: ["children", 9], value: "x" }),
@@ -670,9 +710,9 @@ const LOOPT = inSuite("loopt", [
         chatState,
         client,
         getTab: () => current,
-        toolRegistry: toolRegistry as ToolRegistry,
+        toolRegistry,
       });
-      expect((second.doc.document as Record<string, unknown>).id).toBe("two");
+      expect(second.doc.document.id).toBe("two");
       expect(second.history.snapshots.length).toBeGreaterThan(beforeSecond);
       const observed: Observed = {
         chat: chatState,
@@ -716,7 +756,7 @@ const LOOPT = inSuite("loopt", [
     async run(rec) {
       const h = askHarness(rec);
       const client = scripted(
-        Array.from({ length: 10 }, (_, i) => [
+        Array.from({ length: 10 }, (_, i): StreamEvent[] => [
           { id: `a${i}`, name: "ask_user", type: "tool_call_start" },
           { args: JSON.stringify({ question: "Which?" }), id: `a${i}`, type: "tool_call_delta" },
           { id: `a${i}`, type: "tool_call_end" },
@@ -724,7 +764,7 @@ const LOOPT = inSuite("loopt", [
           { args: "{}", id: `w${i}`, type: "tool_call_delta" },
           { id: `w${i}`, type: "tool_call_end" },
           { stopReason: "tool_calls", type: "done" },
-        ]) as StreamEvent[][],
+        ]),
       );
       h.chatState.sendMessage("ask and work");
       await loop(rec, { chatState: h.chatState, client, toolRegistry: h.toolRegistry });
@@ -758,7 +798,7 @@ const LOOPT = inSuite("loopt", [
         chatState,
         client,
         signal: controller.signal,
-        toolRegistry: toolRegistry as ToolRegistry,
+        toolRegistry,
       });
       // Let the round reach the tool, then stop the turn the way `assistant.stop` does.
       await new Promise((r) => {
@@ -788,7 +828,7 @@ const LOOPT = inSuite("loopt", [
       const running = loop(rec, {
         chatState,
         client,
-        toolRegistry: toolRegistry as ToolRegistry,
+        toolRegistry,
       });
       await new Promise((r) => {
         setTimeout(r, 0);
@@ -1057,7 +1097,7 @@ function installRegistryFixture(): void {
   setActiveRegistry(registry);
 }
 
-function sessionsIn(root: string): Json {
+function sessionsIn(root: string): JsonValue {
   return jsonSafe(
     listSessions(root).map((meta) => ({
       id: meta.id,
@@ -1073,7 +1113,7 @@ function sessionsIn(root: string): Json {
  * asked the platform to do. Persisted messages are listed by id and role; their content is
  * `finalMessages`.
  */
-function datObserve(a: Assistant, extra: Record<string, unknown> = {}): Observed {
+function datObserve(a: Assistant, extra: Record<string, JsonValue | undefined> = {}): Observed {
   const tab = activeTab.value;
   const root = workspace.projectRoot || "";
   return {
@@ -1083,24 +1123,48 @@ function datObserve(a: Assistant, extra: Record<string, unknown> = {}): Observed
          a checkpoint naming "the first session" makes it `session#1`. */
       ...extra,
       activeSession: a.activeSessionId(),
-      clientOptions: lastClientOpts,
+      clientOptions: jsonSafe(lastClientOpts),
       platformCalls: platformState.calls.map(([name, first]) =>
-        typeof first === "string"
-          ? `${String(name)}(${JSON.stringify(first)})`
-          : `${String(name)}()`,
+        isString(first) ? `${String(name)}(${JSON.stringify(first)})` : `${String(name)}()`,
       ),
       projectRoot: workspace.projectRoot ?? null,
-      sessions: {
-        "(unscoped)": sessionsIn(""),
-        ...(root ? { [root]: sessionsIn(root) } : {}),
-      },
-      writtenFiles: platformState.calls
-        .filter(([name]) => name === "writeFile")
-        .map(([, path, content]) => ({ content, path })),
+      sessions: sessionsByRoot(root),
+      writtenFiles: jsonSafe(
+        // The platform's `writeFile(path, content)` takes two strings.
+        platformState.calls.flatMap(([name, path, content]) =>
+          name === "writeFile" && isString(path) && isString(content) ? [{ content, path }] : [],
+        ),
+      ),
     },
     finalDocument: tab ? jsonSafe(tab.doc.document) : null,
     historyIndex: tab ? tab.history.index : null,
   };
+}
+
+/** Every session store a send could have written: the unscoped one, then the project's once open. */
+function sessionsByRoot(root: string): JsonObject {
+  const sessions: JsonObject = { "(unscoped)": sessionsIn("") };
+  if (root) {
+    sessions[root] = sessionsIn(root);
+  }
+  return sessions;
+}
+
+/**
+ * The `importSite` double `document-assistant.test.ts` declares, answer for answer. Its summary
+ * counts `pages` where ImportSiteSummary lists them; that is kept, because the golden pins the
+ * summary exactly as the tool relayed it.
+ */
+function mirroredImportSite(answer: {
+  config: ProjectConfig;
+  root: string;
+  result: JsonObject;
+}): NonNullable<StudioPlatform["importSite"]> {
+  /* SAFETY: only `result` is not the declared ImportSiteSummary. import_site (`ai-import-tools.ts`)
+     relays it whole as data, and `describeRun` reads `warnings` (a real string array here) and
+     `pages.length`, which on the counted `2` is `undefined` and skips the page line: exactly the
+     summary sentence the golden pins. No other member of it is read. */
+  return (async () => answer) as NonNullable<StudioPlatform["importSite"]>;
 }
 
 /** The persisted messages of the unscoped active session (the suite's `persistedMessages`). */
@@ -1110,7 +1174,7 @@ function persistedMessages() {
 }
 
 /** The tools and prompt of the latest client call. */
-function lastCall(rec: Recording): { tools: string[]; prompt: string } {
+function lastCall(rec: Recording) {
   return {
     prompt: rec.clientLog.prompts.at(-1) ?? "",
     tools: rec.clientLog.calls.at(-1)?.tools ?? [],
@@ -1235,7 +1299,7 @@ const DAT = inSuite("dat", [
         ],
       ];
       const a = createDocumentAssistant();
-      const checkpoints: Record<string, unknown> = {};
+      const checkpoints: JsonObject = {};
       await a.sendMessage("first chat");
       const firstId = a.activeSessionId()!;
       a.newChat();
@@ -1350,7 +1414,7 @@ const DAT = inSuite("dat", [
       await running;
       expect(a.chatState.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
       expect(a.chatState.messages.map((m) => writesForTurn(m.id))).toEqual([[], []]);
-      expect((tab.doc.document.children as unknown[]).length).toBe(2);
+      expect(childrenOf(tab).length).toBe(2);
       return datObserve(a);
     },
   },
@@ -1410,7 +1474,7 @@ const DAT = inSuite("dat", [
         ],
       ];
       let a: Assistant | null = null;
-      const seen: Record<string, unknown>[] = [];
+      const seen: JsonObject[] = [];
       for (const [label, arrange, expected] of states) {
         resetWorkspaceWithTab();
         editorKind = "canvas";
@@ -1484,7 +1548,7 @@ const DAT = inSuite("dat", [
       ];
       const a = createDocumentAssistant();
       await a.sendMessage("delete it");
-      expect((tab.doc.document.children as unknown[]).length).toBe(1);
+      expect(childrenOf(tab).length).toBe(1);
       const request = a.chatState.messages.find((m) => m.toolCalls?.length);
       expect(writesForTurn(request!.id)).toEqual([]);
       return datObserve(a, { dirty: tab.doc.dirty });
@@ -1539,10 +1603,11 @@ const DAT = inSuite("dat", [
     name: "import_site adopts the imported project and re-keys the pre-project session",
     async run() {
       installPlatform({
-        importSite: (async () => ({
+        importSite: mirroredImportSite({
+          config: {},
           result: { pages: 2, warnings: [] },
           root: "/abs/imported-site",
-        })) as never,
+        }),
       });
       setProjectAdopter(async (root: string) => {
         setWorkspaceProject(root, { name: "Imported" });
@@ -1671,13 +1736,15 @@ const DAT = inSuite("dat", [
       ];
       const a = createDocumentAssistant();
       await a.sendMessage("rename the project");
-      const workspaceName = (workspace.projectConfig as { name?: string } | null)?.name;
-      const storeName = (store.projectState?.projectConfig as { name?: string } | null)?.name;
+      const workspaceName = workspace.projectConfig?.name;
+      const storeName = store.projectState?.projectConfig?.name;
       expect(workspaceName).toBe("New Name");
       expect(storeName).toBe("New Name");
       const filesSection = rec.clientLog.prompts[0]!.split("## Project Files")[1]!;
       expect(filesSection.split("\n\n---\n\n")[0]!.trim()).toBe("pages/index.json");
-      return datObserve(a, { projectConfigName: { store: storeName, workspace: workspaceName } });
+      return datObserve(a, {
+        projectConfigName: jsonSafe({ store: storeName, workspace: workspaceName }),
+      });
     },
   },
   {
@@ -1698,14 +1765,17 @@ const DAT = inSuite("dat", [
       ];
       const a = createDocumentAssistant();
       await a.sendMessage("rename the project");
-      (store.projectState!.projectConfig as { description?: string }).description = "from Settings";
+      store.projectState!.projectConfig!.description = "from Settings";
       const commit = await commitProjectConfig();
       expect(commit.ok).toBe(true);
       expect(JSON.parse(state.files.get("project.json")!)).toEqual({
         description: "from Settings",
         name: "New Name",
       });
-      return datObserve(a, { commit, projectJson: state.files.get("project.json") });
+      return datObserve(a, {
+        commit: jsonSafe(commit),
+        projectJson: state.files.get("project.json"),
+      });
     },
   },
   {
@@ -1725,13 +1795,17 @@ const DAT = inSuite("dat", [
       const a = createDocumentAssistant();
       await a.sendMessage("rename the project and add a variable");
       expect(state.files.get("project.json")).toBe(written);
-      (store.projectState!.projectConfig as { description?: string }).description = "from Settings";
+      store.projectState!.projectConfig!.description = "from Settings";
       const commit = await commitProjectConfig();
       expect(commit.ok).toBe(true);
       expect(state.files.get("project.json")).toBe(
         written.replace('"2" }', '"2" },\n  "description": "from Settings"'),
       );
-      return datObserve(a, { commit, projectJson: state.files.get("project.json"), seeded });
+      return datObserve(a, {
+        commit: jsonSafe(commit),
+        projectJson: state.files.get("project.json"),
+        seeded: jsonSafe(seeded),
+      });
     },
   },
   {
@@ -1778,7 +1852,7 @@ async function reconRun(rec: Recording, event: StreamEvent): Promise<Observed> {
   await loop(rec, {
     chatState,
     client: erroringClient(event),
-    toolRegistry: createToolRegistry() as ToolRegistry,
+    toolRegistry: createToolRegistry(),
   });
   await flush();
   return {
@@ -1880,10 +1954,14 @@ describe("recon — ai-loop-reconnect.test.ts", () => {
 
   beforeAll(() => {
     installPlatform();
-    (globalThis as Record<string, unknown>).fetch = (url: string) => {
-      fetchCalls.push(url);
-      return fetchImpl();
-    };
+    // Keeping Bun's `preconnect` makes the stub a whole `fetch`; the probe passes a string URL.
+    globalThis.fetch = Object.assign(
+      (resource: RequestInfo | URL) => {
+        fetchCalls.push(String(resource));
+        return fetchImpl();
+      },
+      { preconnect: originalFetch.preconnect },
+    );
   });
 
   afterAll(() => {
@@ -1955,17 +2033,20 @@ const DAT_NOT_SEND_PATH = [
 /** The test names a suite file declares, in order. */
 function testNames(file: string): string[] {
   const source = readFileSync(resolve(import.meta.dir, file), "utf8");
-  return [...source.matchAll(/\btest\(\s*"((?:[^"\\]|\\.)*)"/g)].map(
-    (match) => JSON.parse(`"${match[1]}"`) as string,
-  );
+  return [...source.matchAll(/\btest\(\s*"((?:[^"\\]|\\.)*)"/g)].flatMap((match) => {
+    // A JSON string literal's body, quoted back up, always parses to a string.
+    const name: unknown = JSON.parse(`"${match[1]}"`);
+    return isString(name) ? [name] : [];
+  });
 }
 
 describe("the agent-trace corpus", () => {
   test("mirrors every loop test, and every mirrored test has a golden", () => {
     const all = [...LOOPT, ...DAT, ...RECON];
-    const missingGoldens = all
-      .map((scenario) => goldenFile(scenario))
-      .filter((file) => !existsSync(resolve(FIXTURES, file)));
+    const missingGoldens = all.flatMap((scenario) => {
+      const file = goldenFile(scenario);
+      return existsSync(resolve(FIXTURES, file)) ? [] : [file];
+    });
     expect(missingGoldens).toEqual([]);
 
     // Each mirrored name has its scenario, so its golden (checked above) — one per LOOPT test.

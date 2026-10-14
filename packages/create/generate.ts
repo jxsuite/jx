@@ -1,7 +1,7 @@
 /** Shared project generation logic. Used by both the CLI scaffolder and the Studio server endpoint. */
 
 import { chmod, cp, lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { adapterNeedsWrangler, buildWranglerJsonc } from "./scaffold";
+import { adapterNeedsWrangler, buildWranglerJsonc, isJsonObject, parseJson } from "./scaffold";
 import { basename, join, relative, sep } from "node:path";
 
 import { Buffer } from "node:buffer";
@@ -9,6 +9,7 @@ import { Buffer } from "node:buffer";
 import { existsSync } from "node:fs";
 import { mediaForTemplate } from "./templates";
 import type { TemplateId } from "./templates";
+import type { JsonObject } from "./scaffold";
 
 import TEMPLATE_VERSIONS from "./template-versions.json";
 
@@ -183,13 +184,7 @@ async function populateProject(destPath: string, opts: ProjectOptions) {
   } = opts;
 
   if (starter && starter !== "blank") {
-    await scaffoldFromStarter(destPath, starter, {
-      adapter,
-      description,
-      name,
-      url,
-      ...(design !== undefined ? { design } : {}),
-    });
+    await scaffoldFromStarter(destPath, starter, { adapter, description, design, name, url });
     return;
   }
 
@@ -199,7 +194,7 @@ async function populateProject(destPath: string, opts: ProjectOptions) {
 
   const projectJson = buildProjectJson({ adapter, description, name, template, url });
   if (design) {
-    applyDesign(projectJson as unknown as Record<string, unknown>, design, { starter: false });
+    applyDesign(projectJson, design, { starter: false });
   }
   const packageJson = buildPackageJson({ adapter, description, name });
 
@@ -256,7 +251,7 @@ async function scaffoldFromStarter(
     description?: string;
     url?: string;
     adapter?: ProjectOptions["adapter"];
-    design?: DesignOptions;
+    design?: DesignOptions | undefined;
   },
 ) {
   const { name, description = "", url = "", adapter = "static", design } = opts;
@@ -279,14 +274,17 @@ async function scaffoldFromStarter(
   // Re-stamp project.json with the new project's identity, keeping the starter's design tokens,
   // Content types, image pipeline, and head.
   const projectPath = join(destPath, "project.json");
-  const project = JSON.parse(await readFile(projectPath, "utf8")) as Record<string, unknown>;
+  const project = parseJson(await readFile(projectPath, "utf8"));
+  if (!isJsonObject(project)) {
+    throw new TypeError(`Starter "${starter}" has a project.json that is not a JSON object`);
+  }
   project.name = name;
   if (url) {
     project.url = url;
   }
   applyDescription(project, description);
-  if (adapter && adapter !== "static") {
-    const build = (project.build as Record<string, unknown> | undefined) ?? {};
+  if (adapter !== "static") {
+    const build = isJsonObject(project.build) ? project.build : {};
     build.adapter = adapter;
     project.build = build;
   }
@@ -320,19 +318,19 @@ async function scaffoldFromStarter(
  * (falling back to the plain CSS property where noted), and is otherwise skipped silently rather
  * than fighting the starter's layered styles. `--color-primary-hover` is intentionally left alone.
  *
- * @param {Record<string, unknown>} project — parsed project.json, mutated in place
+ * @param {JsonObject} project — parsed project.json, mutated in place
  * @param {DesignOptions} design
  * @param {{ starter: boolean }} mode — starter clone vs. blank/template scaffold
  */
 function applyDesign(
-  project: Record<string, unknown>,
+  project: JsonObject,
   design: DesignOptions,
   { starter }: { starter: boolean },
 ) {
   const { accent, background, text, bodyFont, headingFont, media } = design;
-  const style = project.style as Record<string, unknown> | undefined;
+  const { style } = project;
 
-  if (style) {
+  if (isJsonObject(style)) {
     if (accent && (!starter || "--color-primary" in style)) {
       style["--color-primary"] = accent;
     }
@@ -394,25 +392,56 @@ async function writeLogo(destPath: string, logo: { name: string; base64: string 
  * Set the `<meta name="description">` content in a project's `$head` (or leave it untouched when
  * the starter has no such tag or no description was supplied).
  *
- * @param {Record<string, unknown>} project
+ * @param {JsonObject} project
  * @param {string} description
  */
-function applyDescription(project: Record<string, unknown>, description: string) {
+function applyDescription(project: JsonObject, description: string) {
   if (!description || !Array.isArray(project.$head)) {
     return;
   }
-  for (const tag of project.$head as { tagName?: string; attributes?: Record<string, unknown> }[]) {
-    if (tag.tagName === "meta" && tag.attributes?.name === "description") {
+  for (const tag of project.$head) {
+    if (
+      isJsonObject(tag) &&
+      tag.tagName === "meta" &&
+      isJsonObject(tag.attributes) &&
+      tag.attributes.name === "description"
+    ) {
       tag.attributes.content = description;
     }
   }
 }
 
 /**
- * Build a wrangler.jsonc for Cloudflare adapters.
- *
- * @param {{ slug: string; adapter: string }} opts
+ * The scaffolded project.json `build` section. Non-static adapters add `adapter` through the
+ * JsonObject index signature; an optional `adapter?: string` member would conflict with that index
+ * under configs without `exactOptionalPropertyTypes` (packages/desktop's typecheck).
  */
+interface BuildSection extends JsonObject {
+  outDir: string;
+  trailingSlash: string;
+}
+
+/** Scaffolded package.json `dependencies`; `hono` joins for adapters with a server worker. */
+interface Dependencies {
+  "@jxsuite/parser": string;
+  hono?: string;
+}
+
+/** Scaffolded package.json `devDependencies`; `wrangler` joins for Cloudflare adapters. */
+interface DevDependencies {
+  "@jxsuite/compiler": string;
+  "@jxsuite/runtime": string;
+  "@jxsuite/server": string;
+  wrangler?: string;
+}
+
+/** Scaffolded package.json `scripts`; `deploy` joins for Cloudflare adapters. */
+interface PackageScripts {
+  build: string;
+  dev: string;
+  preview: string;
+  deploy?: string;
+}
 
 /** @param {ProjectOptions} opts */
 function buildProjectJson({ name, description, url, adapter, template = "blank" }: ProjectOptions) {
@@ -444,7 +473,7 @@ function buildProjectJson({ name, description, url, adapter, template = "blank" 
     });
   }
 
-  const build: { outDir: string; trailingSlash: string; adapter?: string } = {
+  const build: BuildSection = {
     outDir: "./dist",
     trailingSlash: "always",
   };
@@ -502,17 +531,17 @@ function buildPackageJson({
   // (release-please-config.json extra-files). Hardcoding them here is what left every scaffolded
   // Project asking for a compiler version that was never published. Never hand-edit the
   // Map; `bun run templates:sync` is the fixer.
-  const dependencies: Record<string, string> = {
+  const dependencies: Dependencies = {
     "@jxsuite/parser": TEMPLATE_VERSIONS.parser,
   };
-  const devDependencies: Record<string, string> = {
+  const devDependencies: DevDependencies = {
     "@jxsuite/compiler": TEMPLATE_VERSIONS.compiler,
     "@jxsuite/runtime": TEMPLATE_VERSIONS.runtime,
     // The `dev` script spawns @jxsuite/server's dev entry (see jx dev in the compiler CLI)
     "@jxsuite/server": TEMPLATE_VERSIONS.server,
   };
 
-  const scripts: Record<string, string> = {
+  const scripts: PackageScripts = {
     build: "jx build",
     dev: "jx dev",
     preview: "jx preview",

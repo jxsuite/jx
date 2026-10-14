@@ -32,6 +32,7 @@
  */
 
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
+import { stageOf } from "./surface-registry";
 import type { CanvasSurface } from "./surface-registry";
 
 /**
@@ -61,7 +62,7 @@ export function scrollbarWidthOf(scroller: HTMLElement): number {
 
 /** The cell a stage belongs to, or the document root when it is outside every cell. */
 function cellOf(surface: CanvasSurface): HTMLElement {
-  return surface.wrap?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
+  return stageOf(surface)?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
 }
 
 /**

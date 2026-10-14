@@ -1,49 +1,97 @@
 import "./with-dom.js";
 import { ICON_NAMES } from "@jxsuite/ui/icons";
+import { isString } from "@jxsuite/schema/guards";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { KeyedLabel } from "../src/ui/surface";
 
+/* The four data files this suite validates. `JSON.parse` yields `any`, so each annotation below is
+   the shape the files are MEANT to have — named so the tests can read it — and not a proof of it:
+   every member a test relies on is asserted field by field, which is what makes a drifted file fail
+   here rather than in the panel that reads it. Members no test reads are left out. */
+
+/** One `$defs` entry of css-meta / html-meta: a property or attribute the Inspector edits. */
 interface MetaEntry {
   $section: string;
   $order: number;
   type: string;
   enum?: string[];
+  $input?: string;
   $buttonValues?: string[];
   $icons?: Record<string, string>;
   $elements?: string[];
-  $inlineChildren?: string[];
-  [key: string]: unknown;
+}
+
+/** The layout css-meta.json and html-meta.json share. */
+interface PropertyMetaDocument {
+  $id: string;
+  title: string;
+  $sections: KeyedLabel[];
+  $defs: Record<string, MetaEntry>;
+}
+
+/** One stylebook sample element. */
+interface StylebookElement {
+  tag: string;
+}
+
+/** The stylebook-meta.json layout: labelled groups of sample elements. */
+interface StylebookMetaDocument {
+  $sections: { label: string; elements: StylebookElement[] }[];
+}
+
+/** One inline formatting action of an elements-meta def. */
+interface InlineAction {
+  tag: string;
+  label: string;
+  command: string;
+}
+
+/** One `$defs` entry of elements-meta.json. `$inlineActions` may name another def to borrow from. */
+interface ElementMetaEntry {
+  $inlineChildren: string[];
+  $inlineActions?: string | InlineAction[];
+}
+
+/** The elements-meta.json layout. */
+interface ElementsMetaDocument {
+  $id: string;
+  title: string;
+  $defs: Record<string, ElementMetaEntry>;
 }
 
 const __dirname = import.meta.dirname;
 const studioDir = join(__dirname, "..");
 
-const cssMeta = JSON.parse(readFileSync(join(studioDir, "data", "css-meta.json"), "utf8"));
-const htmlMeta = JSON.parse(readFileSync(join(studioDir, "data", "html-meta.json"), "utf8"));
-const stylebookMeta = JSON.parse(
+const cssMeta: PropertyMetaDocument = JSON.parse(
+  readFileSync(join(studioDir, "data", "css-meta.json"), "utf8"),
+);
+const htmlMeta: PropertyMetaDocument = JSON.parse(
+  readFileSync(join(studioDir, "data", "html-meta.json"), "utf8"),
+);
+const stylebookMeta: StylebookMetaDocument = JSON.parse(
   readFileSync(join(studioDir, "data", "stylebook-meta.json"), "utf8"),
 );
-const elementsMeta = JSON.parse(
+const elementsMeta: ElementsMetaDocument = JSON.parse(
   readFileSync(join(studioDir, "data", "elements-meta.json"), "utf8"),
 );
 
 // ─── Shared metadata helpers ─────────────────────────────────────────────────
 
-/** @param {any} meta */
-function sectionKeys(meta: any) {
-  return new Set(meta.$sections.map((s: any) => s.key));
+function sectionKeys(meta: PropertyMetaDocument): Set<string> {
+  return new Set(meta.$sections.map((s) => s.key));
 }
 
 // ─── css-meta.json ───────────────────────────────────────────────────────────
 
 describe("css-meta.json", () => {
   const sections = sectionKeys(cssMeta);
-  const defs = Object.entries(cssMeta.$defs) as [string, MetaEntry][];
+  const defs = Object.entries(cssMeta.$defs);
 
   test("has $id and title", () => {
     expect(cssMeta.$id).toBe("css-meta");
-    expect(typeof cssMeta.title).toBe("string");
+    expect(cssMeta.title).toBeTypeOf("string");
   });
 
   test("has at least 5 sections", () => {
@@ -52,13 +100,13 @@ describe("css-meta.json", () => {
 
   test("every section has key and label", () => {
     for (const section of cssMeta.$sections) {
-      expect(typeof section.key).toBe("string");
-      expect(typeof section.label).toBe("string");
+      expect(section.key).toBeTypeOf("string");
+      expect(section.label).toBeTypeOf("string");
     }
   });
 
   test("section keys are unique", () => {
-    const keys = cssMeta.$sections.map((s: any) => s.key);
+    const keys = cssMeta.$sections.map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -70,7 +118,7 @@ describe("css-meta.json", () => {
 
   test("every def has numeric $order", () => {
     for (const [_prop, entry] of defs) {
-      expect(typeof entry.$order).toBe("number");
+      expect(entry.$order).toBeTypeOf("number");
     }
   });
 
@@ -86,7 +134,7 @@ describe("css-meta.json", () => {
       if (entry.enum) {
         expect(Array.isArray(entry.enum)).toBe(true);
         for (const v of entry.enum) {
-          expect(typeof v).toBe("string");
+          expect(v).toBeTypeOf("string");
         }
       }
     }
@@ -182,8 +230,12 @@ describe("css-meta.json", () => {
   test("every Display button is a glyph", () => {
     /* The regression this section exists for: the topmost control of the Style panel drew
        `flex grid block inl none` as text. */
-    const display = cssMeta.$defs.display as MetaEntry;
-    expect(Object.keys(display.$icons!).toSorted()).toEqual(display.$buttonValues!.toSorted());
+    const { display } = cssMeta.$defs;
+    expect(display?.$icons).toBeDefined();
+    expect(display?.$buttonValues).toBeDefined();
+    expect(Object.keys(display?.$icons ?? {}).toSorted()).toEqual(
+      (display?.$buttonValues ?? []).toSorted(),
+    );
   });
 
   test("a row's glyphs are all of its property's own axis", () => {
@@ -195,8 +247,9 @@ describe("css-meta.json", () => {
     const VERTICAL = /-(?:top|bottom)$|vertical/;
     const axisOf = (prop: string) => (prop.startsWith("justify") ? "main" : "cross");
     for (const prop of ["justifyContent", "alignItems", "alignContent", "alignSelf"]) {
-      const entry = cssMeta.$defs[prop] as MetaEntry;
-      for (const [value, glyph] of Object.entries(entry.$icons ?? {})) {
+      const entry = cssMeta.$defs[prop];
+      expect(entry, prop).toBeDefined();
+      for (const [value, glyph] of Object.entries(entry?.$icons ?? {})) {
         const wrong = axisOf(prop) === "main" ? VERTICAL : HORIZONTAL;
         expect(wrong.test(glyph), `${prop}: ${value} → "${glyph}"`).toBe(false);
       }
@@ -216,7 +269,7 @@ describe("css-meta.json", () => {
       if (entry.$input !== "button-group") {
         continue;
       }
-      const values = (entry.$buttonValues ?? entry.enum ?? []) as string[];
+      const values = entry.$buttonValues ?? entry.enum ?? [];
       for (const value of values) {
         if (!(entry.$icons ?? {})[value]) {
           bare.push(`${prop}: ${value}`);
@@ -233,7 +286,7 @@ describe("css-meta.json", () => {
   });
 
   test("no duplicate $order within a section", () => {
-    const ordersBySection: Record<string, Record<string, any>> = {};
+    const ordersBySection: Record<string, Record<number, string>> = {};
     for (const [prop, entry] of defs) {
       const sec = entry.$section;
       if (!ordersBySection[sec]) {
@@ -263,11 +316,11 @@ describe("css-meta.json", () => {
 
 describe("html-meta.json", () => {
   const sections = sectionKeys(htmlMeta);
-  const defs = Object.entries(htmlMeta.$defs) as [string, MetaEntry][];
+  const defs = Object.entries(htmlMeta.$defs);
 
   test("has $id and title", () => {
     expect(htmlMeta.$id).toBe("html-meta");
-    expect(typeof htmlMeta.title).toBe("string");
+    expect(htmlMeta.title).toBeTypeOf("string");
   });
 
   test("has at least 4 sections", () => {
@@ -276,8 +329,8 @@ describe("html-meta.json", () => {
 
   test("every section has key and label", () => {
     for (const section of htmlMeta.$sections) {
-      expect(typeof section.key).toBe("string");
-      expect(typeof section.label).toBe("string");
+      expect(section.key).toBeTypeOf("string");
+      expect(section.label).toBeTypeOf("string");
     }
   });
 
@@ -289,7 +342,7 @@ describe("html-meta.json", () => {
 
   test("every def has numeric $order", () => {
     for (const [_attr, entry] of defs) {
-      expect(typeof entry.$order).toBe("number");
+      expect(entry.$order).toBeTypeOf("number");
     }
   });
 
@@ -354,7 +407,7 @@ describe("stylebook-meta.json", () => {
 
   test("every section has label and elements array", () => {
     for (const section of stylebookMeta.$sections) {
-      expect(typeof section.label).toBe("string");
+      expect(section.label).toBeTypeOf("string");
       expect(Array.isArray(section.elements)).toBe(true);
     }
   });
@@ -362,13 +415,13 @@ describe("stylebook-meta.json", () => {
   test("every element has a tag", () => {
     for (const section of stylebookMeta.$sections) {
       for (const el of section.elements) {
-        expect(typeof el.tag).toBe("string");
+        expect(el.tag).toBeTypeOf("string");
       }
     }
   });
 
   test("section labels are unique", () => {
-    const labels = stylebookMeta.$sections.map((s: any) => s.label);
+    const labels = stylebookMeta.$sections.map((s) => s.label);
     expect(new Set(labels).size).toBe(labels.length);
   });
 });
@@ -378,18 +431,18 @@ describe("stylebook-meta.json", () => {
 describe("elements-meta.json", () => {
   test("has $id and title", () => {
     expect(elementsMeta.$id).toBe("elements-meta");
-    expect(typeof elementsMeta.title).toBe("string");
+    expect(elementsMeta.title).toBeTypeOf("string");
   });
 
   test("every element def has $inlineChildren array", () => {
-    for (const [_tag, def] of Object.entries(elementsMeta.$defs) as [string, MetaEntry][]) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
       expect(Array.isArray(def.$inlineChildren)).toBe(true);
     }
   });
 
   test("$inlineChildren contain only lowercase tag names", () => {
-    for (const [_tag, def] of Object.entries(elementsMeta.$defs) as [string, MetaEntry][]) {
-      for (const child of def.$inlineChildren!) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
+      for (const child of def.$inlineChildren) {
         expect(child).toBe(child.toLowerCase());
         expect(child).toMatch(/^[a-z][a-z0-9]*$/);
       }
@@ -397,16 +450,16 @@ describe("elements-meta.json", () => {
   });
 
   test("<a> is inline within <p> but not within <div>", () => {
-    expect(elementsMeta.$defs.p.$inlineChildren).toContain("a");
-    expect(elementsMeta.$defs.div.$inlineChildren).not.toContain("a");
+    expect(elementsMeta.$defs.p?.$inlineChildren).toContain("a");
+    expect(elementsMeta.$defs.div?.$inlineChildren).not.toContain("a");
   });
 
   test("$inlineActions string references resolve to valid arrays", () => {
-    for (const [_tag, def] of Object.entries(elementsMeta.$defs) as [string, MetaEntry][]) {
-      if (typeof def.$inlineActions === "string") {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
+      if (isString(def.$inlineActions)) {
         const ref = elementsMeta.$defs[def.$inlineActions];
         expect(ref).toBeDefined();
-        expect(Array.isArray(ref.$inlineActions)).toBe(true);
+        expect(Array.isArray(ref?.$inlineActions)).toBe(true);
       }
     }
   });
@@ -423,18 +476,18 @@ describe("elements-meta.json", () => {
    * return.
    */
   test("$inlineActions entries carry their vocabulary, and not a second glyph", () => {
-    for (const [_tag, def] of Object.entries(elementsMeta.$defs) as [string, MetaEntry][]) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
       let actions = def.$inlineActions;
-      if (typeof actions === "string") {
+      if (isString(actions)) {
         actions = elementsMeta.$defs[actions]?.$inlineActions;
       }
       if (!Array.isArray(actions)) {
         continue;
       }
       for (const action of actions) {
-        expect(typeof action.tag).toBe("string");
-        expect(typeof action.label).toBe("string");
-        expect(typeof action.command).toBe("string");
+        expect(action.tag).toBeTypeOf("string");
+        expect(action.label).toBeTypeOf("string");
+        expect(action.command).toBeTypeOf("string");
         expect(
           action,
           `${action.tag}: the glyph is the format.${action.command} record's`,
@@ -448,7 +501,7 @@ describe("elements-meta.json", () => {
     for (const tag of textBearing) {
       const def = elementsMeta.$defs[tag];
       expect(def).toBeDefined();
-      expect(def.$inlineChildren.length).toBeGreaterThan(0);
+      expect(def?.$inlineChildren.length).toBeGreaterThan(0);
     }
   });
 
@@ -457,7 +510,7 @@ describe("elements-meta.json", () => {
     for (const tag of containers) {
       const def = elementsMeta.$defs[tag];
       expect(def).toBeDefined();
-      expect(def.$inlineChildren).toEqual([]);
+      expect(def?.$inlineChildren).toEqual([]);
     }
   });
 });

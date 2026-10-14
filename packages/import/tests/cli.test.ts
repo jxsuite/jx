@@ -4,12 +4,13 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 import { resolve } from "node:path";
+import type { ImportProgressEvent, ImportSiteOptions, ImportSiteResult } from "../src/run.ts";
 
 const importSite = mock(
   (
-    _opts: Record<string, unknown>,
-    onProgress?: (e: { phase: string; message: string }) => void,
-  ) => {
+    _opts: ImportSiteOptions,
+    onProgress?: (e: ImportProgressEvent) => void,
+  ): Promise<ImportSiteResult> => {
     onProgress?.({ phase: "emit", message: "Wrote 5 files" });
     return Promise.resolve({
       outDir: resolve("clone-out"),
@@ -60,24 +61,23 @@ process.argv = [
   "40",
 ];
 
-const cliEntry = "../src/cli";
-const cliModule = (await import(cliEntry)) as { ready?: Promise<unknown> };
+const cliModule = await import("../src/cli");
 await cliModule.ready;
 
 describe("jx-import CLI", () => {
   test("maps flags onto importSite options", () => {
     expect(importSite).toHaveBeenCalledTimes(1);
-    const opts = importSite.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(opts.url).toBe("https://clone.example/");
-    expect(opts.outDir).toBe(resolve("clone-out"));
-    expect(opts.maxDepth).toBe(1);
-    expect(opts.maxPages).toBe(7);
-    expect(opts.scroll).toBe(false);
-    expect(opts.respectRobots).toBe(false);
-    expect(opts.styles).toBe(true);
-    expect(opts.assets).toBe(true);
-    expect(opts.componentize).toEqual({ minInstances: 3, minDepth: 2 });
-    expect(opts.ai).toEqual({
+    const opts = importSite.mock.calls[0]?.[0];
+    expect(opts?.url).toBe("https://clone.example/");
+    expect(opts?.outDir).toBe(resolve("clone-out"));
+    expect(opts?.maxDepth).toBe(1);
+    expect(opts?.maxPages).toBe(7);
+    expect(opts?.scroll).toBe(false);
+    expect(opts?.respectRobots).toBe(false);
+    expect(opts?.styles).toBe(true);
+    expect(opts?.assets).toBe(true);
+    expect(opts?.componentize).toEqual({ minInstances: 3, minDepth: 2 });
+    expect(opts?.ai).toEqual({
       apiKey: "sk-cli-test",
       baseUrl: "http://llm.local/v1",
       model: "test-model",
@@ -87,7 +87,7 @@ describe("jx-import CLI", () => {
      * `--min-fidelity` is the bar that decides the exit code. Conflating them is what let a run
      * scoring 8% exit 0 (issue #232).
      */
-    expect(opts.verify).toEqual({ threshold: 0.3, minFidelity: 40, fullPage: true });
+    expect(opts?.verify).toEqual({ threshold: 0.3, minFidelity: 40, fullPage: true });
   });
 
   test("prints the page summary, fidelity, and Studio handoff", () => {

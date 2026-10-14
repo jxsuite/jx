@@ -270,7 +270,7 @@ describe("watchSettings", () => {
   test("degrades to a no-op where the directory cannot be watched", () => {
     rmSync(dirname(storePath()), { force: true, recursive: true });
     const stop = watchSettings(() => {});
-    expect(typeof stop).toBe("function");
+    expect(stop).toBeInstanceOf(Function);
     expect(() => stop()).not.toThrow();
   });
 });

@@ -13,11 +13,12 @@
  * identical siblings therefore degrade to remove+insert — exactly what the Y move mapping does, so
  * no fidelity is lost relative to the wire.
  *
- * **This file has no runtime imports, and that is its reason for existing.** It was the top of
- * `./diff.ts`, which value-imports `./schema.ts` for `replaceYStructure` alone — and `schema.ts`
- * imports yjs. So every consumer of the alignment logic paid for yjs, which put the studio's diff
- * highlighting (`canvas/diff-marks.ts`) behind a lazy import for a computation that never touches a
- * Y type. `diff.ts` re-exports everything here, so nothing that already imported it changed.
+ * **This file imports nothing that reaches yjs, and that is its reason for existing.** Its only
+ * runtime import is the dependency-free `@jxsuite/schema/guards`. It was the top of `./diff.ts`,
+ * which value-imports `./schema.ts` for `replaceYStructure` alone — and `schema.ts` imports yjs. So
+ * every consumer of the alignment logic paid for yjs, which put the studio's diff highlighting
+ * (`canvas/diff-marks.ts`) behind a lazy import for a computation that never touches a Y type.
+ * `diff.ts` re-exports everything here, so nothing that already imported it changed.
  *
  * {@link matchChildren} is exported for that studio caller: `diffDocs` emits a REPLAY SCRIPT whose
  * paths are post-splice coordinates valid only in `b`, and a side-by-side comparison needs both
@@ -25,7 +26,8 @@
  * it would mean a second definition of "the same node".
  */
 
-import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import type { JxDocOp } from "./ops.ts";
 
 export interface DiffOptions {
@@ -36,22 +38,21 @@ export interface DiffOptions {
 const DEFAULT_MAX_OPS = 500;
 
 class MaxOpsExceededError extends Error {
-  override name = "MaxOpsExceededError";
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  constructor() {
+    super();
+    this.name = "MaxOpsExceededError";
+  }
 }
 
 /** Order-insensitive for object keys, order-sensitive for arrays. */
-export function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: JxDocumentValue | undefined, b: JxDocumentValue | undefined): boolean {
   if (a === b) {
     return true;
   }
   if (Array.isArray(a) && Array.isArray(b)) {
     return a.length === b.length && a.every((item, i) => deepEqual(item, b[i]));
   }
-  if (isPlainObject(a) && isPlainObject(b)) {
+  if (isJsonObject(a) && isJsonObject(b)) {
     const keysA = Object.keys(a);
     const keysB = Object.keys(b);
     return (
@@ -70,23 +71,22 @@ function contentHash(text: string): string {
 }
 
 /** Full-content identity: equal strong keys mean "treat as the same unchanged child". */
-function strongKey(item: unknown): string {
-  return typeof item === "string" ? `s:${item}` : `n:${contentHash(JSON.stringify(item))}`;
+function strongKey(item: JxMutableNode | string): string {
+  return isString(item) ? `s:${item}` : `n:${contentHash(JSON.stringify(item))}`;
 }
 
 /** Alignment identity: equal weak keys mean "same logical child, diff its contents". */
-function weakKey(item: unknown): string {
-  if (typeof item === "string") {
+function weakKey(item: JxMutableNode | string): string {
+  if (isString(item)) {
     return "s";
   }
-  const node = item as Record<string, unknown>;
-  const attrs = node["attributes"];
-  const props = node["$props"];
+  const attrs = item["attributes"];
+  const props = item["$props"];
   const id =
-    (isPlainObject(attrs) ? attrs["id"] : undefined) ??
-    (isPlainObject(props) ? props["key"] : undefined) ??
+    (isJsonObject(attrs) ? attrs["id"] : undefined) ??
+    (isJsonObject(props) ? props["key"] : undefined) ??
     "";
-  return `w:${String(node["tagName"] ?? "")}:${String(id)}`;
+  return `w:${String(item["tagName"] ?? "")}:${String(id)}`;
 }
 
 /**
@@ -160,8 +160,8 @@ export interface MatchOptions {
  * exists to prevent.
  */
 export function matchChildren(
-  a: readonly unknown[],
-  b: readonly unknown[],
+  a: readonly (JxMutableNode | string)[],
+  b: readonly (JxMutableNode | string)[],
   opts: MatchOptions = {},
 ): ChildMatch[] {
   const maxCells = opts.maxCells ?? Number.POSITIVE_INFINITY;
@@ -195,75 +195,75 @@ export function matchChildren(
   return matches.toSorted((x, y) => x.aIndex - y.aIndex);
 }
 
-class Differ {
-  private readonly ops: JxDocOp[] = [];
-  private readonly maxOps: number;
+/**
+ * The ops emitted so far and the ceiling on them. A plain record threaded through the recursion
+ * rather than a class: it carries no behaviour of its own.
+ */
+interface DiffScript {
+  readonly ops: JxDocOp[];
+  readonly maxOps: number;
+}
 
-  constructor(maxOps: number) {
-    this.maxOps = maxOps;
+function pushOp(script: DiffScript, op: JxDocOp): void {
+  if (script.ops.length >= script.maxOps) {
+    throw new MaxOpsExceededError();
   }
+  script.ops.push(op);
+}
 
-  result(): JxDocOp[] {
-    return this.ops;
-  }
-
-  private push(op: JxDocOp): void {
-    if (this.ops.length >= this.maxOps) {
-      throw new MaxOpsExceededError();
+function diffNode(script: DiffScript, path: JxPath, a: JxMutableNode, b: JxMutableNode): void {
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (key === "children") {
+      continue;
     }
-    this.ops.push(op);
-  }
-
-  diffNode(path: JxPath, a: Record<string, unknown>, b: Record<string, unknown>): void {
-    for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      if (key === "children") {
-        continue;
-      }
-      if (!(key in b)) {
-        this.push({ key, op: "set-key", path });
-      } else if (!deepEqual(a[key], b[key])) {
-        this.push({ key, op: "set-key", path, value: b[key] });
-      }
-    }
-    const ca = a["children"];
-    const cb = b["children"];
-    if (Array.isArray(ca) && Array.isArray(cb)) {
-      this.diffChildren(path, ca, cb);
-    } else if (!deepEqual(ca, cb)) {
-      // Mapped-array children (or one side missing entirely) replace whole, like the mutators do.
-      this.push({ key: "children", op: "set-key", path, value: cb });
+    if (!(key in b)) {
+      pushOp(script, { key, op: "set-key", path });
+    } else if (!deepEqual(a[key], b[key])) {
+      pushOp(script, { key, op: "set-key", path, value: b[key] });
     }
   }
+  const ca = a["children"];
+  const cb = b["children"];
+  if (Array.isArray(ca) && Array.isArray(cb)) {
+    diffChildren(script, path, ca, cb);
+  } else if (!deepEqual(ca, cb)) {
+    // Mapped-array children (or one side missing entirely) replace whole, like the mutators do.
+    pushOp(script, { key: "children", op: "set-key", path, value: cb });
+  }
+}
 
-  private diffChildren(path: JxPath, a: readonly unknown[], b: readonly unknown[]): void {
-    const matches = matchChildren(a, b);
-    const matchedA = new Set(matches.map((match) => match.aIndex));
-    const byB = new Map(matches.map((match) => [match.bIndex, match]));
+function diffChildren(
+  script: DiffScript,
+  path: JxPath,
+  a: readonly (JxMutableNode | string)[],
+  b: readonly (JxMutableNode | string)[],
+): void {
+  const matches = matchChildren(a, b);
+  const matchedA = new Set(matches.map((match) => match.aIndex));
+  const byB = new Map(matches.map((match) => [match.bIndex, match]));
 
-    // Removals first, in descending original index — each splice leaves lower indices intact.
-    for (let i = a.length - 1; i >= 0; i--) {
-      if (!matchedA.has(i)) {
-        this.push({ index: i, op: "remove-child", parentPath: path });
-      }
+  // Removals first, in descending original index — each splice leaves lower indices intact.
+  for (let i = a.length - 1; i >= 0; i--) {
+    if (!matchedA.has(i)) {
+      pushOp(script, { index: i, op: "remove-child", parentPath: path });
     }
-    // Then walk b ascending: inserts land at their final index; matched pairs already sit there
-    // (matches never cross), so recursion paths are valid as emitted.
-    for (let i = 0; i < b.length; i++) {
-      const match = byB.get(i);
-      if (!match) {
-        this.push({ index: i, node: b[i], op: "insert-child", parentPath: path });
-        continue;
-      }
-      if (match.identical) {
-        continue;
-      }
-      const aItem = a[match.aIndex];
-      const bItem = b[i];
-      if (isPlainObject(aItem) && isPlainObject(bItem)) {
-        this.diffNode([...path, "children", i], aItem, bItem);
-      } else if (!deepEqual(aItem, bItem)) {
-        this.push({ index: i, node: bItem, op: "set-child", parentPath: path });
-      }
+  }
+  // Then walk b ascending: inserts land at their final index; matched pairs already sit there
+  // (matches never cross), so recursion paths are valid as emitted.
+  for (const [i, bItem] of b.entries()) {
+    const match = byB.get(i);
+    if (!match) {
+      pushOp(script, { index: i, node: bItem, op: "insert-child", parentPath: path });
+      continue;
+    }
+    if (match.identical) {
+      continue;
+    }
+    const aItem = a[match.aIndex];
+    if (isJsonObject(aItem) && isJsonObject(bItem)) {
+      diffNode(script, [...path, "children", i], aItem, bItem);
+    } else if (!deepEqual(aItem, bItem)) {
+      pushOp(script, { index: i, node: bItem, op: "set-child", parentPath: path });
     }
   }
 }
@@ -277,14 +277,14 @@ export function diffDocs(
   b: JxMutableNode,
   opts: DiffOptions = {},
 ): JxDocOp[] | null {
-  const differ = new Differ(opts.maxOps ?? DEFAULT_MAX_OPS);
+  const script: DiffScript = { maxOps: opts.maxOps ?? DEFAULT_MAX_OPS, ops: [] };
   try {
-    differ.diffNode([], a as Record<string, unknown>, b as Record<string, unknown>);
+    diffNode(script, [], a, b);
   } catch (error) {
     if (error instanceof MaxOpsExceededError) {
       return null;
     }
     throw error;
   }
-  return differ.result();
+  return script.ops;
 }

@@ -1,51 +1,82 @@
 /**
  * Jx Markdown Serializer — Browser-safe module
  *
- * The single Jx → markdown serializer, replacing the studio's md-convert and the
- * compiler's compile-markdown. Two modes over a shared tag map:
+ * The single Jx → markdown serializer, replacing the studio's md-convert and the compiler's
+ * compile-markdown. Two modes over a shared tag map:
  *
- * - `roundtrip` (default) — lossless for everything it can express (a `tagName` chosen at render
- *   time cannot be, and throws): YAML frontmatter from non-children doc keys,
- *   non-markdown elements emitted as remark directives with collapsed dot-path
- *   attributes. Inverse of `transpileJxMarkdown()`.
- * - `export` — lossy: strips all Jx decoration, unwraps wrapper tags, inlines custom
- *   elements via injected component definitions, evaluates template strings via
- *   injected hooks. Produces clean GFM with no directives or frontmatter.
+ * - `roundtrip` (default) — lossless for everything it can express (a `tagName` chosen at render time
+ *   cannot be, and throws): YAML frontmatter from non-children doc keys, non-markdown elements
+ *   emitted as remark directives with collapsed dot-path attributes. Inverse of
+ *   `transpileJxMarkdown()`.
+ * - `export` — lossy: strips all Jx decoration, unwraps wrapper tags, inlines custom elements via
+ *   injected component definitions, evaluates template strings via injected hooks. Produces clean
+ *   GFM with no directives or frontmatter.
  *
- * Template evaluation is injected (the compiler passes its static-template evaluator)
- * so this module stays free of compiler dependencies and browser-safe.
+ * Template evaluation is injected (the compiler passes its static-template evaluator) so this
+ * module stays free of compiler dependencies and browser-safe.
  *
  * @module @jxsuite/parser/serialize
  * @license MIT
  */
 
 import { unified } from "unified";
-import { isRef, tagNameCandidates } from "@jxsuite/schema/guards";
+import {
+  isJsonObject,
+  isNodeObject,
+  isNonNullObject,
+  isNumber,
+  isRef,
+  isString,
+  tagNameCandidates,
+} from "@jxsuite/schema/guards";
+import type { TagNameSlot } from "@jxsuite/schema/guards";
 import remarkStringify from "remark-stringify";
 import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
-import { stringify as stringifyYaml } from "yaml";
+import { stringify } from "yaml";
 import { htmlToJx } from "@jxsuite/markup/html-to-jx";
 import { expandDotPaths } from "./transpile.ts";
 import type {
+  JsonObject,
   JsonValue,
   JxAttributeValue,
   JxDocument,
+  JxDocumentValue,
   JxElement,
-  JxMutableNode,
   JxStateDefinition,
 } from "@jxsuite/schema/types";
-import type { MdastNode, UnifiedProcessor } from "./types.ts";
-import type { Root } from "mdast";
+import type { MdastNode, UnifiedPlugin, UnifiedProcessor } from "./types.ts";
 
 /** Static text content of a node — bound (`$ref`) text has no serializable form. */
 function textOf(el: JxElement | undefined): string | undefined {
-  return el && typeof el.textContent === "string" ? el.textContent : undefined;
+  return el && isString(el.textContent) ? el.textContent : undefined;
+}
+
+/**
+ * A child slot as a document actually holds it. The schema says element or string, but a
+ * hand-edited document can leave a number or a null there, and every reader below tolerates both.
+ */
+type ChildSlot = JxElement | string | number | null | undefined;
+
+/** The child list of a node; the legacy whole-slot repeater (an object) has no list form here. */
+function childList(el: JxElement): readonly (JxElement | string)[] {
+  return Array.isArray(el.children) ? el.children : [];
 }
 
 // ─── Markdown element sets ──────────────────────────────────────────────────
 // Source of truth for the `$studio.elements` block in Markdown.class.json — a parser
 // Test asserts the two stay in sync.
+
+/**
+ * One tag's rule in `$studio.elements.nesting`: the content kinds it admits, or exactly which
+ * children.
+ */
+interface MdNestingRule {
+  readonly block?: boolean;
+  readonly inline?: boolean;
+  readonly directive?: boolean;
+  readonly only?: readonly string[];
+}
 
 export const MD_ELEMENTS = {
   block: [
@@ -94,7 +125,7 @@ export const MD_ELEMENTS = {
     thead: { only: ["tr"] },
     tr: { only: ["th", "td"] },
     ul: { only: ["li"] },
-  } as Record<string, { block?: boolean; inline?: boolean; directive?: boolean; only?: string[] }>,
+  } satisfies Readonly<Record<string, MdNestingRule>>,
   textOnly: ["code"],
   void: ["hr", "br", "img"],
 } as const;
@@ -113,7 +144,7 @@ export const MD_TEXT_ONLY: ReadonlySet<string> = new Set(MD_ELEMENTS.textOnly);
 // ─── Shared tag maps ────────────────────────────────────────────────────────
 
 /** Jx tagName → mdast node-type. */
-const TAG_MDAST_MAP: Record<string, string> = {
+const TAG_MDAST_MAP = {
   a: "link",
   blockquote: "blockquote",
   br: "break",
@@ -141,7 +172,16 @@ const TAG_MDAST_MAP: Record<string, string> = {
   thead: "thead",
   tr: "tableRow",
   ul: "list",
-};
+} as const;
+
+/**
+ * Whether `tag` reads an entry of {@link TAG_MDAST_MAP}. This is the `in` operator, so an inherited
+ * name (`constructor`, `toString`) reads through too, exactly as the plain property lookup it
+ * replaces did; such a value matches no mdast case and exports nothing.
+ */
+function hasMdastType(tag: string): tag is keyof typeof TAG_MDAST_MAP {
+  return tag in TAG_MDAST_MAP;
+}
 
 /** Wrapper tags unwrapped in export mode — their children are promoted. */
 const WRAPPER_TAGS = new Set([
@@ -184,14 +224,22 @@ function isInlineType(type: string) {
 
 /** Read a fenced-code child's language. Canonical: `className`; legacy: `attributes.class`. */
 function codeLang(codeChild: JxElement | undefined): string | null {
-  const cls = codeChild?.className ?? (codeChild?.attributes?.class as string | undefined) ?? "";
+  const cls = codeChild?.className ?? codeChild?.attributes?.class ?? "";
   const lang = String(cls).replace("language-", "");
   return lang || null;
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
-export interface SerializeOptions {
+/** What a host's template evaluator substitutes: a scalar, or `undefined` to keep the original. */
+export type TemplateSubstitution = string | number | boolean | undefined;
+
+/**
+ * Serializer options. `ScopeValue` is whatever the host's `buildScope` puts in a scope (document
+ * values unless the host says otherwise): the serializer relays that scope to the same host's
+ * `evaluateTemplate` untouched, and otherwise only reads a repeater's `items` out of it.
+ */
+export interface SerializeOptions<ScopeValue = JxDocumentValue> {
   /** `roundtrip` (default; lossless where expressible) or `export` (lossy clean markdown). */
   mode?: "roundtrip" | "export";
   /** Export mode: component definitions for inlining custom elements. */
@@ -201,9 +249,9 @@ export interface SerializeOptions {
    * original string. Hosts inject their own evaluator (the compiler passes its static-template
    * machinery); default keeps templates verbatim.
    */
-  evaluateTemplate?: (value: string, scope: Record<string, unknown>) => unknown;
+  evaluateTemplate?: (value: string, scope: Record<string, ScopeValue>) => TemplateSubstitution;
   /** Export mode: build an evaluation scope from state definitions. */
-  buildScope?: (state: Record<string, JxStateDefinition>) => Record<string, unknown> | null;
+  buildScope?: (state: Record<string, JxStateDefinition>) => Record<string, ScopeValue> | null;
   /** Roundtrip mode: markdown-native tag set; anything else becomes a directive. */
   allowlist?: ReadonlySet<string> | string[];
   /** Roundtrip mode: emit YAML frontmatter from non-children doc keys (default true). */
@@ -215,7 +263,7 @@ export interface SerializeOptions {
 // ═════════════════════════════════════════════════════════════════════════════
 
 /** Mdast node-type → Jx tagName mapping (canvas-targeted; text → span). */
-const MDAST_TAG_MAP: Record<string, (n: MdastNode) => string> = {
+const MDAST_TAG_MAP = {
   blockquote: () => "blockquote",
   break: () => "br",
   code: () => "pre",
@@ -234,25 +282,55 @@ const MDAST_TAG_MAP: Record<string, (n: MdastNode) => string> = {
   tableRow: () => "tr",
   text: () => "span",
   thematicBreak: () => "hr",
-};
+} satisfies Readonly<Record<string, (n: MdastNode) => string>>;
+
+/**
+ * Whether `type` reads an entry of {@link MDAST_TAG_MAP}. Like {@link hasMdastType} this is the
+ * `in` operator, which sees inherited names as the property lookup it replaces did.
+ */
+function hasJxTagName(type: string): type is keyof typeof MDAST_TAG_MAP {
+  return type in MDAST_TAG_MAP;
+}
+
+/**
+ * An mdast root: the tree {@link jxToMdast} builds and {@link mdastToJx} always converts to an
+ * element.
+ */
+export interface MdastRoot extends MdastNode {
+  type: "root";
+  children: MdastNode[];
+}
 
 /**
  * Convert an mdast tree to a Jx element tree (canvas-targeted: text nodes become spans). Inverse of
- * {@link jxToMdast}.
+ * {@link jxToMdast}. A root always converts to an element; any other node converts to what it maps
+ * to, which is `null` for a node type with no Jx form and a string for raw HTML that is only text.
  */
-export function mdastToJx(mdast: MdastNode): JxElement {
+export function mdastToJx(mdast: MdastRoot): JxElement;
+export function mdastToJx(mdast: MdastNode): JxElement | string | null;
+export function mdastToJx(mdast: MdastNode): JxElement | string | null {
   if (mdast.type === "root") {
     return {
-      children: (mdast.children ?? [])
-        .filter((n) => n.type !== "yaml" && n.type !== "toml")
-        .flatMap((n) => convertMdastNode(n))
-        .filter(Boolean) as (JxElement | string)[],
+      children: convertMdastChildren(
+        (mdast.children ?? []).filter((n) => n.type !== "yaml" && n.type !== "toml"),
+      ),
     };
   }
-  return convertMdastNode(mdast) as JxElement;
+  return convertMdastNode(mdast);
 }
 
-function convertMdastNode(node: MdastNode): JxElement | null {
+/**
+ * Convert mdast children, dropping the ones with no Jx form. A hand-built tree can carry holes
+ * (`null`) among them, and those are dropped too.
+ */
+function convertMdastChildren(nodes: readonly (MdastNode | null)[]): (JxElement | string)[] {
+  return nodes.flatMap((n) => {
+    const converted = convertMdastNode(n);
+    return converted ? [converted] : [];
+  });
+}
+
+function convertMdastNode(node: MdastNode | null): JxElement | string | null {
   if (!node) {
     return null;
   }
@@ -270,10 +348,11 @@ function convertMdastNode(node: MdastNode): JxElement | null {
       return null;
     }
     const nodes = htmlToJx(node.value);
-    return nodes.length === 1 ? (nodes[0] as JxElement) : { children: nodes, tagName: "div" };
+    const [only] = nodes;
+    return nodes.length === 1 && only !== undefined ? only : { children: nodes, tagName: "div" };
   }
 
-  const tagFn = MDAST_TAG_MAP[node.type];
+  const tagFn = hasJxTagName(node.type) ? MDAST_TAG_MAP[node.type] : undefined;
   if (!tagFn) {
     return null;
   }
@@ -281,11 +360,7 @@ function convertMdastNode(node: MdastNode): JxElement | null {
   const tag = tagFn(node);
   const el: JxElement = { tagName: tag };
 
-  const childNodes = () =>
-    (node.children ?? []).flatMap((n) => convertMdastNode(n)).filter(Boolean) as (
-      | JxElement
-      | string
-    )[];
+  const childNodes = () => convertMdastChildren(node.children ?? []);
   const flattenOrChildren = () => {
     if (node.children?.length === 1 && node.children[0]!.type === "text") {
       el.textContent = node.children[0]!.value ?? null;
@@ -348,13 +423,11 @@ function convertMdastNode(node: MdastNode): JxElement | null {
     }
 
     case "code": {
-      el.children = [
-        {
-          tagName: "code",
-          textContent: node.value ?? null,
-          ...(node.lang ? { className: `language-${node.lang}` } : {}),
-        },
-      ];
+      const code: JxElement = { tagName: "code", textContent: node.value ?? null };
+      if (node.lang) {
+        code.className = `language-${node.lang}`;
+      }
+      el.children = [code];
       break;
     }
 
@@ -364,19 +437,15 @@ function convertMdastNode(node: MdastNode): JxElement | null {
     }
 
     case "table": {
-      const rows = childNodes() as JxElement[];
-      const thead =
-        rows.length > 0
-          ? { children: [rows[0]] as (JxElement | string)[], tagName: "thead" }
-          : null;
-      const tbody =
-        rows.length > 1
-          ? {
-              children: rows.slice(1) as (JxElement | string)[],
-              tagName: "tbody",
-            }
-          : null;
-      el.children = [thead, tbody].filter(Boolean) as (JxElement | string)[];
+      const [headRow, ...bodyRows] = childNodes();
+      const sections: JxElement[] = [];
+      if (headRow !== undefined) {
+        sections.push({ children: [headRow], tagName: "thead" });
+      }
+      if (bodyRows.length > 0) {
+        sections.push({ children: bodyRows, tagName: "tbody" });
+      }
+      el.children = sections;
       break;
     }
     default: {
@@ -390,7 +459,7 @@ function convertMdastNode(node: MdastNode): JxElement | null {
 function convertDirective(node: MdastNode): JxElement {
   // Prototype directive (e.g. `:::Array`) → `{ $prototype: name, ... }`, tagName dropped.
   if (node.name && PROTOTYPE_DIRECTIVE_NAMES.has(node.name)) {
-    return prototypeDirectiveToJx(node);
+    return prototypeDirectiveToJx(node, node.name);
   }
 
   const el: JxElement = { tagName: node.name ?? "div" };
@@ -401,16 +470,10 @@ function convertDirective(node: MdastNode): JxElement {
     if (node.children?.length === 1 && node.children[0]!.type === "text") {
       el.textContent = node.children[0]!.value ?? null;
     } else if (node.children?.length) {
-      el.children = node.children.flatMap((n) => convertMdastNode(n)).filter(Boolean) as (
-        | JxElement
-        | string
-      )[];
+      el.children = convertMdastChildren(node.children);
     }
   } else if (node.type === "containerDirective" && node.children?.length) {
-    el.children = node.children.flatMap((n) => convertMdastNode(n)).filter(Boolean) as (
-      | JxElement
-      | string
-    )[];
+    el.children = convertMdastChildren(node.children);
   }
   return el;
 }
@@ -419,25 +482,23 @@ function convertDirective(node: MdastNode): JxElement {
  * Roundtrip md → Jx for a prototype directive (e.g. `:::Array`): name → `$prototype` (tagName
  * dropped), dot-path attributes expanded (items/filter/sort), single nested child → `map`.
  */
-function prototypeDirectiveToJx(node: MdastNode): JxElement {
-  const el: JxElement = { $prototype: node.name as string };
+function prototypeDirectiveToJx(node: MdastNode, name: string): JxElement {
+  const el: JxElement = { $prototype: name };
   if (node.attributes && Object.keys(node.attributes).length > 0) {
     const expanded = expandDotPaths(node.attributes);
     for (const [key, value] of Object.entries(expanded)) {
       if (key === "$prototype") {
         continue;
       }
+      /* SAFETY: expandDotPaths nests the directive's attribute strings under their dot-path
+         segments, so every value it returns is a string or an object of those: JSON. */
       el[key] = value as JsonValue;
     }
   }
   if (node.children?.length) {
-    const children = node.children.flatMap((n) => convertMdastNode(n)).filter(Boolean) as (
-      | JxElement
-      | string
-    )[];
-    const template = children.find((c) => c != null && typeof c === "object");
+    const template = convertMdastChildren(node.children).find((child) => isNodeObject(child));
     if (template) {
-      el.map = template as JxElement;
+      el.map = template;
     }
   }
   return el;
@@ -449,14 +510,37 @@ function prototypeDirectiveToJx(node: MdastNode): JxElement {
  * Convert a Jx element tree to an mdast tree (lossless: non-markdown elements become directives).
  * Inverse of {@link mdastToJx}.
  */
-export function jxToMdast(jx: JxElement, opts: SerializeOptions = {}): MdastNode {
+export function jxToMdast(
+  jx: JxElement,
+  opts: Pick<SerializeOptions, "allowlist"> = {},
+): MdastRoot {
   const allowlist = normalizeAllowlist(opts.allowlist);
-  const childArray = Array.isArray(jx.children) ? jx.children : ([] as (JxElement | string)[]);
-  const children = childArray
-    .map((child) => convertJxNode(child, true, allowlist))
-    .filter(Boolean) as MdastNode[];
+  return { children: convertJxChildren(childList(jx), true, allowlist), type: "root" };
+}
 
-  return { children, type: "root" };
+/** Convert Jx children to mdast, dropping the ones with no mdast form. */
+function convertJxChildren(
+  children: readonly ChildSlot[],
+  isBlock: boolean,
+  allowlist: ReadonlySet<string>,
+): MdastNode[] {
+  return children.flatMap((child) => {
+    const converted = convertJxNode(child, isBlock, allowlist);
+    return converted ? [converted] : [];
+  });
+}
+
+/**
+ * An attribute as mdast text: a string as written, any other truthy value stringified (which is how
+ * remark-stringify prints it), and nothing else as empty.
+ */
+function attributeText(value: JxAttributeValue | undefined): string {
+  return isString(value) ? value : value ? String(value) : "";
+}
+
+/** An attribute as an mdast `title`: like {@link attributeText}, but absent rather than empty. */
+function attributeTitle(value: JxAttributeValue | undefined): string | null {
+  return isString(value) ? value : value ? String(value) : null;
 }
 
 function normalizeAllowlist(allowlist?: ReadonlySet<string> | string[]): ReadonlySet<string> {
@@ -484,16 +568,21 @@ function hasJxProps(el: JxElement) {
 }
 
 function convertJxNode(
-  el: JxElement | string | number,
+  slot: JxDocumentValue | undefined,
   isBlock: boolean,
   allowlist: ReadonlySet<string>,
 ): MdastNode | null {
-  if (typeof el === "string" || typeof el === "number") {
-    return { type: "text", value: String(el) };
+  if (isString(slot) || isNumber(slot)) {
+    return { type: "text", value: String(slot) };
   }
-  if (!el || typeof el !== "object") {
+  if (!isNonNullObject(slot)) {
     return null;
   }
+  /* SAFETY: `slot` is a non-null object. A child slot holds an element by contract; any other
+     object a hand-edited document left there (an array, a binding) is read below only through
+     JxElement's optional members and Object.entries, which every object answers, so it converts
+     the way it always has. */
+  const el = slot as JxElement;
 
   const tag = serializableTag(el.tagName) || "div";
 
@@ -502,7 +591,7 @@ function convertJxNode(
     return convertToDirective(el, isBlock, allowlist);
   }
 
-  const mdastType = TAG_MDAST_MAP[tag];
+  const mdastType = hasMdastType(tag) ? TAG_MDAST_MAP[tag] : undefined;
   if (!mdastType) {
     return null;
   }
@@ -511,9 +600,7 @@ function convertJxNode(
     if (e.textContent != null) {
       return [{ type: "text", value: String(e.textContent) }];
     }
-    return ((e.children ?? []) as (JxElement | string)[])
-      .map((c) => convertJxNode(c, false, allowlist))
-      .filter(Boolean) as MdastNode[];
+    return convertJxChildren(childList(e), false, allowlist);
   };
   const block = (e: JxElement): MdastNode[] => {
     if (e.textContent != null) {
@@ -524,9 +611,7 @@ function convertJxNode(
         },
       ];
     }
-    return ((e.children ?? []) as (JxElement | string)[])
-      .map((c) => convertJxNode(c, true, allowlist))
-      .filter(Boolean) as MdastNode[];
+    return convertJxChildren(childList(e), true, allowlist);
   };
 
   switch (mdastType) {
@@ -559,18 +644,18 @@ function convertJxNode(
     case "link": {
       return {
         children: inline(el),
-        title: (el.attributes?.title as string | null) ?? null,
+        title: attributeTitle(el.attributes?.title),
         type: "link",
-        url: (el.attributes?.href as string) ?? "",
+        url: attributeText(el.attributes?.href),
       };
     }
 
     case "image": {
       return {
-        alt: (el.attributes?.alt as string) ?? "",
-        title: (el.attributes?.title as string | null) ?? null,
+        alt: attributeText(el.attributes?.alt),
+        title: attributeTitle(el.attributes?.title),
         type: "image",
-        url: (el.attributes?.src as string) ?? "",
+        url: attributeText(el.attributes?.src),
       };
     }
 
@@ -580,12 +665,10 @@ function convertJxNode(
 
     case "list": {
       return {
-        children: ((el.children ?? []) as (JxElement | string)[])
-          .map((c) => convertJxNode(c, true, allowlist))
-          .filter(Boolean) as MdastNode[],
+        children: convertJxChildren(childList(el), true, allowlist),
         ordered: tag === "ol",
         spread: false,
-        start: tag === "ol" ? Math.trunc(Number(el.attributes?.start as string)) || 1 : null,
+        start: tag === "ol" ? Math.trunc(Number(el.attributes?.start)) || 1 : null,
         type: "list",
       };
     }
@@ -595,9 +678,8 @@ function convertJxNode(
     }
 
     case "code": {
-      const codeChild = Array.isArray(el.children)
-        ? (el.children[0] as JxElement | undefined)
-        : undefined;
+      const [first] = childList(el);
+      const codeChild = isString(first) ? undefined : first;
       return {
         lang: codeLang(codeChild),
         type: "code",
@@ -616,12 +698,12 @@ function convertJxNode(
     case "table": {
       // Flatten thead/tbody back to rows
       const rows: MdastNode[] = [];
-      for (const section of (el.children ?? []) as (JxElement | string)[]) {
-        if (typeof section === "string") {
+      for (const section of childList(el)) {
+        if (isString(section)) {
           continue;
         }
         if (section.tagName === "thead" || section.tagName === "tbody") {
-          for (const row of (section.children ?? []) as (JxElement | string)[]) {
+          for (const row of childList(section)) {
             const mdRow = convertJxNode(row, true, allowlist);
             if (mdRow) {
               if (section.tagName === "thead") {
@@ -639,9 +721,7 @@ function convertJxNode(
 
     case "tableRow": {
       return {
-        children: ((el.children ?? []) as (JxElement | string)[])
-          .map((c) => convertJxNode(c, false, allowlist))
-          .filter(Boolean) as MdastNode[],
+        children: convertJxChildren(childList(el), false, allowlist),
         type: "tableRow",
       };
     }
@@ -700,11 +780,11 @@ const JX_DOLLAR_KEYS = new Set([
  * chosen tags today — the construct is an element-document (component) feature — so this refuses
  * rather than guesses, and says which candidates it saw.
  *
- * @param {unknown} tagName
+ * @param {TagNameSlot} tagName
  * @returns {string} The literal tag, or "" when none is declared
  */
-function serializableTag(tagName: unknown): string {
-  if (typeof tagName === "string") {
+function serializableTag(tagName: TagNameSlot): string {
+  if (isString(tagName)) {
     return tagName;
   }
   if (tagName == null) {
@@ -724,15 +804,18 @@ const PROTOTYPE_DIRECTIVE_NAMES = new Set(["Array"]);
 
 const JX_ANNOTATION_KEYS = new Set(["$title", "$description"]);
 
+/** Element props (and attributes) bound for directive attributes, keyed as the element keys them. */
+type DirectiveProps = Record<string, JxDocumentValue | undefined>;
+
 function collectDirectiveAttrs(el: JxElement) {
-  const propsObj: Record<string, unknown> = {};
+  const propsObj: DirectiveProps = {};
 
   for (const [key, value] of Object.entries(el)) {
     if (key === "tagName" || key === "textContent" || key === "innerHTML" || key === "attributes") {
       continue;
     }
     if (key === "children") {
-      if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (isJsonObject(value)) {
         propsObj.children = value;
       }
       continue;
@@ -741,7 +824,7 @@ function collectDirectiveAttrs(el: JxElement) {
   }
 
   if (el.attributes) {
-    for (const [key, value] of Object.entries(el.attributes as Record<string, unknown>)) {
+    for (const [key, value] of Object.entries(el.attributes)) {
       propsObj[key] = value;
     }
   }
@@ -756,15 +839,12 @@ function convertToDirective(
 ): MdastNode {
   // Prototype pseudo-element (e.g. Array repeater) with no tagName → directive named after the
   // Prototype; the `map` template is the directive body, items/filter/sort are attributes.
-  if (
-    !el.tagName &&
-    typeof el.$prototype === "string" &&
-    PROTOTYPE_DIRECTIVE_NAMES.has(el.$prototype)
-  ) {
-    return prototypeToDirective(el, isBlock, allowlist);
+  if (!el.tagName && isString(el.$prototype) && PROTOTYPE_DIRECTIVE_NAMES.has(el.$prototype)) {
+    return prototypeToDirective(el, el.$prototype, isBlock, allowlist);
   }
 
-  const tag = (el.tagName as string) ?? "div";
+  // The caller has already refused a chosen tag (serializableTag), so a tag here is a literal.
+  const tag = isString(el.tagName) ? el.tagName : "div";
   const attrs = collectDirectiveAttrs(el);
 
   if (!isBlock) {
@@ -773,20 +853,14 @@ function convertToDirective(
       children:
         el.textContent != null
           ? [{ type: "text", value: String(el.textContent) }]
-          : (((el.children ?? []) as (JxElement | string)[])
-              .map((c) => convertJxNode(c, false, allowlist))
-              .filter(Boolean) as MdastNode[]),
+          : convertJxChildren(childList(el), false, allowlist),
       name: tag,
       type: "textDirective",
     };
   }
 
-  const rawChildren = el.children;
-  const childrenIsObject =
-    rawChildren && typeof rawChildren === "object" && !Array.isArray(rawChildren);
-  const childArray = childrenIsObject
-    ? undefined
-    : (rawChildren as (JxElement | string)[] | undefined);
+  // A legacy whole-slot repeater (an object) has no child list to emit.
+  const childArray = Array.isArray(el.children) ? el.children : undefined;
   if (!childArray?.length && el.textContent == null) {
     return {
       attributes: attrs,
@@ -806,15 +880,11 @@ function convertToDirective(
     ];
   } else if (INLINE_CONTENT_TAGS.has(tag)) {
     // Inline content model: wrap children in one paragraph for continuous flow
-    const inlineNodes = ((el.children ?? []) as (JxElement | string)[])
-      .map((c) => convertJxNode(c, false, allowlist))
-      .filter(Boolean) as MdastNode[];
+    const inlineNodes = convertJxChildren(childList(el), false, allowlist);
     directiveChildren =
       inlineNodes.length > 0 ? [{ children: inlineNodes, type: "paragraph" }] : [];
   } else {
-    directiveChildren = ((el.children ?? []) as (JxElement | string)[])
-      .map((c) => convertJxNode(c, true, allowlist))
-      .filter(Boolean) as MdastNode[];
+    directiveChildren = convertJxChildren(childList(el), true, allowlist);
   }
 
   return {
@@ -833,10 +903,11 @@ function convertToDirective(
  */
 function prototypeToDirective(
   el: JxElement,
+  prototype: string,
   isBlock: boolean,
   allowlist: ReadonlySet<string>,
 ): MdastNode {
-  const propsObj: Record<string, unknown> = {};
+  const propsObj: DirectiveProps = {};
   for (const [key, value] of Object.entries(el)) {
     if (key === "$prototype" || key === "map" || key === "tagName") {
       continue;
@@ -844,20 +915,20 @@ function prototypeToDirective(
     propsObj[key] = value;
   }
   const attrs = collapsePropsToAttrMap(propsObj);
-  const mapNode = el.map ? convertJxNode(el.map as JxElement, isBlock, allowlist) : null;
+  const mapNode = el.map ? convertJxNode(el.map, isBlock, allowlist) : null;
   const children = mapNode ? [mapNode] : [];
   return {
     attributes: attrs,
     children,
-    name: el.$prototype as string,
+    name: prototype,
     type: isBlock ? "containerDirective" : "textDirective",
   };
 }
 
-function collapsePropsToAttrMap(propsObj: Record<string, unknown>) {
+function collapsePropsToAttrMap(propsObj: DirectiveProps) {
   const result: Record<string, string> = {};
 
-  function walk(obj: Record<string, unknown>, prefix: string) {
+  function walk(obj: DirectiveProps, prefix: string) {
     for (const [key, value] of Object.entries(obj)) {
       let mdAttrKey = key;
       if (JX_DOLLAR_KEYS.has(key)) {
@@ -871,8 +942,8 @@ function collapsePropsToAttrMap(propsObj: Record<string, unknown>) {
       }
       if (key === "@") {
         // Bare "@" (no media name) — treat contents as base-level style props
-        if (value && typeof value === "object" && !Array.isArray(value)) {
-          walk(value as Record<string, unknown>, prefix);
+        if (isJsonObject(value)) {
+          walk(value, prefix);
         }
         continue;
       }
@@ -882,8 +953,8 @@ function collapsePropsToAttrMap(propsObj: Record<string, unknown>) {
 
       const fullKey = prefix ? `${prefix}.${mdAttrKey}` : mdAttrKey;
 
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        walk(value as Record<string, unknown>, fullKey);
+      if (isJsonObject(value)) {
+        walk(value, fullKey);
       } else {
         result[fullKey] = String(value);
       }
@@ -898,24 +969,29 @@ function collapsePropsToAttrMap(propsObj: Record<string, unknown>) {
 // Export mode — clean markdown (lossy, no directives)
 // ═════════════════════════════════════════════════════════════════════════════
 
-interface ExportContext {
+interface ExportContext<ScopeValue> {
   componentDefs: Map<string, JxElement>;
-  evaluateTemplate?: SerializeOptions["evaluateTemplate"];
-  buildScope?: SerializeOptions["buildScope"];
+  evaluateTemplate?: SerializeOptions<ScopeValue>["evaluateTemplate"];
+  buildScope?: SerializeOptions<ScopeValue>["buildScope"];
 }
 
-function nodeToMdast(
-  node: JxElement | string,
-  ctx: ExportContext,
-  scope?: Record<string, unknown> | null,
+/**
+ * Export one child slot: a string or number as text, an element object as markdown. Anything else a
+ * hand-edited document or a repeater row left in the slot (null, a boolean, an array) exports
+ * nothing; an array would have reached the empty wrapper branch anyway.
+ */
+function nodeToMdast<ScopeValue>(
+  node: JxDocumentValue | undefined,
+  ctx: ExportContext<ScopeValue>,
+  scope?: Record<string, ScopeValue> | null,
 ): MdastNode[] {
-  if (typeof node === "string") {
+  if (isString(node)) {
     return node.trim() ? [{ type: "text", value: node }] : [];
   }
-  if (typeof node === "number") {
+  if (isNumber(node)) {
     return [{ type: "text", value: String(node) }];
   }
-  if (!node || typeof node !== "object") {
+  if (!isNodeObject(node)) {
     return [];
   }
 
@@ -928,7 +1004,7 @@ function nodeToMdast(
   const text = resolveText(node.textContent, ctx, scope);
 
   // InnerHTML — convert HTML content to mdast
-  if (typeof node.innerHTML === "string" && node.innerHTML.trim()) {
+  if (isString(node.innerHTML) && node.innerHTML.trim()) {
     const htmlNodes = htmlToMdast(node.innerHTML);
     if (htmlNodes.length > 0) {
       return htmlNodes;
@@ -948,7 +1024,7 @@ function nodeToMdast(
     return exportChildren(node, ctx, scope);
   }
 
-  const mdastType = TAG_MDAST_MAP[tag];
+  const mdastType = hasMdastType(tag) ? TAG_MDAST_MAP[tag] : undefined;
   if (!mdastType) {
     if (text != null) {
       return text.trim() ? [{ children: [{ type: "text", value: text }], type: "paragraph" }] : [];
@@ -987,7 +1063,7 @@ function nodeToMdast(
 
     case "link": {
       const href = String(node.attributes?.href ?? "");
-      const title = (node.attributes?.title as string | null) ?? null;
+      const title = attributeTitle(node.attributes?.title);
       const children =
         text != null ? [{ type: "text", value: text }] : exportChildren(node, ctx, scope);
       return [{ children, title, type: "link", url: href }];
@@ -996,7 +1072,7 @@ function nodeToMdast(
     case "image": {
       const src = String(node.attributes?.src ?? "");
       const alt = String(node.attributes?.alt ?? "");
-      const title = (node.attributes?.title as string | null) ?? null;
+      const title = attributeTitle(node.attributes?.title);
       return [{ alt, title, type: "image", url: src }];
     }
 
@@ -1027,13 +1103,13 @@ function nodeToMdast(
     }
 
     case "code": {
-      const codeChild = Array.isArray(node.children)
-        ? node.children.find((c: JxElement | string) => (c as JxMutableNode)?.tagName === "code")
-        : null;
-      const value = textOf(codeChild as JxElement | undefined) ?? text ?? "";
+      const codeChild = childList(node).find(
+        (c): c is JxElement => isNodeObject(c) && c.tagName === "code",
+      );
+      const value = textOf(codeChild) ?? text ?? "";
       return [
         {
-          lang: codeLang(codeChild as JxElement | undefined),
+          lang: codeLang(codeChild),
           type: "code",
           value,
         },
@@ -1085,10 +1161,10 @@ function nodeToMdast(
   return [];
 }
 
-function exportChildren(
+function exportChildren<ScopeValue>(
   node: JxElement,
-  ctx: ExportContext,
-  scope?: Record<string, unknown> | null,
+  ctx: ExportContext<ScopeValue>,
+  scope?: Record<string, ScopeValue> | null,
 ): MdastNode[] {
   if (node.textContent != null) {
     const text = resolveText(node.textContent, ctx, scope);
@@ -1105,7 +1181,11 @@ function exportChildren(
 
 // ─── Export: component inlining ──────────────────────────────────────────────
 
-function inlineComponent(node: JxElement, tag: string, ctx: ExportContext): MdastNode[] {
+function inlineComponent<ScopeValue>(
+  node: JxElement,
+  tag: string,
+  ctx: ExportContext<ScopeValue>,
+): MdastNode[] {
   const def = ctx.componentDefs.get(tag);
   if (!def) {
     return exportChildren(node, ctx);
@@ -1118,14 +1198,9 @@ function inlineComponent(node: JxElement, tag: string, ctx: ExportContext): Mdas
     if (key in stateDefs) {
       const existing = stateDefs[key];
       stateDefs[key] =
-        existing &&
-        typeof existing === "object" &&
-        !Array.isArray(existing) &&
-        "default" in existing
-          ? { ...existing, default: value }
-          : (value as JxStateDefinition);
+        isJsonObject(existing) && "default" in existing ? { ...existing, default: value } : value;
     } else {
-      stateDefs[key] = value as JxStateDefinition;
+      stateDefs[key] = value;
     }
   }
 
@@ -1140,43 +1215,52 @@ function inlineComponent(node: JxElement, tag: string, ctx: ExportContext): Mdas
   const instanceChildren = node.children;
   return resolved.flatMap((child: JxElement | string): MdastNode[] => {
     // Replace slot elements with instance children
-    if (typeof child !== "string" && child?.tagName === "slot" && Array.isArray(instanceChildren)) {
+    if (isNodeObject(child) && child.tagName === "slot" && Array.isArray(instanceChildren)) {
       return instanceChildren.flatMap((c: JxElement | string): MdastNode[] => nodeToMdast(c, ctx));
     }
     return nodeToMdast(child, ctx, scope);
   });
 }
 
-function deepResolve(
-  nodes: (JxElement | string)[],
-  scope: Record<string, unknown>,
-  ctx: ExportContext,
+function deepResolve<ScopeValue>(
+  nodes: readonly (JxElement | string)[],
+  scope: Record<string, ScopeValue>,
+  ctx: ExportContext<ScopeValue>,
 ) {
   return nodes.map((node) => resolveNode(node, scope, ctx));
 }
 
-function resolveNode(
+/**
+ * Evaluate the templates in one child slot. An element comes back as an evaluated copy and a string
+ * as its evaluation; anything else a hand-edited document left in the slot comes back as it was.
+ */
+function resolveNode<ScopeValue>(
   node: JxElement | string,
-  scope: Record<string, unknown>,
-  ctx: ExportContext,
-): JxElement | string {
-  if (typeof node === "string") {
+  scope: Record<string, ScopeValue>,
+  ctx: ExportContext<ScopeValue>,
+): JxElement | string;
+function resolveNode<ScopeValue>(
+  node: ChildSlot,
+  scope: Record<string, ScopeValue>,
+  ctx: ExportContext<ScopeValue>,
+): ChildSlot {
+  if (isString(node)) {
     const evaluated = ctx.evaluateTemplate?.(node, scope);
     return evaluated !== undefined ? String(evaluated) : node;
   }
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return node;
   }
 
   const result = { ...node };
 
-  if (typeof result.textContent === "string") {
+  if (isString(result.textContent)) {
     const evaluated = ctx.evaluateTemplate?.(result.textContent, scope);
     if (evaluated !== undefined) {
       result.textContent = String(evaluated);
     }
   }
-  if (typeof result.innerHTML === "string") {
+  if (isString(result.innerHTML)) {
     const evaluated = ctx.evaluateTemplate?.(result.innerHTML, scope);
     if (evaluated !== undefined) {
       result.innerHTML = String(evaluated);
@@ -1185,9 +1269,9 @@ function resolveNode(
   if (result.attributes) {
     result.attributes = { ...result.attributes };
     for (const [k, v] of Object.entries(result.attributes)) {
-      if (typeof v === "string") {
+      if (isString(v)) {
         // Template evaluation yields a substituted scalar for attribute values.
-        const evaluated = ctx.evaluateTemplate?.(v, scope) as JxAttributeValue | undefined;
+        const evaluated = ctx.evaluateTemplate?.(v, scope);
         if (evaluated !== undefined) {
           result.attributes[k] = evaluated;
         }
@@ -1203,12 +1287,12 @@ function resolveNode(
 
 // ─── Export: array expansion ─────────────────────────────────────────────────
 
-function expandArray(
+function expandArray<ScopeValue>(
   arrayDef: JxElement,
-  ctx: ExportContext,
-  scope?: Record<string, unknown> | null,
+  ctx: ExportContext<ScopeValue>,
+  scope?: Record<string, ScopeValue> | null,
 ): MdastNode[] {
-  const itemsValue = (arrayDef as JxMutableNode).items;
+  const itemsValue = arrayDef.items;
   const itemsRef = isRef(itemsValue) ? itemsValue.$ref : undefined;
   if (!itemsRef || !scope) {
     return [];
@@ -1219,91 +1303,90 @@ function expandArray(
     return [];
   }
 
-  const mapTemplate = (arrayDef as JxMutableNode).map;
+  const mapTemplate = arrayDef.map;
   if (!mapTemplate) {
     return [];
   }
 
-  return items.flatMap((item: JxMutableNode): MdastNode[] => {
-    const resolved = resolveMapNode(mapTemplate, item);
-    return nodeToMdast(resolved as JxElement | string, ctx, scope);
+  return items.flatMap((row): MdastNode[] => {
+    const resolved = isNodeObject(mapTemplate) ? resolveMapNode(mapTemplate, row) : mapTemplate;
+    return nodeToMdast(resolved, ctx, scope);
   });
 }
 
-function resolveMapNode(node: JxMutableNode, item: Record<string, unknown>) {
-  if (typeof node === "string") {
-    return node;
-  }
-  if (!node || typeof node !== "object") {
-    return node;
-  }
-
-  const result = { ...node };
+/**
+ * A copy of a repeater template element with its `$map/` references replaced by what they name in
+ * `row`. A child that is not an element object (a string, a number, an array, which exports nothing
+ * either way) is kept as it is.
+ */
+function resolveMapNode(node: JxElement, row: JsonValue): JxElement {
+  const result: JxElement = { ...node };
 
   for (const [key, value] of Object.entries(result)) {
-    if (value && typeof value === "object" && (value as JxMutableNode).$ref) {
-      const ref = (value as JxMutableNode).$ref as string;
-      if (ref.startsWith("$map/")) {
-        const path = ref.slice("$map/".length);
-        result[key] = resolvePath(
-          item,
-          path.startsWith("item/") ? path.slice("item/".length) : path,
-        );
-      }
+    if (isRef(value) && value.$ref.startsWith("$map/")) {
+      const path = value.$ref.slice("$map/".length);
+      result[key] = resolvePath(row, path.startsWith("item/") ? path.slice("item/".length) : path);
     }
   }
 
-  if (result.$props) {
-    result.$props = resolveMapNode(
-      result.$props as unknown as JxMutableNode,
-      item,
-    ) as unknown as Record<string, JsonValue>;
+  if (isNodeObject(result.$props)) {
+    /* SAFETY: `$props` holds JSON, and resolveMapNode returns a copy that differs from it only where
+       it substituted row data (JsonValue) or a nested value it resolved the same way, so the copy
+       is still a JSON props object. */
+    result.$props = resolveMapNode(result.$props, row) as Record<string, JsonValue>;
   }
 
-  if (typeof result.textContent === "string" && result.textContent.startsWith("$map/")) {
-    result.textContent = resolvePath(item, result.textContent.slice("$map/".length)) as unknown as
+  if (isString(result.textContent) && result.textContent.startsWith("$map/")) {
+    /* SAFETY: the row value can be any JSON (or undefined when the path misses), not just text.
+       Every reader of a resolved template's textContent accepts that: resolveText treats null and
+       undefined as no text and stringifies the rest, and textOf ignores non-strings. */
+    result.textContent = resolvePath(row, result.textContent.slice("$map/".length)) as
       | string
       | null;
   }
 
   if (Array.isArray(result.children)) {
-    result.children = result.children.map((c) =>
-      resolveMapNode(c as unknown as JxMutableNode, item),
-    );
+    result.children = result.children.map((c) => (isNodeObject(c) ? resolveMapNode(c, row) : c));
   }
 
   return result;
 }
 
-function resolvePath(obj: unknown, path: string) {
+/** Walk `path` (steps split on `/` or `.`) from `root`; `undefined` once a step meets nothing. */
+function resolvePath(root: JsonValue | undefined, path: string): JsonValue | undefined {
   const parts = path.split(/[/.]/);
-  let current = obj as JxMutableNode;
+  let current = root;
   for (const part of parts) {
     if (current == null) {
       return;
     }
-    // Paths address nodes by construction; non-node leaves surface as undefined above.
-    current = current[part] as JxMutableNode;
+    /* SAFETY: `current` is neither null nor undefined, and every other value answers a member read
+       by name (a string's `length`, an array's index). A member of JSON data is JSON, which is all a
+       state or `$map/` path is written to reach; a step naming a method reads the function, as it
+       always has. */
+    current = (current as Readonly<Partial<Record<string, JsonValue>>>)[part];
   }
   return current;
 }
 
-function resolveRef(ref: string, scope: Record<string, unknown>) {
-  if (ref.startsWith("#/state/")) {
-    return resolvePath(scope, ref.slice("#/state/".length));
-  }
-  return resolvePath(scope, ref);
+function resolveRef<ScopeValue>(ref: string, scope: Record<string, ScopeValue>) {
+  const path = ref.startsWith("#/state/") ? ref.slice("#/state/".length) : ref;
+  /* SAFETY: a repeater's `items` reference names a state entry, and the host's buildScope keeps
+     each entry under its name. State is declared in the JSON document, so the entry a repeater
+     names holds JSON; a host value that is not (a callable) is only read by name, like any object,
+     and then fails the Array.isArray check before anything uses it. */
+  return resolvePath(scope as JsonObject, path);
 }
 
-function resolveText(
-  value: unknown,
-  ctx: ExportContext,
-  scope?: Record<string, unknown> | null,
+function resolveText<ScopeValue>(
+  value: JxDocumentValue | undefined,
+  ctx: ExportContext<ScopeValue>,
+  scope?: Record<string, ScopeValue> | null,
 ): string | null {
   if (value == null) {
     return null;
   }
-  if (typeof value === "string") {
+  if (isString(value)) {
     if (scope) {
       const evaluated = ctx.evaluateTemplate?.(value, scope);
       if (evaluated !== undefined) {
@@ -1635,7 +1718,10 @@ function decodeHtmlEntities(str: string) {
  * - `mode: "export"` — clean GFM: Jx decoration stripped, wrappers unwrapped, custom elements inlined
  *   via `componentDefs`, templates evaluated via injected hooks.
  */
-export function serializeJxMarkdown(doc: JxDocument, opts: SerializeOptions = {}): string {
+export function serializeJxMarkdown<ScopeValue>(
+  doc: JxDocument,
+  opts: SerializeOptions<ScopeValue> = {},
+): string {
   const mode = opts.mode ?? "roundtrip";
 
   if (mode === "export") {
@@ -1644,11 +1730,28 @@ export function serializeJxMarkdown(doc: JxDocument, opts: SerializeOptions = {}
   return serializeRoundtrip(doc, opts);
 }
 
-function serializeRoundtrip(doc: JxDocument, opts: SerializeOptions): string {
+/* SAFETY: remark-stringify default-exports a unified attacher taking optional JSON settings (the
+   bullet/emphasis/strong/setext options passed below), which is the UnifiedPlugin shape. Its
+   declared type is unified's `Plugin`, and the root types.d.ts shadows "unified" with a shorthand
+   `declare module`, so the type-aware linter sees this import as an error type, not that Plugin. */
+const remarkStringifyPlugin = remarkStringify as UnifiedPlugin;
+
+/** A fresh unified processor, seen through the surface this module drives. */
+function createProcessor(): UnifiedProcessor {
+  /* SAFETY: unified() returns a Processor, which has the use/parse/runSync/stringify members
+     UnifiedProcessor declares; that interface exists only because oxlint cannot resolve unified's
+     own ESM types (see types.ts). */
+  return (unified as () => UnifiedProcessor)();
+}
+
+function serializeRoundtrip<ScopeValue>(
+  doc: JxDocument,
+  opts: SerializeOptions<ScopeValue>,
+): string {
   const lines: string[] = [];
 
   if (opts.frontmatter !== false) {
-    const frontmatter: Record<string, unknown> = {};
+    const frontmatter: DirectiveProps = {};
     for (const [key, value] of Object.entries(doc)) {
       if (key === "children") {
         continue;
@@ -1657,17 +1760,17 @@ function serializeRoundtrip(doc: JxDocument, opts: SerializeOptions): string {
     }
 
     if (Object.keys(frontmatter).length > 0) {
-      lines.push("---", stringifyYaml(frontmatter).trim(), "---", "");
+      lines.push("---", stringify(frontmatter).trim(), "---", "");
     }
   }
 
   if (Array.isArray(doc.children) && doc.children.length > 0) {
-    const mdast = jxToMdast(doc as JxElement, opts);
-    const processor = (unified as unknown as () => UnifiedProcessor)()
+    const mdast = jxToMdast(doc, opts);
+    const processor = createProcessor()
       .use(remarkGfm)
       .use(remarkDirective)
-      .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" });
-    const md = processor.stringify(mdast as unknown as Root);
+      .use(remarkStringifyPlugin, { bullet: "-", emphasis: "*", strong: "*" });
+    const md = processor.stringify(mdast);
 
     lines.push(md);
   }
@@ -1678,12 +1781,12 @@ function serializeRoundtrip(doc: JxDocument, opts: SerializeOptions): string {
     .trim()}\n`;
 }
 
-function serializeExport(doc: JxDocument, opts: SerializeOptions): string {
+function serializeExport<ScopeValue>(doc: JxDocument, opts: SerializeOptions<ScopeValue>): string {
   if (!Array.isArray(doc.children) || doc.children.length === 0) {
     return "";
   }
 
-  const ctx: ExportContext = {
+  const ctx: ExportContext<ScopeValue> = {
     buildScope: opts.buildScope,
     componentDefs: opts.componentDefs ?? new Map<string, JxElement>(),
     evaluateTemplate: opts.evaluateTemplate,
@@ -1717,19 +1820,17 @@ function serializeExport(doc: JxDocument, opts: SerializeOptions): string {
   }
   flushInline();
 
-  const mdast = {
+  const mdast: MdastNode = {
     children: cleaned,
     type: "root",
-  } as unknown as Root;
+  };
 
-  const processor = (unified as unknown as () => UnifiedProcessor)()
-    .use(remarkGfm)
-    .use(remarkStringify, {
-      bullet: "-",
-      emphasis: "*",
-      setext: false,
-      strong: "*",
-    });
+  const processor = createProcessor().use(remarkGfm).use(remarkStringifyPlugin, {
+    bullet: "-",
+    emphasis: "*",
+    setext: false,
+    strong: "*",
+  });
   const md = processor.stringify(mdast);
 
   return `${md.replaceAll(/\n{3,}/g, "\n\n").trim()}\n`;

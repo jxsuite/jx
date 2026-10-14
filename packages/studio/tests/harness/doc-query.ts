@@ -7,11 +7,28 @@
  * See docs/extending/contributing/ai-evals.md.
  */
 
+import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+
+/**
+ * A node as the model may have written it. The document is whatever came back from the run, so
+ * every member is optional and read defensively; only the ones these helpers walk are named.
+ */
+interface WrittenNode {
+  children?: unknown;
+  text?: unknown;
+  textContent?: unknown;
+}
+
+/** Whether a value is a node at all: any non-null object, the test `typeof n === "object"` made. */
+function isWrittenNode(value: unknown): value is WrittenNode {
+  return isNonNullObject(value);
+}
+
 /** Depth-first list of every node in the document (root included). */
 export function allNodes(doc: any): any[] {
   const out: any[] = [];
   const walk = (n: any) => {
-    if (!n || typeof n !== "object") {
+    if (!isWrittenNode(n)) {
       return;
     }
     out.push(n);
@@ -29,11 +46,11 @@ export function allNodes(doc: any): any[] {
 export function textOf(doc: any): string {
   const parts: any[] = [];
   const walk = (n: any) => {
-    if (typeof n === "string") {
+    if (isString(n)) {
       parts.push(n);
       return;
     }
-    if (!n || typeof n !== "object") {
+    if (!isWrittenNode(n)) {
       return;
     }
     if (n.text) {
@@ -62,10 +79,9 @@ export function anyStyle(
   prop: string,
   pred: ((value: string) => boolean) | string,
 ): boolean {
-  const test =
-    typeof pred === "function"
-      ? pred
-      : (v: string) => String(v).toLowerCase().includes(pred.toLowerCase());
+  const test = isFunction(pred)
+    ? pred
+    : (v: string) => String(v).toLowerCase().includes(pred.toLowerCase());
   return allNodes(doc).some(
     (n) => n.style && n.style[prop] !== undefined && test(String(n.style[prop])),
   );

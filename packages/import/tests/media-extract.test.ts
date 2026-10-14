@@ -1,12 +1,14 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
-import type { Page } from "puppeteer-core";
+import type { ImportPage } from "../src/capture.ts";
+import { recordingPage } from "./memory-io.ts";
+import type { RecordingPage } from "./memory-io.ts";
 import type { CapturedStyle } from "../src/style-capture.ts";
 
 const captureWidths: number[] = [];
 let capturesByWidth = new Map<number, CapturedStyle[]>();
 
 void mock.module("../src/style-capture.ts", () => ({
-  captureStylesAtWidth: (_page: Page, width: number): Promise<CapturedStyle[]> => {
+  captureStylesAtWidth: (_page: ImportPage, width: number): Promise<CapturedStyle[]> => {
     captureWidths.push(width);
     return Promise.resolve(capturesByWidth.get(width) ?? []);
   },
@@ -15,15 +17,8 @@ void mock.module("../src/style-capture.ts", () => ({
 const { analyzeMediaQueries, extractMedia, skippedWidthQueries } =
   await import("../src/media-extract.ts");
 
-function makePage(): { page: Page; viewports: { width: number; height: number }[] } {
-  const viewports: { width: number; height: number }[] = [];
-  const page = {
-    setViewport(viewport: { width: number; height: number }) {
-      viewports.push(viewport);
-      return Promise.resolve();
-    },
-  } as unknown as Page;
-  return { page, viewports };
+function makePage(): RecordingPage {
+  return recordingPage("extractMedia");
 }
 
 /**

@@ -1,5 +1,6 @@
 /** Google Fonts helpers — shared between head-panel (per-page) and head-editor (project-level). */
 
+import { isString } from "@jxsuite/schema/guards";
 import type { JxHeadEntry } from "@jxsuite/schema/types";
 
 export const GFONTS_CSS_PREFIX = "https://fonts.googleapis.com/css2?";
@@ -11,29 +12,30 @@ export const GFONTS_PRECONNECT_ORIGINS = [
 /**
  * Check if a `$head` entry is a Google Fonts stylesheet link.
  *
- * @param {JxHeadEntry} entry
+ * @param {JxHeadEntry | null | undefined} entry A `$head` slot; a JSON array can hold `null`.
  * @returns {boolean}
  */
-export function isGoogleFontEntry(entry: JxHeadEntry) {
+export function isGoogleFontEntry(entry: JxHeadEntry | null | undefined) {
   return (
     entry?.tagName === "link" &&
-    entry?.attributes?.rel === "stylesheet" &&
-    typeof entry?.attributes?.href === "string" &&
-    (entry.attributes.href as string).startsWith(GFONTS_CSS_PREFIX)
+    entry.attributes?.rel === "stylesheet" &&
+    isString(entry.attributes.href) &&
+    entry.attributes.href.startsWith(GFONTS_CSS_PREFIX)
   );
 }
 
 /**
  * Check if a `$head` entry is a Google Fonts preconnect link.
  *
- * @param {JxHeadEntry} entry
+ * @param {JxHeadEntry | null | undefined} entry A `$head` slot; a JSON array can hold `null`.
  * @returns {boolean}
  */
-export function isGoogleFontPreconnect(entry: JxHeadEntry) {
+export function isGoogleFontPreconnect(entry: JxHeadEntry | null | undefined) {
   return (
     entry?.tagName === "link" &&
-    entry?.attributes?.rel === "preconnect" &&
-    GFONTS_PRECONNECT_ORIGINS.includes(entry?.attributes?.href as string)
+    entry.attributes?.rel === "preconnect" &&
+    isString(entry.attributes.href) &&
+    GFONTS_PRECONNECT_ORIGINS.includes(entry.attributes.href)
   );
 }
 
@@ -68,14 +70,13 @@ export function buildGoogleFontUrl(family: string) {
  */
 export function ensureGoogleFontPreconnects(head: JxHeadEntry[]) {
   for (const origin of GFONTS_PRECONNECT_ORIGINS) {
+    // A `$head` array is JSON, so a slot can hold `null` whatever the element type says.
     const exists = head.some(
-      (e: JxHeadEntry) =>
-        e?.tagName === "link" &&
-        e?.attributes?.rel === "preconnect" &&
-        e?.attributes?.href === origin,
+      (e: JxHeadEntry | null | undefined) =>
+        e?.tagName === "link" && e.attributes?.rel === "preconnect" && e.attributes.href === origin,
     );
     if (!exists) {
-      const attrs: Record<string, string | boolean> = {
+      const attrs: NonNullable<JxHeadEntry["attributes"]> = {
         href: origin,
         rel: "preconnect",
       };

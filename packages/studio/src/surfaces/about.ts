@@ -17,19 +17,12 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { whenReady } from "./dialog";
 import aboutDoc from "./about.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("about", aboutDoc as unknown as JxDocument);
-
-/** One row of the metadata list: a label and the value beside it. */
-export interface AboutRow {
-  label: string;
-  value: string;
-}
+registerSurface("about", aboutDoc);
 
 /** One external link in the dialog's link row. */
 export interface AboutLink {
@@ -41,7 +34,7 @@ export interface AboutSurfaceOptions {
   /** Where the dialog is mounted — the dialog layer. */
   layer: HTMLElement;
   headline: string;
-  rows: AboutRow[];
+  rows: SurfaceOption[];
   links: AboutLink[];
   /** The dialog closed, for any reason the platform owns as well as the Close button. */
   onClosed: () => void;
@@ -49,7 +42,7 @@ export interface AboutSurfaceOptions {
 
 /** What the flow may change once the dialog is up: the package list, when it arrives. */
 export interface AboutSurfacePatch {
-  rows?: AboutRow[];
+  rows?: SurfaceOption[];
   packages?: { name: string; version: string }[];
 }
 
@@ -60,9 +53,9 @@ export interface AboutSurfaceHandle {
   close: () => void;
 }
 
-interface AboutScope extends Record<string, unknown> {
+interface AboutScope {
   headline: string;
-  rows: AboutRow[];
+  rows: SurfaceOption[];
   links: AboutLink[];
   packages: { name: string; version: string }[];
   /**
@@ -100,7 +93,11 @@ export function openAboutSurface(options: AboutSurfaceOptions): AboutSurfaceHand
     closed = true;
     options.onClosed();
   };
-  const scope = reactive<AboutScope>({
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
+  const scope: AboutScope = reactive<AboutScope>({
     close: () => handle.close(),
     closed: finish,
     headline: options.headline,
@@ -108,13 +105,15 @@ export function openAboutSurface(options: AboutSurfaceOptions): AboutSurfaceHand
     packages: [],
     packagesState: "loading",
     rows: options.rows,
-  }) as AboutScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("about", scope, slot).then(async (surface) => {
     mounted = surface;
+    // SAFETY: `about.json`'s root definition carries `tagName: "jx-dialog"`, so the runtime mounts an
+    // HTMLElement; a `Text` root only comes from a document whose root is a bare string.
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
@@ -125,7 +124,7 @@ export function openAboutSurface(options: AboutSurfaceOptions): AboutSurfaceHand
        `openDialogSurface` rather than reimplemented, because both surfaces are `jx-dialog`s and
        there is one answer to when one of those is ready. */
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -140,7 +139,7 @@ export function openAboutSurface(options: AboutSurfaceOptions): AboutSurfaceHand
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       mounted?.dispose();
       mounted = null;

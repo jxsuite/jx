@@ -6,6 +6,15 @@ interface Breakdown {
   gc: number;
 }
 
+/** Every Breakdown category, so the rounding pass below reaches each one without a key cast. */
+const BREAKDOWN_KEYS = [
+  "scripting",
+  "rendering",
+  "painting",
+  "loading",
+  "gc",
+] as const satisfies readonly (keyof Breakdown)[];
+
 export interface Analysis {
   scenario: string;
   wallMs: number;
@@ -111,7 +120,7 @@ export function analyze(scenario: string, wallMs: number, events: any[]): Analys
         styleCount += 1;
         styleTime += dur;
         styleElems += Number(e.args?.beginData?.totalElementCount ?? 0);
-        const t0 = (e.args?.beginData?.stackTrace?.[0] ?? {}) as any;
+        const t0 = e.args?.beginData?.stackTrace?.[0] ?? {};
         let key = `${t0.functionName || "(anonymous)"}${t0.url ? ` ${String(t0.url).replace(/^https?:\/\/[^/]+/, "")}:${t0.lineNumber ?? ""}` : ""}`;
         if ((!t0.url && !t0.functionName) || key.startsWith("(anonymous) http")) {
           const near = invalidations.filter((iv) => iv.ts <= e.ts && iv.ts >= e.ts - 30);
@@ -190,7 +199,7 @@ export function analyze(scenario: string, wallMs: number, events: any[]): Analys
       breakdown.loading += ms;
     }
   }
-  for (const k of Object.keys(breakdown) as (keyof Breakdown)[]) {
+  for (const k of BREAKDOWN_KEYS) {
     breakdown[k] = Number(breakdown[k].toFixed(1));
   }
 
@@ -212,18 +221,20 @@ export function analyze(scenario: string, wallMs: number, events: any[]): Analys
     breakdown,
     styleRecalc: { count: styleCount, time: Number(styleTime.toFixed(1)), elements: styleElems },
     styleCauses: [...styleCauses.entries()]
-      .map(([label, s]) => ({ label, count: s.count, time: Number(s.time.toFixed(1)) }))
-      .filter((s) => s.time > 1)
+      .flatMap(([label, s]) => {
+        const time = Number(s.time.toFixed(1));
+        return time > 1 ? [{ label, count: s.count, time }] : [];
+      })
       .toSorted((a, b) => b.time - a.time)
       .slice(0, 10),
     layout: { count: layoutCount, time: Number(layoutTime.toFixed(1)), invalidated: layoutInvalid },
     topFrames: ranked,
     bundled: [...bundleTotals.entries()]
-      .map(([k, ms]) => {
+      .flatMap(([k, ms]) => {
         const [url, line] = k.split("|");
-        return { url: url!, line: Number(line) + 1, totalMs: Number(ms.toFixed(1)) };
+        const totalMs = Number(ms.toFixed(1));
+        return totalMs > 10 ? [{ url: url!, line: Number(line) + 1, totalMs }] : [];
       })
-      .filter((f) => f.totalMs > 10)
       .toSorted((a, b) => b.totalMs - a.totalMs)
       .slice(0, 30),
     gcMs: Number(gc.toFixed(1)),

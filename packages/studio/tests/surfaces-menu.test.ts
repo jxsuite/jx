@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { flush, stubRect } from "./harness";
 import { initLayers } from "../src/ui/layers";
+import type { MenuHandle } from "../src/surfaces/menu";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   const el = document.createElement("div");
@@ -19,7 +20,14 @@ initLayers();
 
 const { openMenu, placementOf } = await import("../src/surfaces/menu");
 
-type MenuEl = HTMLElement & { open: boolean; x: number; y: number };
+/** The `jx-menu` members these tests read: its open state, fallback point and anchoring. */
+type MenuEl = HTMLElement & {
+  open: boolean;
+  x: number;
+  y: number;
+  placement: string;
+  anchored: boolean;
+};
 
 const ROWS = [
   { destructive: false, disabled: false, dividerAbove: false, id: "a", title: "Alpha" },
@@ -82,12 +90,12 @@ describe("openMenu", () => {
 
   test("a row's select runs the command before the menu closes, and onClosed fires once", async () => {
     const events: string[] = [];
-    let handleSeen: unknown = null;
+    const handlesSeen: MenuHandle[] = [];
     open = openMenu({
       label: "Things",
       onClosed: (handle) => {
         events.push("closed");
-        handleSeen = handle;
+        handlesSeen.push(handle);
       },
       origin: { x: 0, y: 0 },
       region: "test",
@@ -102,7 +110,8 @@ describe("openMenu", () => {
     menuIn(open.host)!.querySelector<HTMLElement>('[data-command-id="b"]')!.click();
     await flush();
     expect(events).toEqual(["run:b", "up", "closed"]);
-    expect(handleSeen).toBe(open);
+    expect(handlesSeen).toHaveLength(1);
+    expect(handlesSeen[0]).toBe(open);
     expect(menuIn(open.host)).toBeNull();
     // A second close is a no-op: nothing fires twice.
     open.close();
@@ -182,7 +191,7 @@ describe("openMenu", () => {
     });
     await open.ready;
     await flush();
-    const menu = menuIn(open.host) as (MenuEl & { placement: string; anchored: boolean }) | null;
+    const menu = menuIn(open.host);
     expect(menu?.placement).toBe("block-end span-inline-end");
     /* The fallback coordinates are the opener's box, the corner the placement names. */
     expect(menu?.x).toBe(100);

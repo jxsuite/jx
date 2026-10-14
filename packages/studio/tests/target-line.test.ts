@@ -162,7 +162,7 @@ describe("the selector segment", () => {
 
   test("the trigger opens the same menu the command does", async () => {
     const c = await renderLine(model());
-    (c.querySelector('[data-seg="selector"]') as HTMLElement).click();
+    c.querySelector<HTMLElement>('[data-seg="selector"]')!.click();
     await flush(3);
     expect(menuRow("__base__")).not.toBeNull();
   });

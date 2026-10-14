@@ -27,10 +27,28 @@ function selectContents(node: Node) {
   sel.addRange(range);
 }
 
+/** One recorded `execCommand(commandId, showUI, value)` call. */
+type ExecCall = [commandId: string, showUI: boolean | undefined, value: string | undefined];
+
+/**
+ * Install a recording `document.execCommand` as an own property (happy-dom has none) and return its
+ * call log; `afterEach` deletes the property again.
+ */
+function stubExecCommand(): ExecCall[] {
+  const calls: ExecCall[] = [];
+  Object.assign(document, {
+    execCommand: (commandId: string, showUI?: boolean, value?: string) => {
+      calls.push([commandId, showUI, value]);
+      return true;
+    },
+  });
+  return calls;
+}
+
 afterEach(() => {
   window.getSelection()?.removeAllRanges();
   document.body.innerHTML = "";
-  delete (document as unknown as Record<string, unknown>).execCommand;
+  Reflect.deleteProperty(document, "execCommand");
 });
 
 describe("linkStateForSelection", () => {
@@ -80,11 +98,7 @@ describe("applyLink", () => {
   test("CREATE branch: with no existing <a>, a non-empty href calls execCommand('createLink')", () => {
     const el = mountEditable("plain");
     selectContents(el.firstChild!);
-    const calls: unknown[][] = [];
-    (document as unknown as Record<string, unknown>).execCommand = (...args: unknown[]) => {
-      calls.push(args);
-      return true;
-    };
+    const calls = stubExecCommand();
     applyLink(el, "https://made");
     expect(calls).toEqual([["createLink", false, "https://made"]]);
   });
@@ -92,11 +106,7 @@ describe("applyLink", () => {
   test("no existing <a> and an empty href does nothing (no execCommand)", () => {
     const el = mountEditable("plain");
     selectContents(el.firstChild!);
-    const calls: unknown[][] = [];
-    (document as unknown as Record<string, unknown>).execCommand = (...args: unknown[]) => {
-      calls.push(args);
-      return true;
-    };
+    const calls = stubExecCommand();
     applyLink(el, "");
     expect(calls).toEqual([]);
   });
@@ -106,11 +116,7 @@ describe("insertTemplateToken", () => {
   test("focuses the root and inserts ${token} via execCommand('insertText')", () => {
     const el = mountEditable("");
     selectContents(el);
-    const calls: unknown[][] = [];
-    (document as unknown as Record<string, unknown>).execCommand = (...args: unknown[]) => {
-      calls.push(args);
-      return true;
-    };
+    const calls = stubExecCommand();
     insertTemplateToken(el, "state.title");
     expect(calls).toEqual([["insertText", false, "${state.title}"]]);
   });

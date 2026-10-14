@@ -496,7 +496,7 @@ export async function runImportPipeline(
       fullPageScreenshots: referenceFullPage,
       breakpoints: breakpointPolicy,
       onProgress: (msg) => progress("crawl", msg.trim()),
-      ...(signal === undefined ? {} : { signal }),
+      signal,
     });
 
     progress(

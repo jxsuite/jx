@@ -1,26 +1,35 @@
 /**
  * Minimal ambient types for tabulator-tables 6.x — the package ships no declarations. Only the
  * surface grid-view.ts touches is typed; extend here as usage grows.
+ *
+ * Every component is generic over `Value`, the type of one cell value. Tabulator stores the row
+ * objects it is handed (`data`, `replaceData`) and gives the same values back (`getValue`,
+ * `getData`, sorter and filter arguments), so the caller that builds the table names the value type
+ * once and reads it back from every component. Values written in (`setValue`, an editor's
+ * `success`, `selectableRangeClearCellsValue`) must be of that same type for the promise to hold.
  */
 declare module "tabulator-tables" {
-  export interface CellComponent {
-    getValue: () => unknown;
+  /** One row object as the table stores it: cell values keyed by field. */
+  export type RowData<Value> = Record<string, Value>;
+
+  export interface CellComponent<Value> {
+    getValue: () => Value;
     getField: () => string;
     getElement: () => HTMLElement;
-    getRow: () => RowComponent;
-    setValue: (value: unknown, mutate?: boolean) => void;
+    getRow: () => RowComponent<Value>;
+    setValue: (value: Value, mutate?: boolean) => void;
   }
 
-  export interface RowComponent {
-    getData: () => Record<string, unknown>;
+  export interface RowComponent<Value> {
+    getData: () => RowData<Value>;
     getElement: () => HTMLElement;
-    getCells: () => CellComponent[];
+    getCells: () => CellComponent<Value>[];
     reformat: () => void;
   }
 
-  export interface RangeComponent {
-    getRows: () => RowComponent[];
-    getCells: () => CellComponent[][];
+  export interface RangeComponent<Value> {
+    getRows: () => RowComponent<Value>[];
+    getCells: () => CellComponent<Value>[][];
   }
 
   export interface ColumnComponent {
@@ -28,28 +37,29 @@ declare module "tabulator-tables" {
     getWidth: () => number;
   }
 
-  export type CellEditor = (
-    cell: CellComponent,
+  export type CellEditor<Value> = (
+    cell: CellComponent<Value>,
     onRendered: (fn: () => void) => void,
-    success: (value: unknown) => void,
+    success: (value: Value) => void,
     cancel: () => void,
   ) => HTMLElement | false;
 
-  export type CellFormatter = (
-    cell: CellComponent,
-    formatterParams: Record<string, unknown>,
+  export type CellFormatter<Value> = (
+    cell: CellComponent<Value>,
+    /** Always `{}`: no column definition here declares `formatterParams`. */
+    formatterParams: Record<string, never>,
     onRendered: (fn: () => void) => void,
   ) => HTMLElement | string;
 
-  export interface ColumnDefinition {
+  export interface ColumnDefinition<Value> {
     title: string;
     field?: string | undefined;
     width?: number | undefined;
     frozen?: boolean | undefined;
-    editor?: CellEditor | undefined;
-    editable?: boolean | ((cell: CellComponent) => boolean) | undefined;
-    formatter?: CellFormatter | undefined;
-    sorter?: string | ((a: unknown, b: unknown) => number) | undefined;
+    editor?: CellEditor<Value> | undefined;
+    editable?: boolean | ((cell: CellComponent<Value>) => boolean) | undefined;
+    formatter?: CellFormatter<Value> | undefined;
+    sorter?: string | ((a: Value, b: Value) => number) | undefined;
     headerSort?: boolean | undefined;
     headerFilter?: string | undefined;
     cssClass?: string | undefined;
@@ -57,9 +67,20 @@ declare module "tabulator-tables" {
     headerSortTristate?: boolean | undefined;
   }
 
-  export interface Options {
-    data?: Record<string, unknown>[];
-    columns?: ColumnDefinition[];
+  /** Which table regions a clipboard copy includes. */
+  export interface ClipboardCopyConfig {
+    columnHeaders?: boolean;
+    columnGroups?: boolean;
+    rowHeaders?: boolean;
+    rowGroups?: boolean;
+    columnCalcs?: boolean;
+    dataTree?: boolean;
+    formatCells?: boolean;
+  }
+
+  export interface Options<Value> {
+    data?: RowData<Value>[];
+    columns?: ColumnDefinition<Value>[];
     index?: string;
     layout?: string;
     height?: string | number;
@@ -73,27 +94,27 @@ declare module "tabulator-tables" {
     selectableRangeColumns?: boolean;
     selectableRangeRows?: boolean;
     selectableRangeClearCells?: boolean;
-    selectableRangeClearCellsValue?: unknown;
+    selectableRangeClearCellsValue?: Value;
     clipboard?: boolean;
     clipboardCopyStyled?: boolean;
-    clipboardCopyConfig?: Record<string, unknown>;
+    clipboardCopyConfig?: ClipboardCopyConfig;
     clipboardCopyRowRange?: string;
     clipboardPasteParser?: string;
     clipboardPasteAction?: string;
     movableColumns?: boolean;
-    columnDefaults?: Partial<ColumnDefinition>;
-    rowFormatter?: (row: RowComponent) => void;
+    columnDefaults?: Partial<ColumnDefinition<Value>>;
+    rowFormatter?: (row: RowComponent<Value>) => void;
     placeholder?: string;
   }
 
-  export class Tabulator {
-    constructor(host: HTMLElement, options: Options);
+  export class Tabulator<Value> {
+    constructor(host: HTMLElement, options: Options<Value>);
     static registerModule(modules: unknown[]): void;
     on(event: string, callback: (...args: never[]) => void): void;
-    replaceData(data: Record<string, unknown>[]): Promise<void>;
-    getRows(activeOnly?: string): RowComponent[];
-    getRanges(): RangeComponent[];
-    setFilter(filter: (data: Record<string, unknown>) => boolean): void;
+    replaceData(data: RowData<Value>[]): Promise<void>;
+    getRows(activeOnly?: string): RowComponent<Value>[];
+    getRanges(): RangeComponent<Value>[];
+    setFilter(filter: (data: RowData<Value>) => boolean): void;
     clearFilter(includeHeaderFilters?: boolean): void;
     redraw(force?: boolean): void;
     destroy(): void;

@@ -1,5 +1,5 @@
 import { installMockPlatform } from "./harness";
-import { createMockCollabHub, settleCollab } from "./collab-mock";
+import { BASE_DOC, childNode, createMockCollabHub, settleCollab } from "./collab-mock";
 import { toRaw } from "../src/reactivity";
 import { jsonClone } from "../src/utils/studio-utils";
 import { closeAllTabs, closeTab, openTab } from "../src/workspace/workspace";
@@ -19,22 +19,17 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 import { afterEach, describe, expect, test } from "bun:test";
 
-const DOC: JxMutableNode = {
-  children: [{ tagName: "p", textContent: "Base" }],
-  tagName: "div",
-};
-
 const PATH = "pages/undo.json";
 
 async function openAttached(hub: ReturnType<typeof createMockCollabHub>) {
   installMockPlatform({ collab: hub.capability });
-  const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
+  const tab = openTab({ document: structuredClone(BASE_DOC), documentPath: PATH, id: PATH });
   await settleCollab();
   return tab;
 }
 
 function tabJson(tab: Tab): JxMutableNode {
-  return jsonClone(toRaw(tab.doc.document)) as JxMutableNode;
+  return jsonClone(toRaw(tab.doc.document));
 }
 
 afterEach(() => {
@@ -54,17 +49,14 @@ describe("collab undo (Y.UndoManager delegate)", () => {
 
     undo(tab);
     await settleCollab();
-    const doc = tabJson(tab) as { children: { textContent?: string }[] };
-    expect(doc.children[0]!.textContent).toBe("Base");
+    expect(childNode(tabJson(tab), 0).textContent).toBe("Base");
     // The undo propagated to the shared tree, not just locally.
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
     expect(canRedo(tab)).toBe(true);
 
     redo(tab);
     await settleCollab();
-    expect(
-      (tabJson(tab) as { children: { textContent?: string }[] }).children[0]!.textContent,
-    ).toBe("Edited");
+    expect(childNode(tabJson(tab), 0).textContent).toBe("Edited");
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
   });
 
@@ -91,9 +83,9 @@ describe("collab undo (Y.UndoManager delegate)", () => {
     undo(tab);
     await settleCollab();
 
-    const doc = tabJson(tab) as { children: { textContent?: string; tagName?: string }[] };
-    expect(doc.children[0]!.textContent).toBe("Base");
-    expect(doc.children[1]!.textContent).toBe("Theirs");
+    const doc = tabJson(tab);
+    expect(childNode(doc, 0).textContent).toBe("Base");
+    expect(childNode(doc, 1).textContent).toBe("Theirs");
     expect(yDocToJson(hub.serverDoc(PATH))).toEqual(tabJson(tab));
     peer.destroy();
   });
@@ -120,9 +112,10 @@ describe("collab undo (Y.UndoManager delegate)", () => {
     await settleCollab();
     expect(getHistoryDelegate(tab)).toBeNull();
     expect(tab.history.snapshots).toHaveLength(1);
-    expect(
-      (tab.history.snapshots[0]!.document as { children: { textContent?: string }[] }).children[0]!
-        .textContent,
-    ).toBe("Kept");
+    const kept = tab.history.snapshots[0]?.document;
+    if (!kept) {
+      throw new TypeError("the closed tab's history kept no document checkpoint");
+    }
+    expect(childNode(kept, 0).textContent).toBe("Kept");
   });
 });

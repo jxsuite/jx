@@ -1,25 +1,15 @@
 import "./with-dom.js";
 import { describe, expect, mock, test } from "bun:test";
-import type { JxMutableNode } from "@jxsuite/schema/types";
-
-const DOC = {
-  children: [
-    { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
-    {
-      attributes: { id: "d" },
-      children: [{ attributes: { href: "/a" }, tagName: "a" }],
-      tagName: "dialog",
-    },
-  ],
-  tagName: "div",
-} as unknown as JxMutableNode;
+import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { Tab } from "../src/tabs/tab";
+import { DIALOG_DOC } from "./shared-fixtures";
 
 describe("the dialog reveal rule", () => {
   /** Load the module with the frame post doubled, as the popover suite does. */
   async function loadWithDoubles() {
-    const posted: { path: unknown }[] = [];
+    const posted: { path: JxPath | null }[] = [];
     void mock.module("../src/canvas/iframe-host", () => ({
-      postDialogOpen: (_tab: unknown, path: unknown) => {
+      postDialogOpen: (_tab: Tab, path: JxPath | null) => {
         posted.push({ path });
       },
       postPopoverOpen: () => {},
@@ -29,12 +19,23 @@ describe("the dialog reveal rule", () => {
     return { mod, posted };
   }
 
-  function fakeTab(selection: (string | number)[][], openDialog: unknown = null) {
-    return {
-      doc: { document: DOC },
+  /** The members of a tab the reveal rule reads and writes. */
+  interface DialogTabDouble {
+    doc: { document: JxMutableNode };
+    id: string;
+    session: { selection: JxPath[]; ui: { openDialog: JxPath | null } };
+  }
+
+  function fakeTab(selection: JxPath[], openDialog: JxPath | null = null): Tab {
+    const double: DialogTabDouble = {
+      doc: { document: DIALOG_DOC },
       id: "t1",
       session: { selection, ui: { openDialog } },
-    } as never;
+    };
+    /* SAFETY: dialog-state reads `doc.document`, `session.selection` and `session.ui.openDialog`,
+       writes `session.ui` through `updateSession`'s Object.assign, and hands the tab to the doubled
+       `postDialogOpen`, which ignores it; no other member of the tab is touched. */
+    return double as Tab;
   }
 
   test("selecting inside a dialog opens it, and tells the frames once", async () => {
@@ -66,9 +67,7 @@ describe("the dialog reveal rule", () => {
     const { mod, posted } = await loadWithDoubles();
     const tab = fakeTab([]);
     mod.setOpenDialog(tab, ["children", 1]);
-    expect(
-      (tab as unknown as { session: { ui: { openDialog: unknown } } }).session.ui.openDialog,
-    ).toEqual(["children", 1]);
+    expect(tab.session.ui.openDialog).toEqual(["children", 1]);
     expect(posted[0]!.path).toEqual(["children", 1]);
     mod.setOpenDialog(tab, null);
     expect(posted[1]!.path).toBeNull();

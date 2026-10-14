@@ -53,9 +53,9 @@ describe("the cursor", () => {
     // A tab strip is a ring; a change list is a document read top to bottom, and wrapping would
     // Silently return a reviewer to a part of the page they had already cleared.
     setDiffChangeMap("primary", mapOf(2));
-    expect(stepDiff("primary", 1)).toBe(0);
-    expect(stepDiff("primary", 1)).toBe(1);
-    expect(stepDiff("primary", 1)).toBeNull();
+    // Each step moves the shared cursor, so the three calls are three distinct observations.
+    const steps = [stepDiff("primary", 1), stepDiff("primary", 1), stepDiff("primary", 1)];
+    expect(steps).toEqual([0, 1, null]);
     expect(diffStepOf("primary")).toBe(1);
   });
 

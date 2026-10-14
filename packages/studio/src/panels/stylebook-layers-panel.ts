@@ -31,8 +31,8 @@ import type {
   StylebookRowView,
   StylebookVariableView,
 } from "../surfaces/panel-stylebook-layers";
+import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxStyle } from "@jxsuite/schema/types";
-import type { ComponentEntry } from "../files/components.js";
 
 /** What the panel is drawn from: the catalogue, and what selecting a row does. */
 export interface StylebookLayersCtx {
@@ -40,9 +40,9 @@ export interface StylebookLayersCtx {
   stylebookMeta: { $sections: { label: string; elements: StylebookEntry[] }[] };
 }
 
-/** The row's own padding at depth 0, and what each level of nesting adds. */
-const INDENT_BASE = 8;
-const INDENT_STEP = 16;
+/** The row's own padding at depth 0, and what each level of nesting adds (the Outline's too). */
+export const INDENT_BASE = 8;
+export const INDENT_STEP = 16;
 
 /**
  * Whether the open file has already written a `& <tag>` block with something in it.
@@ -50,9 +50,9 @@ const INDENT_STEP = 16;
  * @param {JxStyle} rootStyle
  * @param {string} tag
  */
-function hasTagStyle(rootStyle: JxStyle, tag: string) {
+function hasTagStyle(rootStyle: JxStyle, tag: string): boolean {
   const s = rootStyle[`& ${tag}`];
-  return Boolean(s) && typeof s === "object" && Object.keys(s as object).length > 0;
+  return isNonNullObject(s) && Object.keys(s).length > 0;
 }
 
 /**
@@ -121,7 +121,7 @@ function variableRows(rootStyle: JxStyle): StylebookVariableView[] {
  */
 export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersValues {
   const tab = activeTab.value;
-  const rootStyle = (tab?.doc.document?.style || {}) as JxStyle;
+  const rootStyle: JxStyle = tab?.doc.document?.style || {};
   const { selection } = shell.stylebook;
   const leaf = selectedLeaf(selection);
 
@@ -131,7 +131,7 @@ export function stylebookLayersValues(ctx: StylebookLayersCtx): StylebookLayersV
       elementRows(entry, rootStyle, leaf, 0, "", rows);
     }
   }
-  for (const comp of componentRegistry as ComponentEntry[]) {
+  for (const comp of componentRegistry) {
     rows.push({
       customized: false,
       indent: `${INDENT_BASE}px`,
@@ -174,7 +174,7 @@ function revealSelectedRow(host: HTMLElement): void {
   queueMicrotask(() => {
     host
       .querySelector('[part="row"][aria-current="true"]')
-      ?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
 }
 

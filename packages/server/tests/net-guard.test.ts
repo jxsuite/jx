@@ -476,14 +476,16 @@ describe("secretsMatch", () => {
    */
   test("does not stop at the first difference", () => {
     const visited: number[] = [];
-    const probe = {
+    const probe: Pick<string, "codePointAt" | "length"> = {
       codePointAt: (i: number) => {
         visited.push(i);
         return 97;
       },
       length: 4,
     };
-    secretsMatch("aaaa", probe as unknown as string);
+    /* SAFETY: secretsMatch reads nothing from its operands but `length` and `codePointAt`, which is
+       exactly the slice of `string` this probe implements. */
+    secretsMatch("aaaa", probe as string);
     expect(visited).toEqual([0, 1, 2, 3]);
   });
 });

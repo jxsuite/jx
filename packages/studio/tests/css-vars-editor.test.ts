@@ -23,11 +23,11 @@ import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
 import { renderCssVarsEditor } from "../src/settings/css-vars-editor";
+import { getNestedStyle, isJsonObject } from "@jxsuite/schema/guards";
 
+import type { JsonObject, JsonValue, JxStyle } from "@jxsuite/schema/types";
 import type { MockPlatformState } from "./harness";
 import type { StudioPlatform } from "../src/types";
-
-type AnyConfig = Record<string, any>;
 
 /**
  * Draw the section into a fresh container and let the surface mount.
@@ -37,14 +37,16 @@ type AnyConfig = Record<string, any>;
  * with no `input` inside it.
  */
 async function setup(
-  styleObj: AnyConfig,
+  styleObj: JsonObject,
   media?: Record<string, string>,
   overrides: Partial<StudioPlatform> = {},
 ): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides);
-  resetStudioState({
-    projectConfig: { style: styleObj, ...(media ? { $media: media } : {}) } as unknown,
-  });
+  const projectConfig: JsonObject = { style: styleObj };
+  if (media) {
+    projectConfig.$media = media;
+  }
+  resetStudioState({ projectConfig });
   const container = document.createElement("div");
   document.body.append(container);
   renderCssVarsEditor(container);
@@ -52,34 +54,54 @@ async function setup(
   return { container, state };
 }
 
-function style(): AnyConfig {
-  return (projectState as AnyConfig).projectConfig.style;
+/** The live project config's `style` block, which every setup() seeds. */
+function style(): JxStyle {
+  const current = projectState?.projectConfig?.style;
+  if (!current) {
+    throw new Error("the project config has no style block");
+  }
+  return current;
 }
 
-function written(state: MockPlatformState): AnyConfig {
-  return JSON.parse(state.files.get("project.json")!) as AnyConfig;
+/** The `style` block of the project.json the platform was last handed. */
+function writtenStyle(state: MockPlatformState): JsonObject {
+  const text = state.files.get("project.json");
+  if (text === undefined) {
+    throw new Error("project.json was never written");
+  }
+  const config: JsonValue = JSON.parse(text);
+  if (!isJsonObject(config) || !isJsonObject(config.style)) {
+    throw new TypeError("project.json was written without a style object");
+  }
+  return config.style;
+}
+
+/** One nested block (`@--sm`, `@--dark`) of the written style, when it is an object. */
+function writtenBlock(state: MockPlatformState, key: string): JsonObject | undefined {
+  const block = writtenStyle(state)[key];
+  return isJsonObject(block) ? block : undefined;
 }
 
 /** The group whose heading reads `title`. */
 function groupByTitle(container: HTMLElement, title: string): HTMLElement {
   const group = [...container.querySelectorAll('[part="group"]')].find(
-    (g) => g.querySelector('[part="group-title"]')?.textContent?.trim() === title,
+    (g) => g.querySelector('[part="group-title"]')?.textContent.trim() === title,
   );
-  if (!group) {
+  if (!(group instanceof HTMLElement)) {
     throw new Error(`no token group titled "${title}"`);
   }
-  return group as HTMLElement;
+  return group;
 }
 
 /** One token's block: its row, its preview and its overrides, addressed by the label on the row. */
 function tokenByName(group: HTMLElement, displayName: string): HTMLElement {
   const token = [...group.querySelectorAll('[part="token"]')].find(
-    (t) => t.querySelector('[part="name"]')?.textContent?.trim() === displayName,
+    (t) => t.querySelector('[part="name"]')?.textContent.trim() === displayName,
   );
-  if (!token) {
+  if (!(token instanceof HTMLElement)) {
     throw new Error(`no token row named "${displayName}"`);
   }
-  return token as HTMLElement;
+  return token;
 }
 
 /** The token block for a name in a group — the two lookups every assertion below starts with. */
@@ -87,9 +109,23 @@ function tokenIn(container: HTMLElement, groupTitle: string, name: string): HTML
   return tokenByName(groupByTitle(container, groupTitle), name);
 }
 
+/** The first native `<input>` under `root` matching `selector`. */
+function nativeInput(root: ParentNode, selector: string): HTMLInputElement {
+  const input = root.querySelector(selector);
+  if (!(input instanceof HTMLInputElement)) {
+    throw new TypeError(`no <input> matches ${selector}`);
+  }
+  return input;
+}
+
 /** The native input inside a kit text field. */
 function field(root: ParentNode, part: string): HTMLInputElement {
-  return root.querySelector(`[part="${part}"] [part="input"]`) as HTMLInputElement;
+  return nativeInput(root, `[part="${part}"] [part="input"]`);
+}
+
+/** A token's colour well. */
+function swatch(root: ParentNode): HTMLInputElement {
+  return nativeInput(root, '[part="swatch-input"]');
 }
 
 /** Commit an edit into a kit text field, the way a reader does. */
@@ -109,7 +145,7 @@ async function type(input: HTMLInputElement, value: string): Promise<void> {
 
 /** Drag a colour well. */
 async function paint(root: ParentNode, value: string): Promise<void> {
-  const well = root.querySelector('[part="swatch-input"]') as HTMLInputElement;
+  const well = swatch(root);
   well.value = value;
   well.dispatchEvent(new Event("input", { bubbles: true }));
   await flush(4);
@@ -125,27 +161,36 @@ async function addVar(group: HTMLElement, name: string, value: string): Promise<
 
 /** The `[value, label]` pairs a token's add-an-override picker offers, placeholder excluded. */
 function offered(token: HTMLElement): [string, string][] {
-  return [...token.querySelectorAll('[part="add-picker"] option[part="option"]')]
-    .map((o): [string, string] => [o.getAttribute("value") ?? "", o.textContent?.trim() ?? ""])
-    .filter(([value]) => value !== "");
+  return [...token.querySelectorAll('[part="add-picker"] option[part="option"]')].flatMap(
+    (o): [string, string][] => {
+      const value = o.getAttribute("value") ?? "";
+      return value === "" ? [] : [[value, o.textContent.trim()]];
+    },
+  );
+}
+
+/** The native `<select>` of a token's add-an-override picker. */
+function addPicker(token: HTMLElement): HTMLSelectElement {
+  const select = token.querySelector('[part="add-picker"] select');
+  if (!(select instanceof HTMLSelectElement)) {
+    throw new TypeError("no add-override picker on this token");
+  }
+  return select;
 }
 
 /** Pick a context in a token's add-an-override picker. */
 async function pickContext(token: HTMLElement, value: string): Promise<void> {
-  const select = token.querySelector('[part="add-picker"] select') as HTMLSelectElement;
-  if (!select) {
-    throw new Error("no add-override picker on this token");
-  }
+  const select = addPicker(token);
   select.value = value;
   select.dispatchEvent(new Event("change", { bubbles: true }));
   await flush(4);
 }
 
-function texts(root: ParentNode, part: string): (string | undefined)[] {
-  return [...root.querySelectorAll(`[part="${part}"]`)].map((n) => n.textContent?.trim());
+function texts(root: ParentNode, part: string): string[] {
+  return [...root.querySelectorAll(`[part="${part}"]`)].map((n) => n.textContent.trim());
 }
 
-function baseStyle(): AnyConfig {
+function baseStyle() {
   return {
     "--color-accent": "tomato",
     "--color-primary": "#007acc",
@@ -157,13 +202,13 @@ function baseStyle(): AnyConfig {
     "@--sm": { "--size-gap": "8px" },
     color: "blue", // Not a custom property — skipped
     "--weird": { nested: true }, // Object value — skipped
-  };
+  } satisfies JsonObject;
 }
 
 /** A platform whose every write is refused. */
-const failing = {
+const failing: Partial<StudioPlatform> = {
   writeFile: () => Promise.reject(new Error("EROFS: read-only file system")),
-} as unknown as Partial<StudioPlatform>;
+};
 
 beforeEach(() => {
   resetWorkspaceWithTab();
@@ -224,12 +269,8 @@ describe("css vars grouping", () => {
 describe("color section", () => {
   test("hex values seed the swatch color input; non-hex falls back", async () => {
     const { container } = await setup(baseStyle());
-    const primary = tokenIn(container, "Colors", "Primary").querySelector(
-      '[part="swatch-input"]',
-    ) as HTMLInputElement;
-    const accent = tokenIn(container, "Colors", "Accent").querySelector(
-      '[part="swatch-input"]',
-    ) as HTMLInputElement;
+    const primary = swatch(tokenIn(container, "Colors", "Primary"));
+    const accent = swatch(tokenIn(container, "Colors", "Accent"));
     expect(primary.value).toBe("#007acc");
     expect(accent.value).toBe("#3b82f6"); // Fallback for "tomato"
   });
@@ -238,7 +279,7 @@ describe("color section", () => {
     const { container, state } = await setup(baseStyle());
     await paint(tokenIn(container, "Colors", "Primary"), "#ff0000");
     expect(style()["--color-primary"]).toBe("#ff0000");
-    expect(written(state).style["--color-primary"]).toBe("#ff0000");
+    expect(writtenStyle(state)["--color-primary"]).toBe("#ff0000");
     // The value field followed the well, which is what makes them one control rather than two.
     expect(field(tokenIn(container, "Colors", "Primary"), "value").value).toBe("#ff0000");
   });
@@ -260,14 +301,14 @@ describe("color section", () => {
     await flush(4);
     expect(style()["--color-accent"]).toBeUndefined();
     expect(() => tokenIn(container, "Colors", "Accent")).toThrow();
-    expect(written(state).style["--color-accent"]).toBeUndefined();
+    expect(writtenStyle(state)["--color-accent"]).toBeUndefined();
   });
 
   test("add row creates a slugged var; empty name or value is a no-op", async () => {
     const { container, state } = await setup(baseStyle());
     await addVar(groupByTitle(container, "Colors"), "Brand Green!", "#00aa55");
     expect(style()["--color-brand-green"]).toBe("#00aa55");
-    expect(written(state).style["--color-brand-green"]).toBe("#00aa55");
+    expect(writtenStyle(state)["--color-brand-green"]).toBe("#00aa55");
     // A committed add empties the row it was typed into.
     expect(field(groupByTitle(container, "Colors"), "add-name").value).toBe("");
 
@@ -304,7 +345,7 @@ describe("font section", () => {
   test("renders a preview line and updates on change", async () => {
     const { container } = await setup(baseStyle());
     const body = tokenIn(container, "Fonts", "Body");
-    const preview = body.querySelector('[part="preview"]') as HTMLElement;
+    const preview = body.querySelector('[part="preview"]')!;
     expect(preview.textContent).toContain("quick brown fox");
     expect(getComputedStyle(preview).fontFamily).toContain("Georgia");
 
@@ -344,8 +385,8 @@ describe("size section and media overrides", () => {
   test("changing an override writes into the media block and persists", async () => {
     const { container, state } = await setup(baseStyle(), media);
     await commit(field(tokenIn(container, "Sizes & Spacing", "Gap"), "override-value"), "12px");
-    expect(style()["@--sm"]["--size-gap"]).toBe("12px");
-    expect(written(state).style["@--sm"]["--size-gap"]).toBe("12px");
+    expect(getNestedStyle(style(), "@--sm")?.["--size-gap"]).toBe("12px");
+    expect(writtenBlock(state, "@--sm")?.["--size-gap"]).toBe("12px");
   });
 
   test("override change recreates a media block deleted after render", async () => {
@@ -413,12 +454,10 @@ describe("color scheme overrides", () => {
     const schemeRows = [...colors.querySelectorAll('[part="override"][data-kind="scheme"]')];
     // One Dark row per color token (accent + primary).
     expect(schemeRows).toHaveLength(2);
-    expect(schemeRows[0]!.querySelector('[part="override-label"]')?.textContent?.trim()).toBe(
+    expect(schemeRows[0]!.querySelector('[part="override-label"]')?.textContent.trim()).toBe(
       "Dark",
     );
-    const values = schemeRows.map(
-      (r) => (r.querySelector('[part="input"]') as HTMLInputElement).value,
-    );
+    const values = schemeRows.map((r) => nativeInput(r, '[part="input"]').value);
     expect(values).toContain("#111111");
     expect(values).toContain("");
   });
@@ -426,7 +465,7 @@ describe("color scheme overrides", () => {
   test("editing a scheme row writes the token into the @--dark block", async () => {
     const { container } = await setup(baseStyle(), SCHEME_MEDIA);
     await commit(field(tokenIn(container, "Colors", "Accent"), "override-value"), "#0a0a0a");
-    expect((style()["@--dark"] as AnyConfig)["--color-accent"]).toBe("#0a0a0a");
+    expect(getNestedStyle(style(), "@--dark")?.["--color-accent"]).toBe("#0a0a0a");
   });
 
   test("clearing a scheme override deletes the key and drops the emptied block", async () => {
@@ -443,13 +482,14 @@ describe("color scheme overrides", () => {
       { "--color-primary": "#007acc" },
       { "--dark": "(prefers-color-scheme: dark)" },
     );
-    const well = container.querySelector(
+    const well = nativeInput(
+      container,
       '[part="override"][data-kind="scheme"] [part="swatch-input"]',
-    ) as HTMLInputElement;
+    );
     well.value = "#222222";
     well.dispatchEvent(new Event("input", { bubbles: true }));
     await flush(4);
-    expect((style()["@--dark"] as AnyConfig)["--color-primary"]).toBe("#222222");
+    expect(getNestedStyle(style(), "@--dark")?.["--color-primary"]).toBe("#222222");
     expect(style()["--color-primary"]).toBe("#007acc");
   });
 
@@ -502,9 +542,7 @@ describe("color scheme overrides", () => {
     );
     await flush(4);
     expect(settingsDocumentSection()).toBe("contexts");
-    expect(
-      (projectState as { $media?: unknown } & Record<string, any>).projectConfig.$media,
-    ).toEqual({ "--sm": "(max-width: 600px)" });
+    expect(projectState?.projectConfig?.$media).toEqual({ "--sm": "(max-width: 600px)" });
   });
 });
 
@@ -530,8 +568,8 @@ describe("adding an override", () => {
   test("picking a context seeds the override from the base value and persists it", async () => {
     const { container, state } = await setup(baseStyle(), media);
     await pickContext(tokenIn(container, "Sizes & Spacing", "Spacing Lg"), "--sm");
-    expect((style()["@--sm"] as AnyConfig)["--spacing-lg"]).toBe("32px");
-    expect(written(state).style["@--sm"]["--spacing-lg"]).toBe("32px");
+    expect(getNestedStyle(style(), "@--sm")?.["--spacing-lg"]).toBe("32px");
+    expect(writtenBlock(state, "@--sm")?.["--spacing-lg"]).toBe("32px");
 
     // The row it created is now editable, and the picker no longer offers that context.
     const token = tokenIn(container, "Sizes & Spacing", "Spacing Lg");
@@ -540,13 +578,13 @@ describe("adding an override", () => {
     /* The picker went back to its placeholder. A binding writes only when what it read changed —
        so the row objects are rebuilt on every refresh, and the runtime then corrects any control
        whose live value has parted from the file. That is what `live()` did for the template. */
-    expect((token.querySelector('[part="add-picker"] select') as HTMLSelectElement).value).toBe("");
+    expect(addPicker(token).value).toBe("");
   });
 
   test("a context name the picker does not offer is ignored rather than written", async () => {
     const { container } = await setup(baseStyle(), media);
     const gap = tokenIn(container, "Sizes & Spacing", "Gap");
-    const select = gap.querySelector('[part="add-picker"] select') as HTMLSelectElement;
+    const select = addPicker(gap);
     // A context the picker never offered, asked for anyway: a stale row, or an extension.
     const injected = document.createElement("option");
     injected.value = "--nonesuch";
@@ -554,7 +592,7 @@ describe("adding an override", () => {
     select.value = "--nonesuch";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     await flush(4);
-    expect((style()["@--sm"] as AnyConfig)["--size-gap"]).toBe("8px");
+    expect(getNestedStyle(style(), "@--sm")?.["--size-gap"]).toBe("8px");
     expect(style()["@--nonesuch"]).toBeUndefined();
   });
 
@@ -597,7 +635,7 @@ describe("token reference chips", () => {
     });
     const accent = tokenIn(container, "Colors", "Accent");
     const chip = accent.querySelector('[part="chip"]')!;
-    expect(chip.querySelector('[part="chip-label"]')?.textContent?.trim()).toBe("Brand");
+    expect(chip.querySelector('[part="chip-label"]')?.textContent.trim()).toBe("Brand");
     expect(chip.getAttribute("title")).toBe("var(--color-brand) → #00aa55");
     expect(getComputedStyle(chip.querySelector('[part="chip-swatch"]')!).background).toContain(
       "#00aa55",
@@ -606,9 +644,7 @@ describe("token reference chips", () => {
     expect(getComputedStyle(accent.querySelector('[part="swatch"]')!).background).toContain(
       "#00aa55",
     );
-    expect((accent.querySelector('[part="swatch-input"]') as HTMLInputElement).value).toBe(
-      "#00aa55",
-    );
+    expect(swatch(accent).value).toBe("#00aa55");
   });
 
   test("a chain of aliases resolves to the value at its end", async () => {

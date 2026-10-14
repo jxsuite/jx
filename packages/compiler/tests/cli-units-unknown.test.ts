@@ -12,7 +12,8 @@ describe("jx cli — unknown command", () => {
     const result = await runEntry("cli", ["frobnicate"]);
     expect(result.exited).toBe(true);
     expect(result.exitCode).toBe(1);
-    expect(result.errors.join("\n")).toContain("Unknown command: frobnicate");
-    expect(result.errors.join("\n")).toContain('Run "jx --help" for usage.');
+    const errorText = result.errors.join("\n");
+    expect(errorText).toContain("Unknown command: frobnicate");
+    expect(errorText).toContain('Run "jx --help" for usage.');
   });
 });

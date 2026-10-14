@@ -6,6 +6,55 @@
 
 const CF_ADAPTERS = new Set(["cloudflare-pages", "cloudflare-workers"]);
 
+/** A JSON primitive. */
+export type JsonPrimitive = string | number | boolean | null;
+/** Any value `JSON.parse` can produce, and `JSON.stringify` can write back unchanged. */
+export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+/** A JSON object: wrangler.jsonc, project.json and connector binding fragments are all one. */
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+/** The result of patching a wrangler.jsonc: the new text, and whether it was rewritten at all. */
+export interface WranglerPatch {
+  content: string;
+  patched: boolean;
+}
+
+/** A fragment array entry keyed by its `binding` name (`{ binding: "DB", database_id }`). */
+interface BindingEntry extends JsonObject {
+  binding: string;
+}
+
+/** Parse JSON text. Throws the `SyntaxError` `JSON.parse` raises for text that is not JSON. */
+export function parseJson(text: string): JsonValue {
+  // SAFETY: JSON.parse without a reviver can only build objects, arrays, strings, finite numbers,
+  // Booleans and null out of JSON text, which is exactly the JsonValue union.
+  return JSON.parse(text) as JsonValue;
+}
+
+/** True for a JSON object; false for arrays, primitives, null and a missing value. */
+export function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isBindingEntry(value: JsonValue): value is BindingEntry {
+  return isJsonObject(value) && typeof value.binding === "string";
+}
+
+/**
+ * Parse a wrangler.jsonc that can be patched: undefined when it is comment-bearing JSONC (which
+ * `JSON.parse` rejects) or its top level is not an object, so callers leave the file alone.
+ */
+function parseWranglerObject(text: string): JsonObject | undefined {
+  try {
+    const parsed = parseJson(text);
+    return isJsonObject(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** True when the adapter deploys through wrangler (needs a wrangler.jsonc). */
 export function adapterNeedsWrangler(adapter: string | undefined): boolean {
   return Boolean(adapter && CF_ADAPTERS.has(adapter));
@@ -51,24 +100,24 @@ export function buildWranglerJsonc({ slug, adapter }: { slug: string; adapter: s
  * loss.
  *
  * @param {string | null} existing - Current wrangler.jsonc content, or null when absent
- * @param {Record<string, unknown>[]} fragments - Binding fragments, applied in order
- * @returns {{ content: string; patched: boolean }}
+ * @param {JsonObject[]} fragments - Binding fragments, applied in order
+ * @returns {WranglerPatch}
  */
 export function applyBindingFragments(
   existing: string | null,
-  fragments: Record<string, unknown>[],
-): { content: string; patched: boolean } {
+  fragments: JsonObject[],
+): WranglerPatch {
   if (fragments.length === 0) {
     return { content: existing ?? "", patched: false };
   }
-  let config: Record<string, unknown> = {};
+  let config: JsonObject = {};
   if (existing) {
-    try {
-      config = JSON.parse(existing) as Record<string, unknown>;
-    } catch {
-      // Comment-bearing JSONC — leave the user's file alone.
+    const parsed = parseWranglerObject(existing);
+    if (parsed === undefined) {
+      // Comment-bearing JSONC (or a non-object top level) — leave the user's file alone.
       return { content: existing, patched: false };
     }
+    config = parsed;
   }
   for (const fragment of fragments) {
     mergeBindingValue(config, fragment);
@@ -77,15 +126,18 @@ export function applyBindingFragments(
 }
 
 /** Recursively merge one fragment object into the target, per the applyBindingFragments rules. */
-function mergeBindingValue(target: Record<string, unknown>, fragment: Record<string, unknown>) {
+function mergeBindingValue(target: JsonObject, fragment: JsonObject) {
   for (const [key, incoming] of Object.entries(fragment)) {
-    const current = target[key];
+    /* A key the target lacks reads as undefined. Spelled out rather than left to
+       noUncheckedIndexedAccess, which the inferred program this file is linted in does not set
+       (packages/create/tsconfig.json does not include it). */
+    const current = key in target ? target[key] : undefined;
     if (Array.isArray(incoming)) {
       target[key] = mergeBindingArrays(Array.isArray(current) ? current : [], incoming);
       continue;
     }
-    if (isPlainObject(incoming)) {
-      if (isPlainObject(current)) {
+    if (isJsonObject(incoming)) {
+      if (isJsonObject(current)) {
         mergeBindingValue(current, incoming);
       } else if (current === undefined) {
         target[key] = structuredClone(incoming);
@@ -99,10 +151,10 @@ function mergeBindingValue(target: Record<string, unknown>, fragment: Record<str
 }
 
 /** Merge fragment array entries into an existing array, keyed by each entry's `binding`. */
-function mergeBindingArrays(current: unknown[], incoming: unknown[]): unknown[] {
+function mergeBindingArrays(current: JsonValue[], incoming: JsonValue[]): JsonValue[] {
   const merged = [...current];
   for (const entry of incoming) {
-    if (!isPlainObject(entry) || typeof entry.binding !== "string") {
+    if (!isBindingEntry(entry)) {
       // Non-binding-keyed values: append when missing (dedupe by deep equality).
       const exists = merged.some((m) => JSON.stringify(m) === JSON.stringify(entry));
       if (!exists) {
@@ -110,21 +162,17 @@ function mergeBindingArrays(current: unknown[], incoming: unknown[]): unknown[] 
       }
       continue;
     }
-    const index = merged.findIndex(
-      (m) => isPlainObject(m) && (m as Record<string, unknown>).binding === entry.binding,
-    );
-    if (index === -1) {
-      merged.push(structuredClone(entry));
-    } else {
+    const index = merged.findIndex((m) => isJsonObject(m) && m.binding === entry.binding);
+    // Undefined when no entry matched (index -1), so a miss appends.
+    const match = merged[index];
+    if (isJsonObject(match)) {
       // Fragment values win for connector-owned keys; user-added extra keys survive.
-      merged[index] = { ...(merged[index] as Record<string, unknown>), ...entry };
+      merged[index] = { ...match, ...entry };
+    } else {
+      merged.push(structuredClone(entry));
     }
   }
   return merged;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
@@ -137,15 +185,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export function updateWranglerConfig(
   existing: string | null,
   { slug, adapter }: { slug: string; adapter: string },
-): { content: string; patched: boolean } {
+): WranglerPatch {
   if (!existing) {
     return { content: buildWranglerJsonc({ adapter, slug }), patched: true };
   }
-  let config: Record<string, unknown>;
-  try {
-    config = JSON.parse(existing) as Record<string, unknown>;
-  } catch {
-    // Comment-bearing JSONC — leave the user's file alone.
+  const config = parseWranglerObject(existing);
+  if (config === undefined) {
+    // Comment-bearing JSONC (or a non-object top level) — leave the user's file alone.
     return { content: existing, patched: false };
   }
   config["name"] = slug;

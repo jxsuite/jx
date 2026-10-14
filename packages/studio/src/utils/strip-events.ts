@@ -8,44 +8,71 @@
  * editor's reactive `store.ts`; `store.ts` re-exports it for the legacy in-realm patcher.
  */
 
-import { isEventBinding } from "@jxsuite/schema/guards";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import {
+  isEventBinding,
+  isJsonObject,
+  isNodeObject,
+  isNonNullObject,
+} from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
-/** Strip all `on*` event-handler properties (and server-timed state) from a document tree. */
-export function stripEventHandlers(node: JxMutableNode): JxMutableNode {
-  if (!node || typeof node !== "object") {
-    return node;
-  }
+/**
+ * A node object as a document walker rebuilds it. Every key holds a document value, including the
+ * keys {@link JxMutableNode} names, because a walker copies whatever the source document holds;
+ * `undefined` is a key an editor cleared.
+ */
+export type RebuiltNode = Record<string, JxDocumentValue | undefined>;
+
+/**
+ * Whether a walker descends into `value`: any object, arrays included. A document is JSON, so every
+ * own value of such an object is itself a document value.
+ *
+ * @param value A value read out of a document.
+ */
+export function isDocumentContainer(
+  value: JxDocumentValue | undefined,
+): value is JxDocumentValue[] | Readonly<RebuiltNode> {
+  return isNonNullObject(value);
+}
+
+/**
+ * Strip all `on*` event-handler properties (and server-timed state) from a document tree. Arrays
+ * are stripped member by member, and primitives and a cleared (`undefined`) key return unchanged,
+ * so the walk can recurse through any document value.
+ */
+export function stripEventHandlers(node: JxMutableNode): JxMutableNode;
+export function stripEventHandlers(node: JxDocumentValue): JxDocumentValue;
+export function stripEventHandlers(node: JxDocumentValue | undefined): JxDocumentValue | undefined;
+export function stripEventHandlers(node: JxDocumentValue | undefined): JxDocumentValue | undefined {
   if (Array.isArray(node)) {
     // Arrays of nodes round-trip element-wise; the array itself is not a node.
-    return node.map((n: JxMutableNode) => stripEventHandlers(n)) as unknown as JxMutableNode;
+    return node.map((n) => stripEventHandlers(n));
   }
-  const out: Record<string, unknown> = {};
+  if (!isNodeObject(node)) {
+    return node;
+  }
+  const out: RebuiltNode = {};
   for (const [k, v] of Object.entries(node)) {
     if (k.startsWith("on") && isEventBinding(v)) {
       continue;
     }
     if (k === "children") {
-      out.children = Array.isArray(v)
-        ? v.map((c: JxMutableNode) => stripEventHandlers(c))
-        : stripEventHandlers(v as JxMutableNode);
-    } else if (k === "cases" && typeof v === "object") {
-      const cases: Record<string, unknown> = {};
-      for (const [ck, cv] of Object.entries(v as Record<string, unknown>)) {
-        cases[ck] = stripEventHandlers(cv as JxMutableNode);
+      out.children = Array.isArray(v) ? v.map((c) => stripEventHandlers(c)) : stripEventHandlers(v);
+    } else if (k === "cases" && isDocumentContainer(v)) {
+      const cases: RebuiltNode = {};
+      for (const [ck, cv] of Object.entries(v)) {
+        cases[ck] = stripEventHandlers(cv);
       }
       out.cases = cases;
-    } else if (k === "state" && typeof v === "object" && v !== null) {
-      const state: Record<string, unknown> = {};
-      for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
-        if (sv && typeof sv === "object" && (sv as Record<string, unknown>).timing === "server") {
+    } else if (k === "state" && isDocumentContainer(v)) {
+      const state: RebuiltNode = {};
+      for (const [sk, sv] of Object.entries(v)) {
+        if (isJsonObject(sv) && sv.timing === "server") {
           continue;
         }
         state[sk] = sv;
       }
       out.state = state;
-    } else if (k === "style" || k === "attributes" || k === "$media") {
-      out[k] = v;
     } else {
       out[k] = v;
     }

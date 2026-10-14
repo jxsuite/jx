@@ -64,7 +64,7 @@ describe("Workspace primitive", () => {
     closeTab("t1");
 
     expect(workspace.activeTabId).toBe(null);
-    expect((activeTab as any).value).toBe(null);
+    expect(activeTab.value).toBe(null);
   });
 
   test("activateTab switches active tab", () => {
@@ -90,14 +90,15 @@ describe("Workspace primitive", () => {
       id: "t2",
     });
 
-    let observedPath: string | null = null;
+    // A log rather than a `let`: control flow cannot see the effect's writes to a local binding.
+    const observedPaths: (string | null)[] = [];
     const stop = effect(() => {
-      observedPath = activeTab.value?.documentPath ?? null;
+      observedPaths.push(activeTab.value?.documentPath ?? null);
     });
 
-    expect(observedPath as string | null).toBe("b.json");
+    expect(observedPaths.at(-1)).toBe("b.json");
     activateTab("t1");
-    expect(observedPath as string | null).toBe("a.json");
+    expect(observedPaths.at(-1)).toBe("a.json");
 
     stop();
   });
@@ -106,16 +107,17 @@ describe("Workspace primitive", () => {
     openTab({ document: { tagName: "div" }, id: "t1" });
     openTab({ document: { tagName: "span" }, id: "t2" });
 
-    let observedTag: string | null = null;
+    // A log rather than a `let`: control flow cannot see the effect's writes to a local binding.
+    const observedTags: (string | null)[] = [];
     const stop = effect(() => {
       // The document ROOT's tagName is always a literal — narrowed in `JxDocument`.
       const tag = activeTab.value?.doc.document.tagName;
-      observedTag = tag === undefined ? null : displayTagName(tag);
+      observedTags.push(tag === undefined ? null : displayTagName(tag));
     });
 
-    expect(observedTag as string | null).toBe("span");
+    expect(observedTags.at(-1)).toBe("span");
     activateTab("t1");
-    expect(observedTag as string | null).toBe("div");
+    expect(observedTags.at(-1)).toBe("div");
 
     stop();
   });
@@ -159,7 +161,7 @@ describe("renameTab", () => {
 
     expect(workspace.tabs.has("pages/old.md")).toBe(false);
     expect(workspace.tabs.has("pages/new.md")).toBe(true);
-    const tab = workspace.tabs.get("pages/new.md") as any;
+    const tab = workspace.tabs.get("pages/new.md")!;
     expect(tab.id).toBe("pages/new.md");
     expect(tab.documentPath).toBe("pages/new.md");
   });
@@ -174,7 +176,7 @@ describe("renameTab", () => {
 
     renameTab("pages/old.md", "pages/new.md", "pages/new.md");
 
-    const renamed = workspace.tabs.get("pages/new.md") as any;
+    const renamed = workspace.tabs.get("pages/new.md")!;
     expect(renamed.doc.document.children).toEqual([{ tagName: "p" }]);
     expect(renamed.doc.dirty).toBe(true);
   });
@@ -267,6 +269,6 @@ describe("renameTab", () => {
 
     expect(workspace.tabs.has("index.md")).toBe(false);
     expect(workspace.tabs.has("pages/index.md")).toBe(true);
-    expect((workspace.tabs.get("pages/index.md") as any).documentPath).toBe("pages/index.md");
+    expect(workspace.tabs.get("pages/index.md")!.documentPath).toBe("pages/index.md");
   });
 });

@@ -2,9 +2,16 @@ import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
+import type { CanvasEnvelope } from "../src/canvas/iframe-channel";
 import { flush } from "./harness";
 import { bootCanvasIframe, layoutHitFor, startCanvasIframe } from "../src/canvas/iframe-entry";
-import type { IframeToParent, ParentToIframe, WireMapperCtx } from "../src/canvas/iframe-protocol";
+import type { JxMutableNode } from "@jxsuite/schema/types";
+import type {
+  CanvasMode,
+  IframeToParent,
+  ParentToIframe,
+  WireMapperCtx,
+} from "../src/canvas/iframe-protocol";
 
 const WIRE_CTX: WireMapperCtx = {
   arrayPaths: [],
@@ -14,12 +21,15 @@ const WIRE_CTX: WireMapperCtx = {
   pageContentPrefix: null,
 };
 
+type RenderMsg = Extract<ParentToIframe, { kind: "render" }>;
+type Ack<K extends IframeToParent["kind"]> = Extract<IframeToParent, { kind: K }>;
+
 function renderMsg(
   gen: number,
-  doc: unknown,
-  shadowDoc: unknown = doc,
-  extra: Partial<ParentToIframe & { mode: string }> = {},
-): ParentToIframe {
+  doc: JxMutableNode,
+  shadowDoc: JxMutableNode = doc,
+  extra: Partial<RenderMsg> = {},
+): RenderMsg {
   return {
     colorScheme: null,
     doc,
@@ -31,11 +41,43 @@ function renderMsg(
     shadowDoc,
     siteStyle: null,
     ...extra,
-  } as ParentToIframe;
+  };
+}
+
+/** Every message of `kind` the frame posted, in order, each narrowed to that message's own shape. */
+function acksOf<K extends IframeToParent["kind"]>(acks: IframeToParent[], kind: K): Ack<K>[] {
+  return acks.filter((m): m is Ack<K> => m.kind === kind);
+}
+
+/** The first message of `kind` the frame posted, narrowed to that message's own shape. */
+function findAck<K extends IframeToParent["kind"]>(
+  acks: IframeToParent[],
+  kind: K,
+): Ack<K> | undefined {
+  return acks.find((m): m is Ack<K> => m.kind === kind);
+}
+
+/** The first `<tag>` under `root`; throws rather than handing a test null. */
+function rendered<K extends keyof HTMLElementTagNameMap>(
+  root: ParentNode,
+  tag: K,
+): HTMLElementTagNameMap[K] {
+  const found = root.querySelector(tag);
+  if (!found) {
+    throw new Error(`expected a <${tag}> in the rendered canvas`);
+  }
+  return found;
+}
+
+/** A `fetch` that answers through `answer`, with the global's own `preconnect` beside it. */
+function fetchDouble(
+  answer: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return Object.assign(answer, { preconnect: fetch.preconnect });
 }
 
 /** A document whose only child is a popover panel, as the runtime de-popovers it in the canvas. */
-const POPOVER_DOC = {
+const POPOVER_DOC: JxMutableNode = {
   children: [{ attributes: { popover: "auto" }, children: ["Menu"], tagName: "nav" }],
   tagName: "div",
 };
@@ -46,13 +88,13 @@ function panel(): HTMLElement | null {
 }
 
 /** A document whose only child is an open dialog, as the runtime de-links it in the canvas. */
-const DIALOG_DOC = {
+const DIALOG_DOC: JxMutableNode = {
   children: [{ attributes: { open: "" }, children: ["Confirm"], tagName: "dialog" }],
   tagName: "div",
 };
 
 /** A dialog with a popover panel inside it: the two reveal rules at once. */
-const BOTH_DOC = {
+const BOTH_DOC: JxMutableNode = {
   children: [
     {
       attributes: { open: "" },
@@ -93,7 +135,7 @@ describe("startCanvasIframe", () => {
     await flush(); // Let the async render settle.
     pair.flush(); // Deliver the renderComplete ack back to the parent.
 
-    expect((container.querySelector("h1") as HTMLElement)?.dataset.jxPath).toBe('["children",0]');
+    expect(container.querySelector("h1")?.dataset.jxPath).toBe('["children",0]');
     expect(fromIframe).toContainEqual({ gen: 1, kind: "renderComplete" });
   });
 
@@ -210,7 +252,7 @@ describe("startCanvasIframe", () => {
     pair.flush();
 
     const msg = renderMsg(1, { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" });
-    (msg as { colorScheme: "light" | "dark" | null }).colorScheme = "light";
+    msg.colorScheme = "light";
     pair.parent.post(msg);
     pair.flush();
     await flush();
@@ -244,10 +286,10 @@ describe("startCanvasIframe", () => {
     // Ordering: dataScope follows renderComplete (fills S.canvas.scope right after the render ack).
     expect(doneIdx).toBeGreaterThanOrEqual(0);
     expect(scopeIdx).toBeGreaterThan(doneIdx);
-    const scopeMsg = fromIframe[scopeIdx] as { gen: number; scope: Record<string, unknown> };
-    expect(scopeMsg.gen).toBe(1);
+    const scopeMsg = findAck(fromIframe, "dataScope");
+    expect(scopeMsg?.gen).toBe(1);
     // The resolved state value crossed as plain, structured-clone-safe data.
-    expect(scopeMsg.scope.title).toBe("Home");
+    expect(scopeMsg?.scope.title).toBe("Home");
   });
 
   test("re-posts dataScope when an async data source settles AFTER the render", async () => {
@@ -259,12 +301,12 @@ describe("startCanvasIframe", () => {
     const gate = new Promise<void>((r) => {
       release = r;
     });
-    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = fetchDouble((input, init) => {
       if (String(input).includes("/__jx_resolve__")) {
         return gate.then(() => Response.json([{ title: "Kubota U35" }]));
       }
       return realFetch(input, init);
-    }) as typeof fetch;
+    });
 
     try {
       const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
@@ -284,11 +326,7 @@ describe("startCanvasIframe", () => {
       await flush();
       pair.flush();
 
-      const scopes = () =>
-        fromIframe.filter((m) => m.kind === "dataScope") as {
-          gen: number;
-          scope: Record<string, unknown>;
-        }[];
+      const scopes = () => acksOf(fromIframe, "dataScope");
       // First snapshot: the dev-proxy fetch hasn't landed, so the ref serializes to null.
       expect(scopes()).toHaveLength(1);
       expect(scopes()[0]!.scope.products).toBeNull();
@@ -337,7 +375,7 @@ describe("startCanvasIframe", () => {
     // A document whose children getter throws makes the runtime render reject.
     pair.parent.post(
       renderMsg(1, {
-        get children() {
+        get children(): JxMutableNode[] {
           throw new Error("boom");
         },
         tagName: "div",
@@ -370,16 +408,16 @@ describe("startCanvasIframe", () => {
 
     const geo = fromIframe.find((m) => m.kind === "geometry");
     expect(geo).toMatchObject({ kind: "geometry", reqId: 42 });
-    expect((geo as { hits: { path: unknown }[] }).hits[0]!.path).toEqual(["children", 0]);
+    expect(findAck(fromIframe, "geometry")?.hits[0]?.path).toEqual(["children", 0]);
   });
 
   test("bootCanvasIframe wires a channel from the window and announces ready", () => {
-    const posted: unknown[] = [];
+    const posted: CanvasEnvelope<IframeToParent>[] = [];
     const win = {
       addEventListener: () => {},
       document: { body: document.createElement("div"), querySelector: () => null },
       location: { search: "?token=tok&parentOrigin=*" },
-      parent: { postMessage: (m: unknown) => posted.push(m) },
+      parent: { postMessage: (m: CanvasEnvelope<IframeToParent>) => posted.push(m) },
       removeEventListener: () => {},
     };
     teardown = bootCanvasIframe(win);
@@ -392,13 +430,13 @@ describe("startCanvasIframe", () => {
     console.warn = (...args: unknown[]) => {
       warnings.push(args);
     };
-    const posted: unknown[] = [];
+    const posted: CanvasEnvelope<IframeToParent>[] = [];
     const win = {
       addEventListener: () => {},
       document: { body: document.createElement("div"), querySelector: () => null },
       // No parentOrigin in the URL → the explicit "*" fallback fires + logs.
       location: { search: "?token=tok" },
-      parent: { postMessage: (m: unknown) => posted.push(m) },
+      parent: { postMessage: (m: CanvasEnvelope<IframeToParent>) => posted.push(m) },
       removeEventListener: () => {},
     };
     try {
@@ -448,7 +486,7 @@ describe("startCanvasIframe — patch", () => {
     expect(isEditableBlock(quote)).toBe(true);
 
     pair.parent.post({
-      ...(renderMsg(4, freshH1(), freshH1()) as Extract<ParentToIframe, { kind: "render" }>),
+      ...renderMsg(4, freshH1(), freshH1()),
       editableTags: { a: false, blockquote: false },
     });
     pair.flush();
@@ -466,7 +504,7 @@ describe("startCanvasIframe — patch", () => {
     const { pair } = await bootRendered(3);
     const { isEditableBlock } = await import("../src/editor/inline-edit");
     pair.parent.post({
-      ...(renderMsg(4, freshH1(), freshH1()) as Extract<ParentToIframe, { kind: "render" }>),
+      ...renderMsg(4, freshH1(), freshH1()),
       editableTags: { blockquote: false },
     });
     pair.flush();
@@ -490,7 +528,7 @@ describe("startCanvasIframe — patch", () => {
     const { getActivePath, isEditing } = await import("../src/editor/inline-edit");
     // The caret needs a connected tree: bootRendered leaves the container detached.
     document.body.append(container);
-    const h1 = container.querySelector("h1") as HTMLElement;
+    const h1 = rendered(container, "h1");
 
     caretInto(h1, 1);
     pair.flush(); // Drain the activation posts before observing the patch round-trip.
@@ -518,7 +556,7 @@ describe("startCanvasIframe — patch", () => {
     const { acks, container, pair } = await bootRendered(3);
     const { caretInto } = await import("./harness");
     document.body.append(container);
-    const h1 = container.querySelector("h1") as HTMLElement;
+    const h1 = rendered(container, "h1");
     caretInto(h1, 1);
     h1.textContent = "Typed by hand"; // What the caret produced.
     pair.flush();
@@ -537,7 +575,7 @@ describe("startCanvasIframe — patch", () => {
 
     expect(acks.some((m) => m.kind === "patchComplete")).toBe(true);
     // The DOM the user typed was not rewritten by the patcher.
-    expect((container.querySelector("h1") as HTMLElement).textContent).toBe("Typed by hand");
+    expect(rendered(container, "h1").textContent).toBe("Typed by hand");
   });
 
   test("applies a value-carrying patch in place and acks patchComplete", async () => {
@@ -550,7 +588,7 @@ describe("startCanvasIframe — patch", () => {
     pair.flush(); // Deliver the patch into the entry (applied synchronously).
     pair.flush(); // Deliver the patchComplete ack back to the parent.
 
-    expect((container.querySelector("h1") as HTMLElement).textContent).toBe("Edited");
+    expect(rendered(container, "h1").textContent).toBe("Edited");
     expect(acks).toContainEqual({ gen: 1, kind: "patchComplete" });
   });
 
@@ -571,7 +609,7 @@ describe("startCanvasIframe — patch", () => {
     pair.flush();
     pair.flush();
 
-    expect((container.querySelector("h1") as HTMLElement).textContent).toBe("Hi"); // Unchanged.
+    expect(rendered(container, "h1").textContent).toBe("Hi"); // Unchanged.
     expect(acks).toContainEqual({ gen: 3, kind: "patchError", message: "patch-behind-render" });
     expect(acks.some((m) => m.kind === "patchComplete")).toBe(false);
   });
@@ -620,9 +658,7 @@ describe("startCanvasIframe — patch", () => {
     pair.flush();
     pair.flush();
 
-    const err = acks.find((m) => m.kind === "patchError") as
-      | { gen: number; kind: "patchError"; message: string }
-      | undefined;
+    const err = findAck(acks, "patchError");
     expect(err?.gen).toBe(1);
     expect(err?.message).toMatch(/doc-op-node-not-found/);
   });
@@ -732,7 +768,7 @@ describe("startCanvasIframe — cross-frame drag (Phase 4c)", () => {
     pair.parent.post({ cursor: { x: 5, y: 5 }, dragSeq: 4, kind: "dragMove" });
     pair.flush();
     pair.flush();
-    expect((acks.find((m) => m.kind === "dragOver") as { preview: unknown }).preview).toBeNull();
+    expect(findAck(acks, "dragOver")?.preview).toBeNull();
   });
 
   // ─── Native drag routing: Chromium delivers dragover/drop to the frame under the cursor, so a
@@ -841,27 +877,26 @@ describe("startCanvasIframe — cross-frame drag (Phase 4c)", () => {
    * is otherwise CDP-only).
    */
   test("the auto-scroll tick re-posts dragOver and self-sustains while held in a band", async () => {
-    const win = window as unknown as {
-      requestAnimationFrame: (cb: () => void) => number;
-      cancelAnimationFrame: (h: number) => void;
-      scrollBy: (x: number, y: number) => void;
-      scrollY: number;
-      innerHeight: number;
-    };
+    const win = window;
     const origRaf = win.requestAnimationFrame;
     const origCancel = win.cancelAnimationFrame;
     const origScrollBy = win.scrollBy;
     const rafCbs: (() => void)[] = [];
-    win.requestAnimationFrame = (cb: () => void) => {
-      rafCbs.push(cb);
+    win.requestAnimationFrame = (cb: FrameRequestCallback) => {
+      rafCbs.push(() => cb(performance.now()));
       return rafCbs.length;
     };
     win.cancelAnimationFrame = () => {};
     let scrollY = 0;
     Object.defineProperty(win, "scrollY", { configurable: true, get: () => scrollY });
-    win.scrollBy = (_x: number, y: number) => {
-      scrollY += y;
-    };
+    // `scrollBy` is overloaded (options or x/y); the frame's auto-scroll calls the x/y form.
+    Object.defineProperty(win, "scrollBy", {
+      configurable: true,
+      value: (_x: number, y: number) => {
+        scrollY += y;
+      },
+      writable: true,
+    });
     Object.defineProperty(win, "innerHeight", { configurable: true, value: 800 });
 
     try {
@@ -896,7 +931,7 @@ describe("startCanvasIframe — cross-frame drag (Phase 4c)", () => {
 // ─── Live expression eval (M6): evalExpr → evalResult against the LIVE scope ────
 
 describe("startCanvasIframe — live expression eval (M6)", () => {
-  async function bootWithState(gen: number, doc: unknown) {
+  async function bootWithState(gen: number, doc: JxMutableNode) {
     const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
     const acks: IframeToParent[] = [];
     pair.parent.onMessage((m) => acks.push(m));
@@ -910,12 +945,7 @@ describe("startCanvasIframe — live expression eval (M6)", () => {
     return { acks, pair };
   }
 
-  const evalResults = (acks: IframeToParent[]) =>
-    acks.filter((m) => m.kind === "evalResult") as {
-      gen: number;
-      reqId: number;
-      results: { id: string; values: [string, string][]; error?: string }[];
-    }[];
+  const evalResults = (acks: IframeToParent[]) => acksOf(acks, "evalResult");
 
   test("evaluates against the live resolved scope and replies with formatted per-node values", async () => {
     const doc = {
@@ -1093,7 +1123,11 @@ describe("startCanvasIframe — content-height auto-sizing + wheel forwarding", 
     await flush();
     pair.flush();
 
-    expect((container.firstElementChild as HTMLElement).dataset.jxDefinitionRoot).toBe("");
+    const root = container.firstElementChild;
+    if (!(root instanceof HTMLElement)) {
+      throw new TypeError("expected the render to mount an element root");
+    }
+    expect(root.dataset.jxDefinitionRoot).toBe("");
     expect(acks).toContainEqual({ fragment: true, height: 400, kind: "contentHeight" });
   });
 
@@ -1130,7 +1164,7 @@ describe("startCanvasIframe — content-height auto-sizing + wheel forwarding", 
     document.body.append(container);
     teardown = startCanvasIframe({ channel: pair.iframe, container });
     pair.parent.post({
-      ...(renderMsg(1, freshH1(), freshH1()) as Extract<ParentToIframe, { kind: "render" }>),
+      ...renderMsg(1, freshH1(), freshH1()),
       mapperCtx: { ...WIRE_CTX, canvasMode: "preview" },
       mode: "preview",
     });
@@ -1198,7 +1232,7 @@ describe("render/patch vs live edit session", () => {
     await flush();
     pair.flush();
     const { startEditing } = await import("../src/editor/inline-edit");
-    const el = container.querySelector("p") as HTMLElement;
+    const el = rendered(container, "p");
     const calls: string[] = [];
     startEditing(el, ["children", 0], {
       onCommit: (path, children, textContent) => {
@@ -1355,7 +1389,7 @@ describe("patchDisturbsActiveEdit", () => {
 // ─── Stylebook mode: live styleUpdate + interaction gates ───────────────────────
 
 describe("startCanvasIframe — stylebook mode", () => {
-  function stylebookMsg(gen: number, doc: unknown): ParentToIframe {
+  function stylebookMsg(gen: number, doc: JxMutableNode): ParentToIframe {
     return {
       colorScheme: null,
       doc,
@@ -1406,8 +1440,9 @@ describe("startCanvasIframe — stylebook mode", () => {
     });
     pair.flush();
 
-    expect(headCss()).toContain("color: blue");
-    expect(headCss()).not.toContain("color: red");
+    const css = headCss();
+    expect(css).toContain("color: blue");
+    expect(css).not.toContain("color: red");
     // Same DOM root — the whole point: no iframe re-render, no CLS.
     expect(container.firstElementChild).toBe(rootBefore);
   });
@@ -1420,13 +1455,14 @@ describe("startCanvasIframe — stylebook mode", () => {
       style: { "& .element-card-preview p": { color: "blue" } },
     });
     pair.flush();
-    expect(headCss()).toContain("color: red");
-    expect(headCss()).not.toContain("color: blue");
+    const css = headCss();
+    expect(css).toContain("color: red");
+    expect(css).not.toContain("color: blue");
   });
 
   test("dblclick does NOT start an inline-edit session on a specimen", async () => {
     const { container, pair } = await bootStylebook(5);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = rendered(container, "p");
     p.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     pair.flush();
     await flush();
@@ -1437,7 +1473,7 @@ describe("startCanvasIframe — stylebook mode", () => {
 
   test("pointer movement posts hover hits but never insertZones; pointerdown never arms a grab", async () => {
     const { acks, container, pair } = await bootStylebook(6);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = rendered(container, "p");
     acks.length = 0;
 
     p.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 5, clientY: 5 }));
@@ -1463,11 +1499,11 @@ describe("startCanvasIframe — stylebook mode", () => {
 
   test("clicks still post hits (the parent decodes them to stylebook tags)", async () => {
     const { acks, container, pair } = await bootStylebook(7);
-    const p = container.querySelector("p") as HTMLElement;
+    const p = rendered(container, "p");
     acks.length = 0;
     p.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     pair.flush();
-    const hit = acks.find((m) => m.kind === "hit") as { hit: { path: unknown } } | undefined;
+    const hit = findAck(acks, "hit");
     expect(hit?.hit.path).toEqual(["children", 0]);
   });
 });
@@ -1569,7 +1605,7 @@ describe("startCanvasIframe — layout chrome clicks", () => {
     document.body.append(container);
     teardown = startCanvasIframe({ channel: pair.iframe, container });
     pair.parent.post({
-      ...(renderMsg(1, wrappedDoc(), wrappedDoc()) as Extract<ParentToIframe, { kind: "render" }>),
+      ...renderMsg(1, wrappedDoc(), wrappedDoc()),
       mapperCtx: { ...LAYOUT_CTX, canvasMode: mode },
       mode,
     });
@@ -1582,7 +1618,7 @@ describe("startCanvasIframe — layout chrome clicks", () => {
 
   test('clicking "My Site" in the layout header posts a layoutHit naming the file and node', async () => {
     const { acks, container, pair } = await bootWrapped();
-    const h1 = container.querySelector("h1") as HTMLElement;
+    const h1 = rendered(container, "h1");
     // The bug this closes: no data-jx-path here, so the ordinary hit path reports nothing at all.
     expect(h1.dataset.jxPath).toBeUndefined();
 
@@ -1590,9 +1626,7 @@ describe("startCanvasIframe — layout chrome clicks", () => {
     pair.flush();
 
     expect(acks.some((m) => m.kind === "hit")).toBe(false);
-    const layout = acks.find((m) => m.kind === "layoutHit") as
-      | Extract<IframeToParent, { kind: "layoutHit" }>
-      | undefined;
+    const layout = findAck(acks, "layoutHit");
     expect(layout?.hit).toMatchObject({
       layoutFile: LAYOUT_FILE,
       layoutPath: ["children", 0, "children", 0],
@@ -1611,14 +1645,14 @@ describe("startCanvasIframe — layout chrome clicks", () => {
 
   test("clicking real page content still selects it, and posts no layoutHit", async () => {
     const { acks, container, pair } = await bootWrapped();
-    const p = container.querySelector("p") as HTMLElement;
+    const p = rendered(container, "p");
     expect(p.dataset.jxPath).toBe('["children",0]');
 
     p.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     pair.flush();
 
     expect(acks.some((m) => m.kind === "layoutHit")).toBe(false);
-    const hit = acks.find((m) => m.kind === "hit") as { hit: { path: unknown } } | undefined;
+    const hit = findAck(acks, "hit");
     expect(hit?.hit.path).toEqual(["children", 0]);
   });
 
@@ -1642,7 +1676,7 @@ describe("startCanvasIframe — layout chrome clicks", () => {
 
 describe("startCanvasIframe — setPopoverOpen", () => {
   /** Mount a frame showing POPOVER_DOC in `mode` and return the channel pair. */
-  async function mounted(mode = "design") {
+  async function mounted(mode: CanvasMode = "design") {
     const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
     const container = document.createElement("div");
     document.body.append(container);
@@ -1690,9 +1724,7 @@ describe("startCanvasIframe — setPopoverOpen", () => {
 
   test("a render restores the open panel, because a render replaces the DOM", async () => {
     const pair = await mounted();
-    pair.parent.post(
-      renderMsg(2, POPOVER_DOC, POPOVER_DOC, { popoverOpen: ["children", 0] } as never),
-    );
+    pair.parent.post(renderMsg(2, POPOVER_DOC, POPOVER_DOC, { popoverOpen: ["children", 0] }));
     pair.flush();
     await flush();
     pair.flush();
@@ -1702,7 +1734,7 @@ describe("startCanvasIframe — setPopoverOpen", () => {
 
 describe("startCanvasIframe — setDialogOpen", () => {
   /** Mount a frame showing DIALOG_DOC in `mode` and return the channel pair. */
-  async function mounted(mode = "design") {
+  async function mounted(mode: CanvasMode = "design") {
     const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
     const container = document.createElement("div");
     document.body.append(container);
@@ -1751,9 +1783,7 @@ describe("startCanvasIframe — setDialogOpen", () => {
 
   test("a render restores the open dialog, because a render replaces the DOM", async () => {
     const pair = await mounted();
-    pair.parent.post(
-      renderMsg(2, DIALOG_DOC, DIALOG_DOC, { dialogOpen: ["children", 0] } as never),
-    );
+    pair.parent.post(renderMsg(2, DIALOG_DOC, DIALOG_DOC, { dialogOpen: ["children", 0] }));
     pair.flush();
     await flush();
     pair.flush();

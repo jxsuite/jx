@@ -28,7 +28,7 @@ describe("originOf", () => {
       expect(originOf(url)).toBeNull();
     }
     // The absent case: an attribute the tag never carried.
-    expect(originOf(({} as { src?: string }).src)).toBeNull();
+    expect(originOf(/\bsrc="([^"]*)"/.exec("<script>")?.[1])).toBeNull();
   });
 });
 

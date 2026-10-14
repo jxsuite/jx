@@ -32,7 +32,8 @@ export async function openFileDialog(): Promise<string | null> {
     canChooseFiles: true,
     startingFolder: homedir(),
   });
-  if (!paths || paths.length === 0 || (paths.length === 1 && !paths[0])) {
+  // Electrobun answers a cancelled dialog with an empty list, never with null.
+  if (paths.length === 0 || (paths.length === 1 && !paths[0])) {
     return null;
   }
   return paths[0].trim() || null;
@@ -58,7 +59,8 @@ export async function openDirectoryDialog(): Promise<string | null> {
     canChooseFiles: false,
     startingFolder: homedir(),
   });
-  if (!paths || paths.length === 0 || (paths.length === 1 && !paths[0])) {
+  // Electrobun answers a cancelled dialog with an empty list, never with null.
+  if (paths.length === 0 || (paths.length === 1 && !paths[0])) {
     return null;
   }
   return paths[0].trim() || null;

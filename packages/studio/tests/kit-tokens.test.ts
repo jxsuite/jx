@@ -22,14 +22,22 @@ const tokensCss = await Bun.file(join(import.meta.dir, "..", "styles", "tokens.c
 /** Every alias in `tokens.css`, as `--studio-name` → the `--jx-*` token it defers to. */
 function aliases(): Map<string, string> {
   const found = new Map<string, string>();
-  for (const match of tokensCss.matchAll(/(--[a-z0-9-]+):\s*var\(\s*(--jx-[a-z0-9-]+)\s*[,)]/g)) {
-    found.set(match[1] as string, match[2] as string);
+  for (const [, studio, kit] of tokensCss.matchAll(
+    /(--[a-z0-9-]+):\s*var\(\s*(--jx-[a-z0-9-]+)\s*[,)]/g,
+  )) {
+    // Both groups are mandatory in the pattern, so a match always carries them.
+    if (studio !== undefined && kit !== undefined) {
+      found.set(studio, kit);
+    }
   }
   return found;
 }
 
 /** The kit tokens whose value is a `light-dark()` pair rather than one colour. */
-function isThemed(token: string): boolean {
+function isThemed(token: string | undefined): boolean {
+  if (token === undefined) {
+    return false;
+  }
   return String(themeTokens[token] ?? "").startsWith("light-dark(");
 }
 
@@ -72,7 +80,7 @@ describe("the colours among them follow the theme", () => {
     test(`${studio} resolves to a light-dark() pair`, () => {
       const kit = ALIASES.get(studio);
       expect(kit, `${studio} is not an alias in tokens.css`).toBeDefined();
-      expect(isThemed(kit as string), `${kit} is one colour, so ${studio} cannot move`).toBe(true);
+      expect(isThemed(kit), `${kit} is one colour, so ${studio} cannot move`).toBe(true);
     });
   }
 
@@ -80,6 +88,6 @@ describe("the colours among them follow the theme", () => {
     /* `--accent-fg` is white on both themes because it is the text on a saturated accent fill, and
        `--font-mono` is a font stack. If every token were a pair this test would be the one saying
        so; it fails if somebody makes the list above universal by making everything a pair. */
-    expect(isThemed(ALIASES.get("--font-mono") as string)).toBe(false);
+    expect(isThemed(ALIASES.get("--font-mono"))).toBe(false);
   });
 });

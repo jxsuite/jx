@@ -49,6 +49,8 @@ import { activeTab } from "../src/workspace/workspace";
 import { setExtensions } from "../src/format/format-host";
 import { shell } from "../src/shell";
 import { pluginSchemaCache } from "../src/services/code-services";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 beforeEach(() => {
   resetStudioState();
@@ -60,41 +62,67 @@ beforeEach(() => {
 /** Every category heading the panel is showing, in order. */
 function categoryLabels(panel: HTMLElement): string[] {
   return [...panel.querySelectorAll('[part="category"] [part="summary"] > [part="label"]')].map(
-    (el) => el.textContent ?? "",
+    (el) => el.textContent,
   );
 }
 
+/** The first match of `selector` under `scope`, or a throw naming what was not drawn. */
+function requireEl(scope: ParentNode, selector: string): Element {
+  const el = scope.querySelector(selector);
+  if (!el) {
+    throw new Error(`no ${selector} drawn`);
+  }
+  return el;
+}
+
 /** One category section, by the key the projection gave it. */
-function category(panel: HTMLElement, name: string): HTMLElement {
-  return panel.querySelector(`[part="category"][data-category="${name}"]`) as HTMLElement;
+function category(panel: HTMLElement, name: string): Element {
+  return requireEl(panel, `[part="category"][data-category="${name}"]`);
+}
+
+/** The details element the kit renders for a section, or a throw naming what stands there. */
+function detailsOf(item: Element): HTMLDetailsElement {
+  const details = item.querySelector('[part="details"]');
+  if (!(details instanceof HTMLDetailsElement)) {
+    throw new Error("the section drew no <details>");
+  }
+  return details;
 }
 
 /** Whether a section is disclosed, read off the details the kit renders. */
-function isOpen(item: HTMLElement): boolean {
-  return (item.querySelector('[part="details"]') as HTMLDetailsElement).open;
+function isOpen(item: Element): boolean {
+  return detailsOf(item).open;
 }
 
 /** Open or close a section the way a reader does — through that same details element. */
-async function openSection(item: HTMLElement, open: boolean): Promise<void> {
-  const details = item.querySelector('[part="details"]') as HTMLDetailsElement;
+async function openSection(item: Element, open: boolean): Promise<void> {
+  const details = detailsOf(item);
   details.open = open;
   details.dispatchEvent(new Event("toggle"));
   await settle();
 }
 
-/** The add picker's rows, grouped the way `jx-select` draws them. */
-function addGroups(panel: HTMLElement): Record<string, string[]> {
-  const select = nativeSelect(panel.querySelector('[part="add-picker"]') as Element);
-  const out: Record<string, string[]> = {};
+/** The "+ Add…" picker. */
+function addPicker(panel: HTMLElement): Element {
+  return requireEl(panel, '[part="add-picker"]');
+}
+
+/** The add picker's rows, grouped the way `jx-select` draws them, in drawn order. */
+function addGroups(panel: HTMLElement): Map<string, string[]> {
+  const select = nativeSelect(addPicker(panel));
+  const out = new Map<string, string[]>();
   for (const group of select.querySelectorAll("optgroup")) {
-    out[group.label] = [...group.querySelectorAll("option")].map((o) => o.value);
+    out.set(
+      group.label,
+      [...group.querySelectorAll("option")].map((o) => o.value),
+    );
   }
   return out;
 }
 
 /** Pick a row in the "+ Add…" picker. */
 async function add(panel: HTMLElement, value: string): Promise<void> {
-  await pick(panel.querySelector('[part="add-picker"]') as Element, value);
+  await pick(addPicker(panel), value);
 }
 
 /** The island host for one entry's foreign surface. */
@@ -102,14 +130,28 @@ function island(editor: HTMLElement, slot: string): HTMLElement | null {
   return editor.querySelector<HTMLElement>(`[part="slot-host"][data-slot="${slot}"]`);
 }
 
+/** One entry's list of CEM objects under `member`, or a throw naming a member that is not one. */
+function cemObjects(name: string, member: string): JsonObject[] {
+  const list = docState()[name]?.[member];
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  return list.map((item, index) => {
+    if (!isJsonObject(item)) {
+      throw new Error(`${name}.${member}[${index}] is not an object`);
+    }
+    return item;
+  });
+}
+
 /** One entry's CEM parameters, as the document wrote them back. */
-function paramsOf(name: string): Record<string, unknown>[] {
-  return (docState()[name]?.parameters ?? []) as Record<string, unknown>[];
+function paramsOf(name: string): JsonObject[] {
+  return cemObjects(name, "parameters");
 }
 
 /** One entry's CEM emits, as the document wrote them back. */
-function emitsOf(name: string): Record<string, unknown>[] {
-  return (docState()[name]?.emits ?? []) as Record<string, unknown>[];
+function emitsOf(name: string): JsonObject[] {
+  return cemObjects(name, "emits");
 }
 
 /** The text cells of one table row, left to right. */
@@ -147,7 +189,7 @@ describe("the entry list", () => {
   });
 
   test("naked primitive and array entries group safely under State", async () => {
-    const { panel } = await drawSignals({ list: ["a"], plain: 5 } as never);
+    const { panel } = await drawSignals({ list: ["a"], plain: 5 });
     expect(categoryLabels(panel)).toEqual(["State (2)"]);
     expect(entryRow(panel, "plain").querySelector('[part="badge"]')?.textContent).toBe("S");
   });
@@ -171,7 +213,7 @@ describe("the entry list", () => {
     expect(panel.querySelectorAll('[part="category"]').length).toBe(0);
 
     await press(panel.querySelector('[part="empty-action"]'));
-    expect(docState().$newSignal).toEqual({ default: "", type: "string" } as never);
+    expect(docState().$newSignal).toEqual({ default: "", type: "string" });
     expect(counts.repaints).toBeGreaterThan(0);
   });
 
@@ -191,7 +233,7 @@ describe("the entry list", () => {
     // `role="button"` with Delete nested inside it — a control the keyboard reaches only by
     // Leaving the one it is in.
     const { panel } = await drawSignals({ $a: { default: "x" } });
-    const disclosure = entryRow(panel, "$a").querySelector('[part="disclosure"]') as HTMLElement;
+    const disclosure = requireEl(entryRow(panel, "$a"), '[part="disclosure"]');
     expect(disclosure.tagName).toBe("BUTTON");
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
 
@@ -230,16 +272,16 @@ describe("the add picker", () => {
   test("its rows are grouped rather than divided by unlabelled rules", async () => {
     const { panel } = await drawSignals({});
     const groups = addGroups(panel);
-    expect(Object.keys(groups)).toEqual(["Values", "Data sources", "Logic"]);
-    expect(groups["Values"]).toEqual(["state", "computed"]);
-    expect(groups["Logic"]).toEqual(["expression", "function"]);
-    expect(groups["Data sources"]).toContain("localStorage");
+    expect([...groups.keys()]).toEqual(["Values", "Data sources", "Logic"]);
+    expect(groups.get("Values")).toEqual(["state", "computed"]);
+    expect(groups.get("Logic")).toEqual(["expression", "function"]);
+    expect(groups.get("Data sources")).toContain("localStorage");
   });
 
   test("adds a value entry from the template and opens it", async () => {
     const { panel } = await drawSignals({});
     await add(panel, "state");
-    expect(docState().$newSignal).toEqual({ default: "", type: "string" } as never);
+    expect(docState().$newSignal).toEqual({ default: "", type: "string" });
     expect(marked(entryRow(panel, "$newSignal"), "expanded")).toBe(true);
   });
 
@@ -248,7 +290,7 @@ describe("the add picker", () => {
     // Announced and then withdrawn — otherwise the same row could not be picked twice.
     const { panel } = await drawSignals({});
     await add(panel, "state");
-    expect(nativeSelect(panel.querySelector('[part="add-picker"]') as Element).value).toBe("");
+    expect(nativeSelect(addPicker(panel)).value).toBe("");
     await add(panel, "state");
     expect(docState().$newSignal1).toBeDefined();
   });
@@ -256,7 +298,7 @@ describe("the add picker", () => {
   test("name collisions increment a numeric suffix", async () => {
     const { panel } = await drawSignals({ $newSignal: { default: "taken" } });
     await add(panel, "state");
-    expect(docState().$newSignal1).toEqual({ default: "", type: "string" } as never);
+    expect(docState().$newSignal1).toEqual({ default: "", type: "string" });
   });
 
   test("the function template uses the newFunction base name", async () => {
@@ -266,7 +308,7 @@ describe("the add picker", () => {
       $prototype: "Function",
       body: "",
       parameters: [],
-    } as never);
+    });
   });
 
   test("the request template seeds method, timing and url", async () => {
@@ -277,7 +319,7 @@ describe("the add picker", () => {
       method: "GET",
       timing: "client",
       url: "",
-    } as never);
+    });
   });
 
   test("an empty pick is a no-op", async () => {
@@ -289,7 +331,7 @@ describe("the add picker", () => {
   test("project imports are a group of their own and add a prototype entry", async () => {
     resetStudioState({ projectConfig: { imports: { ContentCollection: "./plugins/cc.js" } } });
     const { panel, counts } = await drawSignals({});
-    expect(addGroups(panel)["Project imports"]).toEqual(["import:ContentCollection"]);
+    expect(addGroups(panel).get("Project imports")).toEqual(["import:ContentCollection"]);
 
     let fetched = 0;
     installMockPlatform({
@@ -299,7 +341,7 @@ describe("the add picker", () => {
       },
     });
     await add(panel, "import:ContentCollection");
-    expect(docState().$contentCollection).toEqual({ $prototype: "ContentCollection" } as never);
+    expect(docState().$contentCollection).toEqual({ $prototype: "ContentCollection" });
     await flush();
     // Fetched through the platform and cached, then the panel repainted with the form in it.
     expect(fetched).toBe(1);
@@ -315,7 +357,7 @@ describe("the add picker", () => {
     const { panel, counts } = await drawSignals({ $missing: { $prototype: "Missing" } });
     await add(panel, "import:Missing");
     // Collision with the existing `$missing` entry → suffix.
-    expect(docState().$missing1).toEqual({ $prototype: "Missing" } as never);
+    expect(docState().$missing1).toEqual({ $prototype: "Missing" });
     expect(counts.repaints).toBeGreaterThan(0);
   });
 
@@ -340,14 +382,14 @@ describe("the add picker", () => {
     ]);
     try {
       const { panel } = await drawSignals({});
-      expect(addGroups(panel)["Extensions"]).toEqual(["ext:Session", "ext:AuthActions"]);
+      expect(addGroups(panel).get("Extensions")).toEqual(["ext:Session", "ext:AuthActions"]);
 
       // The descriptor's stateDefaults seed the created entry (specs/extensions.md §10).
       await add(panel, "ext:Session");
-      expect(docState().$session).toEqual({ $prototype: "Session", timing: "client" } as never);
+      expect(docState().$session).toEqual({ $prototype: "Session", timing: "client" });
       // Without stateDefaults the entry is the bare prototype reference.
       await add(panel, "ext:AuthActions");
-      expect(docState().$authActions).toEqual({ $prototype: "AuthActions" } as never);
+      expect(docState().$authActions).toEqual({ $prototype: "AuthActions" });
     } finally {
       setExtensions([]);
     }
@@ -362,7 +404,7 @@ describe("the value editor", () => {
     const editor = await openEntry(panel, "$old");
     await commitText(control(editor, "Name", "text"), "$renamed");
     expect(docState().$old).toBeUndefined();
-    expect(docState().$renamed).toEqual({ default: "v" } as never);
+    expect(docState().$renamed).toEqual({ default: "v" });
   });
 
   test("a rename onto an existing name is refused, AND says so", async () => {
@@ -371,12 +413,12 @@ describe("the value editor", () => {
     const { panel } = await drawSignals({ $a: { default: 1 }, $b: { default: 2 } });
     let editor = await openEntry(panel, "$a");
     await commitText(control(editor, "Name", "text"), "$b");
-    expect(docState().$a).toEqual({ default: 1 } as never);
-    expect(docState().$b).toEqual({ default: 2 } as never);
+    expect(docState().$a).toEqual({ default: 1 });
+    expect(docState().$b).toEqual({ default: 2 });
 
     editor = editorFor(panel, "$a");
     const alert = fieldRow(editor, "Name").querySelector('[role="alert"]');
-    expect(alert?.textContent?.trim()).toBe('"$b" is already defined by this document.');
+    expect(alert?.textContent.trim()).toBe('"$b" is already defined by this document.');
     expect(marked(fieldRow(editor, "Name"), "invalid")).toBe(true);
   });
 
@@ -384,9 +426,9 @@ describe("the value editor", () => {
     const { panel } = await drawSignals({ $a: { default: 1 } });
     const editor = await openEntry(panel, "$a");
     await commitText(control(editor, "Name", "text"), "   ");
-    expect(docState().$a).toEqual({ default: 1 } as never);
+    expect(docState().$a).toEqual({ default: 1 });
     expect(
-      fieldRow(editorFor(panel, "$a"), "Name").querySelector('[role="alert"]')?.textContent?.trim(),
+      fieldRow(editorFor(panel, "$a"), "Name").querySelector('[role="alert"]')?.textContent.trim(),
     ).toBe("A name is required.");
   });
 
@@ -396,7 +438,7 @@ describe("the value editor", () => {
     await commitText(control(editor, "Name", "text"), "$b");
     editor = editorFor(panel, "$a");
     await commitText(control(editor, "Name", "text"), "$c");
-    expect(docState().$c).toEqual({ default: 1 } as never);
+    expect(docState().$c).toEqual({ default: 1 });
     // The editor followed the rename rather than collapsing out from under the caret…
     expect(marked(entryRow(panel, "$c"), "expanded")).toBe(true);
     // …and the refusal it replaced is gone.
@@ -580,9 +622,9 @@ describe("the data-source editors", () => {
     expect(docState().$ls!.key).toBe("theme");
 
     await commitText(control(editorFor(panel, "$ls"), "Default", "multiline"), '{"mode":"dark"}');
-    expect(docState().$ls!.default).toEqual({ mode: "dark" } as never);
+    expect(docState().$ls!.default).toEqual({ mode: "dark" });
     await commitText(control(editorFor(panel, "$ls"), "Default", "multiline"), "not json");
-    expect(docState().$ls!.default).toBe("not json" as never);
+    expect(docState().$ls!.default).toBe("not json");
   });
 
   test("SessionStorage renders an object default as pretty JSON", async () => {
@@ -635,7 +677,7 @@ describe("the data-source editors", () => {
     const fields = nativeInput(control(editor, "Fields", "multiline")).value;
     expect(JSON.parse(fields)).toEqual({ email: "" });
     await commitText(control(editor, "Fields", "multiline"), '{"email":"","name":""}');
-    expect(docState().$fd!.fields).toEqual({ email: "", name: "" } as never);
+    expect(docState().$fd!.fields).toEqual({ email: "", name: "" });
   });
 
   test("Map reads its default and commits parsed JSON", async () => {
@@ -644,14 +686,15 @@ describe("the data-source editors", () => {
     const stored = nativeInput(control(editor, "Default", "multiline")).value;
     expect(JSON.parse(stored)).toEqual({ a: 1 });
     await commitText(control(editor, "Default", "multiline"), '{"b":2}');
-    expect(docState().$map!.default).toEqual({ b: 2 } as never);
+    expect(docState().$map!.default).toEqual({ b: 2 });
   });
 
   test("an unknown prototype falls back to the external plugin editor", async () => {
     const { panel } = await drawSignals({ $ext: { $prototype: "Widget", $src: "./w.js" } });
     const editor = await openEntry(panel, "$ext");
-    expect(fieldProps(editor)).toContain("Source");
-    expect(fieldProps(editor)).toContain("Kind");
+    const props = fieldProps(editor);
+    expect(props).toContain("Source");
+    expect(props).toContain("Kind");
   });
 });
 
@@ -667,7 +710,7 @@ describe("the function editor", () => {
     expect(docState().save!.description).toBe("saves things");
 
     editor = editorFor(panel, "save");
-    typeText(editor.querySelector('[part="code"]') as Element, "console.log(1)");
+    typeText(requireEl(editor, '[part="code"]'), "console.log(1)");
     expect(docState().save!.body).toBe("console.log(1)");
 
     shell.docks.bottom.collapsed = true;
@@ -705,22 +748,15 @@ describe("the function editor", () => {
       "b",
     ]);
 
-    const addInput = nativeInput(
-      fieldRow(editor, "parameters").querySelector('[part="chip-add"]') as Element,
-    );
+    const addInput = nativeInput(requireEl(fieldRow(editor, "parameters"), '[part="chip-add"]'));
     addInput.value = "c";
     key(addInput, "Enter");
     await settle();
-    expect(docState().go!.parameters).toEqual([
-      { name: "a" },
-      { name: "b" },
-      { name: "c" },
-    ] as never);
+    expect(docState().go!.parameters).toEqual([{ name: "a" }, { name: "b" }, { name: "c" }]);
 
     // A non-Enter key does nothing.
-    const stillThere = nativeInput(
-      fieldRow(editorFor(panel, "go"), "parameters").querySelector('[part="chip-add"]') as Element,
-    );
+    const paramsRow = fieldRow(editorFor(panel, "go"), "parameters");
+    const stillThere = nativeInput(requireEl(paramsRow, '[part="chip-add"]'));
     stillThere.value = "d";
     key(stillThere, "a");
     await settle();
@@ -728,7 +764,7 @@ describe("the function editor", () => {
 
     editor = editorFor(panel, "go");
     await press(editor.querySelector('[part="chip"][data-chip="0"] [part="chip-remove"]'));
-    expect(docState().go!.parameters).toEqual([{ name: "b" }, { name: "c" }] as never);
+    expect(docState().go!.parameters).toEqual([{ name: "b" }, { name: "c" }]);
   });
 
   test("removing the only parameter drops the parameters key", async () => {
@@ -760,11 +796,11 @@ describe("the function editor", () => {
     expect(docState().adv!.parameters).toEqual([
       { name: "event", type: { text: "Event" } },
       { name: "ctx" },
-    ] as never);
+    ]);
 
     // Clearing the type drops the key rather than writing an empty one.
     await commitText(cellsOf(editorFor(panel, "adv"), "parameters", "0")[1]!, "");
-    expect(paramsOf("adv")[0]).toEqual({ name: "event" } as never);
+    expect(paramsOf("adv")[0]).toEqual({ name: "event" });
 
     await commitText(cellsOf(editorFor(panel, "adv"), "parameters", "0")[2]!, "the event");
     expect(paramsOf("adv")[0]!.description).toBe("the event");
@@ -783,7 +819,7 @@ describe("the function editor", () => {
     await commitText(cellsOf(editorFor(panel, "adv"), "parameters", "1")[1]!, "AppContext");
     expect(paramsOf("adv")[1]!.type).toEqual({
       text: "AppContext",
-    } as never);
+    });
 
     await press(fieldRow(editorFor(panel, "adv"), "parameters").querySelector('[part="row-add"]'));
     expect(docState().adv!.parameters).toHaveLength(3);
@@ -848,7 +884,7 @@ describe("the function body's two modes", () => {
     expect(radio("code").getAttribute("aria-checked")).toBe("true");
     expect(radio("statements").getAttribute("aria-checked")).toBe("false");
     // The words are the segment's own, beside the accessible name the kit writes on the control.
-    expect(radio("statements").textContent?.trim()).toBe("Statements");
+    expect(radio("statements").textContent.trim()).toBe("Statements");
     expect(radio("statements").getAttribute("aria-label")).toBe("Statements");
   });
 
@@ -875,12 +911,12 @@ describe("the function body's two modes", () => {
     });
     let editor = await openEntry(panel, "fn");
     await press(editor.querySelector('[part="segment"][data-segment="statements"]'));
-    expect(docState().fn!.body).toEqual([] as never);
+    expect(docState().fn!.body).toEqual([]);
     editor = editorFor(panel, "fn");
     expect(island(editor, "statements")).not.toBeNull();
 
     await press(editor.querySelector('[part="segment"][data-segment="code"]'));
-    expect(docState().fn!.body).toBe("" as never);
+    expect(docState().fn!.body).toBe("");
     editor = editorFor(panel, "fn");
     expect(island(editor, "statements")).toBeNull();
     expect(editor.querySelector('[part="code"]')).not.toBeNull();
@@ -892,7 +928,7 @@ describe("the function body's two modes", () => {
     });
     const editor = await openEntry(panel, "fn");
     await press(editor.querySelector('[part="segment"][data-segment="code"]'));
-    expect(docState().fn!.body).toBe("keep me" as never);
+    expect(docState().fn!.body).toBe("keep me");
   });
 
   test("the row summary counts a structured body's statements", async () => {
@@ -936,7 +972,7 @@ describe("the emits editor", () => {
       description: "old",
       name: "updated",
       type: { text: "CustomEvent" },
-    } as never);
+    });
 
     await commitText(cellsOf(editorFor(panel, "notify"), "emits", "0")[1]!, "");
     expect(emitsOf("notify")[0]!.type).toBeUndefined();
@@ -949,7 +985,7 @@ describe("the emits editor", () => {
       description: "fires on close",
       name: "closed",
       type: { text: "Event" },
-    } as never);
+    });
 
     await press(fieldRow(editorFor(panel, "notify"), "emits").querySelector('[part="row-add"]'));
     expect(docState().notify!.emits).toHaveLength(3);
@@ -994,11 +1030,14 @@ describe("the expression editor", () => {
     expect(host?.childNodes.length).toBeGreaterThan(0);
 
     // The editor is a surface of its own: what this panel owns is that its edits reach the entry.
-    const picker = host!.querySelector('[part="operator"] [part="control"]') as HTMLSelectElement;
+    const picker = host?.querySelector('[part="operator"] [part="control"]');
+    if (!(picker instanceof HTMLSelectElement)) {
+      throw new Error("the expression editor drew no operator <select>");
+    }
     picker.value = "!";
     picker.dispatchEvent(new Event("change", { bubbles: true }));
     await settle();
-    expect((docState().$inc!.$expression as { operator: string }).operator).toBe("!");
+    expect(docState().$inc?.$expression).toMatchObject({ operator: "!" });
   });
 
   test("the workspace button names itself, and takes the Logic tab from a function", async () => {
@@ -1014,7 +1053,7 @@ describe("the expression editor", () => {
     // A function body is open in the same tab: one Logic tab holds ONE target, so opening the
     // Formula has to take it — this used to leave both set, and `logicTarget` gives the function
     // The tie, so the click showed nothing and changed nothing.
-    activeTab.value!.session.ui.editingFunction = { defName: "other", type: "def" } as never;
+    activeTab.value!.session.ui.editingFunction = { defName: "other", type: "def" };
     shell.docks.bottom.collapsed = true;
     await press(button);
 

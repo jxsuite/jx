@@ -14,16 +14,16 @@ describe("CSS custom properties on inline styles", () => {
 
   test("regular properties still work via bracket assignment", () => {
     const el = document.createElement("div");
-    (el.style as any).color = "blue";
+    el.style.color = "blue";
     expect(el.style.color).toBe("blue");
   });
 
   test("custom properties and regular properties coexist", () => {
     const el = document.createElement("div");
-    (el.style as any).padding = "2rem";
+    el.style.padding = "2rem";
     el.style.setProperty("--font-geometric", "Avenir, sans-serif");
 
-    expect((el.style as any).padding).toBe("2rem");
+    expect(el.style.padding).toBe("2rem");
     expect(el.style.getPropertyValue("--font-geometric")).toBe("Avenir, sans-serif");
   });
 });
@@ -142,7 +142,7 @@ describe("Font stack selection roundtrip", () => {
   });
 
   test("selecting preset does NOT duplicate existing variable", () => {
-    const rootStyle: Record<string, string> = {
+    const rootStyle = {
       "--font-geometric-humanist":
         "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif",
     };
@@ -154,7 +154,7 @@ describe("Font stack selection roundtrip", () => {
   });
 
   test("selecting an existing font var returns var() reference", () => {
-    const rootStyle: Record<string, string> = {
+    const rootStyle = {
       "--font-geometric-humanist": "Avenir, Montserrat, sans-serif",
     };
     // User selects display name of an existing var (not a preset match)
@@ -194,7 +194,7 @@ describe("Font stack selection roundtrip", () => {
       parent.style.setProperty(prop, val);
     }
     // Apply element style
-    (child.style as any).fontFamily = elementValue;
+    child.style.fontFamily = elementValue;
 
     // Verify the variable is set on parent
     expect(parent.style.getPropertyValue("--font-geometric-humanist")).toBe(
@@ -299,6 +299,14 @@ describe("buildFontOptions format for jx-styled-combobox", () => {
     { title: "Geometric Humanist", value: "Avenir, Montserrat, sans-serif" },
   ];
 
+  /** One font menu row: a selectable stack, or the divider between local vars and presets. */
+  interface FontMenuEntry {
+    divider?: true;
+    label?: string;
+    style?: string;
+    value?: string;
+  }
+
   /**
    * Mirrors buildFontOptions from studio.js — produces the options array consumed by
    * jx-styled-combobox.
@@ -309,8 +317,8 @@ describe("buildFontOptions format for jx-styled-combobox", () => {
   function buildFontOptions(
     fontVars: { name: string; value: string }[],
     presets: { title: string; value: string }[],
-  ) {
-    const opts: any[] = fontVars.map((fv) => ({
+  ): FontMenuEntry[] {
+    const opts: FontMenuEntry[] = fontVars.map((fv) => ({
       label: varDisplayName(fv.name, "--font-"),
       style: `font-family: ${fv.value}`,
       value: fv.name,
@@ -339,7 +347,7 @@ describe("buildFontOptions format for jx-styled-combobox", () => {
       style: "font-family: system-ui, sans-serif",
       value: "__preset__:System UI",
     });
-    expect(opts.every((o: any) => !o.divider)).toBe(true);
+    expect(opts.every((o) => !o.divider)).toBe(true);
   });
 
   test("local vars + presets produces divider between groups", () => {
@@ -347,11 +355,11 @@ describe("buildFontOptions format for jx-styled-combobox", () => {
     const opts = buildFontOptions(fontVars, PRESETS);
     // Local var + divider + 2 presets = 4
     expect(opts.length).toBe(4);
-    expect(opts[0].value).toBe("--font-custom");
-    expect(opts[0].label).toBe("Custom");
-    expect(opts[0].style).toBe("font-family: Georgia, serif");
+    expect(opts[0]?.value).toBe("--font-custom");
+    expect(opts[0]?.label).toBe("Custom");
+    expect(opts[0]?.style).toBe("font-family: Georgia, serif");
     expect(opts[1]).toEqual({ divider: true });
-    expect(opts[2].value).toBe("__preset__:System UI");
+    expect(opts[2]?.value).toBe("__preset__:System UI");
   });
 
   test("preset already added as local var is excluded from presets", () => {
@@ -359,8 +367,8 @@ describe("buildFontOptions format for jx-styled-combobox", () => {
     const opts = buildFontOptions(fontVars, PRESETS);
     // Local var + divider + 1 remaining preset = 3
     expect(opts.length).toBe(3);
-    expect(opts[0].value).toBe("--font-system-ui");
-    expect(opts[2].value).toBe("__preset__:Geometric Humanist");
+    expect(opts[0]?.value).toBe("--font-system-ui");
+    expect(opts[2]?.value).toBe("__preset__:Geometric Humanist");
   });
 
   test("all presets added as local vars produces no divider or presets", () => {
@@ -370,21 +378,21 @@ describe("buildFontOptions format for jx-styled-combobox", () => {
     }));
     const opts = buildFontOptions(fontVars, PRESETS);
     expect(opts.length).toBe(2);
-    expect(opts.every((o: any) => !o.divider)).toBe(true);
-    expect(opts[0].value).toBe("--font-system-ui");
-    expect(opts[1].value).toBe("--font-geometric-humanist");
+    expect(opts.every((o) => !o.divider)).toBe(true);
+    expect(opts[0]?.value).toBe("--font-system-ui");
+    expect(opts[1]?.value).toBe("--font-geometric-humanist");
   });
 
   test("each option has value, label, and style properties", () => {
     const opts = buildFontOptions([], PRESETS);
     for (const opt of opts) {
-      if ((opt as any).divider) {
+      if (opt.divider) {
         continue;
       }
-      expect(typeof (opt as any).value).toBe("string");
-      expect(typeof (opt as any).label).toBe("string");
-      expect(typeof (opt as any).style).toBe("string");
-      expect((opt as any).style).toMatch(/^font-family: /);
+      expect(opt.value).toBeTypeOf("string");
+      expect(opt.label).toBeTypeOf("string");
+      expect(opt.style).toBeTypeOf("string");
+      expect(opt.style).toMatch(/^font-family: /);
     }
   });
 });

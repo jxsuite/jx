@@ -31,14 +31,13 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close as closeDialog, showModal } from "@jxsuite/ui/behaviors/dialog";
+import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
 import { focusField } from "@jxsuite/ui/behaviors/textfield";
 import { whenReady } from "./dialog";
 import addRepoDoc from "./add-repo.json";
-import type { SurfaceHandle } from "../ui/surface";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("add-repo", addRepoDoc as unknown as JxDocument);
+registerSurface("add-repo", addRepoDoc);
 
 /** One repository, as the list draws it. Every field is already a string or a flag. */
 export interface AddRepoRow {
@@ -66,12 +65,6 @@ export interface AddRepoAccessLink {
   label: string;
   url: string;
   title: string;
-}
-
-/** One entry of the account filter. `""` is every account. */
-export interface AddRepoOwner {
-  value: string;
-  label: string;
 }
 
 /**
@@ -105,7 +98,7 @@ export interface AddRepoView {
   /** The account the list is narrowed to; `""` is every account. */
   owner: string;
   /** The account filter's entries, "All accounts" first; empty hides it (one account, or none). */
-  owners: AddRepoOwner[];
+  owners: SurfaceOption[];
   /** The listing is in flight. Its own state, because "not yet asked" is not "reaches nothing". */
   loading: boolean;
   /** The repositories to draw, already filtered and ordered. */
@@ -226,8 +219,7 @@ interface AddRepoFlags {
   confirmDisabled: boolean;
 }
 
-interface AddRepoScope
-  extends Record<string, unknown>, Omit<AddRepoView, "rows" | "locations">, AddRepoFlags {
+interface AddRepoScope extends Omit<AddRepoView, "rows" | "locations">, AddRepoFlags {
   setFilter: (value: string) => void;
   setOwner: (value: string) => void;
   select: (fullName: string) => void;
@@ -277,7 +269,7 @@ function derive(view: AddRepoView): Omit<AddRepoView, "rows" | "locations"> & Ad
       ? "loading"
       : rows.length > 0
         ? "listed"
-        : (`empty-${view.emptyState}` as AddRepoFlags["listState"]),
+        : (`empty-${view.emptyState}` as const),
     locations,
     refreshDisabled: view.loading || view.busy,
     rows,
@@ -309,8 +301,12 @@ export function openAddRepoSurface(options: AddRepoSurfaceOptions): AddRepoSurfa
     closed = true;
     options.onClosed();
   };
+  /* Read through a call, not the bare binding: `close()` can run while the mount is awaiting the
+     element, and a direct `closed` test after that `await` would be narrowed to the value the test
+     before it saw. */
+  const isClosed = (): boolean => closed;
 
-  const scope = reactive({
+  const scope: AddRepoScope = reactive<AddRepoScope>({
     ...derive(options.view),
     closed: finish,
     confirm: () => {
@@ -350,18 +346,20 @@ export function openAddRepoSurface(options: AddRepoSurfaceOptions): AddRepoSurfa
       scope.owner = value;
       options.onOwner(value);
     },
-  }) as AddRepoScope;
+  });
 
   let mounted: SurfaceHandle | null = null;
   const ready = mountSurface("add-repo", scope, slot).then(async (surface) => {
     mounted = surface;
+    // SAFETY: `add-repo.json`'s root definition carries `tagName: "jx-dialog"`, so the runtime mounts an
+    // HTMLElement; a `Text` root only comes from a document whose root is a bare string.
     const element = surface.root as HTMLElement;
-    if (closed) {
+    if (isClosed()) {
       surface.dispose();
       return element;
     }
     await whenReady(element);
-    if (closed) {
+    if (isClosed()) {
       return element;
     }
     showModal(element);
@@ -384,7 +382,7 @@ export function openAddRepoSurface(options: AddRepoSurfaceOptions): AddRepoSurfa
       const element = mounted?.root;
       if (element instanceof HTMLElement) {
         // The platform's close first, so focus goes back where it came from; then the document.
-        closeDialog(element);
+        close(element);
       }
       // A mount that has not landed yet is disposed by `ready` when it does — `finish` tells it so.
       mounted?.dispose();

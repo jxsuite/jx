@@ -1,47 +1,53 @@
 import { describe, expect, test } from "bun:test";
 import { jxToMdast, mdastToJx, serializeJxMarkdown } from "../src/serialize";
-import type { JxDocument, JxElement, JxStateDefinition } from "@jxsuite/schema/types";
+import type { SerializeOptions } from "../src/serialize";
+import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
+import type { JsonValue, JxDocument, JxElement, JxStateDefinition } from "@jxsuite/schema/types";
 
 // Test-local template hooks mirroring the compiler's shared.ts machinery — the
-// Compiler injects its real implementations; these cover the same contract.
-function evaluateTemplate(str: string, scope: Record<string, unknown>) {
-  if (!str.includes("${")) {
-    return;
-  }
-  try {
-    const singleExprMatch = str.match(/^\$\{(.+)\}$/s);
-    if (singleExprMatch) {
-      const fn = new Function("state", "$map", `return (${singleExprMatch[1]})`);
-      return fn(scope, scope?.$map) ?? str;
+// Compiler injects its real implementations; these cover the same contract. Typed through
+// SerializeOptions so each hook takes exactly the parameters the serializer passes.
+const templateHooks: Pick<SerializeOptions, "buildScope" | "evaluateTemplate"> = {
+  buildScope(stateDefs) {
+    const scope: Record<string, JsonValue | JxStateDefinition> = {};
+    for (const [key, def] of Object.entries(stateDefs)) {
+      scope[key] = isJsonObject(def) && "default" in def ? def.default : def;
     }
-    const fn = new Function("state", "$map", `return \`${str}\``);
-    return fn(scope, scope?.$map) ?? str;
-  } catch {
-    return str;
-  }
-}
-
-function buildScope(stateDefs: Record<string, JxStateDefinition>) {
-  const scope: Record<string, unknown> = {};
-  for (const [key, def] of Object.entries(stateDefs ?? {})) {
-    scope[key] =
-      def && typeof def === "object" && !Array.isArray(def) && "default" in def
-        ? (def as { default: unknown }).default
-        : def;
-  }
-  return scope;
-}
+    return scope;
+  },
+  evaluateTemplate(str, scope) {
+    if (!str.includes("${")) {
+      return;
+    }
+    try {
+      const singleExprMatch = str.match(/^\$\{(.+)\}$/s);
+      if (singleExprMatch) {
+        const fn = new Function("state", "$map", `return (${singleExprMatch[1]})`);
+        return fn(scope, scope.$map) ?? str;
+      }
+      const fn = new Function("state", "$map", `return \`${str}\``);
+      return fn(scope, scope.$map) ?? str;
+    } catch {
+      return str;
+    }
+  },
+};
 
 function compileMarkdown(doc: JxDocument, componentDefs?: Map<string, JxElement>) {
-  return {
-    content: serializeJxMarkdown(doc, {
-      mode: "export",
-      ...(componentDefs && { componentDefs }),
-      evaluateTemplate,
-      buildScope,
-    }),
-  };
+  const options: SerializeOptions = { mode: "export", ...templateHooks };
+  if (componentDefs) {
+    options.componentDefs = componentDefs;
+  }
+  return { content: serializeJxMarkdown(doc, options) };
 }
+
+/* SAFETY: deliberately outside JxElement["children"], which holds only elements and strings, and
+   JxElement["textContent"], which holds no number. A hand-built tree can carry bare numbers, null or
+   undefined holes, and a numeric textContent; nodeToMdast stringifies a number child and returns []
+   for anything else that is not a non-null object, and resolveText stringifies any non-string
+   value, so none of them reaches a typed access. The tests using this pin that tolerance. */
+const authoredChildren = (children: (JsonValue | undefined)[]) =>
+  children as (JxElement | string)[];
 
 // ─── compileMarkdown ────────────────────────────────────────────────────────
 
@@ -554,25 +560,25 @@ describe("compileMarkdown", () => {
         items: [{ name: "Apple" }, { name: "Banana" }, { name: "Cherry" }],
       },
     };
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("- Apple");
     expect(content).toContain("- Banana");
     expect(content).toContain("- Cherry");
   });
 
   test("handles number nodes", () => {
-    const doc = {
-      children: [{ children: [42], tagName: "p" }],
+    const doc: JxDocument = {
+      children: [{ children: authoredChildren([42]), tagName: "p" }],
     };
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("42");
   });
 
   test("skips null/undefined nodes", () => {
-    const doc = {
-      children: [null, undefined, { tagName: "p", textContent: "Valid" }],
+    const doc: JxDocument = {
+      children: authoredChildren([null, undefined, { tagName: "p", textContent: "Valid" }]),
     };
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("Valid");
   });
 
@@ -978,7 +984,7 @@ describe("compileMarkdown", () => {
       state: { things: [{ name: "Alpha" }, { name: "Beta" }] },
     };
 
-    const { content } = compileMarkdown(doc as unknown as JxDocument, componentDefs);
+    const { content } = compileMarkdown(doc, componentDefs);
     expect(content).toContain("Alpha");
     expect(content).toContain("Beta");
   });
@@ -1003,7 +1009,7 @@ describe("compileMarkdown", () => {
       state: { fruits: [{ label: "Apple" }, { label: "Pear" }] },
     };
 
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("- Apple");
     expect(content).toContain("- Pear");
   });
@@ -1028,7 +1034,7 @@ describe("compileMarkdown", () => {
       state: { entries: [{ title: "One" }, { title: "Two" }] },
     };
 
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("### One");
     expect(content).toContain("### Two");
   });
@@ -1317,15 +1323,15 @@ describe("compileMarkdown", () => {
       ],
       state: { items: [{ name: "Direct" }] },
     };
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("- Direct");
   });
 
   test("resolveText with numeric textContent (lines 531-532)", () => {
-    const doc = {
-      children: [{ tagName: "p", textContent: 42 }],
+    const doc: JxDocument = {
+      children: authoredChildren([{ tagName: "p", textContent: 42 }]),
     };
-    const { content } = compileMarkdown(doc as unknown as JxDocument);
+    const { content } = compileMarkdown(doc);
     expect(content).toContain("42");
   });
 
@@ -1434,7 +1440,7 @@ describe("compileMarkdown", () => {
 
 describe("prototype directive round-trip", () => {
   test("a tagName-less Array node serializes to a :::Array directive", () => {
-    const doc = {
+    const doc: JxDocument = {
       children: [
         { tagName: "h1", textContent: "List" },
         {
@@ -1444,7 +1450,7 @@ describe("prototype directive round-trip", () => {
         },
       ],
     };
-    const md = serializeJxMarkdown(doc as JxDocument);
+    const md = serializeJxMarkdown(doc);
     // Directive named after the prototype, with items as an attribute and the map as the body.
     expect(md).toContain(':::Array{items.ref="#/state/rows"}');
     expect(md).toContain("${$map.item.name}");
@@ -1465,12 +1471,15 @@ describe("prototype directive round-trip", () => {
         },
       ],
     };
-    const back = mdastToJx(jxToMdast(jx)) as JxElement;
-    const [, arr] = back.children as JxElement[];
-    expect(arr!.$prototype).toBe("Array");
-    expect(arr!.tagName).toBeUndefined();
-    expect(arr!.items).toEqual({ $ref: "#/state/rows" });
-    expect(arr!.filter).toEqual({ $ref: "#/state/byDate" });
-    expect((arr!.map as JxElement).tagName).toBe("li");
+    const back = mdastToJx(jxToMdast(jx));
+    const [, arr] = Array.isArray(back.children) ? back.children : [];
+    if (!isNodeObject(arr)) {
+      throw new Error("The Array member did not survive the round trip as an element");
+    }
+    expect(arr.$prototype).toBe("Array");
+    expect(arr.tagName).toBeUndefined();
+    expect(arr.items).toEqual({ $ref: "#/state/rows" });
+    expect(arr.filter).toEqual({ $ref: "#/state/byDate" });
+    expect(arr.map).toMatchObject({ tagName: "li" });
   });
 });

@@ -97,19 +97,19 @@ describe("verify - serveDirectory", () => {
    * blob or use a font handed to it as one, which cost the clone fidelity points that had nothing
    * to do with the import.
    */
-  it.each([
+  it.each<[string, string]>([
     ["logo.svg", "image/svg+xml"],
     ["hero.png", "image/png"],
     ["photo.webp", "image/webp"],
     ["inter.woff2", "font/woff2"],
     ["data.json", "application/json"],
   ])("serves %s as %s", async (name, expected) => {
-    writeFileSync(join(tmpDir, name as string), "x");
+    writeFileSync(join(tmpDir, name), "x");
     const { server, baseUrl } = serveDirectory(tmpDir);
     try {
       const res = await fetch(`${baseUrl}/${name}`);
       expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Type")).toContain(expected as string);
+      expect(res.headers.get("Content-Type")).toContain(expected);
     } finally {
       void server.stop();
     }

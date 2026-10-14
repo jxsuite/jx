@@ -15,11 +15,10 @@
 
 import { exchangeCode } from "@jxsuite/server/oauth-loopback";
 import type { LoopbackAuthorizer } from "@jxsuite/server/oauth-loopback";
+import { GITHUB_OAUTH_CLIENT_ID } from "@jxsuite/studio/github-auth-status";
 import { readCredential, writeCredential } from "./credential-store";
 import { openExternal } from "./utils";
 
-/** The same OAuth app the browser Studio's device flow uses. */
-const CLIENT_ID = "Ov23liYVlMFpgjOEPXJH";
 const AUTHORIZATION_ENDPOINT = "https://github.com/login/oauth/authorize";
 const TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";
 const SCOPE = "repo";
@@ -87,7 +86,7 @@ export async function githubSignIn(params: { force?: boolean } = {}): Promise<{ 
 
   const pending = await host.authorizer.begin(host.port, {
     authorizationEndpoint: AUTHORIZATION_ENDPOINT,
-    clientId: CLIENT_ID,
+    clientId: GITHUB_OAUTH_CLIENT_ID,
     scope: SCOPE,
   });
 
@@ -98,7 +97,7 @@ export async function githubSignIn(params: { force?: boolean } = {}): Promise<{ 
 
   const code = await pending.code;
   const result = await exchangeCode({
-    clientId: CLIENT_ID,
+    clientId: GITHUB_OAUTH_CLIENT_ID,
     code,
     redirectUri: pending.redirectUri,
     tokenEndpoint: TOKEN_ENDPOINT,

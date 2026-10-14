@@ -5,7 +5,13 @@ import { join } from "node:path";
 
 import { MarkdownCollection, processMarkdown } from "../src/md";
 import type { MarkdownFileResult } from "../src/types";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxElement } from "@jxsuite/schema/types";
+
+/** The `id` of a rendered node, or undefined for a text child or a missing index. */
+function idOf(node: JxElement | string | undefined): JxElement["id"] {
+  return isString(node) ? undefined : node?.id;
+}
 
 // ─── processMarkdown ──────────────────────────────────────────────────────────
 
@@ -15,7 +21,7 @@ describe("processMarkdown", () => {
     const result = processMarkdown(source, "/posts/hello.md");
     expect(result.frontmatter).toEqual({ date: "2026-01-02", title: "Hello" });
     expect(result.$children).toHaveLength(1);
-    expect(result.$children[0] as JxElement).toEqual({ tagName: "p", textContent: "Body text." });
+    expect(result.$children[0]).toEqual({ tagName: "p", textContent: "Body text." });
   });
 
   test("returns empty frontmatter when none is present", () => {
@@ -151,8 +157,7 @@ describe("processMarkdown", () => {
   test("GFM tables become JX table nodes", () => {
     const source = ["| A | B |", "| - | - |", "| 1 | 2 |"].join("\n");
     const result = processMarkdown(source, "/table.md");
-    const table = result.$children[0] as JxElement & { tagName?: string };
-    expect(table.tagName).toBe("table");
+    expect(result.$children[0]).toMatchObject({ tagName: "table" });
   });
 
   test("directives are inert without the directives option", () => {
@@ -320,10 +325,8 @@ describe("processMarkdown heading ids", () => {
   test("rendered headings carry slug ids matching $toc", () => {
     const source = "# Getting Started\n\n## Install Steps\n\ntext";
     const { $children, $toc } = processMarkdown(source, "/t.md");
-    const h1 = $children[0] as JxElement;
-    const h2 = $children[1] as JxElement;
-    expect(h1.id).toBe("getting-started");
-    expect(h2.id).toBe("install-steps");
+    expect(idOf($children[0])).toBe("getting-started");
+    expect(idOf($children[1])).toBe("install-steps");
     expect($toc).toEqual([
       { depth: 1, id: "getting-started", text: "Getting Started" },
       { depth: 2, id: "install-steps", text: "Install Steps" },
@@ -333,14 +336,14 @@ describe("processMarkdown heading ids", () => {
   test("duplicate headings dedupe deterministically with -2, -3 suffixes", () => {
     const source = "## Setup\n\n## Setup\n\n## Setup";
     const { $children, $toc } = processMarkdown(source, "/t.md");
-    const ids = ($children as JxElement[]).map((el) => el.id ?? "");
+    const ids = $children.map((el) => idOf(el) ?? "");
     expect(ids).toEqual(["setup", "setup-2", "setup-3"]);
     expect($toc.map((e) => e.id)).toEqual(ids);
   });
 
   test("headings with rich inline content slug their concatenated text", () => {
     const { $children, $toc } = processMarkdown("## Using `jx build` **fast**", "/t.md");
-    expect(($children[0] as JxElement).id).toBe("using-jx-build-fast");
+    expect(idOf($children[0])).toBe("using-jx-build-fast");
     expect($toc[0]?.text).toBe("Using jx build fast");
   });
 
@@ -351,7 +354,7 @@ describe("processMarkdown heading ids", () => {
 
   test("punctuation-only headings fall back to a stable anchor", () => {
     const { $children } = processMarkdown("## !!!\n\n## !!!", "/t.md");
-    const ids = ($children as JxElement[]).map((el) => el.id);
+    const ids = $children.map((el) => idOf(el));
     expect(ids).toEqual(["section", "section-2"]);
   });
 });

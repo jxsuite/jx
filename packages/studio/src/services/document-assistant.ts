@@ -42,6 +42,7 @@ import { getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { preferredModel } from "./ai-models";
 import { pruneOrphanToolMessages, trimContext } from "./context-manager";
 import { renderCheck } from "./render-critic";
+import type { CandidateDocument, RenderVerdict } from "./ai-write-report";
 import { validateDoc } from "./jx-validate";
 import { reloadFileInTab } from "../files/files";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
@@ -58,6 +59,20 @@ import { backfillToolResults, stripToolResults } from "./tool-outcomes";
 function projectRoot() {
   return workspace.projectRoot || "";
 }
+
+/**
+ * The open project's configuration.
+ *
+ * @returns {ProjectConfig | null}
+ */
+function projectConfig(): ProjectConfig | null {
+  return workspace.projectConfig;
+}
+
+/* SAFETY: renderCheck runs the whole render inside a try and answers `{ ok: false, error }` for
+   anything it cannot render, so JSON that is not (yet) a valid document is exactly what it is safe
+   to hand; its JxDocument parameter names what renders, not what may be probed. */
+const probeRender = renderCheck as (doc: CandidateDocument) => Promise<RenderVerdict>;
 
 /**
  * Create a document-assistant session bound to the currently active tab.
@@ -82,8 +97,10 @@ export function createDocumentAssistant() {
      `ctx.session`. New Chat starts over; a new session id keeps what the conversation knew. */
   let sessionFacts = createSessionFacts();
 
-  const getProjectStyle = () =>
-    (workspace.projectConfig as ProjectConfig | null)?.style as Record<string, string> | undefined;
+  /* SAFETY: the token tools read only the top-level `--*` keys of the project style block, and skip
+     any whose value is not a string, so the nested rule blocks a JxStyle may also hold are never
+     read as tokens. */
+  const getProjectStyle = () => projectConfig()?.style as Record<string, string> | undefined;
 
   const findOpenTab = (path: string): Tab | null => {
     for (const tab of workspace.tabs.values()) {
@@ -106,9 +123,7 @@ export function createDocumentAssistant() {
       const plat = getPlatform();
       await plat.writeFile(relPath, content);
     },
-    renderCheck: renderCheck as (
-      doc: unknown,
-    ) => Promise<{ ok: true } | { ok: false; error: string }>,
+    renderCheck: probeRender,
     getProjectStyle,
     findOpenTab,
     reloadTab: reloadFileInTab,
@@ -126,9 +141,7 @@ export function createDocumentAssistant() {
   });
   registerProjectTools(innerRegistry, {
     getTab: () => activeTab.value,
-    renderCheck: renderCheck as (
-      doc: unknown,
-    ) => Promise<{ ok: true } | { ok: false; error: string }>,
+    renderCheck: probeRender,
     getProjectStyle,
     findOpenTab,
     reloadTab: reloadFileInTab,
@@ -221,9 +234,7 @@ export function createDocumentAssistant() {
   const commandTools = createCommandToolRegistry({
     getProjectStyle,
     getTab: () => activeTab.value,
-    renderCheck: renderCheck as (
-      doc: unknown,
-    ) => Promise<{ ok: true } | { ok: false; error: string }>,
+    renderCheck: probeRender,
     validate: validateDoc,
   });
   const toolRegistry = composeToolRegistries(
@@ -263,16 +274,21 @@ export function createDocumentAssistant() {
        be two answers to "what can this project turn on". */
     const catalog: ExtensionCatalogSummary[] = [];
     for (const entry of getExtensionCatalog()) {
-      catalog.push({
+      const summary: ExtensionCatalogSummary = {
         name: entry.name,
         sections: entry.sections.map((section) => section.key),
-        ...(entry.title === undefined ? {} : { title: entry.title }),
-        ...(entry.description === undefined ? {} : { description: entry.description }),
-      });
+      };
+      if (entry.title !== undefined) {
+        summary.title = entry.title;
+      }
+      if (entry.description !== undefined) {
+        summary.description = entry.description;
+      }
+      catalog.push(summary);
     }
     return buildSystemPrompt({
       document: tab ? toRaw(tab.doc.document) : undefined,
-      projectConfig: (workspace.projectConfig as ProjectConfig | null) || undefined,
+      projectConfig: projectConfig() || undefined,
       components: componentRegistry.length > 0 ? componentRegistry : undefined,
       projectRoot: workspace.projectRoot || undefined,
       hasProject: Boolean(workspace.projectRoot),
@@ -285,8 +301,9 @@ export function createDocumentAssistant() {
       /* Read per turn from the live registry — a projected tool the gate will honour this round is
          listed this round, and one it will not is not. */
       commandTools: commandToolBlurbs(activeRegistry()),
-      ...(inventory && inventory.length > 0 ? { fileInventory: inventory } : {}),
-      ...(catalog.length > 0 ? { extensionCatalog: catalog } : {}),
+      // Absent and undefined read the same: every option is destructured without a default.
+      fileInventory: inventory && inventory.length > 0 ? inventory : undefined,
+      extensionCatalog: catalog.length > 0 ? catalog : undefined,
     });
   }
 
@@ -347,7 +364,7 @@ export function createDocumentAssistant() {
         baseUrl: getBaseUrl() || undefined,
         /* The persisted conversation, so the backend can keep its rounds on one warm prompt cache.
            Sent to the backend only, which hashes it before any provider sees it (specs/ai.md §2.5). */
-        sessionId: sessionId ?? undefined,
+        sessionId,
       });
 
       if (sessionFacts.sessionId !== sessionId) {
@@ -480,6 +497,9 @@ export function createDocumentAssistant() {
    */
   function pushRestoredMessages(msgs: sessionStore.PersistedMessage[]) {
     for (const m of backfillToolResults(msgs)) {
+      /* SAFETY: every persisted message was written by persistChat from a live message (its role,
+         tool calls and timestamp included) and its call results were restored by
+         backfillToolResults above; only the id a legacy entry may lack is synthesized here. */
       chatState.messages.push({
         ...m,
         id: m.id || `restored_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,

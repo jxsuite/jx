@@ -35,8 +35,7 @@ function html(route: string): string {
  * with no locale named — the two things a template can only get from the route.
  */
 function page(title: string, translationKey?: string): string {
-  return JSON.stringify({
-    ...(translationKey === undefined ? {} : { $translationKey: translationKey }),
+  const body = {
     children: [
       {
         children: {
@@ -69,7 +68,10 @@ function page(title: string, translationKey?: string): string {
     },
     tagName: "main",
     title,
-  });
+  };
+  return JSON.stringify(
+    translationKey === undefined ? body : { $translationKey: translationKey, ...body },
+  );
 }
 
 /**
@@ -79,7 +81,7 @@ function page(title: string, translationKey?: string): string {
  * boolean as the attribute's presence — bare when true, absent when false (compiler spec §8). So
  * the marker this asserts is `<a data-current>` against `<a>`, never `data-current="false"`.
  */
-function switcher(source: string): Record<string, { current: boolean; dir: string; url: string }> {
+function switcher(source: string) {
   const out: Record<string, { current: boolean; dir: string; url: string }> = {};
   for (const tag of source.match(/<a\b[^>]*>/g) ?? []) {
     const attr = (name: string) => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1] ?? "";
@@ -95,7 +97,7 @@ function switcher(source: string): Record<string, { current: boolean; dir: strin
 }
 
 /** The text each switcher link rendered, as `hreflang → label`. */
-function labels(source: string): Record<string, string> {
+function labels(source: string) {
   const out: Record<string, string> = {};
   for (const [, tag, text] of source.matchAll(/<a\b([^>]*)>([^<]*)</g)) {
     const lang = /hreflang="([^"]+)"/.exec(tag ?? "")?.[1];
@@ -107,7 +109,7 @@ function labels(source: string): Record<string, string> {
 }
 
 /** Every `<link rel="alternate" hreflang>` in a page, as `hreflang → href`. */
-function alternates(source: string): Record<string, string> {
+function alternates(source: string) {
   const out: Record<string, string> = {};
   for (const tag of source.match(/<link[^>]*rel="alternate"[^>]*>/g) ?? []) {
     const lang = /hreflang="([^"]+)"/.exec(tag)?.[1];
@@ -148,16 +150,16 @@ beforeAll(async () => {
    * A collection whose French URLs are translated too: the directory differs (`carnet` vs `notes`)
    * and only a declared key naming the route's own parameter can pair the two.
    */
-  const notes = JSON.stringify({
+  const note = {
     $paths: { param: "slug", values: ["first", "second"] },
     children: [{ tagName: "h1", textContent: "${$page.params.slug}" }],
     tagName: "article",
     title: "Note",
-  });
-  write("pages/notes/[slug].json", notes);
+  };
+  write("pages/notes/[slug].json", JSON.stringify(note));
   write(
     "pages/fr-ca/carnet/[slug].json",
-    JSON.stringify({ ...(JSON.parse(notes) as object), $translationKey: "notes/${slug}" }),
+    JSON.stringify({ ...note, $translationKey: "notes/${slug}" }),
   );
 
   await buildSite(root);
@@ -282,8 +284,9 @@ describe("the page's own language", () => {
   it("reaches <html lang>, and dir only where it is not the default", () => {
     expect(html("fr-ca/a-propos")).toContain('lang="fr-CA"');
     expect(html("ar")).toMatch(/<html[^>]*dir="rtl"[^>]*lang="ar"/);
-    expect(html("about")).toContain('lang="en"');
-    expect(html("about")).not.toContain('dir="ltr"><head');
+    const about = html("about");
+    expect(about).toContain('lang="en"');
+    expect(about).not.toContain('dir="ltr"><head');
   });
 
   /*

@@ -33,6 +33,9 @@ import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext, makeContext } from "../src/commands/context";
 import { setActiveRegistry } from "../src/commands/active-registry";
 
+import type { FormatFrontmatter } from "../src/format/format-host";
+import type { ProjectConfig } from "@jxsuite/schema/types";
+
 const { closeSeoModal, openSeoModal, renderSeoModal, seoCommands } =
   await import("../src/panels/seo-modal");
 
@@ -53,10 +56,10 @@ function seoModalOpen(): boolean {
   return dialog() !== null;
 }
 
-// Panel scheduler coalesces via requestAnimationFrame; make it synchronous-ish.
-(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
-  cb: FrameRequestCallback,
-) => setTimeout(() => cb(0), 0) as unknown as number;
+// Panel scheduler coalesces via requestAnimationFrame; make it synchronous-ish. The handle is the
+// Timer's numeric id, as a browser's is.
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number =>
+  Number(setTimeout(() => cb(0), 0));
 
 /** The surface's own element. It mounts into a dialog-layer slot, not into a panel. */
 function host(): HTMLElement {
@@ -68,7 +71,7 @@ function host(): HTMLElement {
 }
 
 function d<T extends Element = HTMLElement>(sel: string): T | null {
-  return host().querySelector<T>(sel) as T | null;
+  return host().querySelector<T>(sel);
 }
 
 function all<T extends Element = HTMLElement>(sel: string): T[] {
@@ -98,7 +101,7 @@ const FM_SCHEMA = {
 };
 
 function setupContentTab(
-  frontmatter: Record<string, unknown>,
+  frontmatter: FormatFrontmatter,
   opts: { documentPath?: string; id?: string } = {},
 ) {
   resetStudioState({
@@ -108,7 +111,7 @@ function setupContentTab(
   const tab = resetWorkspaceWithTab(undefined, {
     documentPath: opts.documentPath ?? "posts/hello.json",
     id: opts.id ?? "seo-fm-tab",
-  }) as any;
+  });
   tab.doc.mode = "content";
   tab.doc.content.frontmatter = frontmatter;
   return tab;
@@ -345,15 +348,26 @@ function seoRow(key: string): HTMLElement {
   return el;
 }
 
+/** The provenance chip of a row whose donor can be opened, which makes it a real button. */
+function chipButton(key: string): HTMLButtonElement {
+  const chip = seoRow(key).querySelector('[part="chip"]');
+  if (!(chip instanceof HTMLButtonElement)) {
+    throw new Error(`the ${key} chip is not a button`);
+  }
+  return chip;
+}
+
+/** The arguments `settings.open` declares: the section to open on. */
+interface SettingsOpenArgs {
+  section?: string;
+}
+
 function seoWarningIds(): string[] {
   return all("[data-seo-warning]").map((el) => el.dataset.seoWarning!);
 }
 
 /** A site page whose layout and project config both contribute head material. */
-function setupSeoPage(
-  frontmatter: Record<string, unknown>,
-  config: Record<string, unknown> = {},
-): void {
+function setupSeoPage(frontmatter: FormatFrontmatter, config: ProjectConfig = {}): void {
   installMockPlatform(
     {},
     {
@@ -377,7 +391,7 @@ function setupSeoPage(
   const tab = resetWorkspaceWithTab(undefined, {
     documentPath: "pages/about.json",
     id: "seo-tab",
-  }) as any;
+  });
   tab.doc.mode = "content";
   tab.doc.content.frontmatter = frontmatter;
 }
@@ -391,7 +405,7 @@ describe("the surface previews the merged head", () => {
     expect(serp.getAttribute("aria-label")).toBe("Search result preview");
     expect(serp.querySelector('[part="serp-url"]')?.textContent).toBe("acme.test › about");
     expect(serp.querySelector('[part="serp-title"]')?.textContent).toBe("About Us");
-    expect(serp.querySelector('[part="serp-desc"]')?.textContent?.trim()).toBe(
+    expect(serp.querySelector('[part="serp-desc"]')?.textContent.trim()).toBe(
       "the layout's summary",
     );
   });
@@ -441,7 +455,7 @@ describe("the resolved-field list marks where each value came from", () => {
 
     const description = seoRow("description").querySelector<HTMLElement>('[part="chip"]')!;
     expect(description.dataset.state).toBe("inherited");
-    expect(description.textContent?.trim()).toBe("from Base");
+    expect(description.textContent.trim()).toBe("from Base");
     // The layout donor has nowhere to go either, so it is not drawn as something pressable.
     expect(description.tagName).toBe("SPAN");
   });
@@ -455,7 +469,7 @@ describe("the resolved-field list marks where each value came from", () => {
   });
 
   test("a title inherited from the project name jumps to the setting that defines it", async () => {
-    const ran: { id: string; args: unknown }[] = [];
+    const ran: { id: string; args: SettingsOpenArgs }[] = [];
     const registry = createCommandRegistry({ getContext: () => emptyContext() });
     registry.register({
       id: "settings.open",
@@ -463,7 +477,7 @@ describe("the resolved-field list marks where each value came from", () => {
       category: "Project",
       level: "application",
       args: { properties: { section: { type: "string" } }, required: [], type: "object" },
-      run: (_c, args: unknown) => {
+      run: (_c, args: SettingsOpenArgs) => {
         ran.push({ args, id: "settings.open" });
       },
     });
@@ -472,16 +486,16 @@ describe("the resolved-field list marks where each value came from", () => {
     setupSeoPage({ subtitle: "no title here" });
     await mountAndFlush();
     await flush(4);
-    const chip = seoRow("title").querySelector('[part="chip"]') as HTMLButtonElement;
+    const chip = chipButton("title");
     expect(chip.tagName).toBe("BUTTON");
-    expect(chip.textContent?.trim()).toBe("from Site name");
+    expect(chip.textContent.trim()).toBe("from Site name");
     click(chip);
     expect(ran).toEqual([{ args: { section: "overview" }, id: "settings.open" }]);
     setActiveRegistry(null);
   });
 
   test("a value from the site's own $head jumps to Site head instead", async () => {
-    const ran: unknown[] = [];
+    const ran: SettingsOpenArgs[] = [];
     const registry = createCommandRegistry({ getContext: () => emptyContext() });
     registry.register({
       id: "settings.open",
@@ -489,7 +503,7 @@ describe("the resolved-field list marks where each value came from", () => {
       category: "Project",
       level: "application",
       args: { properties: { section: { type: "string" } }, required: [], type: "object" },
-      run: (_c, args: unknown) => {
+      run: (_c, args: SettingsOpenArgs) => {
         ran.push(args);
       },
     });
@@ -503,8 +517,8 @@ describe("the resolved-field list marks where each value came from", () => {
     );
     await mountAndFlush();
     await flush(4);
-    const chip = seoRow("og:image").querySelector('[part="chip"]') as HTMLButtonElement;
-    expect(chip.textContent?.trim()).toBe("from Site head");
+    const chip = chipButton("og:image");
+    expect(chip.textContent.trim()).toBe("from Site head");
     click(chip);
     expect(ran).toEqual([{ section: "head" }]);
     setActiveRegistry(null);
@@ -515,9 +529,9 @@ describe("the resolved-field list marks where each value came from", () => {
     setupSeoPage({ subtitle: "no title here" });
     await mountAndFlush();
     await flush(4);
-    const chip = seoRow("title").querySelector('[part="chip"]') as HTMLButtonElement;
+    const chip = chipButton("title");
     click(chip);
-    expect(chip.textContent?.trim()).toBe("from Site name");
+    expect(chip.textContent.trim()).toBe("from Site name");
   });
 });
 
@@ -528,7 +542,10 @@ describe("the two realms a document can keep its head material in", () => {
     // Surface has to pick the right one from the tab it was opened over rather than from the
     // Focused pane.
     setupContentTab({ title: "Hello" });
-    const tab = activeTab.value as any;
+    const tab = activeTab.value;
+    if (!tab) {
+      throw new Error("setupContentTab opened no tab");
+    }
     tab.doc.mode = "component";
     tab.doc.document.title = "Root Title";
     await mountAndFlush();
@@ -549,7 +566,7 @@ describe("the two realms a document can keep its head material in", () => {
     expect(seoRow("title").textContent).toContain("Jx Site");
     const chip = seoRow("title").querySelector<HTMLElement>('[part="chip"]')!;
     expect(chip.dataset.state).toBe("inherited");
-    expect(chip.textContent?.trim()).toBe("from the build");
+    expect(chip.textContent.trim()).toBe("from the build");
     // Inherited from the build is not a setting you can open: the chip has nowhere to go.
     expect(chip.tagName).toBe("SPAN");
   });
@@ -573,7 +590,7 @@ describe("counters and warnings, and the absence of a score", () => {
     expect(seoRow("title").querySelector('[part="count"][data-over]')?.textContent).toBe("61/60");
     expect(seoWarningIds()).toContain("title-long");
     // The prohibition, asserted: no element in the surface carries a total or a grade.
-    const text = host().textContent ?? "";
+    const text = host().textContent;
     expect(text).not.toMatch(/\b\d{1,3}\s*\/\s*100\b/);
     expect(text.toLowerCase()).not.toContain("score");
   });
@@ -611,7 +628,7 @@ describe("counters and warnings, and the absence of a score", () => {
     await mountAndFlush();
     await flush(4);
     expect(d('[part="warnings"]')).toBeNull();
-    expect(d('[part="empty"]')?.textContent?.trim()).toBe(
+    expect(d('[part="empty"]')?.textContent.trim()).toBe(
       "Nothing to flag — every previewed field resolves to a value.",
     );
   });

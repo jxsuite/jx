@@ -22,9 +22,10 @@ export function studioDir(): string {
     // Packaged electrobun: bun runs with cwd under Resources/app, views land at app/views/studio.
     resolve("../Resources/app/views/studio"),
     resolve("views/studio"),
-  ].filter(Boolean) as string[];
+  ];
   for (const dir of probed) {
-    if (existsSync(resolve(dir, "canvas.html"))) {
+    // An unset or empty JX_STUDIO_ASSETS is no candidate at all, not the cwd.
+    if (dir && existsSync(resolve(dir, "canvas.html"))) {
       return dir;
     }
   }

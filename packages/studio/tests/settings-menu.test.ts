@@ -16,7 +16,8 @@ import { flush, mountOverlayLayers, pointer, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import type { CommandContext } from "../src/commands/context";
-import type { CommandRegistry } from "../src/commands/registry";
+import type { Command, CommandRegistry } from "../src/commands/registry";
+import type { CommandArgValues } from "../src/commands/command-args";
 
 const overlayHost = document.createElement("div");
 document.body.append(overlayHost);
@@ -42,7 +43,10 @@ initLayers();
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 /** Every argument every run in a case received, in order. */
-let ran: { id: string; args: unknown }[] = [];
+let ran: { id: string; args: CommandArgValues }[] = [];
+
+/** What a fixture record may set beyond the four members every record is built with. */
+type RecordExtras = Partial<Omit<Command<CommandArgValues>, "id" | "title" | "level" | "run">>;
 
 interface RegistryOpts {
   /** Whether a project is open — the gate both project records read. */
@@ -64,27 +68,34 @@ function installRegistry(opts: RegistryOpts = {}): CommandRegistry {
     }),
     mac: true,
   });
-  const record = (id: string, title: string, level: "application" | "project", extra = {}) => ({
+  const record = (
+    id: string,
+    title: string,
+    level: "application" | "project",
+    extra: RecordExtras = {},
+  ): Command<CommandArgValues> => ({
     id,
     title,
-    category: "Project" as const,
+    category: "Project",
     level,
-    menus: [SETTINGS_MENU_PLACEMENT, "palette"] as const,
-    run: (_ctx: CommandContext, args: unknown) => {
+    menus: [SETTINGS_MENU_PLACEMENT, "palette"],
+    run: (_ctx: CommandContext, args: CommandArgValues) => {
       ran.push({ args, id });
       return opts.reject ? Promise.reject(new RangeError(`no such section for ${id}`)) : undefined;
     },
     ...extra,
   });
+  const preferencesExtra: RecordExtras = {
+    category: "View",
+    keybinding: "mod+,",
+    group: "7_settings",
+  };
+  if (opts.refusePreferences) {
+    preferencesExtra.enablement = () => false;
+    preferencesExtra.requires = "a reason of its own";
+  }
   registry.registerAll([
-    record("app.preferences", "Preferences…", "application", {
-      category: "View",
-      keybinding: "mod+,",
-      group: "7_settings",
-      ...(opts.refusePreferences
-        ? { enablement: () => false, requires: "a reason of its own" }
-        : {}),
-    }),
+    record("app.preferences", "Preferences…", "application", preferencesExtra),
     record("settings.open", "Open Project Settings", "project", {
       keybinding: "mod+shift+,",
       group: "7_settings",
@@ -103,7 +114,7 @@ function installRegistry(opts: RegistryOpts = {}): CommandRegistry {
     ...(opts.contributed
       ? [record("ext.configure", "Configure Extension", "project", { group: "8_ext" })]
       : []),
-  ] as never);
+  ]);
   setActiveRegistry(registry);
   return registry;
 }
@@ -139,7 +150,7 @@ const rowFor = (id: string) => rootItems().find((el) => el.dataset.commandId ===
 /** The row's own name — its label part, with the chord and reason parts left out. */
 const titleOf = (el: HTMLElement) => el.querySelector('[part="label"]')!.textContent!.trim();
 /** A chord or a reason the surface left out prints nothing, exactly as it shows nothing. */
-const shownText = (el: Element | null) => el?.textContent?.trim() || undefined;
+const shownText = (el: Element | null) => el?.textContent.trim() || undefined;
 const chordOf = (el: HTMLElement) => shownText(el.querySelector("kbd"));
 const reasonOf = (el: HTMLElement) => shownText(el.querySelector('[slot="description"]'));
 const isDisabled = (el: HTMLElement) => el.getAttribute("aria-disabled") === "true";
@@ -153,9 +164,16 @@ function menuKey(key: string): KeyboardEvent {
   return event;
 }
 
+/** Which row has focus: the command it runs, and the section it opens when it is a section row. */
+interface FocusedRow {
+  commandId?: string;
+  sectionKey?: string;
+}
+
 /** The focused row, as `{ commandId, sectionKey }`. */
-function focusedKey(): { commandId?: string; sectionKey?: string } {
-  const id = (document.activeElement as HTMLElement | null)?.dataset?.commandId;
+function focusedKey(): FocusedRow {
+  const active = document.activeElement;
+  const id = active instanceof HTMLElement ? active.dataset.commandId : undefined;
   if (!id) {
     return {};
   }
@@ -247,7 +265,7 @@ describe("rendering", () => {
       keybinding: "delete",
       menus: [SETTINGS_MENU_PLACEMENT],
       run: () => {},
-    } as never);
+    });
     setActiveRegistry(registry);
     await open();
     expect(chordOf(rowFor("app.preferences"))).toBeUndefined();
@@ -351,9 +369,9 @@ describe("activation", () => {
     // Between the render and the click — a real race with the section-registry repaint.
     const registry = installRegistry();
     await open();
-    registry.run = (() => {
+    registry.run = () => {
       throw new RangeError("gate closed under the pointer");
-    }) as typeof registry.run;
+    };
     pointer(rowFor("settings.open"), "click");
     await flush();
     expect([...toasts, ...problems].map((n) => n.message)).toContain(
@@ -494,7 +512,7 @@ describe("the submenu", () => {
     expect(subKeys()).toEqual(["overview", "contexts"]);
     // The caret cannot be left on a row that is gone.
     expect(subItems()).toHaveLength(2);
-    expect(subItems().includes(document.activeElement as HTMLElement)).toBe(true);
+    expect(subItems().some((el) => el === document.activeElement)).toBe(true);
   });
 
   test("the menu closing unsubscribes — a later registration touches nothing", async () => {
@@ -697,7 +715,7 @@ describe("dismissal", () => {
       level: "application",
       menus: ["palette"],
       run: () => {},
-    } as never);
+    });
     setActiveRegistry(registry);
     await open();
     expect(isSettingsMenuOpen()).toBe(false);
@@ -814,16 +832,10 @@ describe("geometry", () => {
     const original = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
       if (this.tagName.toLowerCase() === "jx-menu") {
+        /* SAFETY: the tag is `jx-menu`, and the kit's `jx-menu` document declares `x` and `y` as
+           number state defaulting to 0, so every rendered one carries both. */
         const menu = this as MenuEl;
-        return {
-          ...size,
-          bottom: (menu.y ?? 0) + size.height,
-          left: menu.x ?? 0,
-          right: (menu.x ?? 0) + size.width,
-          top: menu.y ?? 0,
-          x: menu.x ?? 0,
-          y: menu.y ?? 0,
-        } as DOMRect;
+        return new DOMRect(menu.x, menu.y, size.width, size.height);
       }
       return original.call(this);
     };

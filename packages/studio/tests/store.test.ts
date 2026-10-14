@@ -106,7 +106,7 @@ describe("render orchestration", () => {
 describe("debouncedStyleCommit", () => {
   test("creates a debounced function", () => {
     const fn = debouncedStyleCommit("test-prop", 100, () => {});
-    expect(typeof fn).toBe("function");
+    expect(fn).toBeFunction();
   });
 
   test("cancelStyleDebounce does not throw for unknown prop", () => {
@@ -140,7 +140,7 @@ describe("rendersInFlight", () => {
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    registerRenderer("count-async", (() => pending) as () => void);
+    registerRenderer("count-async", () => pending);
     try {
       render();
       expect(rendersInFlight()).toBe(1);
@@ -166,7 +166,7 @@ describe("rendersInFlight", () => {
 
   test("a renderer whose promise REJECTS is released too", async () => {
     const rejected = Promise.reject(new Error("async boom"));
-    registerRenderer("count-rejects", (() => rejected) as () => void);
+    registerRenderer("count-rejects", () => rejected);
     try {
       renderOnly("count-rejects");
       expect(rendersInFlight()).toBe(1);

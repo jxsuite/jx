@@ -23,10 +23,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import jumpBarDoc from "./jump-bar.json";
-import type { JxDocument } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
-registerSurface("jump-bar", jumpBarDoc as unknown as JxDocument);
+registerSurface("jump-bar", jumpBarDoc);
 
 /**
  * One step of the address, as the document reads it.
@@ -35,7 +34,7 @@ registerSurface("jump-bar", jumpBarDoc as unknown as JxDocument);
  * and a `$switch` chooses on one: a step that omitted `title` would leave the readout case reading
  * an absent path.
  */
-export interface ProjectedStep extends Record<string, unknown> {
+export interface ProjectedStep {
   /** Unique within one bar: the repeater's key, and the argument `run` and `choose` receive. */
   key: string;
   /** `project` | `file` | `editor` | `node` — stamped so a test names a step without its text. */
@@ -73,7 +72,7 @@ export interface JumpBarSurface {
 }
 
 /** The scope `jump-bar.json` reads. */
-interface JumpBarScope extends Record<string, unknown>, JumpBarActions {
+interface JumpBarScope extends JumpBarActions {
   region: string;
   segments: ProjectedStep[];
   empty: boolean;
@@ -95,12 +94,12 @@ export function mountJumpBarSurface(
   region: string,
   actions: JumpBarActions,
 ): JumpBarSurface {
-  const scope = reactive<JumpBarScope>({
+  const scope: JumpBarScope = reactive<JumpBarScope>({
     ...actions,
     empty: true,
     region,
     segments: [],
-  }) as JumpBarScope;
+  });
 
   host.replaceChildren();
   let mounted: SurfaceHandle | null = null;

@@ -8,13 +8,78 @@
  */
 import { flush, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNodeObject } from "@jxsuite/schema/guards";
+import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { ComponentEntry } from "../src/files/components";
 
-type AnyRec = Record<string, any>;
+/** A drag payload's data, as the Outline rows, the palette cards and the mocked hitbox write it. */
+interface DragData {
+  path?: JxPath;
+  type?: string;
+  fragment?: JxMutableNode;
+  __instr?: { type: string };
+  __opts?: HitboxOptions;
+}
 
-const draggables: AnyRec[] = [];
-const dropTargets: AnyRec[] = [];
-const monitors: AnyRec[] = [];
+/** The tree-item hitbox options a row's `getData` hands `attachInstruction`, as far as asserted. */
+interface HitboxOptions {
+  mode: string;
+  block: string[];
+  currentLevel: number;
+  indentPerLevel: number;
+}
+
+/** The synthetic payloads the suite hands the captured callbacks. */
+interface DragArgs {
+  element?: Element | undefined;
+  input?: { clientX?: number; clientY?: number };
+  self?: { data: DragData };
+  source?: { data: DragData; element?: Element | undefined };
+  location?: { current: { dropTargets: { data: DragData }[] } };
+}
+
+/** Stamped by the mocked registration's cleanup each time it runs. */
+interface Releasable {
+  __released?: number;
+}
+
+/** A `draggable()` config. Only the Outline's rows supply the drag lifecycle callbacks. */
+interface DraggableRegistration extends Releasable {
+  element: Element;
+  getInitialData: () => DragData;
+  canDrag?: (args: DragArgs) => boolean;
+  onDragStart?: () => void;
+  onDrop?: () => void;
+}
+
+/** A `dropTargetForElements()` config, which only the Outline's rows register. */
+interface DropTargetRegistration extends Releasable {
+  element: Element;
+  canDrop: (args: DragArgs) => boolean;
+  getData: (args: DragArgs) => DragData;
+  onDragEnter: (args: DragArgs) => void;
+  onDrag: (args: DragArgs) => void;
+  onDrop: () => void;
+}
+
+/** The Outline's single `monitorForElements()` config. */
+interface MonitorRegistration extends Releasable {
+  onDrop: (args: DragArgs) => void;
+  onDropTargetChange: (args: DragArgs) => void;
+}
+
+/** One row's dataset, as `makeRow` installs it in place of happy-dom's proxy. */
+interface RowDataset {
+  dndDepth: string;
+  dndRow: string;
+  value: string;
+  dndVoid?: string;
+  dndExpanded?: string;
+}
+
+const draggables: DraggableRegistration[] = [];
+const dropTargets: DropTargetRegistration[] = [];
+const monitors: MonitorRegistration[] = [];
 
 /*
  * Each registration's cleanup STAMPS the config it belongs to, so "was this particular registration
@@ -23,19 +88,19 @@ const monitors: AnyRec[] = [];
  * registrations could not tell a re-registration from a duplicate one.
  */
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: (cfg: AnyRec) => {
+  draggable: (cfg: DraggableRegistration) => {
     draggables.push(cfg);
     return () => {
       cfg.__released = (cfg.__released ?? 0) + 1;
     };
   },
-  dropTargetForElements: (cfg: AnyRec) => {
+  dropTargetForElements: (cfg: DropTargetRegistration) => {
     dropTargets.push(cfg);
     return () => {
       cfg.__released = (cfg.__released ?? 0) + 1;
     };
   },
-  monitorForElements: (cfg: AnyRec) => {
+  monitorForElements: (cfg: MonitorRegistration) => {
     monitors.push(cfg);
     return () => {
       cfg.__released = (cfg.__released ?? 0) + 1;
@@ -54,13 +119,13 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/combine", () => ({
 }));
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item", () => ({
-  attachInstruction: (data: AnyRec, opts: AnyRec) => ({ ...data, __opts: opts }),
-  extractInstruction: (data: AnyRec) => data.__instr ?? null,
+  attachInstruction: (data: DragData, opts: HitboxOptions) => ({ ...data, __opts: opts }),
+  extractInstruction: (data: DragData) => data.__instr ?? null,
 }));
 
 let previewRenders = 0;
 void mock.module("../src/panels/component-preview", () => ({
-  renderComponentPreview: async (comp: AnyRec) => {
+  renderComponentPreview: async (comp: ComponentEntry) => {
     previewRenders += 1;
     const el = document.createElement(comp.tagName);
     el.textContent = "preview";
@@ -75,9 +140,10 @@ const { activeTab } = await import("../src/workspace/workspace");
 const dnd = await import("../src/panels/dnd");
 
 // Shell refs: dnd reads store.leftPanel which initShellRefs populates from #left-panel.
-document.body.innerHTML = `<div id="left-panel"></div>`;
+const leftPanel = document.createElement("div");
+leftPanel.id = "left-panel";
+document.body.replaceChildren(leftPanel);
 initShellRefs();
-const leftPanel = document.querySelector("#left-panel") as HTMLElement;
 
 let renderedPanels: string[] = [];
 registerRenderer("leftPanel", () => renderedPanels.push("leftPanel"));
@@ -109,7 +175,7 @@ function makeRow(path: string, depth: number, flags: { void?: boolean; expanded?
      now, so the island addresses them by the attribute the element writes rather than by a second
      one the document would have had to keep in step. */
   row.dataset.value = path;
-  const dataset: AnyRec = { dndDepth: String(depth), dndRow: "", value: path };
+  const dataset: RowDataset = { dndDepth: String(depth), dndRow: "", value: path };
   if (flags.void) {
     dataset.dndVoid = "";
   }
@@ -140,6 +206,15 @@ async function setupLayers() {
   await raf();
   await flush();
   return { container, rows };
+}
+
+/** The element children of `node`; the fixtures here hold no text or repeater children. */
+function elementChildren(node: JxMutableNode | undefined): JxMutableNode[] {
+  const children = node?.children;
+  if (!Array.isArray(children) || !children.every((child) => isNodeObject(child))) {
+    throw new Error("expected an array of element children");
+  }
+  return children;
 }
 
 const dragFor = (el: Element) => draggables.find((d) => d.element === el)!;
@@ -250,37 +325,37 @@ describe("registerLayersDnD — registration", () => {
     rows[0]!.append(actions);
     const orig = document.elementFromPoint;
     try {
-      (document as AnyRec).elementFromPoint = () => button;
+      document.elementFromPoint = () => button;
       expect(
-        dragFor(rows[0]!).canDrag({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
+        dragFor(rows[0]!).canDrag!({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
       ).toBe(false);
-      (document as AnyRec).elementFromPoint = () => rows[0];
+      document.elementFromPoint = () => rows[0] ?? null;
       expect(
-        dragFor(rows[0]!).canDrag({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
+        dragFor(rows[0]!).canDrag!({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
       ).toBe(true);
     } finally {
-      (document as AnyRec).elementFromPoint = orig;
+      document.elementFromPoint = orig;
     }
   });
 
   test("onDragStart marks the row dragging, records its height, and hides descendants when expanded", async () => {
     const { rows } = await setupLayers();
     Object.defineProperty(rows[0], "offsetHeight", { value: 24 });
-    dragFor(rows[0]!).onDragStart();
+    dragFor(rows[0]!).onDragStart!();
     expect(rows[0]!.dataset.dragging).toBe("");
     expect(view.layerDragSourceHeight).toBe(24);
     expect(rows[1]!.style.display).toBe("none"); // Descendant of children/0
     expect(rows[2]!.style.display).toBe("");
-    dragFor(rows[0]!).onDrop();
+    dragFor(rows[0]!).onDrop!();
     expect(rows[0]!.dataset.dragging).toBeUndefined();
     expect(renderedPanels).toEqual(["leftPanel"]); // Expanded rows trigger a re-render
   });
 
   test("onDragStart/onDrop on a collapsed row neither hides rows nor re-renders", async () => {
     const { rows } = await setupLayers();
-    dragFor(rows[3]!).onDragStart();
+    dragFor(rows[3]!).onDragStart!();
     expect(rows[1]!.style.display).toBe("");
-    dragFor(rows[3]!).onDrop();
+    dragFor(rows[3]!).onDrop!();
     expect(renderedPanels).toEqual([]);
   });
 
@@ -296,17 +371,17 @@ describe("registerLayersDnD — registration", () => {
     const { rows } = await setupLayers();
     const expanded = dropFor(rows[0]!).getData({ element: rows[0], input: {} });
     expect(expanded.path).toEqual(["children", 0]);
-    expect(expanded.__opts.mode).toBe("expanded");
-    expect(expanded.__opts.block).toEqual([]);
-    expect(expanded.__opts.currentLevel).toBe(0);
-    expect(expanded.__opts.indentPerLevel).toBe(16);
+    expect(expanded.__opts?.mode).toBe("expanded");
+    expect(expanded.__opts?.block).toEqual([]);
+    expect(expanded.__opts?.currentLevel).toBe(0);
+    expect(expanded.__opts?.indentPerLevel).toBe(16);
 
     const voidRow = dropFor(rows[2]!).getData({ element: rows[2], input: {} });
-    expect(voidRow.__opts.block).toEqual(["make-child"]);
-    expect(voidRow.__opts.mode).toBe("standard");
+    expect(voidRow.__opts?.block).toEqual(["make-child"]);
+    expect(voidRow.__opts?.mode).toBe("standard");
 
     const nested = dropFor(rows[1]!).getData({ element: rows[1], input: {} });
-    expect(nested.__opts.currentLevel).toBe(1);
+    expect(nested.__opts?.currentLevel).toBe(1);
   });
 });
 
@@ -433,11 +508,8 @@ describe("registerLayersDnD — monitor", () => {
       // Rows[0] carries dndExpanded in its (overridden) dataset
       source: { data: { path: ["children", 2], type: "tree-node" }, element: rows[0] },
     });
-    const [section] = tab.doc.document.children as JxMutableNode[];
-    expect((section!.children as JxMutableNode[]).map((c) => c.textContent)).toEqual([
-      "title",
-      "second",
-    ]);
+    const [section] = elementChildren(tab.doc.document);
+    expect(elementChildren(section).map((c) => c.textContent)).toEqual(["title", "second"]);
     expect(view._layersCollapsed?.has("children/0/children/1")).toBe(true);
   });
 
@@ -454,7 +526,7 @@ describe("registerLayersDnD — monitor", () => {
       source: { data: { path: ["children", 2], type: "tree-node" }, element: rows[3] },
     });
     expect(view._layersCollapsed).toBeNull();
-    expect((tab.doc.document.children as JxMutableNode[])[0]!.textContent).toBe("second");
+    expect(elementChildren(tab.doc.document)[0]!.textContent).toBe("second");
   });
 
   test("onDropTargetChange clears the gap only when over a non-tree target", async () => {
@@ -499,7 +571,7 @@ describe("registerComponentsDnD", () => {
     componentRegistry.push({
       props: [{ name: "title", default: "Hello" }, { name: "count" }],
       tagName: "my-card",
-    } as never);
+    });
     dnd.registerComponentsDnD();
     await raf();
     await flush();
@@ -530,7 +602,7 @@ describe("registerComponentsDnD", () => {
     const empty = document.createElement("div");
     empty.dataset.componentTag = "";
     leftPanel.querySelector(".components-section")!.append(empty);
-    componentRegistry.push({ tagName: "my-card" } as never);
+    componentRegistry.push({ tagName: "my-card" });
     dnd.registerComponentsDnD();
     await raf();
     await flush();
@@ -588,7 +660,7 @@ describe("applyDropInstruction — uncovered branches", () => {
       { fragment: { tagName: "hr" }, type: "block" },
       ["children", 1],
     );
-    const children = tab.doc.document.children as JxMutableNode[];
+    const children = elementChildren(tab.doc.document);
     expect(children.map((c) => c.tagName)).toEqual(["section", "p", "hr", "p"]);
   });
 
@@ -617,7 +689,7 @@ describe("applyDropInstruction — uncovered branches", () => {
       package: "@acme/ui",
       source: "npm",
       tagName: "x-button",
-    } as never);
+    });
     const src = { fragment: { tagName: "x-button" }, type: "block" };
     dnd.applyDropInstruction(activeTab.value, { type: "make-child" }, src, ["children", 0]);
     expect(tab.doc.document.$elements).toEqual(["@acme/ui/button.js"]);
@@ -627,7 +699,7 @@ describe("applyDropInstruction — uncovered branches", () => {
 
   test("npm component without modulePath imports the bare package", () => {
     const tab = resetWorkspaceWithTab(makeDoc());
-    componentRegistry.push({ package: "@acme/ui", source: "npm", tagName: "x-chip" } as never);
+    componentRegistry.push({ package: "@acme/ui", source: "npm", tagName: "x-chip" });
     dnd.applyDropInstruction(
       activeTab.value,
       { type: "reorder-above" },
@@ -639,7 +711,7 @@ describe("applyDropInstruction — uncovered branches", () => {
 
   test("npm component without a package is left unimported", () => {
     const tab = resetWorkspaceWithTab(makeDoc());
-    componentRegistry.push({ source: "npm", tagName: "x-naked" } as never);
+    componentRegistry.push({ source: "npm", tagName: "x-naked" });
     dnd.applyDropInstruction(
       activeTab.value,
       { type: "make-child" },
@@ -651,7 +723,7 @@ describe("applyDropInstruction — uncovered branches", () => {
 
   test("local component drop imports a relative $ref", () => {
     const tab = resetWorkspaceWithTab(makeDoc(), { documentPath: "pages/index.json" });
-    componentRegistry.push({ path: "components/card.json", tagName: "my-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     dnd.applyDropInstruction(
       activeTab.value,
       { type: "make-child" },
@@ -667,7 +739,7 @@ describe("applyDropInstruction — uncovered branches", () => {
     // Which is the only way this test says anything about deduplication.
     doc.$elements = [{ $ref: "../components/card.json" }];
     const tab = resetWorkspaceWithTab(doc, { documentPath: "pages/index.json" });
-    componentRegistry.push({ path: "components/card.json", tagName: "my-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     dnd.applyDropInstruction(
       activeTab.value,
       { type: "make-child" },
@@ -688,7 +760,7 @@ describe("applyDropInstruction — uncovered branches", () => {
     const doc = makeDoc();
     doc.$elements = [{ $ref: "../shared/card.json" }];
     const tab = resetWorkspaceWithTab(doc, { documentPath: "pages/index.json" });
-    componentRegistry.push({ path: "components/card.json", tagName: "my-card" } as never);
+    componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     dnd.applyDropInstruction(
       activeTab.value,
       { type: "make-child" },
@@ -703,7 +775,7 @@ describe("applyDropInstruction — uncovered branches", () => {
 
   test("local component without a path is not imported", () => {
     const tab = resetWorkspaceWithTab(makeDoc());
-    componentRegistry.push({ tagName: "my-pathless" } as never);
+    componentRegistry.push({ tagName: "my-pathless" });
     dnd.applyDropInstruction(
       activeTab.value,
       { type: "make-child" },

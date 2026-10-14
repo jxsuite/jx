@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonObject } from "../types";
+
 const { validateDocument } = await import("../src/schema");
 
 /**
@@ -13,7 +15,7 @@ const { validateDocument } = await import("../src/schema");
  * way, and they must: a schema admitting an array the builder drops validates a document that
  * silently renders nothing.
  */
-const doc = (style: Record<string, unknown>) => ({ style, tagName: "div" });
+const doc = (style: JsonObject) => ({ style, tagName: "div" });
 
 describe("a declaration at-rule may hold several blocks", () => {
   test("three faces of one family, which is the case it exists for", async () => {
@@ -31,7 +33,7 @@ describe("a declaration at-rule may hold several blocks", () => {
   });
 
   /** Whether a style block validates as a document. */
-  const accepts = async (style: Record<string, unknown>): Promise<boolean> => {
+  const accepts = async (style: JsonObject): Promise<boolean> => {
     const result = await validateDocument(doc(style));
     return result.valid;
   };
@@ -58,7 +60,7 @@ describe("a declaration at-rule may hold several blocks", () => {
 });
 
 describe("a style block may document itself", () => {
-  const accepts = async (style: Record<string, unknown>): Promise<boolean> => {
+  const accepts = async (style: JsonObject): Promise<boolean> => {
     const result = await validateDocument(doc(style));
     return result.valid;
   };

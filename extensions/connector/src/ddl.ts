@@ -11,7 +11,7 @@
 
 import { sql } from "kysely";
 import { idDataType, planTable } from "./columns.ts";
-import type { ColumnDataType, CreateTableBuilder, Kysely } from "kysely";
+import type { CreateTableBuilder, Kysely } from "kysely";
 import type { SqlDialectKind, TablePlan } from "./columns.ts";
 import type { DynamicDatabase } from "./query.ts";
 import type { DeploySchemaResult, TableDef } from "./types.ts";
@@ -27,7 +27,7 @@ const SYSTEM_COLUMNS = new Set(["id", "created_at", "updated_at"]);
 
 interface Executable {
   compile: () => { sql: string };
-  execute: () => Promise<unknown>;
+  execute: () => Promise<void>;
 }
 
 /**
@@ -77,9 +77,7 @@ export async function syncTables(
       for (const col of plan.columns) {
         const current = byName.get(col.column);
         if (!current) {
-          await run(
-            db.schema.alterTable(plan.table).addColumn(col.column, col.dataType as ColumnDataType),
-          );
+          await run(db.schema.alterTable(plan.table).addColumn(col.column, col.dataType));
           continue;
         }
         if (current.dataType.toLowerCase() !== col.dataType.toLowerCase()) {
@@ -112,12 +110,8 @@ export async function syncTables(
         await run(
           db.schema
             .createTable(junction.table)
-            .addColumn(junction.sourceColumn, junction.sourceIdType as ColumnDataType, (c) =>
-              c.notNull(),
-            )
-            .addColumn(junction.targetColumn, junction.targetIdType as ColumnDataType, (c) =>
-              c.notNull(),
-            )
+            .addColumn(junction.sourceColumn, junction.sourceIdType, (c) => c.notNull())
+            .addColumn(junction.targetColumn, junction.targetIdType, (c) => c.notNull())
             .addPrimaryKeyConstraint(`${junction.table}_pk`, [
               junction.sourceColumn,
               junction.targetColumn,
@@ -163,8 +157,8 @@ function buildCreateTable(
   plan: TablePlan,
   dialect: SqlDialectKind,
 ): CreateTableBuilder<string, string> {
-  let builder = db.schema.createTable(plan.table) as CreateTableBuilder<string, string>;
-  const idType = idDataType(plan.idType) as ColumnDataType;
+  let builder: CreateTableBuilder<string, string> = db.schema.createTable(plan.table);
+  const idType = idDataType(plan.idType);
   builder =
     plan.idType === "integer"
       ? builder.addColumn("id", idType, (c) =>
@@ -177,7 +171,7 @@ function buildCreateTable(
     builder = builder.addColumn("created_at", "text").addColumn("updated_at", "text");
   }
   for (const col of plan.columns) {
-    builder = builder.addColumn(col.column, col.dataType as ColumnDataType);
+    builder = builder.addColumn(col.column, col.dataType);
   }
   return builder;
 }

@@ -9,43 +9,66 @@ import {
   prepareForEditMode,
   restoreTemplateExpressions,
   templateToEditDisplay,
+  TRANSPARENT_PX,
 } from "../src/utils/edit-display";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNodeObject } from "@jxsuite/schema/guards";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
-const TRANSPARENT_PX =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+/**
+ * Prepare a node-shaped value. The input is any document value because several fixtures are
+ * deliberately malformed (a lone object as `children`, a `null` style); the output of an object
+ * input is always an object, which the guard checks rather than assumes.
+ */
+function prep(node: JxDocumentValue): JxMutableNode {
+  const out = prepareForEditMode(node);
+  if (!isNodeObject(out)) {
+    throw new Error("prepareForEditMode returned a non-node for a node input");
+  }
+  return out;
+}
 
-const prep = (node: unknown) => prepareForEditMode(node as JxMutableNode) as Record<string, any>;
+/** The element children of a prepared node; none of these fixtures hold text children. */
+function elementChildren(node: JxMutableNode | undefined): JxMutableNode[] {
+  const children = node?.children;
+  if (!Array.isArray(children) || !children.every((child) => isNodeObject(child))) {
+    throw new Error("expected an array of element children");
+  }
+  return children;
+}
+
+// ─── TRANSPARENT_PX ───────────────────────────────────────────────────────────
+
+describe("TRANSPARENT_PX", () => {
+  test("is the 1x1 transparent GIF data URI the placeholder assertions below compare against", () => {
+    expect(TRANSPARENT_PX).toBe(
+      "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+    );
+  });
+});
 
 // ─── computeEmptyPlaceholderClass ─────────────────────────────────────────────
 
 describe("computeEmptyPlaceholderClass", () => {
   test("empty text tag gets text placeholder", () => {
-    expect(computeEmptyPlaceholderClass({ tagName: "p" } as JxMutableNode)).toBe(
-      "empty-text-placeholder",
-    );
+    expect(computeEmptyPlaceholderClass({ tagName: "p" })).toBe("empty-text-placeholder");
   });
 
   test("empty container tag gets container placeholder", () => {
-    expect(computeEmptyPlaceholderClass({ tagName: "section" } as JxMutableNode)).toBe(
+    expect(computeEmptyPlaceholderClass({ tagName: "section" })).toBe(
       "empty-container-placeholder",
     );
   });
 
   test("returns null without tagName", () => {
-    expect(computeEmptyPlaceholderClass({} as JxMutableNode)).toBeNull();
+    expect(computeEmptyPlaceholderClass({})).toBeNull();
   });
 
   test("returns null when textContent present", () => {
-    expect(
-      computeEmptyPlaceholderClass({ tagName: "p", textContent: "hi" } as JxMutableNode),
-    ).toBeNull();
+    expect(computeEmptyPlaceholderClass({ tagName: "p", textContent: "hi" })).toBeNull();
   });
 
   test("returns null when innerHTML present", () => {
-    expect(
-      computeEmptyPlaceholderClass({ innerHTML: "<b>x</b>", tagName: "p" } as JxMutableNode),
-    ).toBeNull();
+    expect(computeEmptyPlaceholderClass({ innerHTML: "<b>x</b>", tagName: "p" })).toBeNull();
   });
 
   test("returns null when children non-empty", () => {
@@ -53,30 +76,26 @@ describe("computeEmptyPlaceholderClass", () => {
       computeEmptyPlaceholderClass({
         children: [{ tagName: "span" }],
         tagName: "div",
-      } as JxMutableNode),
+      }),
     ).toBeNull();
   });
 
   test("empty children array still counts as empty", () => {
-    expect(computeEmptyPlaceholderClass({ children: [], tagName: "div" } as JxMutableNode)).toBe(
+    expect(computeEmptyPlaceholderClass({ children: [], tagName: "div" })).toBe(
       "empty-container-placeholder",
     );
   });
 
   test("non-text non-container tag returns null", () => {
-    expect(computeEmptyPlaceholderClass({ tagName: "img" } as JxMutableNode)).toBeNull();
+    expect(computeEmptyPlaceholderClass({ tagName: "img" })).toBeNull();
   });
 
   test("layout-originated empty text tag returns null", () => {
-    expect(
-      computeEmptyPlaceholderClass({ $__layout: true, tagName: "span" } as JxMutableNode),
-    ).toBeNull();
+    expect(computeEmptyPlaceholderClass({ $__layout: true, tagName: "span" })).toBeNull();
   });
 
   test("layout-originated empty container tag returns null", () => {
-    expect(
-      computeEmptyPlaceholderClass({ $__layout: true, tagName: "div" } as JxMutableNode),
-    ).toBeNull();
+    expect(computeEmptyPlaceholderClass({ $__layout: true, tagName: "div" })).toBeNull();
   });
 
   test("exported placeholder class list matches the two classes", () => {
@@ -124,18 +143,14 @@ describe("template display round-trip", () => {
 
 describe("prepareForEditMode basics", () => {
   test("returns primitives unchanged", () => {
-    expect(prepareForEditMode("text" as unknown as JxMutableNode)).toBe(
-      "text" as unknown as JxMutableNode,
-    );
-    expect(prepareForEditMode(null as unknown as JxMutableNode)).toBeNull();
+    expect(prepareForEditMode("text")).toBe("text");
+    expect(prepareForEditMode(null)).toBeNull();
   });
 
   test("maps arrays element-wise", () => {
-    const out = prepareForEditMode([
-      { tagName: "p", textContent: "${x}" },
-    ] as unknown as JxMutableNode) as unknown as Record<string, any>[];
+    const out = prepareForEditMode([{ tagName: "p", textContent: "${x}" }]);
     expect(Array.isArray(out)).toBe(true);
-    expect(out[0]!.textContent).toBe("❪ x ❫");
+    expect(out).toMatchObject([{ textContent: "❪ x ❫" }]);
   });
 
   test("preserves state, $media and $elements untouched", () => {
@@ -145,7 +160,8 @@ describe("prepareForEditMode basics", () => {
     const out = prep({ $elements, $media, state, tagName: "div", textContent: "x" });
     expect(out.state).toBe(state);
     expect(out.$media).toBe($media);
-    expect(out.$elements).toBe($elements);
+    // The fixture's `$elements` is deliberately not the declared array form: pass-through is blind to shape.
+    expect<JxDocumentValue | undefined>(out.$elements).toBe($elements);
   });
 
   test("converts template textContent to display form", () => {
@@ -183,13 +199,13 @@ describe("prepareForEditMode $props", () => {
       },
       tagName: "x-card",
     });
-    expect(out.$props.label).toBe("❪ t ❫");
+    expect(out.$props?.label).toBe("❪ t ❫");
     // A url-target prop (href/action) blanks to "". Image-like keys (e.g. `src`) instead become the
     // Placeholder image — covered separately below.
-    expect(out.$props.href).toBe("");
-    expect(out.$props.link).toBe("{url}");
-    expect(out.$props.other).toBe("{raw.path}");
-    expect(out.$props.plain).toBe(5);
+    expect(out.$props?.href).toBe("");
+    expect(out.$props?.link).toBe("{url}");
+    expect(out.$props?.other).toBe("{raw.path}");
+    expect(out.$props?.plain).toBe(5);
   });
 
   test("image-like template props become the neutral gray placeholder image", () => {
@@ -204,20 +220,20 @@ describe("prepareForEditMode $props", () => {
       tagName: "eer-category",
     });
     // Image-like keys (exact or camelCase suffix) → a data:image/svg+xml gray box, not a ❪ ❫ glyph.
-    expect(out.$props.image.startsWith("data:image/svg+xml")).toBe(true);
-    expect(out.$props.featuredImage.startsWith("data:image/svg+xml")).toBe(true);
-    expect(out.$props.heroBg.startsWith("data:image/svg+xml")).toBe(true);
+    expect(out.$props?.image).toStartWith("data:image/svg+xml");
+    expect(out.$props?.featuredImage).toStartWith("data:image/svg+xml");
+    expect(out.$props?.heroBg).toStartWith("data:image/svg+xml");
     // Non-image text prop → the readable ❪ expr ❫ binding glyph.
-    expect(out.$props.title).toBe("❪ item.t ❫");
-    expect(out.$props.title).toContain("❪");
-    expect(out.$props.title).toContain("❫");
+    expect(out.$props?.title).toBe("❪ item.t ❫");
+    expect(out.$props?.title).toContain("❪");
+    expect(out.$props?.title).toContain("❫");
     // Link target prop → inert empty string.
-    expect(out.$props.href).toBe("");
+    expect(out.$props?.href).toBe("");
   });
 
   test("a static (non-template) image prop is left untouched", () => {
     const out = prep({ $props: { image: "/photo.png" }, tagName: "eer-category" });
-    expect(out.$props.image).toBe("/photo.png");
+    expect(out.$props?.image).toBe("/photo.png");
   });
 });
 
@@ -227,7 +243,7 @@ describe("prepareForEditMode children", () => {
       children: [{ tagName: "p", textContent: "${a}" }],
       tagName: "div",
     });
-    expect(out.children[0].textContent).toBe("❪ a ❫");
+    expect(elementChildren(out)[0]!.textContent).toBe("❪ a ❫");
   });
 
   test("wraps mapped-array children in a repeater perimeter", () => {
@@ -239,9 +255,9 @@ describe("prepareForEditMode children", () => {
       tagName: "ul",
     });
     expect(out.children).toHaveLength(1);
-    expect(out.children[0].className).toBe("repeater-perimeter");
-    expect(out.children[0].tagName).toBe("div");
-    expect(out.children[0].children[0].textContent).toBe("❪ item ❫");
+    expect(elementChildren(out)[0]!.className).toBe("repeater-perimeter");
+    expect(elementChildren(out)[0]!.tagName).toBe("div");
+    expect(elementChildren(elementChildren(out)[0])[0]!.textContent).toBe("❪ item ❫");
   });
 
   test("mapped-array children without a template still emit one (empty) perimeter", () => {
@@ -251,8 +267,8 @@ describe("prepareForEditMode children", () => {
       tagName: "ul",
     });
     expect(out.children).toHaveLength(1);
-    expect(out.children[0].className).toBe("repeater-perimeter");
-    expect(out.children[0].children).toEqual([]);
+    expect(elementChildren(out)[0]!.className).toBe("repeater-perimeter");
+    expect(elementChildren(elementChildren(out)[0])).toEqual([]);
   });
 
   test("array pseudo-element among siblings becomes one perimeter in place", () => {
@@ -265,10 +281,10 @@ describe("prepareForEditMode children", () => {
       tagName: "ul",
     });
     expect(out.children).toHaveLength(3);
-    expect(out.children[0].textContent).toBe("header");
-    expect(out.children[1].className).toBe("repeater-perimeter");
-    expect(out.children[1].children[0].textContent).toBe("❪ item ❫");
-    expect(out.children[2].textContent).toBe("footer");
+    expect(elementChildren(out)[0]!.textContent).toBe("header");
+    expect(elementChildren(out)[1]!.className).toBe("repeater-perimeter");
+    expect(elementChildren(elementChildren(out)[1])[0]!.textContent).toBe("❪ item ❫");
+    expect(elementChildren(out)[2]!.textContent).toBe("footer");
   });
 
   test("single object children recurse", () => {
@@ -276,7 +292,7 @@ describe("prepareForEditMode children", () => {
       children: { tagName: "span", textContent: "${x}" },
       tagName: "div",
     });
-    expect(out.children.textContent).toBe("❪ x ❫");
+    expect(out.children).toMatchObject({ textContent: "❪ x ❫" });
   });
 });
 
@@ -291,8 +307,8 @@ describe("prepareForEditMode $switch cases", () => {
       tagName: "div",
     });
     expect(out.$switch).toBe("❪ mode ❫");
-    expect(out.children[0].tagName).toBe("section");
-    expect(out.children[0].textContent).toBe("Edit");
+    expect(elementChildren(out)[0]!.tagName).toBe("section");
+    expect(elementChildren(out)[0]!.textContent).toBe("Edit");
     expect(out.cases).toBeUndefined();
   });
 
@@ -306,8 +322,8 @@ describe("prepareForEditMode $switch cases", () => {
       tagName: "div",
     });
     expect(out.children).toHaveLength(1);
-    expect(out.children[0].textContent).toBe("[$switch: about | home]");
-    expect(out.children[0].style.color).toBe("var(--danger)");
+    expect(elementChildren(out)[0]!.textContent).toBe("[$switch: about | home]");
+    expect(elementChildren(out)[0]!.style?.color).toBe("var(--danger)");
   });
 
   test("empty cases object leaves children unset", () => {
@@ -348,7 +364,7 @@ describe("prepareForEditMode media elements", () => {
 
   test("poster in attributes counts as resolvable media source", () => {
     const out = prep({ attributes: { poster: "/poster.jpg" }, tagName: "video" });
-    expect(out.attributes.poster).toBe("/poster.jpg");
+    expect(out.attributes?.poster).toBe("/poster.jpg");
     expect(out.className).toBeUndefined();
   });
 
@@ -362,16 +378,16 @@ describe("prepareForEditMode media elements", () => {
       },
       tagName: "img",
     });
-    expect(out.attributes.src).toBe(TRANSPARENT_PX);
-    expect(out.attributes["data-cap"]).toBe("❪ caption ❫");
-    expect(out.attributes.href).toBe("");
-    expect(out.attributes.alt).toBe("{altText}");
+    expect(out.attributes?.src).toBe(TRANSPARENT_PX);
+    expect(out.attributes?.["data-cap"]).toBe("❪ caption ❫");
+    expect(out.attributes?.href).toBe("");
+    expect(out.attributes?.alt).toBe("{altText}");
     expect(out.className).toContain("empty-media-placeholder");
   });
 
   test("attributes: empty src replaced with pixel", () => {
     const out = prep({ attributes: { src: "" }, tagName: "img" });
-    expect(out.attributes.src).toBe(TRANSPARENT_PX);
+    expect(out.attributes?.src).toBe(TRANSPARENT_PX);
   });
 
   test("does not duplicate the media placeholder class", () => {
@@ -422,7 +438,7 @@ describe("prepareForEditMode empty placeholders", () => {
       ],
       tagName: "button",
     });
-    for (const bar of out.children) {
+    for (const bar of elementChildren(out)) {
       expect(bar.className).toBeUndefined();
       expect(bar.$__layout).toBe(true);
     }

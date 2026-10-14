@@ -5,7 +5,8 @@
  * text, which is what makes both testable with a literal array.
  */
 
-import type { ContentLoaderEntry } from "@jxsuite/schema/types";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { ContentFieldValue, ContentLoaderEntry, JsonValue } from "@jxsuite/schema/types";
 
 /** What a project may declare under one key of the `feed` section. */
 export interface FeedConfig {
@@ -29,6 +30,7 @@ export interface NormalizedFeed extends Required<Omit<FeedConfig, "author" | "la
   language: string | null;
 }
 
+/** The normalized `feed` section: each declared feed key mapped to its defaults-filled config. */
 export type NormalizedFeedConfig = Record<string, NormalizedFeed>;
 
 const DEFAULTS = {
@@ -43,16 +45,22 @@ const DEFAULTS = {
   updatedField: "updated",
 } as const;
 
-export function normalizeFeedConfig(section: unknown, siteLanguage?: string): NormalizedFeedConfig {
+export function normalizeFeedConfig(section: JsonValue | undefined, siteLanguage?: string) {
   const out: NormalizedFeedConfig = {};
-  if (!section || typeof section !== "object") {
+  if (!section || !isNonNullObject(section)) {
     return out;
   }
-  for (const [key, raw] of Object.entries(section as Record<string, unknown>)) {
-    if (!raw || typeof raw !== "object") {
+  for (const [key, raw] of Object.entries(section)) {
+    if (!raw || !isNonNullObject(raw)) {
       continue;
     }
-    const cfg = raw as FeedConfig;
+    /*
+     * SAFETY: `raw` is a non-null JSON object (checked above), and the member types below are the
+     * contract of schemas/project.fragment.schema.json, which `jx validate` and the editor enforce.
+     * `collection` and `basePath` are read as optional because this normalizer fills defaults for
+     * them rather than rejecting their absence; it never re-validates member types.
+     */
+    const cfg = raw as Partial<FeedConfig>;
     out[key] = {
       archive: cfg.archive ?? DEFAULTS.archive,
       author: cfg.author ?? null,
@@ -102,8 +110,8 @@ export function entryUrl(
 }
 
 /** RFC 3339 or nothing. A feed date that is not a real timestamp is worse than an absent one. */
-function readDate(value: unknown): string | null {
-  if (typeof value !== "string" || value === "") {
+function readDate(value: ContentFieldValue | undefined): string | null {
+  if (!isString(value) || value === "") {
     return null;
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -120,35 +128,33 @@ export function entryToItem(
   siteUrl: string,
   trailingSlash: string,
 ): FeedItem {
-  const data = (entry.data ?? {}) as Record<string, unknown>;
-  const meta = (entry._meta ?? {}) as Record<string, unknown>;
+  const { _meta: meta, data } = entry;
   /*
    * An entry of a content type with a `route` already knows its URL: the loader stamped it at
    * `_meta.url`, from the same template the pages and the links were generated from. Only an entry
    * with no route is placed by the feed's own `basePath` + id, which is the older, flat rule.
    */
+  const metaUrl = meta?.url;
   const url =
-    typeof meta.url === "string" && meta.url.startsWith("/")
-      ? new URL(meta.url, siteUrl).href
+    metaUrl !== undefined && metaUrl.startsWith("/")
+      ? new URL(metaUrl, siteUrl).href
       : entryUrl(siteUrl, feed.basePath, entry.id, trailingSlash);
-  const published = readDate(data[feed.dateField]) ?? readDate(meta.mtime);
-  const { author } = data;
+  const published = readDate(data[feed.dateField]) ?? readDate(meta?.mtime);
+  const { author, description, title } = data;
+  // A frontmatter author is either a bare name or an object carrying one (`{ name, uri }`).
+  const entryAuthorName = isString(author)
+    ? author
+    : isNonNullObject(author) && "name" in author && isString(author.name)
+      ? author.name
+      : undefined;
 
   return {
-    authorName:
-      typeof author === "string"
-        ? author
-        : ((author as { name?: string } | undefined)?.name ?? feed.author?.name ?? null),
+    authorName: entryAuthorName ?? feed.author?.name ?? null,
     contentHtml: feed.contentMode === "full" ? String(entry.body ?? "") : null,
     id: url,
     published,
-    summary:
-      typeof data.description === "string"
-        ? data.description
-        : typeof meta.excerpt === "string"
-          ? meta.excerpt
-          : "",
-    title: typeof data.title === "string" ? data.title : entry.id,
+    summary: isString(description) ? description : (meta?.excerpt ?? ""),
+    title: isString(title) ? title : entry.id,
     updated: readDate(data[feed.updatedField]) ?? published,
     url,
   };
@@ -187,6 +193,12 @@ export function feedUpdated(items: readonly FeedItem[]): string | null {
   return newest;
 }
 
+/** A feed split for RFC 5005: the subscription page and its archives, oldest archive first. */
+export interface FeedPages {
+  current: FeedItem[];
+  archives: FeedItem[][];
+}
+
 /**
  * Split into the subscription page and its archives (RFC 5005 §2).
  *
@@ -198,10 +210,7 @@ export function feedUpdated(items: readonly FeedItem[]): string | null {
  * each time an entry is added; counting from the oldest means archive 1 keeps its contents forever
  * and only the newest archive — the one still filling — ever changes.
  */
-export function paginate(
-  items: readonly FeedItem[],
-  pageSize: number,
-): { current: FeedItem[]; archives: FeedItem[][] } {
+export function paginate(items: readonly FeedItem[], pageSize: number): FeedPages {
   if (items.length <= pageSize) {
     return { archives: [], current: [...items] };
   }

@@ -8,6 +8,9 @@ import { flush, installMockPlatform, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { AccountNotice } from "../src/types";
+import { INSTALL_URL, JOIN_OFFER } from "./shared-fixtures";
 
 const {
   disposeWelcome,
@@ -42,7 +45,7 @@ function makeCtx(): Ctx {
 
 /** Draw the pane into a fresh host and let the surface mount, reconcile and connect. */
 async function renderScreen(ctx: Ctx): Promise<HTMLElement> {
-  initWelcome(ctx as never);
+  initWelcome(ctx);
   const host = document.createElement("div");
   document.body.append(host);
   renderWelcome(host);
@@ -58,12 +61,39 @@ async function redraw(host: HTMLElement): Promise<void> {
   await flush();
 }
 
-function actions(host: HTMLElement): HTMLElement[] {
-  return [...host.querySelectorAll('[part="action"]')] as HTMLElement[];
+/** The first match of `selector` under `root`, which the test needs to exist and to be a `kind`. */
+function must<T extends Element>(
+  root: ParentNode,
+  selector: string,
+  kind: abstract new () => T,
+): T {
+  const found = root.querySelector(selector);
+  if (!(found instanceof kind)) {
+    throw new Error(`expected a ${kind.name} at ${selector}`);
+  }
+  return found;
 }
 
-function texts(host: HTMLElement, selector: string): (string | null)[] {
-  return [...host.querySelectorAll(selector)].map((n) => n.textContent?.trim() ?? null);
+/** Every match of `selector` under `root`, each of which the test needs to be a `kind`. */
+function allOf<T extends Element>(
+  root: ParentNode,
+  selector: string,
+  kind: abstract new () => T,
+): T[] {
+  return [...root.querySelectorAll(selector)].map((found) => {
+    if (!(found instanceof kind)) {
+      throw new Error(`expected every ${selector} to be a ${kind.name}`);
+    }
+    return found;
+  });
+}
+
+function actions(host: HTMLElement): HTMLElement[] {
+  return allOf(host, '[part="action"]', HTMLElement);
+}
+
+function texts(host: HTMLElement, selector: string): string[] {
+  return [...host.querySelectorAll(selector)].map((n) => n.textContent.trim());
 }
 
 function seedRecents(entries: { name: string; root: string; timestamp: number }[]): void {
@@ -115,8 +145,8 @@ describe("renderWelcome — start commands", () => {
 
   test("shows Add Existing Repository when the platform can browse + import repos", async () => {
     installMockPlatform({
-      importProject: (() => Promise.resolve({ root: "octocat/site@main" })) as never,
-      listRepos: (() => Promise.resolve([])) as never,
+      importProject: () => Promise.resolve({ root: "octocat/site@main" }),
+      listRepos: () => Promise.resolve([]),
     });
     const ctx = makeCtx();
     const host = await renderScreen(ctx);
@@ -129,7 +159,7 @@ describe("renderWelcome — start commands", () => {
 
   test("shows the clone action when the platform supports gitClone", async () => {
     installMockPlatform({
-      gitClone: (async () => ({ ok: true, root: "/cloned" })) as never,
+      gitClone: async () => ({ ok: true, root: "/cloned" }),
     });
     const ctx = makeCtx();
     const host = await renderScreen(ctx);
@@ -239,9 +269,7 @@ describe("renderWelcome — recent projects", () => {
     ]);
     const host = await renderScreen(makeCtx());
 
-    const rows = [
-      ...host.querySelectorAll('[part="recent"]:not([data-catalogue])'),
-    ] as HTMLButtonElement[];
+    const rows = allOf(host, '[part="recent"]:not([data-catalogue])', HTMLElement);
     expect(rows).toHaveLength(2);
     expect(texts(host, '[part="recent"] [part="name"]')).toEqual(["Alpha", "Beta"]);
     expect(texts(host, '[part="recent"] [part="path"]')).toEqual(["…/dev", "…/sites"]);
@@ -277,7 +305,7 @@ describe("renderWelcome — recent projects", () => {
     ]);
     const ctx = makeCtx();
     const host = await renderScreen(ctx);
-    const removes = [...host.querySelectorAll('[part="remove"]')] as HTMLElement[];
+    const removes = allOf(host, '[part="remove"]', HTMLElement);
     expect(removes).toHaveLength(2);
     expect(removes[0]!.querySelector('[part="control"]')?.getAttribute("aria-label")).toBe(
       "Remove Alpha from Recent",
@@ -303,17 +331,19 @@ describe("renderWelcome — recent projects", () => {
     expect(getComputedStyle(title).marginBlockEnd).toBe("0");
     /* The spacing the title gave up, now on the header. A token resolves to nothing in happy-dom,
        so the document is what says where it went. */
-    const doc = JSON.parse(
+    const doc: JsonValue = JSON.parse(
       readFileSync(resolve(import.meta.dir, "../src/surfaces/welcome.json"), "utf8"),
-    ) as { style: Record<string, Record<string, string>> };
-    expect(doc.style['& [part="section-header"]']!["marginBottom"]).toBe("var(--jx-space-3)");
+    );
+    expect(doc).toMatchObject({
+      style: { '& [part="section-header"]': { marginBottom: "var(--jx-space-3)" } },
+    });
   });
 
   test("Clear all empties the recent list", async () => {
     seedRecents([{ name: "Alpha", root: "/a", timestamp: 1 }]);
     const host = await renderScreen(makeCtx());
-    const clear = host.querySelector('[part="clear"]') as HTMLElement;
-    expect(clear.textContent?.trim()).toBe("Clear all");
+    const clear = must(host, '[part="clear"]', HTMLElement);
+    expect(clear.textContent.trim()).toBe("Clear all");
     pointer(clear, "click");
     await redraw(host);
     expect(host.querySelectorAll('[part="recent"]')).toHaveLength(0);
@@ -321,15 +351,13 @@ describe("renderWelcome — recent projects", () => {
 });
 
 describe("renderWelcome — GitHub App install prompt", () => {
-  const INSTALL_URL = "https://github.com/apps/jx-suite/installations/new";
-
   test("prompts to install the App when the account has no installations", async () => {
     installMockPlatform({
       getAccountStatus: () => Promise.resolve({ appInstallUrl: INSTALL_URL, installations: [] }),
     });
     await hydrateAccountStatus();
     const host = await renderScreen(makeCtx());
-    const link = host.querySelector('[part="link"]') as HTMLElement;
+    const link = must(host, '[part="link"]', HTMLElement);
     expect(link.textContent).toContain("Install the Jx Suite GitHub App");
     expect(link.getAttribute("href")).toBe(INSTALL_URL);
     expect(host.textContent).toContain("Repository access");
@@ -360,7 +388,6 @@ describe("renderWelcome — GitHub App install prompt", () => {
 });
 
 describe("renderWelcome — platform notices", () => {
-  const JOIN = { href: "https://example.test/join", id: "join", label: "Join", primary: true };
   const LATER = { href: "https://example.test/later", id: "later", label: "Remind me" };
 
   test("each banner notice is its own section, in the platform's words, with its actions", async () => {
@@ -370,7 +397,7 @@ describe("renderWelcome — platform notices", () => {
           installations: [],
           notices: [
             {
-              actions: [LATER, JOIN],
+              actions: [LATER, JOIN_OFFER],
               id: "team",
               level: "warning",
               message: "Editing here is for team members.",
@@ -382,29 +409,28 @@ describe("renderWelcome — platform notices", () => {
     });
     await hydrateAccountStatus();
     const host = await renderScreen(makeCtx());
-    const sections = host.querySelectorAll('[data-section="notice"]');
+    const sections = allOf(host, '[data-section="notice"]', HTMLElement);
     expect(sections).toHaveLength(1);
-    const section = sections[0] as HTMLElement;
+    const section = sections[0]!;
     expect(section.dataset["notice"]).toBe("team");
     expect(section.dataset["level"]).toBe("warning");
     expect(section.querySelector('[part="section-title"]')?.textContent).toBe("Join the team");
     expect(section.querySelector('[part="note"]')?.textContent).toBe(
       "Editing here is for team members.",
     );
-    const buttons = [...section.querySelectorAll('[part="notice-action"]')] as HTMLElement[];
-    expect(buttons.map((button) => [button.dataset["action"], button.textContent?.trim()])).toEqual(
-      [
-        ["team/later", "Remind me"],
-        ["team/join", "Join"],
-      ],
-    );
-    expect(buttons.map((button) => (button as HTMLElement & { variant?: string }).variant)).toEqual(
-      ["secondary", "accent"],
-    );
+    const buttons = allOf(section, '[part="notice-action"]', HTMLElement);
+    expect(buttons.map((button) => [button.dataset["action"], button.textContent.trim()])).toEqual([
+      ["team/later", "Remind me"],
+      ["team/join", "Join"],
+    ]);
+    expect(buttons.map((button) => ("variant" in button ? button.variant : undefined))).toEqual([
+      "secondary",
+      "accent",
+    ]);
   });
 
   test("a notice's button runs its action, and the notice follows the account", async () => {
-    let notices = [{ actions: [JOIN], id: "team", message: "Join to edit.", title: "Team" }];
+    let notices = [{ actions: [JOIN_OFFER], id: "team", message: "Join to edit.", title: "Team" }];
     const performAction = mock(async () => {
       notices = [];
       return { status: "done" as const };
@@ -415,12 +441,12 @@ describe("renderWelcome — platform notices", () => {
     });
     await hydrateAccountStatus();
     const host = await renderScreen(makeCtx());
-    const section = host.querySelector('[data-section="notice"]') as HTMLElement;
+    const section = must(host, '[data-section="notice"]', HTMLElement);
     expect(section.dataset["level"]).toBe("info");
-    (host.querySelector('[part="notice-action"]') as HTMLElement).click();
+    must(host, '[part="notice-action"]', HTMLElement).click();
     await flush();
     await flush();
-    expect(performAction).toHaveBeenCalledWith(JOIN);
+    expect(performAction).toHaveBeenCalledWith(JOIN_OFFER);
     // Done: the platform no longer sends it, so it is gone.
     expect(host.querySelector('[data-section="notice"]')).toBeNull();
   });
@@ -428,27 +454,34 @@ describe("renderWelcome — platform notices", () => {
   /* The button names its action by key and the key is resolved at click time, against the notices as
      they stand: a notice the account no longer carries offers nothing to run. */
   test("a button whose notice has since gone runs nothing", async () => {
-    let notices: unknown[] = [
+    let notices: AccountNotice[] = [
       { id: "policy", message: "Read it.", title: "Policy" },
-      { actions: [JOIN], id: "team", message: "Join to edit.", title: "Team" },
+      { actions: [JOIN_OFFER], id: "team", message: "Join to edit.", title: "Team" },
     ];
     const performAction = mock(async () => ({ status: "done" as const }));
     installMockPlatform({
-      getAccountStatus: () => Promise.resolve({ installations: [], notices: notices as never }),
+      getAccountStatus: () => Promise.resolve({ installations: [], notices }),
       performAction,
     });
     await hydrateAccountStatus();
     const host = await renderScreen(makeCtx());
-    const button = host.querySelector('[part="notice-action"]') as HTMLElement;
+    const button = must(host, '[part="notice-action"]', HTMLElement);
     // The same notice, now offering something else: the old key names nothing.
     notices = [
       { id: "policy", message: "Read it.", title: "Policy" },
       { actions: [LATER], id: "team", message: "Join to edit.", title: "Team" },
     ];
     await hydrateAccountStatus();
+    // The drawn button still names the action the notice used to offer.
+    expect(button.dataset["action"]).toBe("team/join");
     button.click();
     await flush();
     expect(performAction).not.toHaveBeenCalled();
+    // The notice is still carried, and a redraw offers its new action, not the one clicked.
+    await redraw(host);
+    expect(
+      allOf(host, '[part="notice-action"]', HTMLElement).map((drawn) => drawn.dataset["action"]),
+    ).toEqual(["team/later"]);
   });
 
   test("a notice with no actions draws no button; none at all draws no section", async () => {
@@ -484,9 +517,7 @@ describe("renderWelcome — project catalogue", () => {
     await hydrateProjectList();
     const ctx = makeCtx();
     const host = await renderScreen(ctx);
-    const rows = [
-      ...host.querySelectorAll('[part="recent"][data-catalogue]'),
-    ] as HTMLButtonElement[];
+    const rows = allOf(host, '[part="recent"][data-catalogue]', HTMLElement);
     expect(rows).toHaveLength(2);
     expect(rows[0]!.textContent).toContain("Portfolio");
     expect(rows[1]!.textContent).toContain("write access");

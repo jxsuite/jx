@@ -56,6 +56,22 @@ describe("loadProjectConfig", () => {
     }
   });
 
+  test("reads an explicit null url as no site URL and keeps an explicit null trailingSlash", () => {
+    setup();
+    try {
+      writeFileSync(
+        join(FIXTURES, "project.json"),
+        JSON.stringify({ build: { trailingSlash: null }, url: null }),
+        "utf8",
+      );
+      const { config } = loadProjectConfig(FIXTURES);
+      expect(config.url).toBe("");
+      expect(config.build.trailingSlash).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
   test("defaults images.service to build", () => {
     setup();
     try {

@@ -550,7 +550,7 @@ describe("sites discovery", () => {
     const res = await callApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
     const sites = await res.json();
-    const testSite = sites.find((s: Record<string, any>) => s.config.name === "Test Site");
+    const testSite = sites.find((s: { config: { name: string } }) => s.config.name === "Test Site");
     expect(testSite).toBeDefined();
     expect(testSite.path).toBe(
       resolve(import.meta.dir, "_studio_fixtures/my-site").replaceAll("\\", "/"),
@@ -563,7 +563,7 @@ describe("sites discovery", () => {
     const req = new Request(url, { method: "GET" });
     const res = await callApi(req, url, import.meta.dir);
     const sites = await res.json();
-    expect(sites.every((s: Record<string, any>) => s.path !== "_studio_fixtures/plain-dir")).toBe(
+    expect(sites.every((s: { path: string }) => s.path !== "_studio_fixtures/plain-dir")).toBe(
       true,
     );
   });
@@ -579,7 +579,7 @@ describe("components — scoped scan", () => {
     expect(res).not.toBeNull();
     const components = await res.json();
     expect(components.length).toBeGreaterThanOrEqual(1);
-    expect(components.some((c: Record<string, any>) => c.tagName === "my-card")).toBe(true);
+    expect(components.some((c: { tagName: string }) => c.tagName === "my-card")).toBe(true);
   });
 
   test("returns empty for directory with no components", async () => {
@@ -595,7 +595,7 @@ describe("components — scoped scan", () => {
     const req = new Request(url, { method: "GET" });
     const res = await callApi(req, url, import.meta.dir);
     const components = await res.json();
-    const panel = components.find((c: Record<string, any>) => c.tagName === "my-panel");
+    const panel = components.find((c: { tagName: string }) => c.tagName === "my-panel");
     expect(panel).toBeDefined();
     expect(panel.slots).toEqual([
       {
@@ -605,7 +605,7 @@ describe("components — scoped scan", () => {
       { fallback: ["Default body"], name: "" },
     ]);
     // Slotless components omit the key entirely
-    const card = components.find((c: Record<string, any>) => c.tagName === "my-card");
+    const card = components.find((c: { tagName: string }) => c.tagName === "my-card");
     expect(card.slots).toBeUndefined();
   });
 
@@ -944,7 +944,8 @@ describe("references — server-root-relative in, project-relative out", () => {
     const res = await refs("refs-space/components/card.json", SPACE);
     const data = await res.json();
     expect(data.path).toBe("components/card.json");
-    for (const f of data.files as { path: string }[]) {
+    const files: { path: string }[] = data.files;
+    for (const f of files) {
       expect(f.path.startsWith("refs-space/")).toBe(false);
       expect(f.path.startsWith("/")).toBe(false);
     }
@@ -980,7 +981,7 @@ describe("files — listing", () => {
     const res = await callApi(req, url, FIXTURES);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
-    expect(data.some((f: Record<string, any>) => f.name === "listed.txt")).toBe(true);
+    expect(data.some((f: { name: string }) => f.name === "listed.txt")).toBe(true);
   });
 
   test("lists files using glob pattern", async () => {
@@ -989,7 +990,7 @@ describe("files — listing", () => {
     const res = await callApi(req, url, FIXTURES);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
-    expect(data.every((f: Record<string, any>) => f.name.endsWith(".json"))).toBe(true);
+    expect(data.every((f: { name: string }) => f.name.endsWith(".json"))).toBe(true);
   });
 
   test("rejects directory traversal", async () => {
@@ -1024,7 +1025,7 @@ describe("files — listing", () => {
       const url = new URL(`http://localhost/__studio/files?dir=${dir}${query}`);
       const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
       const listed = await res.json();
-      return listed.map((f: Record<string, any>) => f.name);
+      return listed.map((f: { name: string }) => f.name);
     };
     expect(await read("")).toEqual(["alpha.md", "bravo.md", "mike.md", "zulu.md"]);
     expect(await read("&glob=*.md")).toEqual(["alpha.md", "bravo.md", "mike.md", "zulu.md"]);
@@ -1229,7 +1230,7 @@ describe("components — markdown discovery", () => {
     const req = new Request(url, { method: "GET" });
     const res = await callApi(req, url, MD_DIR);
     const components = await res.json();
-    const widget = components.find((c: Record<string, any>) => c.tagName === "my-widget");
+    const widget = components.find((c: { tagName: string }) => c.tagName === "my-widget");
     expect(widget).toBeDefined();
     expect(widget.source).toBe("jx");
   });
@@ -1239,9 +1240,7 @@ describe("components — markdown discovery", () => {
     const req = new Request(url, { method: "GET" });
     const res = await callApi(req, url, MD_DIR);
     const components = await res.json();
-    expect((components as any[]).every((c: Record<string, any>) => c.path !== "plain.md")).toBe(
-      true,
-    );
+    expect(components.every((c: { path: string }) => c.path !== "plain.md")).toBe(true);
   });
 });
 
@@ -1307,7 +1306,7 @@ describe("components — CEM npm discovery", () => {
     const req = new Request(url, { method: "GET" });
     const res = await callApi(req, url, CEM_DIR);
     const components = await res.json();
-    const btn = components.find((c: Record<string, any>) => c.tagName === "test-button");
+    const btn = components.find((c: { tagName: string }) => c.tagName === "test-button");
     expect(btn).toBeDefined();
     expect(btn.source).toBe("npm");
     expect(btn.package).toBe("test-elements");
@@ -1325,7 +1324,7 @@ describe("packages endpoint", () => {
     const req = new Request(url, { method: "GET" });
     const res = await callApi(req, url, CEM_DIR);
     const packages = await res.json();
-    const testEl = (packages as any[]).find((p: Record<string, any>) => p.name === "test-elements");
+    const testEl = packages.find((p: { name: string }) => p.name === "test-elements");
     expect(testEl).toBeDefined();
     expect(testEl.hasCem).toBe(true);
   });
@@ -1726,7 +1725,7 @@ describe("format endpoints", () => {
     const res = await callApi(req, url, emptyDir);
     expect(res.status).toBe(500);
     const data = await res.json();
-    expect(typeof data.error).toBe("string");
+    expect(data.error).toBeTypeOf("string");
   });
 
   test("POST /__studio/format parse dispatches through the format class", async () => {

@@ -119,9 +119,12 @@ describe("ai-ask — the tool", () => {
   test("is advertised with a question, options and context", () => {
     const def = registry().getDefinition("ask_user")!;
     expect(def.name).toBe("ask_user");
-    const props = (def.parameters as { properties: Record<string, unknown> }).properties;
-    expect(Object.keys(props).toSorted()).toEqual(["context", "options", "question"]);
-    expect((def.parameters as { required: string[] }).required).toEqual(["question"]);
+    expect(Object.keys(def.parameters.properties ?? {}).toSorted()).toEqual([
+      "context",
+      "options",
+      "question",
+    ]);
+    expect(def.parameters.required).toEqual(["question"]);
   });
 
   test("an answer comes back as a success carrying the user's words", async () => {

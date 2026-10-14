@@ -35,13 +35,22 @@ import type { SettingsPatch } from "./write-queue";
 /** The synchronous source of truth. Absent key means unset — which is not the same as `""`. */
 const values = new Map<string, string>();
 
+/**
+ * The cache, when this realm has one. `lib.dom` declares `localStorage` unconditionally, but a
+ * realm without a DOM (Bun under test, a worker) has none — so it is looked up on every use, inside
+ * the caller's `try`, where an access that throws (storage disabled) is already handled.
+ */
+function cacheStorage(): Storage | undefined {
+  return typeof localStorage === "undefined" ? undefined : localStorage;
+}
+
 /** Mirror a value into the cache, so the next boot is correct before the backend answers. */
 function writeCache(key: string, value: string | null): void {
   try {
     if (value === null) {
-      globalThis.localStorage?.removeItem(key);
+      cacheStorage()?.removeItem(key);
     } else {
-      globalThis.localStorage?.setItem(key, value);
+      cacheStorage()?.setItem(key, value);
     }
   } catch {
     /* Storage unavailable (private mode) — the Map still serves this session. */
@@ -60,7 +69,7 @@ function writeCache(key: string, value: string | null): void {
  */
 try {
   for (const definition of ALL_SETTINGS) {
-    const cached = globalThis.localStorage?.getItem(definition.key);
+    const cached = cacheStorage()?.getItem(definition.key);
     if (cached !== null && cached !== undefined) {
       values.set(definition.key, cached);
     }
@@ -120,7 +129,7 @@ function announce(keys: readonly string[]): void {
 // ─── Writing ──────────────────────────────────────────────────────────────────
 
 const queue = createWriteQueue({
-  onError(error: unknown) {
+  onError(error) {
     notify("error", "Your settings could not be saved.", {
       detail: error instanceof Error ? error.message : String(error),
       key: "settings-write",

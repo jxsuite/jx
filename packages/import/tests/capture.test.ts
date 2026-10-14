@@ -24,15 +24,14 @@ function fakeBrowser(): ImportBrowser {
   return {
     newPage: () =>
       Promise.resolve({
-        setViewport: mock(() => Promise.resolve()),
-        goto: mock(() => Promise.resolve()),
-        evaluate: mock((fn: (...a: never[]) => unknown, ...args: never[]) =>
-          Promise.resolve(fn(...args)),
-        ),
-        screenshot: mock(() => Promise.resolve(new Uint8Array([1]))),
-        close: mock(() => Promise.resolve()),
+        setViewport: () => Promise.resolve(),
+        goto: () => Promise.resolve(),
+        // Runs the in-page callback in-process, against whatever document makeDom() installed.
+        evaluate: (fn, ...args) => Promise.resolve(fn(...args)),
+        screenshot: () => Promise.resolve(new Uint8Array([1])),
+        close: () => Promise.resolve(),
       }),
-  } as unknown as ImportBrowser;
+  };
 }
 
 describe("capturePage", () => {
@@ -65,7 +64,7 @@ describe("capturePage", () => {
   test("scrolls to reveal lazy content when enabled", async () => {
     const win = makeDom("<div>tall content</div>");
     const scrollTo = mock(() => {});
-    (win as unknown as { scrollTo: unknown }).scrollTo = scrollTo;
+    win.scrollTo = scrollTo;
 
     const browser = fakeBrowser();
     const page = await capturePage("https://site.example/page", browser);
@@ -77,7 +76,7 @@ describe("capturePage", () => {
   test("the scroll pass steps through a tall page and caps runaway growth", async () => {
     const win = makeDom("<div>tall content</div>");
     const scrollTo = mock(() => {});
-    (win as unknown as { scrollTo: unknown }).scrollTo = scrollTo;
+    win.scrollTo = scrollTo;
     // 22 viewports tall: the step loop must give up at the 20-viewport cap, not scroll forever.
     Object.defineProperty(win, "innerHeight", { configurable: true, get: () => 100 });
     Object.defineProperty(win.document.body, "scrollHeight", {
@@ -87,8 +86,11 @@ describe("capturePage", () => {
 
     // Collapse the in-page settle delays so the capped loop runs instantly.
     const realSetTimeout = globalThis.setTimeout;
-    globalThis.setTimeout = ((cb: () => void) =>
-      realSetTimeout(cb, 0)) as unknown as typeof setTimeout;
+    /* SAFETY: the scroll pass only calls setTimeout(resolve, ms) with a zero-argument callback and
+       never reads the handle back, so the stub serves every call it makes. The string-handler
+       overload and `__promisify__` it does not implement are never reached, and the real timer is
+       restored in the finally below. */
+    globalThis.setTimeout = ((cb: () => void) => realSetTimeout(cb, 0)) as typeof setTimeout;
     try {
       await capturePage("https://site.example/page", fakeBrowser());
     } finally {

@@ -9,7 +9,8 @@
  * Uses the OpenAI-compatible chat completions API (same as the eval harness).
  */
 
-import type { JxElement } from "@jxsuite/schema/types";
+import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import type { ExtractedComponent, ComponentizeResult } from "./componentize.ts";
 
 export interface AiComponentizeOptions {
@@ -31,7 +32,8 @@ export interface AiComponentizeOptions {
 interface RenameResult {
   componentName: string;
   tagName: string;
-  props: Record<string, string>;
+  /** The model's proposed renames, unvalidated: a caller keeps only the string values it accepts. */
+  props: Record<string, JsonValue>;
 }
 
 function buildPrompt(component: ExtractedComponent): string {
@@ -87,102 +89,81 @@ async function callLlm(prompt: string, opts: AiComponentizeOptions): Promise<Ren
     return null;
   }
 
-  const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
+  // The completion body is foreign JSON: walk `choices[0].message.content` one guard at a time.
+  const data: unknown = await response.json();
+  const choices = isJsonObject(data) ? data.choices : undefined;
+  const choice = Array.isArray(choices) ? choices[0] : undefined;
+  const message = isJsonObject(choice) ? choice.message : undefined;
+  const content = isJsonObject(message) ? message.content : undefined;
+  if (!isString(content) || !content) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(content) as Record<string, unknown>;
-    const { componentName } = parsed;
-    const { tagName } = parsed;
-    const { props } = parsed;
+    // A reply that is not an object has none of the three fields, and fails the check below.
+    const parsed: unknown = JSON.parse(content);
+    const fields: JsonObject = isJsonObject(parsed) ? parsed : {};
+    const { componentName } = fields;
+    const { tagName } = fields;
+    const { props } = fields;
 
     if (
-      typeof componentName !== "string" ||
+      !isString(componentName) ||
       !componentName.includes("-") ||
-      typeof tagName !== "string" ||
-      typeof props !== "object" ||
-      props === null
+      !isString(tagName) ||
+      !isNonNullObject(props)
     ) {
       return null;
     }
 
-    return {
-      componentName: componentName as string,
-      tagName: tagName as string,
-      props: props as Record<string, string>,
-    };
+    /* `Object.entries` reads an array's indices as keys, so an array `props` keeps the by-index
+       lookup it always had while the result gains one honest dictionary type. */
+    return { componentName, tagName, props: Object.fromEntries(Object.entries(props)) };
   } catch {
     return null;
   }
 }
 
-function renamePropsInTree(
-  node: JxElement | string,
-  renames: Record<string, string>,
-): JxElement | string {
-  if (typeof node === "string") {
-    let result = node;
-    for (const [oldName, newName] of Object.entries(renames)) {
-      if (oldName !== newName) {
-        result = result.replaceAll(`\${state.${oldName}}`, `\${state.${newName}}`);
-      }
+/** Rewrites every `${state.<old>}` reference in one template string to its renamed prop. */
+function renameStateRefs(text: string, renames: Record<string, string>): string {
+  let result = text;
+  for (const [oldName, newName] of Object.entries(renames)) {
+    if (oldName !== newName) {
+      result = result.replaceAll(`\${state.${oldName}}`, `\${state.${newName}}`);
     }
-    return result;
   }
+  return result;
+}
 
+function renamePropsInTree(node: JxElement, renames: Record<string, string>): JxElement {
   const out: JxElement = { ...node };
 
-  if (typeof out.textContent === "string") {
-    for (const [oldName, newName] of Object.entries(renames)) {
-      if (oldName !== newName) {
-        out.textContent = (out.textContent as string).replaceAll(
-          `\${state.${oldName}}`,
-          `\${state.${newName}}`,
-        );
-      }
-    }
+  const { textContent } = out;
+  if (isString(textContent)) {
+    out.textContent = renameStateRefs(textContent, renames);
   }
 
   if (out.attributes) {
     out.attributes = { ...out.attributes };
     for (const [attrKey, attrVal] of Object.entries(out.attributes)) {
-      if (typeof attrVal === "string") {
-        let v = attrVal;
-        for (const [oldName, newName] of Object.entries(renames)) {
-          if (oldName !== newName) {
-            v = v.replaceAll(`\${state.${oldName}}`, `\${state.${newName}}`);
-          }
-        }
-        out.attributes[attrKey] = v;
+      if (isString(attrVal)) {
+        out.attributes[attrKey] = renameStateRefs(attrVal, renames);
       }
     }
   }
 
   if (Array.isArray(out.children)) {
     out.children = out.children.map((c) =>
-      renamePropsInTree(c as JxElement | string, renames),
-    ) as JxElement[];
+      isString(c) ? renameStateRefs(c, renames) : renamePropsInTree(c, renames),
+    );
   }
 
   return out;
 }
 
-function renamePropsInState(
-  state: Record<string, unknown>,
-  renames: Record<string, string>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(state)) {
-    const newKey = renames[k] ?? k;
-    out[newKey] = v;
-  }
-  return out;
+/** Re-keys a state map by the prop renames, keeping each entry's value and its position. */
+function renamePropsInState<V>(state: Record<string, V>, renames: Record<string, string>) {
+  return Object.fromEntries(Object.entries(state).map(([k, v]) => [renames[k] ?? k, v]));
 }
 
 function toPascalCase(str: string): string {
@@ -241,15 +222,12 @@ export async function aiComponentize(
     for (const prop of existingProps) {
       const renamed = result.props[prop];
       propRenames[prop] =
-        typeof renamed === "string" && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(renamed) ? renamed : prop;
+        isString(renamed) && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(renamed) ? renamed : prop;
     }
 
-    const newTemplate = renamePropsInTree(component.template, propRenames) as JxElement;
+    const newTemplate = renamePropsInTree(component.template, propRenames);
     if (newTemplate.state) {
-      newTemplate.state = renamePropsInState(
-        newTemplate.state as Record<string, unknown>,
-        propRenames,
-      ) as Record<string, string>;
+      newTemplate.state = renamePropsInState(newTemplate.state, propRenames);
     }
 
     const newComponent: ExtractedComponent = {
@@ -291,7 +269,7 @@ function rewriteCallSites(
 
   /* Import builds every node from parsed HTML, so a tag here is always a literal — the narrow is
      the type saying so rather than a cast pretending the other shape cannot arrive. */
-  const literalTag = typeof result.tagName === "string" ? result.tagName : null;
+  const literalTag = isString(result.tagName) ? result.tagName : null;
   if (literalTag && tagRenames.has(literalTag)) {
     const oldTag = literalTag;
     result.tagName = tagRenames.get(oldTag)!;
@@ -309,11 +287,11 @@ function rewriteCallSites(
 
   if (Array.isArray(result.children)) {
     result.children = result.children.map((child) => {
-      if (typeof child === "string") {
+      if (isString(child)) {
         return child;
       }
-      return rewriteCallSites(child as JxElement, tagRenames, propRenamesByTag);
-    }) as JxElement[];
+      return rewriteCallSites(child, tagRenames, propRenamesByTag);
+    });
   }
 
   return result;

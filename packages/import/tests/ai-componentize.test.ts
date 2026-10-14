@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeAll, beforeEach, afterAll } from "bun:test";
 import { componentize } from "../src/componentize.ts";
 import { aiComponentize } from "../src/ai-componentize.ts";
-import type { JxElement } from "@jxsuite/schema/types";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JxElement } from "@jxsuite/schema/types";
 import type { ComponentizeResult, ExtractedComponent } from "../src/componentize.ts";
 
 /** Deliberately not "gpt-4o-mini": the module has no default, and this proves it forwards ours. */
@@ -12,10 +13,27 @@ function firstEntry(map: Map<string, ExtractedComponent>): [string, ExtractedCom
   return [k, v];
 }
 
+/** A node's child array, failing the test when the slot holds a repeater or nothing. */
+function childrenOf(node: JxElement): (JxElement | string)[] {
+  if (!Array.isArray(node.children)) {
+    throw new TypeError("expected a child array");
+  }
+  return node.children;
+}
+
+/** The element at `index` among a node's children, failing the test on text or a missing child. */
+function elementChild(node: JxElement, index: number): JxElement {
+  const child = childrenOf(node)[index];
+  if (child === undefined || isString(child)) {
+    throw new TypeError(`expected an element at children[${index}]`);
+  }
+  return child;
+}
+
 let mockServer: ReturnType<typeof Bun.serve>;
 let mockBaseUrl: string;
-let lastRequestBody: Record<string, unknown> | null = null;
-let mockResponse: Record<string, unknown> = {};
+let lastRequestBody: JsonObject | null = null;
+let mockResponse: JsonObject = {};
 let mockHandler: ((req: Request) => Response | Promise<Response>) | null = null;
 
 beforeAll(() => {
@@ -25,8 +43,8 @@ beforeAll(() => {
       if (mockHandler) {
         return mockHandler(req);
       }
-      const body = (await req.json()) as Record<string, unknown>;
-      lastRequestBody = body;
+      const body: unknown = await req.json();
+      lastRequestBody = isJsonObject(body) ? body : null;
       return Response.json({
         choices: [
           {
@@ -61,7 +79,7 @@ function craftedComponent(index: number, withState: boolean): ExtractedComponent
             textContent: "${state.text}",
             attributes: { href: "${state.href}", target: "_blank" },
           },
-        ] as JxElement[],
+        ],
       }
     : { tagName: "div", textContent: `static ${index}` };
 
@@ -101,7 +119,7 @@ function makeRepeatedCards(): Map<string, JxElement> {
       { tagName: "h3", textContent: title },
       { tagName: "p", textContent: desc },
       { tagName: "a", textContent: "Learn More", attributes: { href: "/" } },
-    ] as JxElement[],
+    ],
   });
 
   return new Map([
@@ -113,7 +131,7 @@ function makeRepeatedCards(): Map<string, JxElement> {
           card("Product A", "Description of product A"),
           card("Product B", "Description of product B"),
           card("Product C", "Description of product C"),
-        ] as JxElement[],
+        ],
       },
     ],
   ]);
@@ -158,7 +176,7 @@ describe("ai-componentize", () => {
     const pages = makeRepeatedCards();
     const heuristic = componentize(pages, { minInstances: 2, minDepth: 2 });
 
-    mockResponse = { invalid: true } as unknown as Record<string, unknown>;
+    mockResponse = { invalid: true };
 
     const result = await aiComponentize(heuristic, {
       apiKey: "test-key",
@@ -201,7 +219,7 @@ describe("ai-componentize", () => {
       children: [
         { tagName: "h3", textContent: t },
         { tagName: "p", textContent: "desc" },
-      ] as JxElement[],
+      ],
     });
 
     const link = (t: string): JxElement => ({
@@ -210,7 +228,7 @@ describe("ai-componentize", () => {
       children: [
         { tagName: "span", textContent: t },
         { tagName: "span", textContent: "arrow" },
-      ] as JxElement[],
+      ],
     });
 
     const pages = new Map([
@@ -218,7 +236,7 @@ describe("ai-componentize", () => {
         "pages/index.json",
         {
           tagName: "div",
-          children: [card("A"), card("B"), link("X"), link("Y")] as JxElement[],
+          children: [card("A"), card("B"), link("X"), link("Y")],
         },
       ],
     ]);
@@ -276,7 +294,7 @@ describe("ai-componentize", () => {
     /* The model is the caller's to name and has no default here. A hardcoded "gpt-4o-mini" was one,
        and it 404s on a backend brokering Workers AI — which callLlm reads as "the LLM failed", so
        every component silently keeps its heuristic name. run.ts holds the CLI's default. */
-    expect((lastRequestBody as Record<string, unknown>).model).toBe(TEST_MODEL);
+    expect(lastRequestBody?.["model"]).toBe(TEST_MODEL);
   });
 
   it("uses custom model when specified", async () => {
@@ -297,7 +315,7 @@ describe("ai-componentize", () => {
     });
 
     expect(lastRequestBody).toBeTruthy();
-    expect((lastRequestBody as Record<string, unknown>).model).toBe("claude-sonnet-4-6");
+    expect(lastRequestBody?.["model"]).toBe("claude-sonnet-4-6");
   });
 
   it("renames props in template interpolations", async () => {
@@ -439,14 +457,13 @@ describe("ai-componentize", () => {
     const [, comp] = firstEntry(result.components);
     expect(comp.template.state).toEqual({ title: "", linkUrl: "" });
 
-    const children = comp.template.children as (JxElement | string)[];
-    expect(children[0]).toBe("${state.title}");
-    const anchor = children[1] as JxElement;
+    expect(childrenOf(comp.template)[0]).toBe("${state.title}");
+    const anchor = elementChild(comp.template, 1);
     expect(anchor.textContent).toBe("${state.title}");
     expect(anchor.attributes).toEqual({ href: "${state.linkUrl}", target: "_blank" });
 
     const page = result.rewrittenPages.get("pages/index.json")!;
-    const callSite = (page.children as JxElement[])[0]!;
+    const callSite = elementChild(page, 0);
     expect(callSite.tagName).toBe("link-card");
     expect(callSite.$props).toEqual({ title: "Text 0", linkUrl: "/link-0" });
   });

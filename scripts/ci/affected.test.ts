@@ -36,16 +36,14 @@ describe("the whole matrix", () => {
     expect(flags).toContain("server");
     expect(flags).toContain("parser");
     /*
-     * Every workspace EXCEPT `catalog`, which depends on nothing at all. That is not an
-     * oversight in its manifest: it is the catalogue of first-party extensions, and it names them
-     * as data precisely so that no core package acquires a dependency on `extensions/*`
-     * (specs/extensions.md §2). A dependency added to satisfy this assertion would be the very
-     * edge the rule forbids, so the exception is the design working.
+     * Every workspace, `catalog` included. The catalogue still names the first-party extensions as
+     * data, so no core package acquires a dependency on `extensions/*` (specs/extensions.md §2);
+     * its one dependency is `@jxsuite/protocol`, whose `ExtensionSectionInfo` is the section entry
+     * it lists, and protocol depends on schema. A core-to-core edge is not the edge that rule
+     * forbids.
      */
-    const standalone = workspaces.filter((w) => w.flag === "catalog");
-    expect(standalone.length).toBe(1);
-    expect(flags).not.toContain("catalog");
-    expect(flags.length).toBe(workspaces.length - standalone.length);
+    expect(flags).toContain("catalog");
+    expect(flags.length).toBe(workspaces.length);
   });
 
   test("a root manifest change runs everything", () => {
@@ -126,12 +124,15 @@ describe("the nix build", () => {
     expect(workflow).not.toContain("needs.changes.outputs.nix");
   });
 
-  test("the branch prefix is the one release-please actually opens", () => {
-    // Not derivable from release-please-config.json: the branch name is release-please's default,
-    // `release-please--branches--<target>`. Pinned from the merged pull requests in this repo
-    // (#171, #164, #159 … all `release-please--branches--main`), and asserted here so a change to
-    // `separate-pull-requests` or a branch-prefix setting has to come past this line.
-    expect("release-please--branches--main".startsWith("release-please--")).toBe(true);
+  test("the branch prefix is the one release-please actually opens", async () => {
+    /* Not derivable from release-please-config.json: the branch name is release-please's default,
+     * `release-please--branches--<target>`. Pinned from the merged pull requests in this repo
+     * (#171, #164, #159 … all `release-please--branches--main`), and asserted here so a change to
+     * `separate-pull-requests` or a branch-prefix setting has to come past this line. The prefix the
+     * workflow gates on is read back from it, so the gate and that branch name cannot drift apart. */
+    const workflow = await Bun.file(".github/workflows/test.yml").text();
+    const prefix = workflow.match(/startsWith\(github\.head_ref, '([^']+)'\)/)?.[1];
+    expect(`${prefix}branches--main`).toBe("release-please--branches--main");
   });
 
   test("ci still depends on nix, so a red derivation blocks the RELEASE pull request", async () => {

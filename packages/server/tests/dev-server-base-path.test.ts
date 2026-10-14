@@ -33,11 +33,11 @@ beforeAll(async () => {
   writeFileSync(join(ROOT, "index.html"), "<html>home</html>");
   writeFileSync(join(ROOT, "assets", "app.js"), "export const x = 1;");
   server = await createDevServer({ builds: [], port: 0, root: ROOT, studio: false, watch: false });
-  origin = `http://127.0.0.1:${(server as { port: number }).port}`;
+  origin = `http://127.0.0.1:${server.port}`;
 });
 
 afterAll(() => {
-  (server as { stop?: () => void }).stop?.();
+  void server.stop();
   rmSync(FIXTURES, { force: true, recursive: true });
 });
 

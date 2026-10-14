@@ -15,7 +15,7 @@
  * @docs framework/concepts/accessibility
  */
 
-import { isJsonObject, isRef } from "./guards";
+import { isJsonObject, isNodeObject, isNonNullObject, isRef, isString } from "./guards";
 import { attrs, labelOf, tagOf } from "./overlays";
 import type { JxElement } from "../types";
 import type { PopoverPath } from "./overlays";
@@ -43,47 +43,62 @@ export interface A11yDefect {
   /** `error` fails a conformance check; `warn` is very probably not what was meant. */
   severity: "error" | "warn";
   /** The WCAG 2.2 success criterion the rule stands on, e.g. `4.1.2`. */
-  criterion: string;
+  criterion: WcagCriterion;
 }
 
 /** The success criteria the rules cite, by number. */
-export const WCAG_CRITERIA: Readonly<Record<string, string>> = {
+export const WCAG_CRITERIA = {
   "1.1.1": "Non-text Content",
   "1.3.1": "Info and Relationships",
   "2.1.1": "Keyboard",
   "4.1.2": "Name, Role, Value",
-};
+} as const;
+
+/** The number of a success criterion some rule here cites: a key of {@link WCAG_CRITERIA}. */
+export type WcagCriterion = keyof typeof WCAG_CRITERIA;
 
 const DOCS = "See docs/framework/concepts/accessibility.";
 
 // ─── Reading a node ─────────────────────────────────────────────────────────────
 
-/** A value the document decides at run time: a `$ref`, an expression, or a `${…}` template. */
-function isBound(value: unknown): boolean {
-  if (isRef(value) || isJsonObject(value)) {
-    return true;
-  }
-  return typeof value === "string" && value.includes("${");
-}
+/**
+ * An attribute or top-level property as the rules can read it.
+ *
+ * `absent` is not written (or written as `null`); `bound` is a value the document decides at run
+ * time (a `$ref`, an expression, or a `${…}` template); `text` is a literal string; `other` is any
+ * other literal (a number, a boolean, an array), of which only `true` means anything to a rule.
+ */
+type Reading =
+  | { kind: "absent" }
+  | { kind: "bound" }
+  | { kind: "text"; text: string }
+  | { kind: "other"; isTrue: boolean };
 
-/** An attribute or top-level property, whichever the author wrote. */
-function valueOf(node: JxElement, name: string): unknown {
+/** Read an attribute or top-level property, whichever the author wrote. */
+function read(node: JxElement, name: string): Reading {
   const bag = attrs(node);
-  if (name in bag) {
-    return bag[name];
+  const value = name in bag ? bag[name] : node[name];
+  if (value === undefined || value === null) {
+    return { kind: "absent" };
   }
-  return (node as Record<string, unknown>)[name];
+  if (isRef(value) || isJsonObject(value)) {
+    return { kind: "bound" };
+  }
+  if (isString(value)) {
+    return value.includes("${") ? { kind: "bound" } : { kind: "text", text: value };
+  }
+  return { isTrue: value === true, kind: "other" };
 }
 
 /** A literal, non-empty string value, or null when absent, empty or bound. */
 function literal(node: JxElement, name: string): string | null {
-  const value = valueOf(node, name);
-  return typeof value === "string" && value.trim() !== "" && !isBound(value) ? value : null;
+  const value = read(node, name);
+  return value.kind === "text" && value.text.trim() !== "" ? value.text : null;
 }
 
 /** Whether the author wrote the attribute at all, bound or not. */
 function has(node: JxElement, name: string): boolean {
-  return valueOf(node, name) !== undefined && valueOf(node, name) !== null;
+  return read(node, name).kind !== "absent";
 }
 
 /** The sentinel a reader returns for a value the document decides at run time. */
@@ -91,32 +106,26 @@ const BOUND = "bound";
 
 /** The node's role, lowercased; `null` when it has none and `"bound"` when it is not decidable. */
 function roleOf(node: JxElement): string | null {
-  const value = valueOf(node, "role");
-  if (value === undefined || value === null) {
-    return null;
+  const value = read(node, "role");
+  if (value.kind === "bound") {
+    return BOUND;
   }
-  if (isBound(value)) {
-    return "bound";
-  }
-  return typeof value === "string" ? value.trim().toLowerCase().split(/\s+/)[0]! : null;
+  return value.kind === "text" ? value.text.trim().toLowerCase().split(/\s+/)[0]! : null;
 }
 
 /** The node's literal id, or `"bound"` when it has one the document decides at run time. */
 function idStateOf(node: JxElement): string | null {
-  const value = valueOf(node, "id");
-  if (value === undefined || value === null || value === "") {
-    return null;
+  const value = read(node, "id");
+  if (value.kind === "bound") {
+    return BOUND;
   }
-  return isBound(value) ? "bound" : typeof value === "string" ? value : null;
+  return value.kind === "text" && value.text !== "" ? value.text : null;
 }
 
 /** Whether a name source the platform reads is present, bound or literal and non-empty. */
 function hasNameSource(node: JxElement, name: string): boolean {
-  const value = valueOf(node, name);
-  if (value === undefined || value === null) {
-    return false;
-  }
-  return isBound(value) || (typeof value === "string" && value.trim() !== "");
+  const value = read(node, name);
+  return value.kind === "bound" || (value.kind === "text" && value.text.trim() !== "");
 }
 
 /**
@@ -128,7 +137,7 @@ function hasNameSource(node: JxElement, name: string): boolean {
  */
 function hasContentName(node: JxElement): boolean {
   const text = node.textContent;
-  if (typeof text === "string") {
+  if (isString(text)) {
     if (text.trim() !== "") {
       return true;
     }
@@ -147,23 +156,23 @@ function hasContentName(node: JxElement): boolean {
   const { children } = node;
   if (Array.isArray(children)) {
     for (const child of children) {
-      if (typeof child === "string") {
+      if (isString(child)) {
         if (child.trim() !== "") {
           return true;
         }
-      } else if (child && typeof child === "object" && hasContentName(child)) {
+      } else if (isNonNullObject(child) && hasContentName(child)) {
         return true;
       }
     }
-  } else if (children !== undefined && children !== null) {
-    // A mapped array: rows the document decides.
+  } else if (children != null) {
+    // A mapped array: rows the document decides. (`!= null` also refuses a JSON `null`.)
     return true;
   }
   if (isJsonObject(node.map)) {
     return true;
   }
   const cases = isJsonObject(node.cases) ? Object.values(node.cases) : [];
-  return cases.some((branch) => isJsonObject(branch) && hasContentName(branch as JxElement));
+  return cases.some((branch) => isNodeObject(branch) && hasContentName(branch));
 }
 
 /** Roles that take their name from content, as ARIA's "name from: contents" allows. */
@@ -195,16 +204,16 @@ const LABELLED_ROLES = new Set([
 const VALUE_NAMED_INPUTS = new Set(["button", "reset", "submit"]);
 
 /** For each role the container rules judge, the container roles allowed to own it. */
-const OWNING_ROLES: Readonly<Record<string, readonly string[]>> = {
-  menuitem: ["menu", "menubar"],
-  menuitemcheckbox: ["menu", "menubar"],
-  menuitemradio: ["menu", "menubar"],
-  option: ["listbox"],
-  tab: ["tablist"],
-};
+const OWNING_ROLES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["menuitem", ["menu", "menubar"]],
+  ["menuitemcheckbox", ["menu", "menubar"]],
+  ["menuitemradio", ["menu", "menubar"]],
+  ["option", ["listbox"]],
+  ["tab", ["tablist"]],
+]);
 
 /** Every role on the owning side of that map, so one walk can collect what each of them owns. */
-const CONTAINER_ROLES = new Set(Object.values(OWNING_ROLES).flat());
+const CONTAINER_ROLES = new Set([...OWNING_ROLES.values()].flat());
 
 // ─── Walking with ancestors ─────────────────────────────────────────────────────
 
@@ -229,25 +238,21 @@ function* walkAncestry(
   const { children } = root;
   if (Array.isArray(children)) {
     for (const [index, child] of children.entries()) {
-      if (child && typeof child === "object") {
-        yield* walkAncestry(child as JxElement, [...path, "children", index], below, tagsBelow);
+      if (isNonNullObject(child)) {
+        yield* walkAncestry(child, [...path, "children", index], below, tagsBelow);
       }
     }
-  } else if (isJsonObject(children) && isJsonObject((children as JxElement).map)) {
-    yield* walkAncestry(
-      (children as JxElement).map as JxElement,
-      [...path, "children", "map"],
-      below,
-      tagsBelow,
-    );
+  } else if (isJsonObject(children) && isNodeObject(children.map)) {
+    yield* walkAncestry(children.map, [...path, "children", "map"], below, tagsBelow);
   }
-  if (isJsonObject(root.map)) {
-    yield* walkAncestry(root.map as JxElement, [...path, "map"], below, tagsBelow);
+  if (isNodeObject(root.map)) {
+    yield* walkAncestry(root.map, [...path, "map"], below, tagsBelow);
   }
-  const cases = isJsonObject(root.cases) ? (root.cases as Record<string, JxElement>) : {};
-  for (const [key, branch] of Object.entries(cases)) {
-    if (branch && typeof branch === "object") {
-      yield* walkAncestry(branch, [...path, "cases", key], below, tagsBelow);
+  if (isJsonObject(root.cases)) {
+    for (const [key, branch] of Object.entries(root.cases)) {
+      if (isNonNullObject(branch)) {
+        yield* walkAncestry(branch, [...path, "cases", key], below, tagsBelow);
+      }
     }
   }
 }
@@ -264,7 +269,7 @@ function defect(
   path: PopoverPath,
   message: string,
   detail: string,
-  criterion: string,
+  criterion: WcagCriterion,
   severity: "error" | "warn" = "error",
 ): A11yDefect {
   return {
@@ -278,13 +283,17 @@ function defect(
 }
 
 /**
- * What the document's `<label>` elements point at, and whether any of them points somewhere
+ * The literal ids a family of id references names, and whether any of them points somewhere
  * unreadable.
+ *
+ * Two families use it: what the document's `<label for>` elements point at, where a `<label
+ * for="row-${index}">` makes which control it names undecidable; and what the containers of one
+ * role own through `aria-owns`, where one owning `"tab-${state.i}"` does the same.
  */
-interface LabelTargets {
-  /** Every literal `for` value. */
+interface IdTargets {
+  /** Every literal id named. */
   ids: Set<string>;
-  /** A `<label for="row-${index}">` exists, so which control it names is not decidable here. */
+  /** One reference is bound, so which elements the family names is not decidable here. */
   bound: boolean;
 }
 
@@ -299,7 +308,7 @@ interface LabelTargets {
  * literally that pairing looked like no label at all, so the one correct form was the one reported
  * — and at `error` severity, which fails `jx validate --strict` on a document that is fine.
  */
-function labelledByLabel(id: string | null, labelledIds: LabelTargets, tags: string[]): boolean {
+function labelledByLabel(id: string | null, labelledIds: IdTargets, tags: string[]): boolean {
   if (tags.includes("label")) {
     return true;
   }
@@ -309,7 +318,7 @@ function labelledByLabel(id: string | null, labelledIds: LabelTargets, tags: str
   return id !== null && labelledIds.ids.has(id);
 }
 
-function unnamedInteractive(visit: Ancestry, labelledIds: LabelTargets): A11yDefect | null {
+function unnamedInteractive(visit: Ancestry, labelledIds: IdTargets): A11yDefect | null {
   const { node, path, tags } = visit;
   const tag = tagOf(node);
   const role = roleOf(node);
@@ -377,7 +386,7 @@ function unnamedInteractive(visit: Ancestry, labelledIds: LabelTargets): A11yDef
 function nativeNameRoute(
   node: JxElement,
   tag: string,
-  labelledIds: LabelTargets,
+  labelledIds: IdTargets,
   tags: string[],
 ): "named" | "exempt" | "unnamed" | "unnamed-value" | "unnamed-alt" | "none" {
   /*
@@ -512,14 +521,6 @@ function ariaTargetsMissing(visit: Ancestry, ids: Set<string>): A11yDefect[] {
   return defects;
 }
 
-/** What the containers of one role name through `aria-owns`, across the whole document. */
-interface OwnedTargets {
-  /** Every literal id such a container owns. */
-  ids: Set<string>;
-  /** One of them owns `"tab-${state.i}"`, so which elements it owns is not decidable here. */
-  bound: boolean;
-}
-
 /**
  * Whether a container that may own this role claims it through `aria-owns`.
  *
@@ -534,12 +535,8 @@ interface OwnedTargets {
  * this stays a silence rather than a hole: a `role="banner" aria-owns="t1"` over a tab owns nothing
  * a tab may belong to, and the tab is still reported.
  */
-function ownedByContainer(
-  id: string | null,
-  role: string,
-  owned: Map<string, OwnedTargets>,
-): boolean {
-  for (const container of OWNING_ROLES[role] ?? []) {
+function ownedByContainer(id: string | null, role: string, owned: Map<string, IdTargets>): boolean {
+  for (const container of OWNING_ROLES.get(role) ?? []) {
     const targets = owned.get(container);
     if (targets === undefined) {
       continue;
@@ -557,10 +554,7 @@ function ownedByContainer(
   return false;
 }
 
-function roleOutsideContainer(
-  visit: Ancestry,
-  owned: Map<string, OwnedTargets>,
-): A11yDefect | null {
+function roleOutsideContainer(visit: Ancestry, owned: Map<string, IdTargets>): A11yDefect | null {
   const { node, path, roles, tags } = visit;
   const role = roleOf(node);
   if (role === null || role === "bound" || path.length === 0 || underCustomElement(tags)) {
@@ -616,11 +610,13 @@ function tabSelections(root: JxElement): boolean[] | null {
     if (roleOf(node) !== "tab") {
       continue;
     }
-    const value = valueOf(node, "aria-selected");
-    if (isBound(value)) {
+    const value = read(node, "aria-selected");
+    if (value.kind === "bound") {
       return null;
     }
-    seen.push(value === true || value === "true");
+    seen.push(
+      (value.kind === "other" && value.isTrue) || (value.kind === "text" && value.text === "true"),
+    );
   }
   return seen;
 }
@@ -699,8 +695,8 @@ function activedescendantNotFocusable(visit: Ancestry): A11yDefect | null {
 export function findA11yDefects(doc: JxElement): A11yDefect[] {
   const visits = [...walkAncestry(doc)];
   const ids = new Set<string>();
-  const labelledIds: LabelTargets = { bound: false, ids: new Set<string>() };
-  const owned = new Map<string, OwnedTargets>();
+  const labelledIds: IdTargets = { bound: false, ids: new Set<string>() };
+  const owned = new Map<string, IdTargets>();
   let boundIds = false;
   for (const { node } of visits) {
     const role = roleOf(node);

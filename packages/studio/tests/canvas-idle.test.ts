@@ -11,30 +11,36 @@
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { flush, registerPrimaryStage, resetWorkspaceWithTab, stubRect } from "./harness";
+import type { FakeIframeChannel } from "./harness";
 import { createPaneSurface, surfaceForPane } from "../src/canvas/surface-registry";
 import { canvasPerf, resetCanvasPerf } from "../src/canvas/canvas-perf";
+import type { postMessageChannel } from "../src/canvas/iframe-channel";
+import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
+import type { CanvasPanel } from "../src/types";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: `./with-dom.js`, imported first, registers happy-dom's GlobalRegistrator, which copies the
+   window's members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (u: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
-interface FakeChannel {
-  posts: Record<string, unknown>[];
-  deliver: (m: Record<string, unknown>) => void;
-}
-const channels: FakeChannel[] = [];
+const channels: FakeIframeChannel[] = [];
 
 void mock.module("../src/canvas/iframe-channel", () => ({
-  postMessageChannel: (opts: Record<string, unknown>) => {
-    let handler: ((m: Record<string, unknown>) => void) | null = null;
-    const rec: FakeChannel = { deliver: (m) => handler?.(m), posts: [] };
+  postMessageChannel: (
+    opts: Parameters<typeof postMessageChannel<ParentToIframe, IframeToParent>>[0],
+  ) => {
+    let handler: ((m: IframeToParent) => void) | null = null;
+    const rec: FakeIframeChannel = { deliver: (m) => handler?.(m), posts: [] };
     channels.push(rec);
     return {
       dispose: () => {},
-      onMessage: (h: (m: Record<string, unknown>) => void) => {
+      onMessage: (h: (m: IframeToParent) => void) => {
         handler = h;
         return () => {};
       },
-      post: (m: Record<string, unknown>) => rec.posts.push(m),
+      post: (m: ParentToIframe) => rec.posts.push(m),
       target: opts.target,
     };
   },
@@ -73,6 +79,25 @@ const { initShellRefs } = await import("../src/store");
 
 const QUIET = { animations: 0, fonts: true, images: 0, kind: "idle" as const };
 
+/** An artboard record carrying only the members a test names. */
+function artboard(fields: Pick<CanvasPanel, "canvas"> & Partial<CanvasPanel>): CanvasPanel {
+  /* SAFETY: this suite never renders a stage, so an artboard record here is read only by
+     `panelHostingCanvas` (which matches on `canvas`), by `panelOfSurface` and the header marker
+     (`mediaName`, `element?.`), and by teardown (`renderScope?.`), each of which tolerates a member
+     left out. The bound DOM members (`element`, `viewport`, `scrollContainer`) and `_width` are read
+     by the stage render and Edit-mode zoom, neither of which runs in a Design-mode suite like this. */
+  return fields as CanvasPanel;
+}
+
+/** The last message posted to the frame, which the test expects to be a measure request. */
+function lastMeasure(channel: FakeIframeChannel): Extract<ParentToIframe, { kind: "measure" }> {
+  const post = channel.posts.at(-1);
+  if (post?.kind !== "measure") {
+    throw new Error(`the last post is ${post?.kind ?? "nothing"}, not a measure`);
+  }
+  return post;
+}
+
 /**
  * Register `canvasEl` as an artboard of the primary pane's stage — what `renderCanvasIntoPanel`
  * does before every real mount, and what makes `panelHostingCanvas` able to name its generation.
@@ -80,14 +105,16 @@ const QUIET = { animations: 0, fonts: true, images: 0, kind: "idle" as const };
 function mountPanelFor(canvasEl: HTMLElement, gen = 1): void {
   const surface = surfaceForPane("primary");
   surface.renderGeneration = gen;
-  surface.panels.push({ canvas: canvasEl, ready: true } as never);
+  surface.panels.push(artboard({ canvas: canvasEl, ready: true }));
 }
 
 /** Mount one page host and bring it to the state a settled canvas is in. */
-async function mountReadyCanvas(gen = 1): Promise<{ canvasEl: HTMLElement; channel: FakeChannel }> {
+async function mountReadyCanvas(
+  gen = 1,
+): Promise<{ canvasEl: HTMLElement; channel: FakeIframeChannel }> {
   const canvasEl = document.createElement("div");
   document.body.append(canvasEl);
-  await mountIframeCanvas(gen, { tagName: "div" } as never, canvasEl);
+  await mountIframeCanvas(gen, { tagName: "div" }, canvasEl);
   const channel = channels.at(-1)!;
   channel.deliver({ kind: "ready" });
   channel.deliver({ gen, kind: "renderComplete" });
@@ -118,14 +145,14 @@ describe("canvasIdleBlockers", () => {
   test("a frame that has not handshaked blocks, and says so once", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     expect(canvasIdleBlockers()).toEqual(["canvas[unbound]: frame has not handshaked"]);
   });
 
   test("a ready frame that has not reported quiescence is not assumed quiet", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
     channels.at(-1)!.deliver({ kind: "ready" });
     channels.at(-1)!.deliver({ gen: 1, kind: "renderComplete" });
     expect(canvasIdleBlockers()).toEqual(["canvas[unbound]: no quiescence report yet"]);
@@ -140,7 +167,7 @@ describe("canvasIdleBlockers", () => {
     const tab = resetWorkspaceWithTab(undefined, { id: "page-1" });
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(4, { tagName: "div" } as never, canvasEl, null, tab.id);
+    await mountIframeCanvas(4, { tagName: "div" }, canvasEl, null, tab.id);
     const channel = channels.at(-1)!;
     channel.deliver({ kind: "ready" });
     expect(canvasIdleBlockers()).toEqual([
@@ -162,7 +189,7 @@ describe("canvasIdleBlockers", () => {
        through `renderCanvasIntoPanel(surface, panel, …)` — and a host whose stage cannot be named
        is now skipped rather than posted a fabricated gen `0`. See the test below. */
     mountPanelFor(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl, null, tab.id);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl, null, tab.id);
     const channel = channels.at(-1)!;
     channel.deliver({ kind: "ready" });
     channel.deliver({ gen: 1, kind: "renderComplete" });
@@ -196,7 +223,7 @@ describe("canvasIdleBlockers", () => {
     const tab = resetWorkspaceWithTab(undefined, { id: "page-3" });
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
-    await mountIframeCanvas(7, { tagName: "div" } as never, canvasEl, null, tab.id);
+    await mountIframeCanvas(7, { tagName: "div" }, canvasEl, null, tab.id);
     const channel = channels.at(-1)!;
     channel.deliver({ kind: "ready" });
     channel.deliver({ gen: 7, kind: "renderComplete" });
@@ -234,13 +261,13 @@ describe("canvasIdleBlockers", () => {
     const pageEl = document.createElement("div");
     const bookEl = document.createElement("div");
     document.body.append(pageEl, bookEl);
-    await mountIframeCanvas(1, { tagName: "div" } as never, pageEl);
+    await mountIframeCanvas(1, { tagName: "div" }, pageEl);
     channels.at(-1)!.deliver({ kind: "ready" });
     channels.at(-1)!.deliver({ gen: 1, kind: "renderComplete" });
     channels.at(-1)!.deliver({ ...QUIET, gen: 1 });
     mountStylebookCanvas(
       2,
-      { doc: { tagName: "div" } as never, pathToTag: new Map(), tagToCardPath: new Map() },
+      { doc: { tagName: "div" }, pathToTag: new Map(), tagToCardPath: new Map() },
       bookEl,
       null,
     );
@@ -270,7 +297,7 @@ describe("canvasPointAt", () => {
     stubRect(iframe, { height: 600, left: 100, top: 50, width: 800 });
 
     const pending = canvasPointAt(["children", 0]);
-    const measure = channel.posts.at(-1)!;
+    const measure = lastMeasure(channel);
     expect(measure).toMatchObject({ kind: "measure", paths: [["children", 0]] });
     channel.deliver({
       hits: [{ path: ["children", 0], rect: { height: 20, width: 60, x: 10, y: 30 } }],
@@ -292,7 +319,7 @@ describe("canvasPointAt", () => {
   test("a path the frame cannot find answers null rather than a fabricated point", async () => {
     const { channel } = await mountReadyCanvas();
     const pending = canvasPointAt(["children", 9]);
-    const { reqId } = channel.posts.at(-1)!;
+    const { reqId } = lastMeasure(channel);
     channel.deliver({ hits: [], kind: "geometry", reqId });
     const point = await pending;
     expect(point).toBeNull();
@@ -316,7 +343,7 @@ describe("canvasPointAt", () => {
     // Dispatches on it FIRST — otherwise asking where a node is would move the selection box.
     const { channel } = await mountReadyCanvas();
     const pending = canvasPointAt(["children", 0]);
-    const { reqId } = channel.posts.at(-1)!;
+    const { reqId } = lastMeasure(channel);
     channel.deliver({
       hits: [{ path: ["children", 0], rect: { height: 1, width: 1, x: 0, y: 0 } }],
       kind: "geometry",
@@ -343,7 +370,7 @@ describe("revealCanvasPath", () => {
 
     const pending = revealCanvasPath(["children", 0]);
     await flush(1);
-    const first = channel.posts.at(-1)!;
+    const first = lastMeasure(channel);
     channel.deliver({
       hits: [{ path: ["children", 0], rect: { height: 10, width: 10, x: 0, y: 40 } }],
       kind: "geometry",
@@ -351,7 +378,7 @@ describe("revealCanvasPath", () => {
     });
     // …then the pan runs and a second measure follows once the iframe's offset stops moving.
     await flush(4);
-    const second = channel.posts.at(-1)!;
+    const second = lastMeasure(channel);
     expect(second.reqId).not.toBe(first.reqId);
     expect(surfaceForPane("primary").panY).not.toBe(0);
     channel.deliver({
@@ -383,11 +410,11 @@ describe("revealCanvasPath", () => {
     side.wrap!.append(canvasEl);
     // A ready host in the SIDE pane, rendering a DIFFERENT tab — so `hostForPath` takes its
     // Fallback branch and answers with this host while the keyboard is in the primary.
-    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl, null, "page-side");
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl, null, "page-side");
     const channel = channels.at(-1)!;
     channel.deliver({ kind: "ready" });
     channel.deliver({ gen: 1, kind: "renderComplete" });
-    side.panels.push({ canvas: canvasEl, mediaName: "base" } as never);
+    side.panels.push(artboard({ canvas: canvasEl, mediaName: "base" }));
     const iframe = canvasEl.querySelector("iframe")!;
     Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 100 });
     stubRect(iframe, { height: 100, left: 0, top: 0, width: 100 });
@@ -397,7 +424,7 @@ describe("revealCanvasPath", () => {
 
     const pending = revealCanvasPath(["children", 0]);
     await flush(1);
-    const first = channel.posts.at(-1)!;
+    const first = lastMeasure(channel);
     channel.deliver({
       hits: [{ path: ["children", 0], rect: { height: 10, width: 10, x: 0, y: 40 } }],
       kind: "geometry",
@@ -410,7 +437,7 @@ describe("revealCanvasPath", () => {
     );
     expect(side.panY).not.toBe(0);
     expect(surfaceForPane("primary").panY).toBe(0);
-    const second = channel.posts.at(-1)!;
+    const second = lastMeasure(channel);
     channel.deliver({ hits: [], kind: "geometry", reqId: second.reqId });
     await pending;
     side.panels.length = 0;
@@ -420,7 +447,7 @@ describe("revealCanvasPath", () => {
     const { channel } = await mountReadyCanvas();
     const pending = revealCanvasPath(["children", 9]);
     await flush(1);
-    const { reqId } = channel.posts.at(-1)!;
+    const { reqId } = lastMeasure(channel);
     channel.deliver({ hits: [], kind: "geometry", reqId });
     const point = await pending;
     expect(point).toBeNull();

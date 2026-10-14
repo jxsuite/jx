@@ -17,6 +17,10 @@
  * - To-many reference to any other section → JSON text column of id strings
  */
 
+import { isBoolean, isString } from "@jxsuite/schema/guards";
+import type { ColumnDataType } from "kysely";
+import type { JsonValue } from "@jxsuite/schema/types";
+import type { DynamicRow } from "./query.ts";
 import type { TableDef } from "./types.ts";
 
 export type SqlDialectKind = "sqlite" | "postgres";
@@ -28,8 +32,8 @@ export interface RefTarget {
 }
 
 /** Parse a relationship ref pointer, or null when the string is not one. */
-export function parseRefPointer(pointer: unknown): RefTarget | null {
-  if (typeof pointer !== "string") {
+export function parseRefPointer(pointer: JsonValue | undefined): RefTarget | null {
+  if (!isString(pointer)) {
     return null;
   }
   const match = pointer.match(/^#\/([A-Za-z][\w-]*)\/([\w.-]+)$/);
@@ -49,7 +53,7 @@ export interface ColumnSpec {
   /** Physical column name (`<field>_id` for to-one references). */
   column: string;
   /** SQL data type passed to the Kysely schema builder. */
-  dataType: string;
+  dataType: ColumnDataType;
   storage: ColumnStorage;
   /** Set for reference fields (to-one FK columns and to-many JSON id lists). */
   ref: RefTarget | null;
@@ -69,8 +73,8 @@ export interface JunctionSpec {
   sourceColumn: string;
   /** `${targetTable}_id`, suffixed `_2` when the reference is self-referential. */
   targetColumn: string;
-  sourceIdType: string;
-  targetIdType: string;
+  sourceIdType: ColumnDataType;
+  targetIdType: ColumnDataType;
 }
 
 /** The full physical plan for one table. */
@@ -84,12 +88,12 @@ export interface TablePlan {
 }
 
 /** SQL data type of a table's primary key. */
-export function idDataType(idKind: "uuid" | "integer"): string {
+export function idDataType(idKind: "uuid" | "integer"): ColumnDataType {
   return idKind === "uuid" ? "text" : "integer";
 }
 
 /** Map a scalar field schema type to the SQL data type for a dialect. */
-function scalarDataType(type: string | undefined, dialect: SqlDialectKind): string {
+function scalarDataType(type: string | undefined, dialect: SqlDialectKind): ColumnDataType {
   switch (type) {
     case "number": {
       return dialect === "postgres" ? "double precision" : "real";
@@ -240,11 +244,15 @@ export function newRowId(idKind: "uuid" | "integer"): string | undefined {
  * Coerce one JSON payload value to its SQL storage representation.
  *
  * @param {ColumnSpec} spec
- * @param {unknown} value - Already-validated payload value
+ * @param {JsonValue | undefined} value - Already-validated payload value
  * @param {SqlDialectKind} dialect
- * @returns {unknown}
+ * @returns {JsonValue}
  */
-export function toStorage(spec: ColumnSpec, value: unknown, dialect: SqlDialectKind): unknown {
+export function toStorage(
+  spec: ColumnSpec,
+  value: JsonValue | undefined,
+  dialect: SqlDialectKind,
+): JsonValue {
   if (value === null || value === undefined) {
     return null;
   }
@@ -265,24 +273,23 @@ export function toStorage(spec: ColumnSpec, value: unknown, dialect: SqlDialectK
  * Coerce a database row back to its JSON payload shape (booleans, JSON columns).
  *
  * @param {ColumnSpec[]} specs - Column plan of the table
- * @param {Record<string, unknown>} row - Raw row from the driver
- * @returns {Record<string, unknown>}
+ * @param {DynamicRow} row - Raw row from the driver
+ * @returns {DynamicRow}
  */
-export function fromStorage(
-  specs: ColumnSpec[],
-  row: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...row };
+export function fromStorage(specs: ColumnSpec[], row: DynamicRow) {
+  const out = { ...row };
   for (const spec of specs) {
     const value = out[spec.column];
     if (value === null || value === undefined) {
       continue;
     }
-    if (spec.storage === "boolean" && typeof value !== "boolean") {
-      out[spec.column] = value === 1 || value === "1" || value === true;
-    } else if (spec.storage === "json" && typeof value === "string") {
+    if (spec.storage === "boolean" && !isBoolean(value)) {
+      out[spec.column] = value === 1 || value === "1";
+    } else if (spec.storage === "json" && isString(value)) {
       try {
-        out[spec.column] = JSON.parse(value) as unknown;
+        /* SAFETY: JSON.parse only ever yields JSON values (null, booleans, numbers, strings, arrays
+           and plain objects); a malformed string throws instead and is handled below. */
+        out[spec.column] = JSON.parse(value) as JsonValue;
       } catch {
         // Malformed stored JSON stays a string rather than failing the read.
       }

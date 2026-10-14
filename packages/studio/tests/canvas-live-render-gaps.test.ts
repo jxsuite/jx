@@ -10,11 +10,41 @@ import { invalidateLayoutCache } from "../src/site-context";
 import { loadComponentRegistry } from "../src/files/components";
 import { closeAllTabs } from "../src/workspace/workspace";
 
-import type { JxMutableNode } from "@jxsuite/schema/types";
-import type { Tab } from "../src/tabs/tab";
+import { isNodeObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import { POSTS } from "./shared-fixtures";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: harness imports with-dom first, whose GlobalRegistrator.register() copies happy-dom's
+   window members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
+
+/**
+ * A fixture that is valid JSON but deliberately NOT a well-formed `JxMutableNode`: a number or a
+ * `null` where a child node or a `$switch` case belongs. Documents reach the canvas as parsed JSON,
+ * so the tree walks in `resolveCanvasDocument` must step over such values, and these cases prove
+ * they do.
+ */
+function malformedDoc(json: JsonObject): JxMutableNode {
+  /* SAFETY: deliberately false, and only ever handed to resolveCanvasDocument (directly or through
+     the tab it opens), whose walks object-check every child, case and map template before reading
+     it. That guard is the behavior these cases exercise. */
+  return json as JxMutableNode;
+}
+
+/**
+ * The element node at `index` of a `children` slot. Throws when the slot is a whole-slot repeater
+ * or the entry is text, which no case here resolves to.
+ */
+function nodeAt(slot: JxMutableNode["children"], index: number) {
+  const entry = Array.isArray(slot) ? slot[index] : undefined;
+  if (!isNodeObject(entry)) {
+    throw new TypeError(`expected an element node at index ${index}`);
+  }
+  return entry;
+}
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -53,10 +83,10 @@ describe("layout wrapping with irregular trees", () => {
         $layout: "./layouts/nested.json",
         children: [{ tagName: "p", textContent: "Page content" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/home.json" },
-    ) as Tab;
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    );
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
 
     expect(result.mapperCtx.layoutWrapped).toBe(true);
     // The prefix descends into the wrapper's main container…
@@ -77,18 +107,18 @@ describe("layout wrapping with irregular trees", () => {
         $layout: "./layouts/odd.json",
         children: [{ tagName: "p", textContent: "Page content" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      },
       { documentPath: "pages/odd.json" },
-    ) as Tab;
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
+    );
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
     expect(result.mapperCtx.layoutWrapped).toBe(true);
   });
 });
 
 describe("findArrayPaths edge shapes", () => {
   test("walks the legacy whole-children repeater form", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
-    const legacy = {
+    const tab = resetWorkspaceWithTab();
+    const legacy: JxMutableNode = {
       children: [
         {
           children: {
@@ -100,14 +130,14 @@ describe("findArrayPaths edge shapes", () => {
         },
       ],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    };
     const result = await resolveCanvasDocument(legacy, tab);
     expect(result.mapperCtx.arrayPaths).toContain("children/0/children");
   });
 
   test("walks $switch cases (including nested repeaters and primitive case values)", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
-    const doc = {
+    const tab = resetWorkspaceWithTab();
+    const doc = malformedDoc({
       $switch: { $ref: "#/state/view" },
       cases: {
         list: {
@@ -118,16 +148,16 @@ describe("findArrayPaths edge shapes", () => {
       },
       children: [],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    });
     const result = await resolveCanvasDocument(doc, tab);
     expect(result.mapperCtx.arrayPaths).toContain("cases/list/children/0");
   });
 
   test("nested map templates and primitive children are walked safely", async () => {
-    const tab = resetWorkspaceWithTab() as Tab;
-    const doc = {
+    const tab = resetWorkspaceWithTab();
+    const doc = malformedDoc({
       children: [
-        7 as unknown as JxMutableNode,
+        7,
         {
           $prototype: "Array",
           items: [],
@@ -135,7 +165,7 @@ describe("findArrayPaths edge shapes", () => {
         },
       ],
       tagName: "div",
-    } as unknown as JxMutableNode;
+    });
     const result = await resolveCanvasDocument(doc, tab);
     expect(result.mapperCtx.arrayPaths).toContain("children/1");
     expect(result.mapperCtx.arrayPaths).toContain("children/1/map");
@@ -151,22 +181,17 @@ describe("content-mode component discovery with irregular children", () => {
     });
     await loadComponentRegistry();
     const tab = resetWorkspaceWithTab(
-      {
+      malformedDoc({
         // Pre-existing refs (object and string forms) exercise the existing-ref key extraction.
         $elements: [{ $ref: "./components/manual.json" }, "components/by-name.json"],
-        children: [
-          9 as unknown as JxMutableNode,
-          { children: [null as unknown as JxMutableNode], tagName: "x-card-live" },
-        ],
+        children: [9, { children: [null], tagName: "x-card-live" }],
         tagName: "div",
-      } as unknown as JxMutableNode,
+      }),
       { documentPath: "content/odd.md" },
-    ) as Tab;
-    tab.doc.mode = "content";
-    const result = await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab);
-    const refs = ((result.renderDoc as { $elements?: { $ref?: string }[] }).$elements ?? []).map(
-      (e) => e.$ref,
     );
+    tab.doc.mode = "content";
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? undefined : e.$ref));
     expect(refs.some((r) => r?.includes("components/x-card-live.json"))).toBe(true);
   });
 });
@@ -187,25 +212,22 @@ describe("content-mode component discovery with irregular children", () => {
  * tests assert the context; the mapping itself is asserted in `asset-refs.test.ts`.
  */
 describe("content-entry asset context", () => {
-  const POSTS = { posts: { format: "Markdown", source: "./content/posts/" } };
-
-  const entryDoc = () =>
-    ({
-      children: [
-        { attributes: { src: "./images/hero.png" }, tagName: "img" },
-        { attributes: { src: "/logo.png" }, tagName: "img" },
-      ],
-      tagName: "div",
-    }) as unknown as JxMutableNode;
+  const entryDoc = () => ({
+    children: [
+      { attributes: { src: "./images/hero.png" }, tagName: "img" },
+      { attributes: { src: "/logo.png" }, tagName: "img" },
+    ],
+    tagName: "div",
+  });
 
   async function resolveFor(documentPath: string, mode?: "preview") {
     resetStudioState({ isSiteProject: true, projectConfig: { content: POSTS } });
-    const tab = resetWorkspaceWithTab(entryDoc(), { documentPath }) as Tab;
+    const tab = resetWorkspaceWithTab(entryDoc(), { documentPath });
     if (mode) {
       tab.session.ui.canvasMode = mode;
     }
     return {
-      result: await resolveCanvasDocument(tab.doc.document as JxMutableNode, tab),
+      result: await resolveCanvasDocument(tab.doc.document, tab),
       tab,
     };
   }
@@ -221,14 +243,11 @@ describe("content-entry asset context", () => {
 
   test("the tab's SOURCE document keeps the authored ref — it is what gets serialized", async () => {
     const { result, tab } = await resolveFor("content/posts/hello.md");
-    const source = tab.doc.document as unknown as { children: Record<string, unknown>[] };
-    expect((source.children[0]!.attributes as Record<string, string>).src).toBe(
-      "./images/hero.png",
-    );
+    expect(nodeAt(tab.doc.document.children, 0).attributes?.src).toBe("./images/hero.png");
     // And so does the RENDER document: nothing rewrites a value any more.
-    const kids = result.renderDoc.children as Record<string, Record<string, string>>[];
-    expect(kids[0]!.attributes!.src).toBe("./images/hero.png");
-    expect(kids[1]!.attributes!.src).toBe("/logo.png");
+    const kids = result.renderDoc.children;
+    expect(nodeAt(kids, 0).attributes?.src).toBe("./images/hero.png");
+    expect(nodeAt(kids, 1).attributes?.src).toBe("/logo.png");
   });
 
   /* In site space the mount is the only thing that needs doing, so a page — which has none — needs

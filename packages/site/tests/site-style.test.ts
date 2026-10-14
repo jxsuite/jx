@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "../src/site-style.ts";
+import { isString } from "@jxsuite/schema/guards";
 /* The build's emitter, read across the workspace boundary: `shared.ts` is not a package export,
    and the dependency runs the other way (the compiler depends on this package). The parity test
    below is why `scripts/ci/affected.ts` carries an inverted edge from that file to this suite. */
@@ -247,7 +248,7 @@ describe("buildSiteStyleCSS", () => {
 
     const seen: [string, string, string | null][] = [];
     const css = buildSiteStyleCSS(style, {}, id, (property, value, selector) => {
-      seen.push([property, typeof value === "string" ? value : value.$ref, selector]);
+      seen.push([property, isString(value) ? value : value.$ref, selector]);
       return property === "--tint" ? "hotpink" : null;
     });
     expect(css).toBe(":root { --tint: hotpink }\n.card { margin: 0 }");

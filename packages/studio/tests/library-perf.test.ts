@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { resetNotifications } from "../src/services/notify";
 import type { DirEntry } from "../src/types";
+import { LIBRARY_VIEWPORT, PAGE_COUNT } from "./shared-fixtures";
 
 void mock.module("../src/files/files.js", () => ({
   createFileIn: () => Promise.resolve(null),
@@ -50,10 +51,10 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   setTimeout(() => cb(0), 0);
   return 0;
-}) as typeof requestAnimationFrame;
+};
 
 /*
  * No IntersectionObserver, deliberately.
@@ -67,29 +68,26 @@ globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
 // @ts-expect-error -- removing the global is the point
 globalThis.IntersectionObserver = undefined;
 
-/** The acceptance case's size. */
-const PAGE_COUNT = 300;
-
-/** A viewport a person actually has: a 1200×800 pane, less the toolbar. */
-const VIEWPORT = { height: 700, width: 1180 };
-
-let host: HTMLElement;
+/* A detached placeholder until the first mount, so the teardown's `remove()` before it is a no-op
+   rather than a guard on a value that is never absent. */
+let host: HTMLElement = document.createElement("div");
 let previewReads: string[];
 
-function project(): Record<string, DirEntry[]> {
+/** The fixture project's listings, keyed by directory. */
+function project(): Map<string, DirEntry[]> {
   const pages: DirEntry[] = Array.from({ length: PAGE_COUNT }, (_value, index) => ({
     name: `page-${String(index).padStart(3, "0")}.json`,
     path: `pages/page-${String(index).padStart(3, "0")}.json`,
     type: "file" as const,
   }));
-  return { pages };
+  return new Map([["pages", pages]]);
 }
 
 function install() {
   previewReads = [];
   const tree = project();
   installMockPlatform({
-    listDirectory: (path: string) => Promise.resolve(tree[path] ?? []),
+    listDirectory: (path: string) => Promise.resolve(tree.get(path) ?? []),
     // A real, renderable document: an unparseable one is never CACHED (so a later fix is picked
     // Up), which would make every repaint re-read it and measure the wrong thing.
     readFile: (path: string) => {
@@ -102,7 +100,7 @@ function install() {
 
 async function mount(): Promise<HTMLElement> {
   detachLibraryPane("primary");
-  host?.remove();
+  host.remove();
   closeAllTabs();
   const tab = openTab({
     capabilities: { modes: ["manage"] },
@@ -120,9 +118,15 @@ async function mount(): Promise<HTMLElement> {
 
 /** Give the scroller the box happy-dom never computes, then force one repaint. */
 async function layOutPane() {
-  const body = host.querySelector('[part="body"]') as HTMLElement;
-  Object.defineProperty(body, "clientHeight", { configurable: true, value: VIEWPORT.height });
-  Object.defineProperty(body, "clientWidth", { configurable: true, value: VIEWPORT.width });
+  const body = host.querySelector('[part="body"]');
+  if (!(body instanceof HTMLElement)) {
+    throw new Error("the pane drew no scroller");
+  }
+  Object.defineProperty(body, "clientHeight", {
+    configurable: true,
+    value: LIBRARY_VIEWPORT.height,
+  });
+  Object.defineProperty(body, "clientWidth", { configurable: true, value: LIBRARY_VIEWPORT.width });
   body.dispatchEvent(new Event("scroll"));
   await flush();
   return body;
@@ -175,7 +179,7 @@ beforeEach(() => {
 
 afterEach(() => {
   detachLibraryPane("primary");
-  host?.remove();
+  host.remove();
 });
 
 describe(`${PAGE_COUNT} pages, "All"`, () => {
@@ -195,7 +199,7 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
 
     // Printed rather than asserted: a wall-clock threshold in CI measures the runner, not the code.
     console.error(
-      `[library perf] ${PAGE_COUNT} pages, "All", cards layout, ${VIEWPORT.width}×${VIEWPORT.height} pane\n` +
+      `[library perf] ${PAGE_COUNT} pages, "All", cards layout, ${LIBRARY_VIEWPORT.width}×${LIBRARY_VIEWPORT.height} pane\n` +
         `  before (no window): ${unwindowed} cards · ${unwindowedNodes} list nodes · ` +
         `${unwindowedPreviews} preview reads · ${unwindowedMs.toFixed(0)} ms first paint\n` +
         `  after  (windowed):  ${windowed} cards · ${windowedNodes} list nodes · ` +
@@ -226,8 +230,9 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
     );
     // Mid-list the window also overscans ABOVE, so it is a little larger than at the top — what
     // Matters is that it stays a viewport, not that it is the same integer.
-    expect(cards()).toBeGreaterThanOrEqual(first);
-    expect(cards()).toBeLessThanOrEqual(first * 2);
+    const scrolled = cards();
+    expect(scrolled).toBeGreaterThanOrEqual(first);
+    expect(scrolled).toBeLessThanOrEqual(first * 2);
     expect(scrolledPaths[0]).not.toBe(firstPaths[0]);
   });
 
@@ -270,17 +275,20 @@ describe(`${PAGE_COUNT} pages, "All"`, () => {
       path: `pages/${locale}/page-${String(index).padStart(3, "0")}.json`,
       type: "file" as const,
     });
-    const tree: Record<string, DirEntry[]> = {
-      pages: [
-        { name: "fr", path: "pages/fr", type: "directory" },
-        { name: "de", path: "pages/de", type: "directory" },
+    const tree = new Map<string, DirEntry[]>([
+      [
+        "pages",
+        [
+          { name: "fr", path: "pages/fr", type: "directory" },
+          { name: "de", path: "pages/de", type: "directory" },
+        ],
       ],
-      "pages/de": Array.from({ length: half }, (_v, index) => named("de", index)),
-      "pages/fr": Array.from({ length: half }, (_v, index) => named("fr", index)),
-    };
+      ["pages/de", Array.from({ length: half }, (_v, index) => named("de", index))],
+      ["pages/fr", Array.from({ length: half }, (_v, index) => named("fr", index))],
+    ]);
     previewReads = [];
     installMockPlatform({
-      listDirectory: (path: string) => Promise.resolve(tree[path] ?? []),
+      listDirectory: (path: string) => Promise.resolve(tree.get(path) ?? []),
       readFile: (path: string) => {
         previewReads.push(path);
         return Promise.resolve('{"tagName":"div","children":[]}');

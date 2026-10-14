@@ -31,6 +31,8 @@
  * @docs extending/ui-kit
  */
 
+import { isFunction } from "@jxsuite/schema/guards";
+
 /** A row element with the property accessors its own document installs. */
 type OptionElement = HTMLElement & { selected?: boolean; disabled?: boolean; value?: string };
 
@@ -38,7 +40,6 @@ type OptionElement = HTMLElement & { selected?: boolean; disabled?: boolean; val
 export interface ListboxState {
   /** The id of the row the caret is on; the empty string when none is. */
   active?: string;
-  [key: string]: unknown;
 }
 
 const ROW = "jx-option";
@@ -81,7 +82,7 @@ export function syncListbox(host: HTMLElement, active: string): OptionElement | 
       row.selected = wanted;
     }
   }
-  if (landed && moved && typeof landed.scrollIntoView === "function") {
+  if (landed && moved && isFunction(landed.scrollIntoView)) {
     landed.scrollIntoView({ block: "nearest" });
   }
   return landed;
@@ -125,7 +126,7 @@ export function mountListbox(state: ListboxState, host: HTMLElement): void {
     });
   };
   const observer = new MutationObserver(() => {
-    if (typeof requestAnimationFrame === "function") {
+    if (isFunction(globalThis.requestAnimationFrame)) {
       scheduleSync();
     } else {
       syncListbox(host, String(state.active ?? ""));

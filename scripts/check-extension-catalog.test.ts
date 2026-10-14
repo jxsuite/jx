@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 import { buildCatalog, serializeCatalog } from "./check-extension-catalog.ts";
 
@@ -20,7 +21,7 @@ interface FakeExtension {
   description?: string;
   jx?: string | null;
   exportsManifest?: boolean;
-  classes?: Record<string, Record<string, unknown>>;
+  classes?: Record<string, JsonObject>;
   dependencies?: Record<string, string>;
   heading?: string | null;
 }
@@ -30,8 +31,9 @@ function tree(extensions: FakeExtension[]): string {
   const root = mkdtempSync(join(tmpdir(), "jx-catalog-"));
 
   const headings = extensions
-    .filter((e) => e.heading !== null)
-    .map((e) => `## ${e.heading ?? `${e.name}: what it does`}\n\nProse.\n`)
+    .flatMap((e) =>
+      e.heading === null ? [] : [`## ${e.heading ?? `${e.name}: what it does`}\n\nProse.\n`],
+    )
     .join("\n");
   mkdirSync(join(root, "docs/extending/extensions"), { recursive: true });
   writeFileSync(
@@ -56,18 +58,19 @@ function tree(extensions: FakeExtension[]): string {
         title: ext.title ?? "Thing",
       }),
     );
-    writeFileSync(
-      join(dir, "package.json"),
-      JSON.stringify({
-        ...(ext.dependencies ? { dependencies: ext.dependencies } : {}),
-        ...(ext.jx === null ? {} : { jx: ext.jx ?? "./jx-extension.json" }),
-        exports:
-          ext.exportsManifest === false
-            ? { ".": "./src/index.ts" }
-            : { "./jx-extension.json": "./jx-extension.json" },
-        name: ext.name,
-      }),
-    );
+    const pkg: JsonObject = {};
+    if (ext.dependencies) {
+      pkg.dependencies = ext.dependencies;
+    }
+    if (ext.jx !== null) {
+      pkg.jx = ext.jx ?? "./jx-extension.json";
+    }
+    pkg.exports =
+      ext.exportsManifest === false
+        ? { ".": "./src/index.ts" }
+        : { "./jx-extension.json": "./jx-extension.json" };
+    pkg.name = ext.name;
+    writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
   }
   return root;
 }

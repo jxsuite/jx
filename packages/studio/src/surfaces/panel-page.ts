@@ -26,16 +26,9 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import pagePanelDoc from "./panel-page.json";
-import type { JxDocument } from "@jxsuite/schema/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
-registerSurface("panel-page", pagePanelDoc as unknown as JxDocument);
-
-/** One choice in a row's picker, or in the add form's tag picker. */
-export interface PageChoice {
-  value: string;
-  label: string;
-}
+registerSurface("panel-page", pagePanelDoc);
 
 /**
  * One row of one section, as the document reads it.
@@ -49,7 +42,7 @@ export interface PageChoice {
  * a screenshot region and `ui/regions.ts`'s `field:<prop>` grammar see. A collection whose schema
  * declares a `layout` property would otherwise share an identity with the Layout picker.
  */
-export interface PageRow extends Record<string, unknown> {
+export interface PageRow {
   /** The row's identity: the repeater's key, and the argument every action is given. */
   key: string;
   /** The name on `data-prop`. */
@@ -72,7 +65,7 @@ export interface PageRow extends Record<string, unknown> {
   /** A text row's placeholder. Empty draws none. */
   placeholder: string;
   /** A picker's rows, in the order they are offered. Empty on every other kind. */
-  options: PageChoice[];
+  options: SurfaceOption[];
   /** A sentence under the control — an empty collection, or a listing that failed. */
   note: string;
   /** Whether {@link PageRow.note} has anything in it; `$switch` is the document's conditional. */
@@ -84,7 +77,7 @@ export interface PageRow extends Record<string, unknown> {
 }
 
 /** One band of the panel: a heading, and the rows under it. */
-export interface PageSection extends Record<string, unknown> {
+export interface PageSection {
   /** The repeater's key, and the `data-section` a test or a shot addresses the band by. */
   key: string;
   /** The heading, already carrying the collection's name where there is one. */
@@ -95,7 +88,7 @@ export interface PageSection extends Record<string, unknown> {
 }
 
 /** One `$head` entry no structured control owns, as the list draws it. */
-export interface PageTagRow extends Record<string, unknown> {
+export interface PageTagRow {
   /** Unique within one projection — the repeater's key, and what Remove hands back. */
   key: string;
   /** The entry as markup, e.g. `<meta name="author">`. */
@@ -120,7 +113,7 @@ export interface PagePanelView {
   addAttr: string;
   addValue: string;
   /** The element names the add form offers. */
-  tagOptions: PageChoice[];
+  tagOptions: SurfaceOption[];
 }
 
 /**
@@ -142,8 +135,8 @@ export interface PagePanelActions {
   setChoice: (key: string, value: string) => void;
   /** Open the OS file picker for a media row and assign what comes back. */
   upload: (key: string) => void;
-  /** Open the media browser under the button that was pressed. */
-  browse: (key: string, anchor: unknown) => void;
+  /** Open the media browser under the button that was pressed — the press's `event.currentTarget`. */
+  browse: (key: string, anchor: EventTarget | null) => void;
   /** Run the `document.openSeo` command — the door to Search appearance. */
   openSeo: () => void;
   /** Take one custom `$head` entry away. */
@@ -159,7 +152,7 @@ export interface PagePanelActions {
 }
 
 /** The scope the document reads: the projection, plus everything a control can ask for. */
-interface PagePanelScope extends Record<string, unknown>, PagePanelView, PagePanelActions {}
+interface PagePanelScope extends PagePanelView, PagePanelActions {}
 
 /** Write a projection into the scope. Assignment by assignment, so an unchanged field is inert. */
 function project(scope: PagePanelScope, view: PagePanelView): void {
@@ -223,7 +216,7 @@ export function renderPagePanelSurface(
   }
   existing?.handle?.dispose();
   host.textContent = "";
-  const scope = reactive({ ...emptyView(), ...actions }) as PagePanelScope;
+  const scope: PagePanelScope = reactive<PagePanelScope>({ ...emptyView(), ...actions });
   project(scope, view);
   const record: Mounted = { handle: null, scope };
   mounts.set(host, record);

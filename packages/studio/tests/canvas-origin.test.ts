@@ -1,65 +1,64 @@
-import "./with-dom.js";
+import { installMockPlatform } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
 import { canvasBaseOrigin, documentBase, loopbackAssetSrc } from "../src/canvas/canvas-origin";
 
-const { happyDOM } = globalThis as unknown as { happyDOM: { setURL: (u: string) => void } };
+/* SAFETY: harness imports with-dom first, whose GlobalRegistrator.register() copies happy-dom's
+   window members onto globalThis, `happyDOM` (the DetachedWindowAPI that owns setURL) among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
 happyDOM.setURL("http://localhost:3000/");
 
-interface PlatformGlobal {
-  __jxPlatform?: { canvasUrl?: string; documentBaseUrl?: string } | undefined;
-}
-const g = globalThis as unknown as PlatformGlobal;
-
 afterEach(() => {
-  g.__jxPlatform = undefined;
+  globalThis.__jxPlatform = undefined;
 });
 
 describe("canvasBaseOrigin", () => {
   test("falls back to location.origin when no platform is registered", () => {
-    g.__jxPlatform = undefined;
+    globalThis.__jxPlatform = undefined;
     expect(canvasBaseOrigin()).toBe(location.origin);
   });
 
   test("falls back to location.origin when the platform sets no canvasUrl", () => {
-    g.__jxPlatform = {};
+    installMockPlatform();
     expect(canvasBaseOrigin()).toBe(location.origin);
   });
 
   test("is IDENTITY for a relative canvasUrl (same-origin path resolves to location.origin)", () => {
-    g.__jxPlatform = { canvasUrl: "/__studio__/canvas.html" };
+    installMockPlatform({ canvasUrl: "/__studio__/canvas.html" });
     expect(canvasBaseOrigin()).toBe(location.origin);
   });
 
   test("returns the loopback origin for an absolute cross-origin canvasUrl", () => {
-    g.__jxPlatform = { canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html?win=2" };
+    installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html?win=2" });
     expect(canvasBaseOrigin()).toBe("http://127.0.0.1:54321");
   });
 });
 
 describe("loopbackAssetSrc", () => {
   test("returns the input path unchanged when no platform / no canvasUrl is registered", () => {
-    g.__jxPlatform = undefined;
+    globalThis.__jxPlatform = undefined;
     expect(loopbackAssetSrc("/public/logo.png")).toBe("/public/logo.png");
   });
 
   test("returns the input unchanged for a same-origin relative canvasUrl (guard: origin === location.origin)", () => {
-    g.__jxPlatform = { canvasUrl: "/__studio__/canvas.html" };
+    installMockPlatform({ canvasUrl: "/__studio__/canvas.html" });
     expect(loopbackAssetSrc("/public/logo.png")).toBe("/public/logo.png");
   });
 
   test("rewrites to the loopback origin for an absolute cross-origin canvasUrl (leading / normalized)", () => {
-    g.__jxPlatform = { canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" };
+    installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" });
     expect(loopbackAssetSrc("/public/logo.png")).toBe("http://127.0.0.1:54321/public/logo.png");
   });
 
   test("normalizes a leading './' and a bare relative path to a single slash", () => {
-    g.__jxPlatform = { canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" };
+    installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" });
     expect(loopbackAssetSrc("./public/logo.png")).toBe("http://127.0.0.1:54321/public/logo.png");
     expect(loopbackAssetSrc("logo.png")).toBe("http://127.0.0.1:54321/logo.png");
   });
 
   test("leaves already-absolute data/blob/http/views urls untouched even when a loopback origin is set", () => {
-    g.__jxPlatform = { canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" };
+    installMockPlatform({ canvasUrl: "http://127.0.0.1:54321/__studio__/canvas.html" });
     expect(loopbackAssetSrc("data:image/png;base64,AA==")).toBe("data:image/png;base64,AA==");
     expect(loopbackAssetSrc("blob:http://x/abc")).toBe("blob:http://x/abc");
     expect(loopbackAssetSrc("http://example.com/pic.png")).toBe("http://example.com/pic.png");
@@ -77,12 +76,12 @@ describe("loopbackAssetSrc", () => {
  */
 describe("documentBase", () => {
   test("defaults to the canvas origin plus the project root", () => {
-    g.__jxPlatform = {};
+    installMockPlatform();
     expect(documentBase("examples/site-demo")).toBe(`${location.origin}/examples/site-demo/`);
   });
 
   test("omits the root segment when there is no root", () => {
-    g.__jxPlatform = {};
+    installMockPlatform();
     expect(documentBase("")).toBe(`${location.origin}/`);
     expect(documentBase()).toBe(`${location.origin}/`);
   });
@@ -100,14 +99,14 @@ describe("documentBase", () => {
   const compose = (path: string) => new URL(path, documentBase("acme/site@main")).href;
 
   test("a ROOT-RELATIVE declared base is absolutised — the shape Jx Cloud declares", () => {
-    g.__jxPlatform = { documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw/" };
+    installMockPlatform({ documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw/" });
     expect(compose("pages/index.md")).toBe(
       `${location.origin}/api/v1/p/acme/site/main/studio/raw/pages/index.md`,
     );
   });
 
   test("and a component $ref resolves off it, which is what the canvas actually fetches", () => {
-    g.__jxPlatform = { documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw/" };
+    installMockPlatform({ documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw/" });
     const doc = new URL("pages/index.md", documentBase("acme/site@main"));
     expect(new URL("../components/co-nav.json", doc).href).toBe(
       `${location.origin}/api/v1/p/acme/site/main/studio/raw/components/co-nav.json`,
@@ -117,33 +116,33 @@ describe("documentBase", () => {
   test("the project root is NOT appended to a declared base", () => {
     /* The declared base already addresses one project, so appending the root key on top of it
        would address a directory named "acme/site@main" inside that project. */
-    g.__jxPlatform = { documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw/" };
+    installMockPlatform({ documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw/" });
     expect(compose("pages/index.md")).not.toContain("acme/site@main");
   });
 
   test("an ALREADY-ABSOLUTE declared base passes through", () => {
     // A platform may serve project files from another origin entirely.
-    g.__jxPlatform = { documentBaseUrl: "https://files.example.com/proj/" };
+    installMockPlatform({ documentBaseUrl: "https://files.example.com/proj/" });
     expect(compose("pages/index.md")).toBe("https://files.example.com/proj/pages/index.md");
   });
 
   test("a declared base missing its trailing slash still composes", () => {
     // Without the slash `new URL` drops the last segment, so "raw" would be lost.
-    g.__jxPlatform = { documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw" };
+    installMockPlatform({ documentBaseUrl: "/api/v1/p/acme/site/main/studio/raw" });
     expect(compose("pages/index.md")).toBe(
       `${location.origin}/api/v1/p/acme/site/main/studio/raw/pages/index.md`,
     );
   });
 
   test("the DEFAULT base composes too — it is used the same way", () => {
-    g.__jxPlatform = {};
+    installMockPlatform();
     expect(new URL("pages/index.md", documentBase("examples/site-demo")).href).toBe(
       `${location.origin}/examples/site-demo/pages/index.md`,
     );
   });
 
   test("an unregistered platform does not throw — gates render before registration", () => {
-    g.__jxPlatform = undefined;
+    globalThis.__jxPlatform = undefined;
     expect(documentBase("root")).toBe(`${location.origin}/root/`);
   });
 });

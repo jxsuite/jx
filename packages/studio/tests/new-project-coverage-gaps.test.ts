@@ -30,7 +30,11 @@ import {
   seedSettings,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RepoInfo, StarterInfo } from "../src/types";
+import type { StarterInfo, StudioPlatform } from "../src/types";
+import { REPOS } from "./shared-fixtures";
+
+/** What the wizard hands `createProject`. */
+type CreateProjectOptions = Parameters<StudioPlatform["createProject"]>[0];
 
 const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { openAddRepoModal } = await import("../src/new-project/add-repo-modal");
@@ -44,16 +48,20 @@ function click(el: Element | null | undefined): void {
 }
 
 function errorText(): string | null {
-  return npPart("failure")?.textContent?.trim() ?? null;
+  return npPart("failure")?.textContent.trim() ?? null;
 }
 
 function contextText(): string | null {
-  return npPart("context")?.textContent?.trim() ?? null;
+  return npPart("context")?.textContent.trim() ?? null;
 }
 
-/** The native control inside one of the wizard's fields. */
-function control(part: string): HTMLInputElement {
-  return npPart(part)?.querySelector('[part="input"], [part="control"]') as HTMLInputElement;
+/** The Agent step's prompt: `jx-textfield multiline` draws a textarea as its native control. */
+function promptControl(): HTMLTextAreaElement {
+  const field = npPart("prompt")?.querySelector('[part="input"], [part="control"]');
+  if (!(field instanceof HTMLTextAreaElement)) {
+    throw new Error("New Project wizard: the Agent prompt field is not on screen");
+  }
+  return field;
 }
 
 const STARTERS: StarterInfo[] = [
@@ -114,7 +122,10 @@ describe("new-project wizard gaps", () => {
 
     // Nothing typed, nothing to commit: the form draws no Save until the key is entered.
     expect(creds!.querySelector('[part="save"]')).toBeNull();
-    const keyInput = creds!.querySelector('[part="key"] [part="input"]') as HTMLInputElement;
+    const keyInput = creds!.querySelector('[part="key"] [part="input"]');
+    if (!(keyInput instanceof HTMLInputElement)) {
+      throw new Error("the credentials form drew no key input");
+    }
     keyInput.value = "sk-fresh-key";
     keyInput.dispatchEvent(new Event("input", { bubbles: true }));
     await flush(2);
@@ -158,12 +169,12 @@ describe("new-project wizard gaps", () => {
   test("Back and tab switches are ignored while a create is in flight", async () => {
     let releaseCreate: () => void = () => {};
     installMockPlatform({
-      createProject: (async () => {
+      createProject: async () => {
         await new Promise<void>((resolve) => {
           releaseCreate = resolve;
         });
         return { config: { name: "Slow Site" }, root: "/projects/slow-site" };
-      }) as never,
+      },
     });
     const promise = openNewProjectModal();
     await flush(3);
@@ -191,23 +202,25 @@ describe("new-project wizard gaps", () => {
     expect(await promise).toEqual({
       config: { name: "Slow Site" },
       root: "/projects/slow-site",
-    } as never);
+    });
   });
 
   test("agent submit derives a blank directory and surfaces create failures", async () => {
     seedSettings({ "jx.ai.openaiKey": "sk-agent-test" });
-    const attempts: Record<string, unknown>[] = [];
+    const attempts: CreateProjectOptions[] = [];
     installMockPlatform({
-      createProject: (async (opts: Record<string, unknown>) => {
+      createProject: async (opts) => {
         attempts.push(opts);
         throw new Error("quota exceeded for this account");
-      }) as never,
+      },
     });
     void openNewProjectModal();
     await flush(3);
     npPickTab("agent");
     await flush(3);
-    npType(control("prompt"), "A tiny site");
+    const prompt = promptControl();
+    prompt.value = "A tiny site";
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
     npPress("Confirm");
     await flush(3);
     npType(npName(), "Failing Agent Site");
@@ -265,33 +278,14 @@ describe("new-project wizard gaps", () => {
 });
 
 describe("add-repo modal gaps", () => {
-  const REPOS: RepoInfo[] = [
-    {
-      defaultBranch: "main",
-      fullName: "octocat/site",
-      isJxProject: true,
-      name: "site",
-      owner: "octocat",
-      permission: "admin",
-      private: true,
-    },
-    {
-      defaultBranch: "trunk",
-      fullName: "acme/marketing",
-      isJxProject: false,
-      name: "marketing",
-      owner: "acme",
-      permission: "write",
-      private: false,
-    },
-  ];
-
   /* The picker is a document in the dialog layer now, so its rows are addressed by `part` and the
      dialog itself is the `jx-dialog` — `.add-repo-row` and the `sp-underlay` card it sat in are
      both gone (`src/surfaces/add-repo.json`). A row CHOOSES a repository; the dialog's own
      primary button adopts it, since the folder within it is a second choice. */
   function rows(): HTMLElement[] {
-    return [...document.querySelectorAll('#layer-dialog jx-option[part="repo"]')] as HTMLElement[];
+    return [...document.querySelectorAll('#layer-dialog jx-option[part="repo"]')].filter(
+      (el) => el instanceof HTMLElement,
+    );
   }
 
   function primary(): HTMLButtonElement | null {
@@ -320,12 +314,12 @@ describe("add-repo modal gaps", () => {
     let releaseImport: () => void = () => {};
     let imports = 0;
     installMockPlatform({
-      importProject: (() => {
+      importProject: () => {
         imports += 1;
-        return new Promise((resolve) => {
+        return new Promise<{ root: string }>((resolve) => {
           releaseImport = () => resolve({ root: "octocat/site@main" });
         });
-      }) as never,
+      },
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
@@ -335,7 +329,7 @@ describe("add-repo modal gaps", () => {
     primary()!.click();
     await flush();
     // The answer says it is running, and cannot be given again while it is.
-    expect(primary()!.textContent?.trim()).toBe("Adding…");
+    expect(primary()!.textContent.trim()).toBe("Adding…");
     expect(primary()!.disabled).toBe(true);
     rows()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { jxToMdast, serializeJxMarkdown } from "../src/serialize";
-import type { JxDocument, JxElementTagName } from "@jxsuite/schema/types";
+import type { JsonObject, JxDocument, JxElementTagName } from "@jxsuite/schema/types";
 
 // A tag chosen when the element is created: `a` when the target is truthy, `div` otherwise.
 const conditionalTag: JxElementTagName = {
@@ -18,11 +18,14 @@ const multiwayTag: JxElementTagName = {
 };
 
 /** The message thrown for a chosen tag, or "" when serialization succeeded. */
-function throwsWith(run: () => unknown): string {
+function throwsWith(run: () => void): string {
   try {
     run();
   } catch (error) {
-    return (error as Error).message;
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+    return error.message;
   }
   return "";
 }
@@ -82,7 +85,13 @@ describe("serializableTag — a tag chosen at creation has no markdown spelling"
   });
 
   test("a non-string, non-expression tagName is refused rather than coerced", () => {
-    const doc = { children: [{ tagName: 42, textContent: "x" }] } as unknown as JxDocument;
+    // What a hand-edited document on disk can hold: a number where the tag belongs.
+    const authored: JsonObject = { children: [{ tagName: 42, textContent: "x" }] };
+    /* SAFETY: deliberately outside JxDocument. JxElementTagName admits only a string or an
+       `$expression` directive, but an unvalidated document can carry a number there; serializableTag
+       returns a tag only after confirming it is a string and otherwise throws, so the number reaches
+       no typed access, and that refusal is what this pins. */
+    const doc = authored as JxDocument;
     // No candidates to name, but a number is still not a tag — coercing it to "42" would emit a
     // Directive named after a value that was never a tag.
     expect(throwsWith(() => serializeJxMarkdown(doc))).toContain(
@@ -94,7 +103,7 @@ describe("serializableTag — a tag chosen at creation has no markdown spelling"
     // The refusal is narrow: only a declared-but-non-literal tag is refused. Elements that never
     // Declared one keep serializing through the existing `div` fallback.
     const mdast = jxToMdast({ children: [{ textContent: "plain" }] });
-    expect(mdast.children?.[0]).toMatchObject({ name: "div", type: "containerDirective" });
+    expect(mdast.children[0]).toMatchObject({ name: "div", type: "containerDirective" });
   });
 
   test("a literal tagName still serializes as markdown", () => {

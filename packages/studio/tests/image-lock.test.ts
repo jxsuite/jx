@@ -58,8 +58,10 @@ import {
   withoutCode,
   writeLock,
 } from "../../../scripts/check-image-lock";
-import type { CaptureLock, CaptureRuntime, LockImage } from "../../../scripts/check-image-lock";
+import type { CaptureLock, LockImage } from "../../../scripts/check-image-lock";
 import { changedPixelRatio, decodePng, readPngSize } from "../../../scripts/lib/png";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import { RUNTIME } from "./shared-fixtures";
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 
@@ -69,7 +71,13 @@ function scratch(prefix: string): string {
 
 // ─── A PNG writer, so the decoder is tested against every filter it implements ────────────────
 
-const COLOR_TYPE: Readonly<Record<number, number>> = { 1: 0, 2: 4, 3: 2, 4: 6 };
+/** Channel count → PNG colour type (gray, gray+alpha, RGB, RGBA). */
+const COLOR_TYPE = new Map<number, number>([
+  [1, 0],
+  [2, 4],
+  [3, 2],
+  [4, 6],
+]);
 
 function chunk(type: string, data: Uint8Array): Uint8Array {
   const out = new Uint8Array(data.length + 12);
@@ -138,7 +146,7 @@ function encodePng(options: EncodeOptions): Uint8Array {
   view.setUint32(0, width);
   view.setUint32(4, height);
   ihdr[8] = options.bitDepth ?? 8;
-  ihdr[9] = options.colorType ?? COLOR_TYPE[channels]!;
+  ihdr[9] = options.colorType ?? COLOR_TYPE.get(channels)!;
   ihdr[12] = options.interlace ?? 0;
   const parts = [
     Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
@@ -300,9 +308,10 @@ describe("hashShotDefinition", () => {
   });
 
   test("is stable over the committed manifest", () => {
-    const manifest: unknown = JSON.parse(
+    // SAFETY: JSON.parse without a reviver yields a JSON value; the readers under test decode it.
+    const manifest = JSON.parse(
       readFileSync(join(REPO_ROOT, "scripts/screenshots/manifest.json"), "utf8"),
-    );
+    ) as JsonValue;
     const first = shotDefinitionHashes(manifest);
     const second = shotDefinitionHashes(manifest);
     expect(first.size).toBeGreaterThan(0);
@@ -324,7 +333,7 @@ describe("manifest reading", () => {
     // `then` replaces `variants` in the shot contract (scripts/screenshots/README.md). Parsed
     // Rather than written as a literal because `unicorn/no-thenable` (rightly) refuses a `then` key
     // In object-literal SOURCE — a manifest is JSON, so the rule never applies to the real thing.
-    const contract2: Record<string, unknown> = JSON.parse(
+    const contract2: JsonObject = JSON.parse(
       '{"name":"git","capture":[{"image":"git-panel","of":"navigator/panel:git"}],' +
         '"then":[{"suffix":"-open","capture":[{"image":"git-open"}]}]}',
     );
@@ -359,9 +368,10 @@ describe("manifest reading", () => {
   });
 
   test("every committed image is one a committed shot can produce", () => {
-    const manifest: unknown = JSON.parse(
+    // SAFETY: JSON.parse without a reviver yields a JSON value; the readers under test decode it.
+    const manifest = JSON.parse(
       readFileSync(join(REPO_ROOT, "scripts/screenshots/manifest.json"), "utf8"),
-    );
+    ) as JsonValue;
     const producible = manifestImageNames(manifest);
     const orphans = readImagesOnDisk()
       .map((image) => image.path.replace(/^.*\//, "").replace(/\.\w+$/, ""))
@@ -403,8 +413,6 @@ describe("docs image references", () => {
 });
 
 // ─── The lock file ────────────────────────────────────────────────────────────
-
-const RUNTIME: CaptureRuntime = { chromium: "141", fontset: "fc:abc123", os: "ubuntu-24.04" };
 
 function entry(overrides: Partial<LockImage> = {}): LockImage {
   return {
@@ -522,8 +530,9 @@ describe("the runtime triple", () => {
   test("fontsetId is order- and duplicate-insensitive, and honest when empty", () => {
     expect(fontsetId(["B", "A"])).toBe(fontsetId(["A", "B", "A", " "]));
     expect(fontsetId([])).toBe("unknown");
-    expect(fontsetId(["A"])).not.toBe(fontsetId(["B"]));
-    expect(fontsetId(["A"])).toMatch(/^fc:[\da-f]{12}$/);
+    const fontsetA = fontsetId(["A"]);
+    expect(fontsetA).not.toBe(fontsetId(["B"]));
+    expect(fontsetA).toMatch(/^fc:[\da-f]{12}$/);
   });
 
   test("detectOs reads os-release, and falls back when there is none", () => {
@@ -670,7 +679,7 @@ describe("checkImageLock", () => {
         capturedAt: "yesterday",
         capturedBy: "me",
         definition,
-        runtime: { chromium: "141", fontset: "", os: "" } as CaptureRuntime,
+        runtime: { chromium: "141", fontset: "", os: "" },
         sha256: "nope",
       }),
     });

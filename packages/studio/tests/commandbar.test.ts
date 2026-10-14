@@ -16,7 +16,10 @@ import { hintOf, printedOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { Tab } from "../src/tabs/tab";
-import type { SiteBuildResult, SitePreviewResult } from "../src/types";
+import { isString } from "@jxsuite/schema/guards";
+import type { JxElementTagName, JxExpressionDef, ProjectConfig } from "@jxsuite/schema/types";
+import type { LayoutHit } from "../src/canvas/iframe-protocol";
+import type { SiteBuildResult, SitePreviewResult, StudioPlatform } from "../src/types";
 import type { PaletteMode } from "../src/commands/defaults";
 
 // ─── Module mocks (must precede the toolbar import) ───────────────────────────
@@ -135,12 +138,47 @@ function control(el: Element): HTMLButtonElement {
 /** A kit button of the band by its accessible name; the HOST element, whose control names it. */
 function btn(label: string): HTMLElement {
   const match = [...root.querySelectorAll("jx-button, jx-action-button")].find(
-    (b) => control(b)?.getAttribute("aria-label") === label,
+    (b): b is HTMLElement =>
+      b instanceof HTMLElement &&
+      b.querySelector('[part="control"]')?.getAttribute("aria-label") === label,
   );
   if (!match) {
     throw new Error(`no button labelled ${label}`);
   }
-  return match as HTMLElement;
+  return match;
+}
+
+/** A rendered `jx-icon`, read through two of the state entries the kit's icon document declares. */
+interface IconElement extends HTMLElement {
+  mirror: boolean;
+  name: string;
+}
+
+/** The first `jx-icon` inside `el`, or null when it renders none. */
+function iconIn(el: Element): IconElement | null {
+  /* SAFETY: every `jx-icon` the bar renders is the kit element defined by
+     packages/ui/components/jx-icon.json, whose `name` (string) and `mirror` (boolean) state entries
+     are element properties. An icon that never upgraded reads them as undefined, which fails the
+     glyph assertions below rather than passing them. */
+  return el.querySelector("jx-icon") as IconElement | null;
+}
+
+/** The window controls the desktop launcher adds and the PAL interface leaves undeclared. */
+interface WindowControls {
+  close: () => void;
+  maximize: () => void;
+  minimize: () => void;
+}
+
+/** Register a platform that carries only `members`, as a desktop or site host would supply them. */
+function registerPartialPlatform(
+  members: Partial<StudioPlatform> & { windowControls?: WindowControls },
+): void {
+  /* SAFETY: the Command Bar paths these tests drive read only optional platform members, each
+     probed before use: `windowControls` through an `in` check, `canvasUrl` for the site origin, and
+     `previewSite` / `buildSite` for Open in Browser. No required member is reached, so the
+     members a stub omits are never called. */
+  globalThis.__jxPlatform = members as StudioPlatform;
 }
 
 function click(el: Element): void {
@@ -148,7 +186,7 @@ function click(el: Element): void {
 }
 
 function segments(): string[] {
-  return [...root.querySelectorAll('[part="segment"]')].map((el) => el.textContent?.trim() ?? "");
+  return [...root.querySelectorAll('[part="segment"]')].map((el) => el.textContent.trim());
 }
 
 /** Mount the band and let the document mount and paint. */
@@ -200,7 +238,7 @@ afterEach(() => {
   setActiveRegistry(null);
   setPreviewNavigateHandler(null);
   setProjectState(null);
-  delete (globalThis as Record<string, unknown>).__jxPlatform;
+  globalThis.__jxPlatform = undefined;
 });
 
 // ─── The record IS the control ───────────────────────────────────────────────
@@ -222,8 +260,7 @@ describe("the primary cluster", () => {
        `aria-describedby`; a `title` on the host was the mouse-only affordance (#332). */
     expect(hintOf(save)).toBe("Save (⌘S)");
     expect(save.hasAttribute("title")).toBe(false);
-    const icon = save.querySelector("jx-icon") as (HTMLElement & { name: string }) | null;
-    expect(icon?.name).toBe("floppy-disk");
+    expect(iconIn(save)?.name).toBe("floppy-disk");
     // The printed label, not `textContent`: the tip's text is light DOM under the same host.
     expect(printedOf(save)).toContain("Save");
     click(control(save));
@@ -336,7 +373,14 @@ describe("the Command Center pill", () => {
     await mountBar();
     expect(segments()).toHaveLength(2);
 
-    shell.layoutSelection = { path: [], tagName: "header" } as never;
+    const header: LayoutHit = {
+      className: "",
+      layoutFile: "layouts/base.json",
+      layoutPath: [],
+      rect: { height: 0, width: 0, x: 0, y: 0 },
+      tagName: "header",
+    };
+    shell.layoutSelection = header;
     await flush();
     expect(segments().at(-1)).toBe("layout");
     shell.layoutSelection = null;
@@ -367,9 +411,18 @@ describe("the Command Center pill", () => {
        with no `cases`, and this projection was the first of four to throw — the Command Bar caught
        it and logged, the jump bar and the Inspector did not. */
     const tab = openTestTab();
-    (tab.doc.document.children as { tagName: unknown }[])[0]!.tagName = {
+    const { children } = tab.doc.document;
+    const [paragraph] = Array.isArray(children) ? children : [];
+    if (paragraph === undefined || isString(paragraph)) {
+      throw new TypeError("the test tab's document has no element child");
+    }
+    const formula: JxExpressionDef = {
       $expression: { operator: "toUpperCase", target: { $ref: "#/state/title" } },
     };
+    /* SAFETY: deliberately off-contract. `toUpperCase` is a formula operator but not one of the
+       `?:` / `switch` tag expressions JxElementTagName admits, and writing exactly that value is
+       what the Formula rung did; the projection must survive it. */
+    paragraph.tagName = formula as JxElementTagName;
     tab.session.selection = [["children", 0]];
 
     expect(() => toolbar.selectionSegmentLabel(tab)).not.toThrow();
@@ -414,7 +467,7 @@ describe("the ⬢ Studio menu", () => {
     const ids = menuRows().map((el) => el.dataset["commandId"]);
     expect(ids).toContain("project.open");
     expect(ids).toContain("view.toggleNavigator");
-    expect(rowFor("view.zen")!.querySelector('[slot="value"]')?.textContent?.trim()).toBe("⌘.");
+    expect(rowFor("view.zen")!.querySelector('[slot="value"]')?.textContent.trim()).toBe("⌘.");
 
     pointer(rowFor("project.open")!, "click");
     await flush();
@@ -474,9 +527,7 @@ describe("dock toggles", () => {
    * `jx-icon` name in the surfaces, and `tests/icons.test.ts` pins it.
    */
   function glyph(el: Element): string {
-    const icon = el.querySelector("jx-icon") as
-      | (HTMLElement & { name: string; mirror: boolean })
-      | null;
+    const icon = iconIn(el);
     if (!icon) {
       return "none";
     }
@@ -494,12 +545,12 @@ describe("dock toggles", () => {
     expect(glyph(btn("Toggle Inspector Dock"))).toBe("sidebar-simple mirrored");
     expect(glyph(btn("Toggle Bottom Dock"))).toBe("rows");
     // …and no two of them read the same, which is the property the mirrored pair lacked.
-    const shapes = [
+    const glyphs = [
       glyph(navigatorToggle),
       glyph(btn("Toggle Inspector Dock")),
       glyph(btn("Toggle Bottom Dock")),
     ];
-    expect(new Set(shapes).size).toBe(shapes.length);
+    expect(new Set(glyphs).size).toBe(glyphs.length);
     // The hint of an ENABLED kit button is the tip it renders, never a title (ui.md §5.1).
     expect(hintOf(navigatorToggle)).toBe("Toggle Navigator Dock (⌘B)");
     expect(control(navigatorToggle).hasAttribute("title")).toBe(false);
@@ -584,7 +635,7 @@ describe("presence", () => {
     const chips = [...root.querySelectorAll<HTMLElement>('[part="chip"]')];
     expect(chips).toHaveLength(2);
     expect(chips[0]!.getAttribute("title")).toContain("Octo Cat");
-    expect(chips[0]!.textContent?.trim()).toBe("O");
+    expect(chips[0]!.textContent.trim()).toBe("O");
     expect(chips[0]!.getAttribute("style")).toContain("#e5484d");
     // A peer with an avatar draws it, with the initial as its alt text.
     expect(chips[1]!.querySelector("img")?.getAttribute("alt")).toBe("V");
@@ -610,7 +661,7 @@ describe("window controls", () => {
 
   test("non-mac order is minimize, maximize, close — and they sit at the end", async () => {
     const controls = { close: mock(() => {}), maximize: mock(() => {}), minimize: mock(() => {}) };
-    (globalThis as Record<string, unknown>).__jxPlatform = { windowControls: controls };
+    registerPartialPlatform({ windowControls: controls });
     await mountBar();
 
     expect(root.classList.contains("electrobun-webkit-app-region-drag")).toBe(true);
@@ -637,7 +688,7 @@ describe("window controls", () => {
         maximize: mock(() => {}),
         minimize: mock(() => {}),
       };
-      (globalThis as Record<string, unknown>).__jxPlatform = { windowControls: controls };
+      registerPartialPlatform({ windowControls: controls });
       await mountBar();
       const group = root.querySelector<HTMLElement>('[part="window-controls"]')!;
       expect(group.dataset["mac"] !== undefined).toBe(true);
@@ -685,7 +736,7 @@ describe("Electrobun drag-region ancestry", () => {
   test("every interactive control resolves no-drag, and the bar itself still drags", async () => {
     ctx = fullContext();
     const controls = { close: mock(() => {}), maximize: mock(() => {}), minimize: mock(() => {}) };
-    (globalThis as Record<string, unknown>).__jxPlatform = { windowControls: controls };
+    registerPartialPlatform({ windowControls: controls });
     await mountBar();
 
     const interactive = interactiveControls();
@@ -701,13 +752,13 @@ describe("Electrobun drag-region ancestry", () => {
     toolbar.setMacPlatformForTests(true);
     try {
       ctx = fullContext();
-      (globalThis as Record<string, unknown>).__jxPlatform = {
+      registerPartialPlatform({
         windowControls: {
           close: mock(() => {}),
           maximize: mock(() => {}),
           minimize: mock(() => {}),
         },
-      };
+      });
       await mountBar();
       for (const el of interactiveControls()) {
         expect(isAppRegionDragTarget(el)).toBe(false);
@@ -724,15 +775,14 @@ describe("Electrobun drag-region ancestry", () => {
 const SITE_ORIGIN = "http://127.0.0.1:4321";
 
 function openSiteProject(trailingSlash?: "always" | "never") {
-  (globalThis as Record<string, unknown>).__jxPlatform = {
-    canvasUrl: `${SITE_ORIGIN}/__studio__/canvas.html`,
-  };
+  registerPartialPlatform({ canvasUrl: `${SITE_ORIGIN}/__studio__/canvas.html` });
+  const projectConfig: ProjectConfig = trailingSlash ? { build: { trailingSlash } } : {};
   setProjectState({
     dirs: new Map(),
     expanded: new Set(),
     isSiteProject: true,
     name: "acme",
-    projectConfig: (trailingSlash ? { build: { trailingSlash } } : {}) as never,
+    projectConfig,
     projectRoot: "/acme",
     searchQuery: "",
     selectedPath: null,
@@ -995,9 +1045,9 @@ describe("runOpenInBrowser", () => {
     expect(opened).toEqual([`${SITE_ORIGIN}/`]);
 
     setPreviewNavigateHandler(null);
-    const calls: unknown[][] = [];
+    const calls: Parameters<typeof window.open>[] = [];
     const originalOpen = window.open;
-    (window as unknown as { open: unknown }).open = (...args: unknown[]) => {
+    window.open = (...args: Parameters<typeof window.open>) => {
       calls.push(args);
       return null;
     };
@@ -1117,7 +1167,7 @@ describe("runOpenInBrowser", () => {
     setPreviewNavigateHandler((url) => opened.push(url));
     await toolbar.runOpenInBrowser();
     expect(opened).toEqual([`${SITE_ORIGIN}/`]);
-    const message = notified.mock.calls.at(-1)![0] as string;
+    const message = notified.mock.calls.at(-1)?.[0];
     expect(message).toContain("live preview");
     expect(message).toContain("working tree");
     expect(message).not.toContain("Built");
@@ -1136,7 +1186,7 @@ describe("runOpenInBrowser", () => {
     await toolbar.runOpenInBrowser();
     // The page still opens: what did resolve is worth looking at beside what did not.
     expect(opened).toEqual([`${SITE_ORIGIN}/`]);
-    const message = notified.mock.calls.at(-1)![0] as string;
+    const message = notified.mock.calls.at(-1)?.[0];
     expect(message).toContain("previewed with 1 error");
     expect(message).toContain("needs a module");
     setPreviewNavigateHandler(null);
@@ -1194,12 +1244,13 @@ describe("lifecycle", () => {
 
   test("a projection that throws is logged, not thrown out of the bootstrap", async () => {
     const registry = installRegistry();
-    setActiveRegistry({
+    const throwing: CommandRegistry = {
       ...registry,
       forPlacement: () => {
         throw new Error("boom");
       },
-    } as unknown as CommandRegistry);
+    };
+    setActiveRegistry(throwing);
     const errors: unknown[][] = [];
     const originalError = console.error;
     console.error = (...args: unknown[]) => {

@@ -10,7 +10,18 @@ import {
 import type { ToolRegistry } from "../src/tools.ts";
 import { nextMessageId } from "../src/message-id.ts";
 
-function echoRegistry(): { registry: ToolRegistry; seen: object[] } {
+/** A registry holding one `echo` tool, and every arguments object that tool was handed. */
+interface EchoRegistry {
+  registry: ToolRegistry;
+  seen: object[];
+}
+
+/** An object that holds itself, which no JSON text can carry. */
+interface SelfReference {
+  self?: SelfReference;
+}
+
+function echoRegistry(): EchoRegistry {
   const seen: object[] = [];
   const registry = createToolRegistry();
   registry.register(
@@ -80,7 +91,7 @@ describe("invokeTool", () => {
   });
 
   test("a result JSON cannot carry is answered as one, never thrown", async () => {
-    const circular: Record<string, unknown> = {};
+    const circular: SelfReference = {};
     circular.self = circular;
     for (const data of [circular, { big: 1n }]) {
       const registry = createToolRegistry();

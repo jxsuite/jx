@@ -8,7 +8,17 @@
 import { PROBLEM_MEDIA_TYPE } from "@jxsuite/protocol/problem";
 import { problemDetails } from "@jxsuite/protocol/problems";
 import type { ProblemTypeName } from "@jxsuite/protocol/problems";
+import type { ProblemDetails } from "@jxsuite/protocol/problem";
 import type { GatewayRefusal } from "./types.ts";
+
+/**
+ * A problem body as an unmigrated client reads it: `error` is the line it shows. The gateway takes
+ * this view only to ask whether that line is already there, which is a writer's question, not a
+ * reader's, so the deprecation on `ProblemDetails.error` does not address it.
+ */
+interface LegacyProblemView {
+  readonly error?: string;
+}
 
 /**
  * A refusal of one declared problem type, answered with that type's own status.
@@ -35,13 +45,15 @@ export function refusal(name: ProblemTypeName, detail: string): GatewayRefusal {
  */
 export function problemResponse(refused: GatewayRefusal): Response {
   const { code, problem, status } = refused;
-  const body = {
-    ...problem,
-    ...(problem.error === undefined && problem.detail !== undefined
-      ? { error: problem.detail }
-      : {}),
-    ...(code === undefined ? {} : { code }),
-  };
+  const body: ProblemDetails = { ...problem };
+  const legacy: LegacyProblemView = problem;
+  if (legacy.error === undefined && problem.detail !== undefined) {
+    // The alias is written untyped, as `problemDetails` writes it, so no reader is taught to use it.
+    Object.assign(body, { error: problem.detail });
+  }
+  if (code !== undefined) {
+    body.code = code;
+  }
   // Response.json would send `application/json`; RFC 9457 §3 is what says this body is a problem.
   return Response.json(body, { headers: { "Content-Type": PROBLEM_MEDIA_TYPE }, status });
 }
@@ -61,20 +73,20 @@ export function problemResponse(refused: GatewayRefusal): Response {
 export function problemTypeForStatus(status: number): ProblemTypeName {
   /* Any other status still becomes SOME type, and which side of 500 it falls on is what decides
      whether the caller is being told it made a mistake or that the upstream did. */
-  return STATUS_TYPES[status] ?? (status >= 500 ? "internalError" : "invalidRequest");
+  return STATUS_TYPES.get(status) ?? (status >= 500 ? "internalError" : "invalidRequest");
 }
 
 /** The statuses the table distinguishes, each onto a type answered with that same status. */
-const STATUS_TYPES: Readonly<Record<number, ProblemTypeName>> = {
-  400: "invalidRequest",
-  401: "unauthorized",
-  403: "forbidden",
-  404: "notFound",
-  405: "methodNotAllowed",
-  409: "conflict",
-  413: "payloadTooLarge",
-  501: "capabilityUnavailable",
-  502: "upstreamFailure",
-  503: "upstreamFailure",
-  504: "upstreamFailure",
-};
+const STATUS_TYPES: ReadonlyMap<number, ProblemTypeName> = new Map<number, ProblemTypeName>([
+  [400, "invalidRequest"],
+  [401, "unauthorized"],
+  [403, "forbidden"],
+  [404, "notFound"],
+  [405, "methodNotAllowed"],
+  [409, "conflict"],
+  [413, "payloadTooLarge"],
+  [501, "capabilityUnavailable"],
+  [502, "upstreamFailure"],
+  [503, "upstreamFailure"],
+  [504, "upstreamFailure"],
+]);

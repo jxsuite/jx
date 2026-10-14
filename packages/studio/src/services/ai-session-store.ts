@@ -2,13 +2,13 @@
 /**
  * Ai-session-store.js — project-scoped multi-session chat history in localStorage.
  *
- * Pure storage CRUD for the assistant's conversations: a small index of session
- * metadata plus one payload key per session, so per-send writes touch a single
- * conversation. No reactivity and no chat-state knowledge — document-assistant
- * owns the live session; this module only loads/saves plain message arrays.
+ * Pure storage CRUD for the assistant's conversations: a small index of session metadata plus one
+ * payload key per session, so per-send writes touch a single conversation. No reactivity and no
+ * chat-state knowledge — document-assistant owns the live session; this module only loads/saves
+ * plain message arrays.
  *
- * Cross-window note: multiple studio windows share these keys; index writes are
- * last-write-wins, which is accepted for chat history.
+ * Cross-window note: multiple studio windows share these keys; index writes are last-write-wins,
+ * which is accepted for chat history.
  *
  * @license MIT
  */
@@ -73,18 +73,27 @@ function legacyKey(root: string) {
 
 // ─── Storage helpers (defensive: quota/unavailable/corrupt → absent) ────────
 
+/** `localStorage`, or `undefined` on a host that has none (a worker, a test run without a DOM). */
+function storage(): Storage | undefined {
+  return typeof localStorage === "undefined" ? undefined : localStorage;
+}
+
 function readJson<T>(key: string): T | null {
   try {
-    const raw = globalThis.localStorage?.getItem(key);
+    const raw = storage()?.getItem(key);
+    /* SAFETY: every key this module reads is one it wrote through `writeJson`, with the shape its
+       reader names (an index is a `SessionIndex`, a payload or legacy key a `PersistedMessage[]`).
+       A value that is not — corrupt, or written by a foreign build — is caught by each reader's
+       `Array.isArray` check before any member is used. */
     return raw ? (JSON.parse(raw) as T) : null;
   } catch {
     return null;
   }
 }
 
-function writeJson(key: string, value: unknown) {
+function writeJson(key: string, value: SessionIndex | PersistedMessage[]) {
   try {
-    globalThis.localStorage?.setItem(key, JSON.stringify(value));
+    storage()?.setItem(key, JSON.stringify(value));
   } catch {
     // Storage full or unavailable — chat history is not critical.
   }
@@ -92,7 +101,7 @@ function writeJson(key: string, value: unknown) {
 
 function removeKey(key: string) {
   try {
-    globalThis.localStorage?.removeItem(key);
+    storage()?.removeItem(key);
   } catch {
     /* Ignore */
   }

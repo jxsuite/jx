@@ -22,9 +22,9 @@ describe("view", () => {
 
   test("carries nothing that belongs to ONE STAGE", () => {
     /* The pan/zoom wrap, the centering observer, the pan offsets, the source Monaco and the render
-       generation are fields of a `CanvasSurface`. They cannot be type errors here — `ViewState` has
-       an index signature — so the guard is `scripts/check-pane-singletons.ts` and this is its
-       assertion in the unit suite: the keys are GONE from the object, not merely unread. */
+       generation are fields of a `CanvasSurface`. `ViewState` no longer declares them, so a write is a
+       type error, and `scripts/check-pane-singletons.ts` guards the module; this is the unit suite's
+       assertion that the keys are GONE from the object at runtime too, not merely untyped. */
     for (const key of [
       "panzoomWrap",
       "centerObserver",

@@ -12,6 +12,7 @@
  */
 
 import { mock } from "bun:test";
+import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
 
 /** The two entries that carry VALUES monaco-setup reads. */
 export const MONACO_EDITOR_ENTRY = "monaco-editor/editor";
@@ -61,11 +62,17 @@ export const MONACO_SETUP_ENTRIES: readonly string[] = [
   ...MONACO_SIDE_EFFECT_ENTRIES,
 ];
 
+/** The slice of the `monaco-editor/editor` namespace monaco-setup reaches for. */
+export interface MonacoEditorApiDouble {
+  /** The `editor` namespace; monaco-setup calls only `remeasureFonts` on it, once fonts are ready. */
+  editor?: { remeasureFonts: () => void };
+}
+
 export interface MonacoSetupMockOptions {
   /** Stands in for the `jsonDefaults` monaco-setup pushes diagnostics options into. */
-  jsonDefaults?: { setDiagnosticsOptions: (options: unknown) => void };
+  jsonDefaults?: { setDiagnosticsOptions: (options: DiagnosticsOptions) => void };
   /** Stands in for the editor API namespace (`editor.remeasureFonts`). */
-  editorApi?: Record<string, unknown>;
+  editorApi?: MonacoEditorApiDouble;
 }
 
 /**

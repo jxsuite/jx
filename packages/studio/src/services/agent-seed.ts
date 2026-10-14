@@ -10,10 +10,18 @@
  * @license MIT
  */
 
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JsonValue } from "@jxsuite/schema/types";
+
 const PENDING_PROMPT_PREFIX = "jx.ai.pendingAgentPrompt";
 
 /** Entries older than this are considered stale and dropped on read. */
 const MAX_AGE_MS = 15 * 60 * 1000;
+
+/** `localStorage`, or `undefined` on a host that has none (a worker, a test run without a DOM). */
+function storage(): Storage | undefined {
+  return typeof localStorage === "undefined" ? undefined : localStorage;
+}
 
 function storageKey(root: string) {
   return `${PENDING_PROMPT_PREFIX}:${root}`;
@@ -27,21 +35,25 @@ function storageKey(root: string) {
  */
 function readEntry(root: string): { prompt: string; ts: number } | null {
   try {
-    const raw = globalThis.localStorage?.getItem(storageKey(root));
+    const raw = storage()?.getItem(storageKey(root));
     if (!raw) {
       return null;
     }
-    const parsed = JSON.parse(raw) as { prompt?: unknown; ts?: unknown };
-    const valid =
-      typeof parsed.prompt === "string" &&
-      typeof parsed.ts === "number" &&
-      Date.now() - parsed.ts <= MAX_AGE_MS;
-    if (!valid) {
-      // Stale or malformed — remove so it never seeds a later session.
-      globalThis.localStorage?.removeItem(storageKey(root));
+    // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
+    const parsed = JSON.parse(raw) as JsonValue;
+    if (parsed === null) {
+      /* A stored JSON `null` reads as "no entry" but is left in place rather than dropped as
+         malformed, matching how this reader has always treated it. */
       return null;
     }
-    return { prompt: parsed.prompt as string, ts: parsed.ts as number };
+    const prompt = isJsonObject(parsed) ? parsed.prompt : undefined;
+    const ts = isJsonObject(parsed) ? parsed.ts : undefined;
+    if (!isString(prompt) || !isNumber(ts) || !(Date.now() - ts <= MAX_AGE_MS)) {
+      // Stale or malformed — remove so it never seeds a later session.
+      storage()?.removeItem(storageKey(root));
+      return null;
+    }
+    return { prompt, ts };
   } catch {
     return null;
   }
@@ -55,7 +67,7 @@ function readEntry(root: string): { prompt: string; ts: number } | null {
  */
 export function setPendingAgentPrompt(root: string, prompt: string): void {
   try {
-    globalThis.localStorage?.setItem(storageKey(root), JSON.stringify({ prompt, ts: Date.now() }));
+    storage()?.setItem(storageKey(root), JSON.stringify({ prompt, ts: Date.now() }));
   } catch {
     /* LocalStorage unavailable — the prompt is simply not handed off. */
   }
@@ -83,7 +95,7 @@ export function consumePendingAgentPrompt(root: string): string | null {
     return null;
   }
   try {
-    globalThis.localStorage?.removeItem(storageKey(root));
+    storage()?.removeItem(storageKey(root));
   } catch {
     /* LocalStorage unavailable — nothing to delete. */
   }

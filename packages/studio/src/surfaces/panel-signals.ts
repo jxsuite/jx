@@ -32,27 +32,15 @@
  * @docs studio/logic/data
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import signalsDoc from "./panel-signals.json";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JsonObject, JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption, SurfaceOptionGroup } from "../ui/surface";
 
-registerSurface("panel-signals", signalsDoc as unknown as JxDocument);
-
-/** One row of a picker, as `jx-select` reads it. */
-export interface SignalOption {
-  value: string;
-  label: string;
-}
-
-/** A named run of picker rows. `jx-select` draws both halves of a group's delimiter. */
-export interface SignalOptionGroup {
-  id: string;
-  label: string;
-  rows: SignalOption[];
-}
+registerSurface("panel-signals", signalsDoc);
 
 /** One chip of the basic parameter editor. */
 export interface SignalChipView {
@@ -158,7 +146,7 @@ export interface SignalFieldView {
   error: string;
   hasError: boolean;
   checked: boolean;
-  options: SignalOption[];
+  options: SurfaceOption[];
   /** Which island this host is for — `expression`, `statements`, `media` or `schema`. */
   slot: string;
   chips: SignalChipView[];
@@ -209,8 +197,8 @@ export interface SignalsView {
   listState: "listed" | "empty";
   emptyMessage: string;
   categories: SignalCategoryView[];
-  addOptions: SignalOption[];
-  addGroups: SignalOptionGroup[];
+  addOptions: SurfaceOption[];
+  addGroups: SurfaceOptionGroup[];
   /** What the add picker holds. Always `""` at rest — see {@link SignalsActions.addSignal}. */
   addValue: string;
 }
@@ -262,7 +250,7 @@ export interface SignalsSurfaceHandle {
   dispose: () => void;
 }
 
-interface SignalsScope extends Record<string, unknown>, SignalsView, SignalsActions {}
+interface SignalsScope extends SignalsView, SignalsActions {}
 
 /** One island's host, and what it is a host for. */
 interface IslandRecord {
@@ -272,23 +260,22 @@ interface IslandRecord {
 }
 
 /** The `part` a node was authored with, or `""` — the only thing this adapter asks about a node. */
-function partOf(def: unknown): string {
-  const attributes = (def as { attributes?: Record<string, unknown> } | null)?.attributes;
-  const part = attributes?.["part"];
-  return typeof part === "string" ? part : "";
+function partOf(def: JxElement | string): string {
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
 }
 
 /** The `$map` item a node was rendered inside, if it was rendered inside one. */
-function mapItem(state: JxScope | undefined): Record<string, unknown> | null {
-  const map = state?.["$map"] as { item?: unknown } | undefined;
-  const item = map?.item;
-  return item !== null && typeof item === "object" ? (item as Record<string, unknown>) : null;
+function mapItem(state: JxScope | undefined): JsonObject | null {
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  return isJsonObject(item) ? item : null;
 }
 
 /** A string field off a `$map` item, or `""`. */
-function itemString(item: Record<string, unknown> | null, field: string): string {
+function itemString(item: JsonObject | null, field: string): string {
   const value = item?.[field];
-  return typeof value === "string" ? value : "";
+  return isString(value) ? value : "";
 }
 
 /** The scope's starting shape, before the first projection lands on it. */
@@ -332,7 +319,7 @@ export function mountSignalsSurface(
   actions: SignalsActions,
   paint: SignalIslandPainter,
 ): SignalsSurfaceHandle {
-  const scope = reactive<SignalsScope>({
+  const scope: SignalsScope = reactive<SignalsScope>({
     ...emptyView(),
     ...actions,
     /* The picker never rests on what was picked. A controlled input is authoritative only while
@@ -346,7 +333,7 @@ export function mountSignalsSurface(
       actions.addSignal(type);
       scope.addValue = "";
     },
-  }) as SignalsScope;
+  });
   project(scope, view);
 
   /**
@@ -424,8 +411,7 @@ export function mountSignalsSurface(
        whether this handle is still wanted — answering no would start a second mount racing the
        first. Once mounted, the question is whether the root is still where it was put: a Navigator
        that painted another panel cleared this document out from under it. */
-    attached: () =>
-      !disposed && (mounted === null || (mounted.root as Node).parentNode === container),
+    attached: () => !disposed && (mounted === null || mounted.root.parentNode === container),
     dispose() {
       disposed = true;
       mounted?.dispose();

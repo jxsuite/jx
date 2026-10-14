@@ -49,6 +49,9 @@
  * @docs studio/interface/tabs
  */
 
+import { isFunction, isNumber, isSymbol } from "./guards";
+import type { JsonObject, JxDocumentValue } from "../types";
+
 /** A JSON Pointer (RFC 6901) segment: `~` and `/` are the two characters that need escaping. */
 function segment(key: string): string {
   return key.replaceAll("~", "~0").replaceAll("/", "~1");
@@ -67,6 +70,12 @@ export interface JsonLayout {
   inline: Map<string, boolean>;
   blankAfter: Set<string>;
   escaped: Map<string, Set<number>>;
+}
+
+/** A JSON string token the scanner consumed: its raw source text and the code units it escaped. */
+interface ScannedString {
+  raw: string;
+  escaped: Set<number>;
 }
 
 /** The print width the repository formats to — `.oxfmtrc.json` leaves oxfmt's default in place. */
@@ -100,7 +109,7 @@ export function deriveJsonLayout(text: string): JsonLayout {
   };
 
   /** Consume the string starting at `i`; return its raw text and the code units it escaped. */
-  const string = (): { raw: string; escaped: Set<number> } => {
+  const string = (): ScannedString => {
     const start = i;
     const escaped = new Set<number>();
     i += 1;
@@ -153,6 +162,7 @@ export function deriveJsonLayout(text: string): JsonLayout {
       }
       layout.inline.set(path, !broken);
       while (i < text.length) {
+        // SAFETY: `string()` consumed one whole JSON string token, so its raw text parses to a string.
         const key = JSON.parse(string().raw) as string;
         space();
         i += 1; // ":"
@@ -193,12 +203,18 @@ export function deriveJsonLayout(text: string): JsonLayout {
   return layout;
 }
 
-/** Parse a JSON file into the document it holds and the layout it was written in. */
-export function parseJsonDocument(text: string): {
-  document: Record<string, unknown>;
+/** A JSON file read for editing: the document it holds and the layout it was written in. */
+export interface ParsedJsonDocument {
+  document: JsonObject;
   layout: JsonLayout;
-} {
-  const document = JSON.parse(text) as Record<string, unknown>;
+}
+
+/** Parse a JSON file into the document it holds and the layout it was written in. */
+export function parseJsonDocument(text: string): ParsedJsonDocument {
+  /* SAFETY: `JSON.parse` without a reviver yields a JSON value, and every file read through here (a
+     Jx document, `project.json`, a surface) is one whose schema requires a top-level object. That
+     contract is what the cast states, as the `Record` it replaced did; the parse does not check it. */
+  const document = JSON.parse(text) as JsonObject;
   return { document, layout: deriveJsonLayout(text) };
 }
 
@@ -263,18 +279,36 @@ export function displayWidth(text: string): number {
   return width;
 }
 
-type Entry = [key: string, value: unknown];
+/**
+ * What {@link serializeJson} writes: a Jx document value, or a container holding one, where a member
+ * may also be something `JSON.stringify` drops from an object (`undefined`, a function, a symbol),
+ * as a live editor document can briefly hold.
+ */
+export type SerializableValue =
+  | JxDocumentValue
+  | undefined
+  | symbol
+  | ((...args: never[]) => void)
+  | SerializableValue[]
+  | SerializableObject;
 
-/** Whether `JSON.stringify` would drop this value from an object. */
-function omitted(value: unknown): boolean {
-  return value === undefined || typeof value === "function" || typeof value === "symbol";
+/** An object {@link serializeJson} writes member by member. */
+export interface SerializableObject {
+  [key: string]: SerializableValue;
 }
 
-function entriesOf(value: object): Entry[] {
+type Entry = [key: string, value: SerializableValue];
+
+/** Whether `JSON.stringify` would drop this value from an object. */
+function omitted(value: SerializableValue): boolean {
+  return value === undefined || isFunction(value) || isSymbol(value);
+}
+
+function entriesOf(value: SerializableObject): Entry[] {
   return Object.entries(value).filter(([, v]) => !omitted(v));
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+function isObject(value: SerializableValue): value is SerializableObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -283,7 +317,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * one key or all arrays with more than one element (Prettier's "concisely printed" rule,
  * inverted).
  */
-function forcedOpen(items: unknown[]): boolean {
+function forcedOpen(items: SerializableValue[]): boolean {
   if (items.length < 2) {
     return false;
   }
@@ -299,13 +333,16 @@ function forcedOpen(items: unknown[]): boolean {
 }
 
 /** Two or more numbers: the formatter fills lines with them rather than stacking one per line. */
-function isNumberRun(items: unknown[]): boolean {
-  return items.length > 1 && items.every((item) => typeof item === "number");
+function isNumberRun(items: SerializableValue[]): boolean {
+  return items.length > 1 && items.every((item) => isNumber(item));
 }
 
-/** A scalar, as `JSON.stringify` spells it — with the code units the source escaped, escaped. */
-function scalar(value: unknown, escaped?: Set<number>): string {
-  const text = JSON.stringify(value) ?? "null";
+/**
+ * A scalar, as `JSON.stringify` spells it — with the code units the source escaped, escaped. What
+ * `JSON.stringify` cannot spell (it answers `undefined`) is written `null`, as it is in an array.
+ */
+function scalar(value: SerializableValue, escaped?: Set<number>): string {
+  const text = omitted(value) ? "null" : JSON.stringify(value);
   return escaped === undefined
     ? text
     : text.replaceAll(/[\u0080-\uFFFF]/g, (c) => {
@@ -323,7 +360,7 @@ function scalar(value: unknown, escaped?: Set<number>): string {
  * result ends with exactly one newline, as every formatted file does.
  */
 export function serializeJson(
-  value: unknown,
+  value: SerializableValue,
   layout: JsonLayout | null,
   printWidth = JSON_PRINT_WIDTH,
 ): string {
@@ -342,7 +379,7 @@ export function serializeJson(
    * blank line, or an array the formatter always breaks — so that the break propagates outward the
    * way the formatter's does.
    */
-  const flat = (v: unknown, path: string, inherited: boolean): string | null => {
+  const flat = (v: SerializableValue, path: string, inherited: boolean): string | null => {
     if (Array.isArray(v)) {
       if (v.length === 0) {
         return "[]";
@@ -396,17 +433,19 @@ export function serializeJson(
    * parent adds, which counts toward the width the formatter measures).
    */
   const render = (
-    v: unknown,
+    v: SerializableValue,
     path: string,
     indent: number,
     column: number,
     inherited: boolean,
     trailing: number,
   ): string => {
+    if (!Array.isArray(v) && !isObject(v)) {
+      // A scalar is never broken, however long: only a container has a second layout to fall to.
+      return scalar(v, escaped.get(path));
+    }
     const line = flat(v, path, inherited);
-    // A scalar is never broken, however long: only a container has a second layout to fall to.
-    const container = Array.isArray(v) || isObject(v);
-    if (line !== null && (!container || column + displayWidth(line) + trailing <= printWidth)) {
+    if (line !== null && column + displayWidth(line) + trailing <= printWidth) {
       return line;
     }
     const pad = " ".repeat(indent + 2);
@@ -424,7 +463,7 @@ export function serializeJson(
       });
       return `[\n${stack(items)}${close}]`;
     }
-    const entries = entriesOf(v as object);
+    const entries = entriesOf(v);
     const own = soft(path, inherited);
     const members = entries.map(([key, item], index) => {
       const member = `${path}/${segment(key)}`;
@@ -447,7 +486,7 @@ export function serializeJson(
  * {@link displayWidth}: a line of numbers and spaces is ASCII, so the two agree.
  */
 function fill(
-  numbers: unknown[],
+  numbers: SerializableValue[],
   pad: string,
   printWidth: number,
   blank: (index: number) => boolean,

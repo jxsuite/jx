@@ -11,6 +11,8 @@ const applyCalls: unknown[][] = [];
 let checkResult: { name: string; current: string; latest: string; dev: boolean }[] = [];
 
 void mock.module("../src/packages/jxsuite-update", () => ({
+  // The real module's scope prefix, which pull-package-sync reads from it.
+  JXSUITE_PREFIX: "@jxsuite/",
   applyJxsuiteUpdate: async (...args: unknown[]) => {
     applyCalls.push(args);
   },
@@ -43,9 +45,18 @@ beforeEach(() => {
   checkResult = [];
 });
 
+/** A layer `beforeAll` created; a missing one is a broken fixture, so it throws. */
+function layer(id: string): Element {
+  const el = document.querySelector(`#${id}`);
+  if (!el) {
+    throw new Error(`the #${id} layer was not created`);
+  }
+  return el;
+}
+
 afterEach(() => {
-  (document.querySelector("#layer-dialog") as HTMLElement).innerHTML = "";
-  (document.querySelector("#layer-modal") as HTMLElement).innerHTML = "";
+  layer("layer-dialog").innerHTML = "";
+  layer("layer-modal").innerHTML = "";
 });
 
 function dialog(): HTMLElement | null {
@@ -53,7 +64,7 @@ function dialog(): HTMLElement | null {
 }
 
 function progressCard(): Element | null {
-  return (document.querySelector("#layer-modal") as HTMLElement).querySelector(".progress-modal");
+  return layer("layer-modal").querySelector(".progress-modal");
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -107,7 +118,8 @@ const conflictShowDb = {
 };
 
 function callNames(state: { calls: unknown[][] }): string[] {
-  return state.calls.map((c) => c[0] as string);
+  // The harness logs every call as `[methodName, ...args]`, so the head is always the name.
+  return state.calls.map((c) => String(c[0]));
 }
 
 /** Await a promise that must reject; returns the rejection error. */
@@ -115,7 +127,10 @@ async function rejectionOf(promise: Promise<unknown>): Promise<Error> {
   try {
     await promise;
   } catch (error) {
-    return error as Error;
+    if (error instanceof Error) {
+      return error;
+    }
+    throw new Error(`expected an Error rejection, got ${String(error)}`, { cause: error });
   }
   throw new Error("expected promise to reject");
 }
@@ -508,6 +523,21 @@ describe("autoSyncProjectOnOpen", () => {
     });
     await autoSyncProjectOnOpen();
     expect(callNames(state)).not.toContain("gitPull");
+  });
+
+  test("skips, without throwing, when the host's status has no remotes array", async () => {
+    const { remotes, ...withoutRemotes } = gitStatusOf();
+    expect(remotes).toEqual(["origin"]);
+    const { state } = installMockPlatform({
+      /* SAFETY: deliberately malformed. This models a host whose status omits `remotes`; the
+         assertion is the only way to hand the function that wire shape, and surviving it is
+         exactly what this test checks. */
+      gitStatus: async () => withoutRemotes as GitStatusResult,
+    });
+    // A throw here would fail the test: the open path awaits this with no try.
+    await autoSyncProjectOnOpen();
+    expect(callNames(state)).not.toContain("gitPull");
+    expect(statusMessages).not.toContain("Syncing project…");
   });
 
   test("pulls when a remote-backed repo is open", async () => {

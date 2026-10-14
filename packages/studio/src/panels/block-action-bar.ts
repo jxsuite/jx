@@ -34,7 +34,7 @@
  * @docs studio/interface/canvas
  */
 
-import { displayTagName } from "@jxsuite/schema/guards";
+import { displayTagName, isMappedArray, isNonNullObject, isNumber } from "@jxsuite/schema/guards";
 import { focusItem } from "@jxsuite/ui/behaviors/action-group";
 import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
@@ -49,6 +49,7 @@ import {
 } from "../store";
 import { activeTab } from "../workspace/workspace";
 import { activeCanvasSurface, stageContaining } from "../canvas/canvas-surface";
+import { stageOf } from "../canvas/surface-registry";
 import { panelOfSurface } from "../canvas/canvas-helpers";
 import { primarySelection, structuralBatch } from "../tabs/selection";
 import {
@@ -235,7 +236,7 @@ function barPosition(anchor: {
      pointing at a node the card is covering. Everywhere else there is no scroller and the stage is
      the viewport, as it always was. */
   const surface = activeCanvasSurface();
-  const viewport = panelOfSurface(surface)?.scrollContainer ?? surface.wrap;
+  const viewport = panelOfSurface(surface)?.scrollContainer ?? stageOf(surface);
   const box = viewport ? rectOf(viewport) : null;
   if (box && (anchor.top + anchor.height < box.top || anchor.top > box.bottom)) {
     return null;
@@ -324,23 +325,28 @@ export function formatCommands(): AnyCommand[] {
     title: string,
     icon: string,
     keybinding?: string,
-  ): AnyCommand => ({
-    category: "Edit",
-    group: "6_format",
-    icon,
-    id: `format.${command}`,
-    ...(keybinding === undefined ? {} : { keybinding }),
-    keyScope: "caret",
-    level: "selection",
-    menus: ["blockbar/format", "palette"],
-    requires: "a text caret in the canvas",
-    run: () => {
-      postApplyFormat({ command });
-    },
-    title,
-    undo: "document",
-    when: (ctx: CommandContext) => ctx.caret.inCanvas,
-  });
+  ): AnyCommand => {
+    const entry: AnyCommand = {
+      category: "Edit",
+      group: "6_format",
+      icon,
+      id: `format.${command}`,
+      keyScope: "caret",
+      level: "selection",
+      menus: ["blockbar/format", "palette"],
+      requires: "a text caret in the canvas",
+      run: () => {
+        postApplyFormat({ command });
+      },
+      title,
+      undo: "document",
+      when: (ctx: CommandContext) => ctx.caret.inCanvas,
+    };
+    if (keybinding !== undefined) {
+      entry.keybinding = keybinding;
+    }
+    return entry;
+  };
 
   return [
     record("bold", "Bold", "text-b", "mod+b"),
@@ -493,7 +499,7 @@ function structuralTarget(path: JxPath | null = commandTargetPath()): Structural
   }
   const index = childIndex(path);
   const parentPath = parentElementPath(path);
-  if (typeof index !== "number" || !parentPath) {
+  if (!isNumber(index) || !parentPath) {
     return null;
   }
   const parentNode = getNodeAtPath(tab.doc.document, parentPath);
@@ -510,7 +516,7 @@ function structuralTarget(path: JxPath | null = commandTargetPath()): Structural
  * block, not a container, and nesting a block inside it produces invalid markup.
  */
 function isContainerNode(node: JxMutableNode | string | null | undefined): boolean {
-  if (!node || typeof node !== "object") {
+  if (!isNonNullObject(node)) {
     return false;
   }
   if (VOID_ELEMENTS.has((displayTagName(node.tagName) || "div").toLowerCase())) {
@@ -521,11 +527,10 @@ function isContainerNode(node: JxMutableNode | string | null | undefined): boole
     return false;
   }
   if (!Array.isArray(children)) {
-    return (children as unknown as Record<string, unknown>).$prototype === "Array";
+    return isMappedArray(children);
   }
   return (
-    children.length === 0 ||
-    children.some((c) => typeof c === "object" && c !== null && !isInlineElement(c, node))
+    children.length === 0 || children.some((c) => isNonNullObject(c) && !isInlineElement(c, node))
   );
 }
 
@@ -549,7 +554,7 @@ function canMoveOut(): boolean {
   return (
     target !== null &&
     parentElementPath(target.parentPath) !== null &&
-    typeof childIndex(target.parentPath) === "number"
+    isNumber(childIndex(target.parentPath))
   );
 }
 
@@ -598,7 +603,7 @@ function moveTargetOut(): void {
   }
   const grandparent = parentElementPath(target.parentPath);
   const parentIndex = childIndex(target.parentPath);
-  if (!grandparent || typeof parentIndex !== "number") {
+  if (!grandparent || !isNumber(parentIndex)) {
     return;
   }
   transactDoc(target.tab, (t) => mutateMoveNode(t, target.path, grandparent, parentIndex + 1));
@@ -1040,7 +1045,7 @@ export function showCommandOverflow(
     commands.map((command, index) => {
       const chord = registry.keymap.formatBinding(command.id);
       const reason = registry.disabledReason(command.id);
-      return {
+      const row: MenuRowProjection = {
         destructive: command.destructive === true,
         disabled: reason !== undefined,
         dividerAbove: index > 0 && command.destructive === true,
@@ -1049,9 +1054,14 @@ export function showCommandOverflow(
           runCommand(registry, command.id, target);
         },
         title: command.title,
-        ...(chord ? { chord } : {}),
-        ...(reason === undefined ? {} : { requires: reason }),
       };
+      if (chord) {
+        row.chord = chord;
+      }
+      if (reason !== undefined) {
+        row.requires = reason;
+      }
+      return row;
     });
   const rows = target ? withCommandTarget(target, project) : project();
   _overflowHandle = openMenu({
@@ -1079,7 +1089,7 @@ export function showCommandOverflow(
 function returnFocusToCanvas(): void {
   // The FOCUSED pane's stage: the keyboard came from there and is going back there. Resolving it
   // From the active tab answered with whichever pane displays that document first.
-  const stage = activeCanvasSurface().wrap;
+  const stage = stageOf(activeCanvasSurface());
   const iframe = stage?.querySelector<HTMLElement>("iframe.jx-canvas-iframe");
   (iframe ?? stage)?.focus();
 }
@@ -1118,9 +1128,9 @@ export function handleBlockBarEntryKey(e: KeyboardEvent): void {
  * The tags this node may be converted into — empty for a component instance and for a repeater,
  * whose content is a `map` template rather than a tag.
  *
- * @param {JxMutableNode | null} node
+ * @param {JxMutableNode | null | undefined} node
  */
-function convertTargetsFor(node: JxMutableNode | null): SlashCommand[] {
+function convertTargetsFor(node: JxMutableNode | null | undefined): SlashCommand[] {
   if (!node) {
     return [];
   }
@@ -1130,10 +1140,11 @@ function convertTargetsFor(node: JxMutableNode | null): SlashCommand[] {
     return [];
   }
   const children = childList(node);
+  const [first] = children;
   const isEmpty =
     !node.textContent &&
     (children.length === 0 ||
-      (children.length === 1 && typeof children[0] === "object" && children[0]?.tagName === "br"));
+      (children.length === 1 && isNonNullObject(first) && first.tagName === "br"));
   return getConvertTargets((literal || "div").toLowerCase(), isEmpty);
 }
 
@@ -1173,7 +1184,7 @@ function openConvertMenu(anchor: HTMLElement): void {
  */
 function openMergeTagMenu(anchor: HTMLElement): void {
   const tab = activeTab.value;
-  const state = (tab?.doc.document.state ?? {}) as Record<string, unknown>;
+  const state = tab?.doc.document.state ?? {};
   // The live resolved scope lives inside the iframe realm and is not threaded out, so the parent
   // Offers only top-level `state.*` tokens (buildMergeTags tolerates the null scopes).
   const tags = buildMergeTags(state, null, null);
@@ -1186,7 +1197,7 @@ function openMergeTagMenu(anchor: HTMLElement): void {
   if (arrayNode && tab) {
     const tokens = resolveRepeaterItemFields(
       arrayNode,
-      tab.doc.document.state as Record<string, unknown>,
+      tab.doc.document.state,
       projectState?.projectConfig,
     );
     tags.push(...buildRepeaterTagsFromFields(tokens));

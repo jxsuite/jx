@@ -81,6 +81,13 @@ describe("checkRecordPlacements", () => {
     level: "document",
     ...over,
   });
+  /** A record as it reaches the check from JSON or an untyped extension: plain strings. */
+  function untypedRecord(over: { level?: string; menus?: string[] }): PlaceableRecord {
+    /* SAFETY: deliberately off-contract. The check exists for records whose level and placements
+       were never typed, and the tests using this helper are exactly such records; the check reads
+       both fields as strings before trusting either. */
+    return { id: "test.command", level: "document", ...over } as PlaceableRecord;
+  }
 
   test("a record with no menus is legal at every level", () => {
     for (const level of LEVELS) {
@@ -104,13 +111,13 @@ describe("checkRecordPlacements", () => {
   });
 
   test("an unknown placement is rejected by name", () => {
-    const [violation] = checkRecordPlacements(record({ menus: ["context/canvas" as never] }));
+    const [violation] = checkRecordPlacements(untypedRecord({ menus: ["context/canvas"] }));
     expect(violation?.message).toContain('unknown placement "context/canvas"');
   });
 
   test("an unknown level is rejected before its placements are read", () => {
     const violations = checkRecordPlacements(
-      record({ level: "range" as never, menus: ["blockbar"] }),
+      untypedRecord({ level: "range", menus: ["blockbar"] }),
     );
     expect(violations).toHaveLength(1);
     expect(violations[0]?.message).toContain('unknown level "range"');

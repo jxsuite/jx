@@ -13,6 +13,7 @@
 
 import { PROBLEM_MEDIA_TYPE, problemDetails } from "@jxsuite/protocol";
 import type { ProblemTypeName } from "@jxsuite/protocol";
+import type { JsonObject } from "@jxsuite/schema/types";
 
 /**
  * A failure response for one occurrence of a declared problem type.
@@ -23,14 +24,10 @@ import type { ProblemTypeName } from "@jxsuite/protocol";
  *
  * @param {ProblemTypeName} name - A declared type from `PROBLEM_TYPES`
  * @param {string} [detail] - What happened this time; the line a human reads
- * @param {Record<string, unknown>} [extensions] - Extension members this type documents
+ * @param {JsonObject} [extensions] - Extension members this type documents
  * @returns {Response}
  */
-export function problem(
-  name: ProblemTypeName,
-  detail?: string,
-  extensions?: Record<string, unknown>,
-): Response {
+export function problem(name: ProblemTypeName, detail?: string, extensions?: JsonObject): Response {
   const body = problemDetails(name, detail, extensions);
   // The explicit Content-Type is the point: `Response.json` would send `application/json`, and
   // RFC 9457 §3 is what tells a client this body is a problem rather than a result.

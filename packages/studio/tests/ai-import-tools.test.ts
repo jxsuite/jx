@@ -7,12 +7,18 @@ import { clearSeededSettings, flush, installMockPlatform, seedSettings } from ".
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createToolRegistry } from "@jxsuite/ai";
 import { registerImportTools } from "../src/services/ai-import-tools";
+import type { ImportToolsCtx } from "../src/services/ai-import-tools";
 import { clearPendingImportBrief, setPendingImportBrief } from "../src/services/import-seed";
 import { importRun, resetImportRuns } from "../src/services/import-run";
-import type { ToolContext } from "@jxsuite/ai/tools";
+import type { ToolArguments, ToolContext } from "@jxsuite/ai/tools";
 import { recordingContext } from "./harness/recording-context";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
-import type { ImportProgressEvent, ImportSiteOptions, ImportSiteSummary } from "../src/types";
+import type {
+  ImportProgressEvent,
+  ImportReadyEvent,
+  ImportSiteOptions,
+  StudioPlatform,
+} from "../src/types";
 import type { ImportBrief } from "../src/services/import-seed";
 
 const BRIEF: ImportBrief = {
@@ -29,13 +35,16 @@ const BRIEF: ImportBrief = {
   verify: false,
 };
 
+/** The platform's import pipeline, as a backend that has one provides it. */
+type ImportSite = NonNullable<StudioPlatform["importSite"]>;
+
 /** The captured call, so a test drives the stream by hand exactly as the import-tab tests do. */
 let captured: {
   opts: ImportSiteOptions;
   onProgress: (evt: ImportProgressEvent) => void;
   /** The early-adoption hook — fires the moment the destination is an openable project. */
-  onReady: ((evt: { root: string }) => void) | undefined;
-  resolve: (r: { root: string; config: object; result?: ImportSiteSummary }) => void;
+  onReady: ((evt: ImportReadyEvent) => void) | undefined;
+  resolve: (r: Awaited<ReturnType<ImportSite>>) => void;
   reject: (e: Error) => void;
   signal?: AbortSignal | undefined;
 } | null = null;
@@ -49,33 +58,26 @@ function harness(
     signal?: AbortSignal;
   } = {},
 ) {
-  const { state } = installMockPlatform(
-    opts.noBackend
-      ? ({} as never)
-      : ({
-          importSite: ((
-            o: ImportSiteOptions,
-            onProgress: (evt: ImportProgressEvent) => void,
-            signal?: AbortSignal,
-            onReady?: (evt: { root: string }) => void,
-          ) =>
-            new Promise((resolve, reject) => {
-              captured = { onProgress, onReady, opts: o, reject, resolve, signal };
-            })) as never,
-        } as never),
-  );
+  const importSite: ImportSite = (o, onProgress, signal, onReady) =>
+    new Promise((resolve, reject) => {
+      captured = { onProgress, onReady, opts: o, reject, resolve, signal };
+    });
+  const { state } = installMockPlatform(opts.noBackend ? {} : { importSite });
   const inner = createToolRegistry();
-  registerImportTools(inner, {
-    getTab: () => null,
-    ...(opts.adoptProject ? { adoptProject: opts.adoptProject } : {}),
-    ...(opts.onProjectAdopted ? { onProjectAdopted: opts.onProjectAdopted } : {}),
-  });
+  const toolsCtx: ImportToolsCtx = { getTab: () => null };
+  if (opts.adoptProject) {
+    toolsCtx.adoptProject = opts.adoptProject;
+  }
+  if (opts.onProjectAdopted) {
+    toolsCtx.onProjectAdopted = opts.onProjectAdopted;
+  }
+  registerImportTools(inner, toolsCtx);
   /* One conversation's call: every run shares this context (the call id `call_1`, one session),
      as the loop's calls share their turn's, unless a test passes its own. */
   const ctx = recordingContext(opts.signal ? { signal: opts.signal } : {});
   const registry = {
     ...inner,
-    execute: (name: string, args: object, own?: ToolContext) =>
+    execute: (name: string, args: ToolArguments, own?: ToolContext) =>
       inner.execute(name, args, own ?? ctx),
   };
   return { ctx, registry, state };
@@ -681,14 +683,15 @@ describe("import_site — the project opens before the run ends", () => {
     await flush();
     captured!.resolve({ config: {}, root: "/home/dev/Sites/twice" });
     await running;
-    expect(adopt).toHaveBeenCalledTimes(1);
+    // One adoption, of the destination the signal named.
+    expect(adopt.mock.calls).toEqual([["/home/dev/Sites/twice"]]);
   });
 });
 
 // ─── Breakpoints ─────────────────────────────────────────────────────────────
 
 describe("import_site — the breakpoint policy", () => {
-  async function policyFor(args: Record<string, unknown>): Promise<unknown> {
+  async function policyFor(args: ToolArguments) {
     const { registry } = harness({ adoptProject: landing() });
     const running = registry.execute("import_site", {
       directory: "/home/dev/Sites/bp",

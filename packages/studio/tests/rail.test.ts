@@ -9,6 +9,7 @@ import { flush, mountOverlayLayers, resetWorkspaceWithTab } from "./harness";
 import { hintOf } from "./kit-readers";
 import { nothing } from "lit-html";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { GitStatusResult } from "../src/types";
 
 const { listPanels, registerPanel } = await import("../src/panels/panel-registry");
 
@@ -20,7 +21,6 @@ void mock.module("../src/panels/git-panel.js", () => ({
   refreshGitStatus,
   cleanupGitPanel: () => {},
   cloneRepository: () => {},
-  renderGitPanel: () => nothing,
   registerGitPanel: () => {
     registerPanel({
       id: "git",
@@ -47,7 +47,7 @@ void mock.module("../src/about/about-modal.js", () => ({
 
 const store = await import("../src/store");
 const { initShellRefs } = store;
-const bar = () => store.activityBar;
+const bar = () => store.requireShellRef(store.activityBar, "activity-bar");
 
 type RailButton = HTMLElement & { selected: boolean; badge: string };
 
@@ -62,13 +62,23 @@ const controlOf = (el: Element | null | undefined) =>
 /** A foot button, addressed by its visible label. */
 const footerButton = (label: string) =>
   [...bar().querySelectorAll<HTMLElement>('[part="foot"] jx-action-button')].find(
-    (el) => el.querySelector('[part="label"]')?.textContent?.trim() === label,
+    (el) => el.querySelector('[part="label"]')?.textContent.trim() === label,
   );
 const labelsOf = () =>
-  [...bar().querySelectorAll('jx-action-button [part="label"]')].map((el) =>
-    el.textContent?.trim(),
-  );
+  [...bar().querySelectorAll('jx-action-button [part="label"]')].map((el) => el.textContent.trim());
 const badgeOf = (id: string) => railButton(id)?.querySelector('[part="badge"]') ?? null;
+
+/** A clean `main` status with `changed` dirty files: the file count is all the badge reads. */
+function gitStatusWith(changed: number): GitStatusResult {
+  return {
+    ahead: 0,
+    behind: 0,
+    branch: "main",
+    files: Array.from({ length: changed }, (_, index) => ({ path: `f${index}.json`, status: "M" })),
+    isRepo: true,
+    remotes: [],
+  };
+}
 
 const { mountShell, resetProjectShell, shell, unmountShell } = await import("../src/shell");
 const { closeAllTabs } = await import("../src/workspace/workspace");
@@ -173,15 +183,16 @@ describe("panel icons", () => {
 describe("renderActivityBar", () => {
   test("renders every rail-able panel, grouped by level", async () => {
     await render();
-    expect(railIds()).toEqual(["files", "git", "layers", "page", "data", "packages"]);
+    const ids = railIds();
+    expect(ids).toEqual(["files", "git", "layers", "page", "data", "packages"]);
     // The Bottom dock's FOUR rail-less tabs stay off it.
     for (const id of ["problems", "diff", "logic", "activity"]) {
-      expect(railIds()).not.toContain(id);
+      expect(ids).not.toContain(id);
     }
-    expect(railIds()).not.toContain("insert");
-    expect(railIds()).not.toContain("state");
+    expect(ids).not.toContain("insert");
+    expect(ids).not.toContain("state");
     // Search is still declared-but-unbuilt, hidden by its own `when`.
-    expect(railIds()).not.toContain("search");
+    expect(ids).not.toContain("search");
   });
 
   test("every rail button draws a glyph above its label", async () => {
@@ -229,13 +240,13 @@ describe("renderActivityBar", () => {
        announces (the visible word leads it, WCAG 2.5.3) and what the tooltip restores: the tip an
        Enabled kit button renders for its hint, never a `title` attribute (ui.md §5.1). */
     const git = railButton("git");
-    expect(git?.querySelector('[part="label"]')?.textContent?.trim()).toBe("Source");
+    expect(git?.querySelector('[part="label"]')?.textContent.trim()).toBe("Source");
     expect(controlOf(git)?.getAttribute("aria-label")).toBe("Source Control");
     expect(hintOf(git)).toBe("Source Control");
     expect(controlOf(git)?.hasAttribute("title")).toBe(false);
     // A record with no railLabel prints its title, which is also its name.
     const files = railButton("files");
-    expect(files?.querySelector('[part="label"]')?.textContent?.trim()).toBe("Files");
+    expect(files?.querySelector('[part="label"]')?.textContent.trim()).toBe("Files");
     expect(controlOf(files)?.getAttribute("aria-label")).toBe("Files");
   });
 
@@ -257,20 +268,20 @@ describe("renderActivityBar", () => {
   });
 
   test("shows git badge with changed file count", async () => {
-    shell.git.status = { files: [{}, {}, {}] } as never;
+    shell.git.status = gitStatusWith(3);
     await render();
     expect(badgeOf("git")?.textContent).toBe("3");
   });
 
   test("omits git badge when there are no changed files", async () => {
-    shell.git.status = { files: [] } as never;
+    shell.git.status = gitStatusWith(0);
     await render();
     expect(badgeOf("git")).toBeNull();
   });
 
   test("the badge survives closing the last tab", async () => {
     resetWorkspaceWithTab();
-    shell.git.status = { files: [{}, {}] } as never;
+    shell.git.status = gitStatusWith(2);
     await render();
     expect(badgeOf("git")?.textContent).toBe("2");
     closeAllTabs();
@@ -317,7 +328,7 @@ describe("renderActivityBar", () => {
     // Shell: the mounted rail's effect recomputes the projection from `shell` and the property wins,
     // So the button that WAS pressed lets go without ever having been clicked.
     mountShell();
-    shell.git.status = { files: [] } as never;
+    shell.git.status = gitStatusWith(0);
     shell.leftTab = "layers";
     mount();
     await flush();
@@ -373,10 +384,10 @@ describe("renderActivityBar", () => {
     const ran: string[] = [];
     const registry = activeRegistry()!;
     const original = registry.run.bind(registry);
-    registry.run = ((id: string) => {
+    registry.run = (id: string) => {
       ran.push(id);
       return Promise.resolve();
-    }) as typeof registry.run;
+    };
     control.click();
     registry.run = original;
     await flush();
@@ -398,10 +409,10 @@ describe("renderActivityBar", () => {
     const ran: string[] = [];
     const registry = activeRegistry()!;
     const original = registry.run.bind(registry);
-    registry.run = ((id: string) => {
+    registry.run = (id: string) => {
       ran.push(id);
       return Promise.resolve();
-    }) as typeof registry.run;
+    };
     const row = document.querySelector<HTMLElement>(
       '#layer-popover jx-menu-item[data-command-id="app.preferences"]',
     )!;
@@ -537,19 +548,22 @@ describe("mount", () => {
     mount();
     await flush();
     expect(refreshGitStatus).not.toHaveBeenCalled();
-    shell.git.status = { files: [] } as never;
+    shell.git.status = gitStatusWith(0);
     shell.git.loading = false;
     await flush();
     expect(refreshGitStatus).not.toHaveBeenCalled();
+    // Declining to fetch is not declining to draw: the rail is up, with no badge for a clean tree.
+    expect(bar().querySelector('[part="groups"]')).not.toBeNull();
+    expect(badgeOf("git")).toBeNull();
   });
 
   test("re-renders the badge when git status changes", async () => {
-    shell.git.status = { files: [] } as never;
+    shell.git.status = gitStatusWith(0);
     mount();
     await flush();
     await flush();
     expect(badgeOf("git")).toBeNull();
-    shell.git.status = { files: [{}] } as never;
+    shell.git.status = gitStatusWith(1);
     await flush();
     await flush();
     expect(badgeOf("git")?.textContent).toBe("1");
@@ -565,14 +579,14 @@ describe("mount", () => {
   });
 
   test("unmount stops reactive updates and empties the host", async () => {
-    shell.git.status = { files: [] } as never;
+    shell.git.status = gitStatusWith(0);
     mount();
     await flush();
     await flush();
     unmount();
     await flush();
     expect(bar().querySelector("jx-action-button")).toBeNull();
-    shell.git.status = { files: [{}, {}] } as never;
+    shell.git.status = gitStatusWith(2);
     await flush();
     expect(badgeOf("git")).toBeNull();
   });

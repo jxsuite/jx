@@ -13,16 +13,16 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 describe("isComponentDoc", () => {
   test("a custom-element root is a component doc; pages and fragments are not", () => {
-    expect(isComponentDoc({ tagName: "x-card" } as JxMutableNode)).toBe(true);
-    expect(isComponentDoc({ tagName: "div" } as JxMutableNode)).toBe(false);
-    expect(isComponentDoc({} as JxMutableNode)).toBe(false);
+    expect(isComponentDoc({ tagName: "x-card" })).toBe(true);
+    expect(isComponentDoc({ tagName: "div" })).toBe(false);
+    expect(isComponentDoc({})).toBe(false);
     expect(isComponentDoc(null)).toBe(false);
   });
 });
 
 describe("componentPropEntries", () => {
   test("derives plain-data entries with their defaults, skipping behavior and private keys", () => {
-    const doc = {
+    const doc: JxMutableNode = {
       state: {
         "#secret": "hidden",
         computedTitle: "${state.title}",
@@ -36,7 +36,7 @@ describe("componentPropEntries", () => {
         total: { $compute: "1 + 1" },
       },
       tagName: "x-card",
-    } as unknown as JxMutableNode;
+    };
     expect(componentPropEntries(doc)).toEqual([
       { name: "count", value: 3 },
       { name: "legend", value: undefined },
@@ -46,13 +46,13 @@ describe("componentPropEntries", () => {
   });
 
   test("an empty/missing state yields no entries", () => {
-    expect(componentPropEntries({ tagName: "x-card" } as JxMutableNode)).toEqual([]);
+    expect(componentPropEntries({ tagName: "x-card" })).toEqual([]);
     expect(componentPropEntries(null)).toEqual([]);
   });
 });
 
 describe("substitutePreviewProps", () => {
-  const DOC = {
+  const DOC: JxMutableNode = {
     children: [],
     state: {
       count: { default: 3, type: "number" },
@@ -60,17 +60,15 @@ describe("substitutePreviewProps", () => {
       title: "Hello",
     },
     tagName: "x-card",
-  } as unknown as JxMutableNode;
+  };
 
   test("seeds literals directly and signal defs through `default`, leaving the source intact", () => {
     const seeded = substitutePreviewProps(DOC, { count: 7, title: "Test" });
-    const state = seeded.state as Record<string, unknown>;
-    expect(state.title).toBe("Test");
-    expect(state.count).toEqual({ default: 7, type: "number" });
+    expect(seeded.state?.title).toBe("Test");
+    expect(seeded.state?.count).toEqual({ default: 7, type: "number" });
     // Pure rebuild: the source doc's state is untouched (it is what gets edited and saved).
-    const srcState = DOC.state as Record<string, unknown>;
-    expect(srcState.title).toBe("Hello");
-    expect(srcState.count).toEqual({ default: 3, type: "number" });
+    expect(DOC.state?.title).toBe("Hello");
+    expect(DOC.state?.count).toEqual({ default: 3, type: "number" });
     expect(seeded).not.toBe(DOC);
   });
 
