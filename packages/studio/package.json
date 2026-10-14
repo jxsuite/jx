@@ -71,7 +71,7 @@
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",
     "@jxsuite/ui": "workspace:^",
-    "@vue/reactivity": "3.5.43",
+    "@vue/reactivity": "3.5.44",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "lit-html": "^3.3.3",
