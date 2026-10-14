@@ -32,10 +32,10 @@
   },
   "dependencies": {
     "@jxsuite/protocol": "workspace:^",
-    "@vue/reactivity": "3.5.43"
+    "@vue/reactivity": "3.5.44"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261010.1",
+    "@cloudflare/workers-types": "^5.20261011.1",
     "@happy-dom/global-registrator": "^20.14.6"
   }
 }
